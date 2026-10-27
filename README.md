@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/branding/afterframe-mark.svg" alt="AFTERFRAME temporal-fracture emblem" width="150" />
+<img src="https://raw.githubusercontent.com/ThanhNguyxnOrg/ThanhNguyxnOrg.github.io/main/public/logos/afterframe-the-last-loop.png" alt="AFTERFRAME temporal-fracture emblem" width="150" />
 
 # AFTERFRAME: THE LAST LOOP
 
