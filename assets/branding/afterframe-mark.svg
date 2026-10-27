@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">AFTERFRAME temporal fracture emblem</title>
+  <desc id="desc">A fractured silver hourglass formed inside a broken circular loop, split by an icy blue beam.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0" stop-color="#17283b"/>
+      <stop offset=".58" stop-color="#09111c"/>
+      <stop offset="1" stop-color="#04070c"/>
+    </radialGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".28" stop-color="#9eafc2"/>
+      <stop offset=".53" stop-color="#f4f8ff"/>
+      <stop offset=".78" stop-color="#6f849b"/>
+      <stop offset="1" stop-color="#e5edf7"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#73e9ff" stop-opacity=".05"/>
+      <stop offset=".35" stop-color="#48cfff"/>
+      <stop offset=".52" stop-color="#e5fbff"/>
+      <stop offset=".7" stop-color="#2fbaff"/>
+      <stop offset="1" stop-color="#62dfff" stop-opacity=".06"/>
+    </linearGradient>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="17"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="74" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="174" fill="none" stroke="#2b84b2" stroke-opacity=".13" stroke-width="1"/>
+  <circle cx="256" cy="256" r="151" fill="none" stroke="#6b9ab9" stroke-opacity=".15" stroke-width="2" stroke-dasharray="2 8"/>
+  <circle cx="256" cy="256" r="130" fill="none" stroke="#a6d8f5" stroke-opacity=".19" stroke-width="2" stroke-dasharray="36 12 4 18"/>
+  <path d="M256 45V467" stroke="#38cfff" stroke-width="25" opacity=".18" filter="url(#softGlow)"/>
+  <path d="M256 25V487" stroke="url(#beam)" stroke-width="4" filter="url(#glow)"/>
+  <path d="M256 77 L365 174 L256 256 L147 174 Z" fill="#0c1723" stroke="url(#silver)" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M147 338 L256 256 L365 338 L256 435 Z" fill="#101b28" stroke="url(#silver)" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M166 174 L220 222 L256 256 L291 290 L346 338" fill="none" stroke="#f2f8ff" stroke-width="4" stroke-linecap="round" opacity=".8"/>
+  <path d="M346 174 L291 222 L256 256 L220 290 L166 338" fill="none" stroke="#75dfff" stroke-width="2" stroke-linecap="round" opacity=".75"/>
+  <path d="M104 181 A174 174 0 0 1 186 96" fill="none" stroke="#a9d8f3" stroke-width="3" stroke-opacity=".75"/>
+  <path d="M326 93 A174 174 0 0 1 405 178" fill="none" stroke="#a9d8f3" stroke-width="3" stroke-opacity=".75"/>
+  <path d="M408 330 A174 174 0 0 1 326 415" fill="none" stroke="#a9d8f3" stroke-width="3" stroke-opacity=".75"/>
+  <path d="M186 416 A174 174 0 0 1 103 331" fill="none" stroke="#a9d8f3" stroke-width="3" stroke-opacity=".75"/>
+  <circle cx="256" cy="256" r="6" fill="#f2fdff" filter="url(#glow)"/>
+  <path d="M236 255 L249 244 L256 256 L263 268 L276 257" fill="none" stroke="#dffaff" stroke-width="2.5" opacity=".9"/>
+  <g fill="#a9eaff">
+    <circle cx="110" cy="236" r="2"/><circle cx="392" cy="270" r="2"/>
+    <circle cx="287" cy="93" r="1.5"/><circle cx="206" cy="420" r="1.5"/>
+    <circle cx="365" cy="375" r="2"/><circle cx="145" cy="139" r="1.5"/>
+  </g>
+</svg>
