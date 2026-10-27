@@ -1,0 +1,530 @@
+# AFTERFRAME: THE LAST LOOP — CAMPAIGN EXPANSION
+## Chapters II–IV + Chapter V Chronicle Loom Finale
+
+You are continuing the existing AFTERFRAME: THE LAST LOOP project in Google AI Studio.
+
+The last read-only recovery audit found that the actual persisted workspace contains the verified Phase 1–7 vertical slice, with 91/91 simulation tests passing. The previously reported multi-chapter expansion did not persist after an RPC::DEADLINE_EXCEEDED workspace failure.
+
+Your task is to IMPLEMENT the missing campaign content in the actual project files, preserve the existing vertical slice, and verify the integrated result.
+
+Do not respond with another implementation plan only. Make the changes in the workspace, run the required checks, and report the actual persisted result.
+
+## 1. Non-negotiable baseline preservation
+
+Before editing, confirm that the workspace is available and inspect the actual persisted source.
+
+The current reported baseline includes:
+
+- `src/App.tsx`
+- `src/components/TitleScreen.tsx`
+- `src/components/GameHud.tsx`
+- `src/components/StatusModal.tsx`
+- `src/game/config.ts`
+- `src/game/types.ts`
+- `src/game/input.ts`
+- `src/game/simulation.ts`
+- `src/game/simulation.test.ts`
+- `src/game/renderer.ts`
+- `src/game/models.ts`
+- `src/game/audio.ts`
+
+The existing simulation suite contains 91 tests covering movement, combat, Echo, puzzle progression, Relay, Resonance/Convergence, HELIX-04, lifecycle cleanup, and the Phase 7 vertical slice.
+
+**Preserve all 91 existing tests and their assertions. Do not delete, weaken, replace, rename away, or silently skip them to make new work pass.**
+
+Before making changes:
+
+1. Confirm the 91-test baseline and the real test command.
+2. Inspect the current campaign/run-state model and transition logic.
+3. Inspect how the standard encounter, campaign Calibration Bay, and practice HELIX-04 are entered.
+4. Confirm current control mappings and resource/checkpoint policy.
+5. Identify the smallest architecture extension that supports the additional chapters.
+
+If the workspace is unavailable, do not attempt a speculative rewrite. Report the connection failure and stop.
+
+Keep the existing visual identity: dark industrial science fiction, layered procedural character rigs, temporal Echo effects, readable attack telegraphs, and the established HUD.
+
+## 2. Correct the existing control-copy discrepancies
+
+The recovery audit found two existing documentation/UI mismatches. Resolve these as part of integration:
+
+- `Q` is Parry. Right mouse button is Heavy Attack, not Parry. Remove every incorrect `[R-Click] Parry` instruction.
+- Mobile movement uses the four-button directional pad, not a bottom-left virtual joystick or right-screen swipe. Update tutorial and control copy to match the actual touch UI.
+
+Inspect all existing keyboard, HUD, title screen, modal, and tutorial instructions before adding new mappings.
+
+Preserve the current baseline controls, including:
+
+- `WASD`: movement.
+- Mouse/arrow controls: camera aim according to the existing implementation.
+- `F` / `J` / left mouse: Light Attack where currently supported.
+- `E` / heavy input: Heavy Attack.
+- `Space` / supported shift input: Dodge.
+- `Q`: Parry.
+- `T`: Record/stop Echo.
+- `Y`: Play Echo.
+- `V`: Relay.
+- `C`: Clear Echo.
+- `R`: Restart/retry according to the existing state.
+- `P` / Escape: Pause.
+- `H`: Toggle hints.
+- `M`: Mute.
+- `B`: Direct HELIX-04 practice entry where currently supported.
+
+Do not reuse these bindings casually. Add only the new chapter-specific bindings, with corresponding touch controls and visible instructions.
+
+## 3. Campaign progression architecture
+
+Extend the current `VerticalSliceRunState` or equivalent authoritative campaign state rather than introducing a conflicting second state machine.
+
+The intended primary campaign order is:
+
+1. Prologue / Calibration Bay 04.
+2. Chapter I — HELIX-04: Containment Warden.
+3. Chapter II — THE CHOIR.
+4. Chapter III — THE CURATOR.
+5. Chapter IV — MATRON-V, The Surgeon.
+6. Chapter V — The Last Loop: Chronicle Loom ending choice.
+
+Use a clear chapter identifier, stage, checkpoint, encounter state, and terminal outcome in the existing model, following project conventions.
+
+### Transition rules
+
+- Completing Calibration Bay legitimately unlocks HELIX-04.
+- Defeating HELIX-04 in the campaign transitions to Chapter II; it must no longer terminate the entire campaign.
+- Defeating THE CHOIR transitions to Chapter III.
+- Defeating THE CURATOR transitions to Chapter IV.
+- Defeating MATRON-V transitions to Chapter V's Chronicle Loom.
+- Selecting Silence, Witness, or Continuity resolves the finale and enters a final campaign-complete state.
+
+Every transition must occur exactly once after its actual authoritative success condition.
+
+Do not transition chapters because a boss mesh disappeared, because a health bar reached zero without a combat event, or because a UI button directly assigns a completion flag.
+
+### Practice-mode isolation
+
+Preserve the standard Test Bay and direct HELIX-04 practice encounter.
+
+Practice runs must not advance the campaign, award chapter completion, unlock endings, or contaminate campaign checkpoint state.
+
+A campaign boss victory must advance the campaign only when the current run is actually in campaign mode.
+
+### Chapter selection and replay
+
+Provide a discoverable chapter-selection interface or equivalent replay functionality. Prefer a clear distinction between:
+
+- New Campaign.
+- Continue/Resume Campaign if supported by the existing state model.
+- Chapter Select for completed/unlocked chapters.
+- Standard Test Bay Practice.
+- HELIX-04 Practice.
+
+Do not unlock every chapter automatically just because it exists in code.
+
+If chapter select is available, lock inaccessible chapters until their legitimate prerequisite is met. Replaying an unlocked chapter must not silently overwrite or corrupt the primary campaign's progression.
+
+Keep this in-session and deterministic unless the existing project already supports persistent saves. Do not invent a backend account/save service.
+
+## 4. Chapter II — THE CHOIR
+
+Implement a distinct multi-target harmonic synchronization boss encounter.
+
+### Boss identity and presentation
+
+THE CHOIR should be visually distinct from HELIX-04 and use the existing procedural renderer, materials, lighting, and audio systems.
+
+Give the boss multiple linked resonance nodes or independently readable mechanical components. Each node must communicate its current state through geometry, motion, audio, or UI—not color alone.
+
+Build a clear arena composition that allows the player to read the linked-node relationships without excessive screen clutter.
+
+### Core mechanic: linked harmonic synchronization
+
+The encounter should require coordinated Sera and Echo actions across linked nodes.
+
+Implement a deterministic mechanic in which:
+
+- Individual nodes have explicit inactive, primed, synchronized, and/or failed states as needed.
+- Echo replay can interact with the appropriate node or recorded attack trace through the authoritative interaction system.
+- Sera's live attack or other explicitly supported action completes the required synchronization.
+- Linked nodes must be synchronized within a configured time window.
+- Correct sequencing opens a meaningful damage or disruption window on the boss.
+- Expired or mismatched synchronization resets or degrades progress according to clearly communicated rules.
+- One recorded event cannot activate a node multiple times because of substeps or rendered frames.
+- A single target or one repeated action cannot trivialize the entire multi-node encounter.
+- Boss health, node state, and completion derive from actual simulation events.
+
+Use the established Echo system and timestamp model. Echo must not gain arbitrary direct HP damage merely to simplify the encounter.
+
+Define tunable parameters for node count, synchronization window, recovery, damage windows, and failure/reset timing. Do not scatter uninspectable magic numbers throughout the simulation.
+
+### Required counterplay
+
+- THE CHOIR has visible attack telegraphs and actual damaging regions.
+- Its linked attack patterns teach the player to read node state, positioning, and timing.
+- Correct synchronization creates a fair punish opportunity.
+- Failed synchronization is understandable and recoverable.
+- The boss cannot indefinitely lock the player out of every action.
+- Stagger, vulnerable states, and phase changes remain deterministic.
+
+Add contextual tutorial prompts and concise HUD feedback during the first node synchronization.
+
+## 5. Chapter III — THE CURATOR
+
+Implement an Archive encounter centered on reconstructed attack traces, false Echo decoys, and Gravity Pin `[G]`.
+
+### Reconstructed attack traces
+
+THE CURATOR should reconstruct prior attack sequences or spatial traces as part of its telegraph system.
+
+- Reconstructed traces must use deterministic positions and timing.
+- The player must have enough information to distinguish a real attack warning from harmless visual residue.
+- Attacks resolve once through the authoritative simulation.
+- Recorded/reconstructed attacks must not become arbitrary tracking hitboxes that change direction after commitment.
+- The visual replay must be temporally coherent and should leverage the existing Echo rendering capabilities.
+
+### False Echo decoys
+
+Introduce decoys that create a deliberate perception challenge without making the encounter arbitrary.
+
+Requirements:
+
+- Decoys must have an observable identifying clue through at least one readable signal beyond mere color.
+- A decoy cannot silently become an authoritative combat target or damage source unless its rules explicitly allow it.
+- The true target remains discoverable through gameplay rather than hidden metadata.
+- The player should learn to use motion, timing, attack traces, or environmental evidence to distinguish valid and false targets.
+- Echo playback and Resonance logic must not accidentally accept a false decoy as the true boss.
+
+### Gravity Pin `[G]`
+
+Implement Gravity Pin as a bounded crowd-control ability appropriate to the existing combat economy.
+
+Define:
+- Activation conditions.
+- Resource cost, if applicable.
+- Duration.
+- Cooldown.
+- Valid target classes.
+- Boss resistance and interactions with committed attack states.
+- Clear success and rejection feedback.
+
+The ability must not permanently lock enemies, indefinitely freeze a boss, cancel every committed attack, or provide free invulnerability.
+
+Prefer a short, tactical control window that assists positioning or interrupts eligible noncommitted actions according to explicit rules.
+
+Ensure the ability uses a stable `G` binding without conflicting with existing controls.
+
+Add a visible desktop prompt and a mobile touch button when appropriate. Controls and cooldown status must match the actual input and simulation state.
+
+## 6. Chapter IV — MATRON-V, The Surgeon
+
+Implement a distinct Quarantine Ward boss encounter with supporting Siphon and Eraser units and a coherent anti-Echo mechanic.
+
+### Quarantine Ward environment
+
+Create an arena that feels like a hazardous medical/quarantine facility on Nadir-9.
+
+Use the existing procedural asset workflow. Create distinct geometry and material identity for treatment machinery, quarantine boundaries, energy conduits, surgical mechanisms, and the boss's equipment.
+
+Keep navigation, enemy positioning, hazards, and telegraphs readable. Do not create decorative collision obstacles that make the fight unfair.
+
+### Siphon units
+
+Siphon units should apply resource pressure in an explicit and testable way.
+
+Define:
+- Their targeting and attack windup.
+- How they apply their siphon effect.
+- Which resource is affected and the exact amount or rate.
+- How the player can interrupt, dodge, parry, or eliminate them.
+- Their despawn/defeat behavior and resource-event accounting.
+
+Do not silently drain Flux every frame without a bounded attack event, readable warning, and single-event protection.
+
+### Eraser units
+
+Eraser units should counter Echo usage without making Echo recording/playback arbitrarily unreliable.
+
+Define:
+- Their distinct attack tell.
+- The conditions under which they can disrupt, suppress, or threaten an Echo.
+- Whether disruption affects an existing Echo, a playback action, or future recording.
+- How the player can counter the disruption.
+- Resource, cooldown, and recovery consequences.
+
+Use clear target identity and deterministic timing. Prevent one attack from repeatedly clearing or disrupting the same Echo event.
+
+### Echo Collapse `[X]`
+
+Implement Echo Collapse as a tactical detonation associated with a valid Echo state.
+
+Define:
+- Activation conditions.
+- The required Echo state/location.
+- Radius and eligible targets.
+- Whether the effect causes stagger, posture damage, interruption, or other explicit results.
+- Resource cost and cooldown where appropriate.
+- Echo consumption/cleanup behavior.
+- Rejection rules when no valid Echo is available.
+- Boss-specific resistance and interaction with committed attacks.
+
+The result should reward deliberate Echo placement and timing. It must not grant unlimited damage or a free repeatable AoE.
+
+Echo Collapse must have a stable `X` binding, HUD/touch affordance, clear feedback, and bounded effect lifecycle.
+
+### MATRON-V — Chrono Sever
+
+Chrono Sever is an anti-Echo mechanic that pressures the player to vary their tactics.
+
+Design a readable attack or state in which MATRON-V can punish predictable or careless Echo dependence.
+
+Requirements:
+- Clear telegraph, commitment, actual valid hit region, and recovery.
+- Defined rules for how Chrono Sever interacts with active Echo playback and Resonance.
+- A meaningful player counter through timing, movement, positioning, interruption, or another already-supported mechanic.
+- No arbitrary deletion of an Echo from unlimited range without an observable rule.
+- No direct corruption of recorded timestamps or silent modification of authoritative replay data.
+- No repeated effect from the same attack event.
+- Pause, defeat, restart, and chapter transition clean up all related state.
+
+The mechanic should create tension without making the central Echo system feel unreliable or pointless.
+
+## 7. Chapter V — The Last Loop: Chronicle Loom
+
+After the player legitimately defeats MATRON-V in campaign mode, transition to the Chronicle Loom finale.
+
+This is a narrative ending sequence, not another combat boss.
+
+Present three explicit choices:
+
+1. **Silence**
+2. **Witness**
+3. **Continuity**
+
+Each choice must have:
+- A distinct, coherent outcome consistent with the existing Nadir-9 and Chrono Rig story.
+- Short but meaningful narrative text.
+- A distinct visual/audio presentation using the existing renderer and SoundEngine.
+- An authoritative stored ending identifier in campaign/run state.
+- A clear terminal completion state.
+- A way to view the selected outcome again or return to title/replay.
+
+The decision is available only after the legitimate Chapter IV victory in a campaign run.
+
+Do not make three buttons that all lead to the same message. The choices should have genuinely different narrative consequences and final presentation, while remaining compatible with the project's existing lore.
+
+Do not promise multiple full campaigns, unlockable content, or persistent account saves unless implemented.
+
+### Ending replay and consistency
+
+- A chosen ending cannot trigger completion multiple times.
+- Returning to title and starting a new run clears the prior run's active ending selection.
+- Replaying a chapter in practice mode does not change the campaign's stored ending.
+- Replaying the full campaign restarts the progression from the canonical initial state.
+- The finale can be tested deterministically without adding debug controls to the player-facing primary route.
+
+## 8. Shared boss, Echo, resource, and lifecycle rules
+
+All new encounters must use the existing authoritative simulation and combat systems wherever feasible.
+
+Preserve these contracts unless a clearly documented and tested encounter-specific rule is required:
+
+- Simulation state is time-based and deterministic.
+- Rendering interpolation never determines whether a hit or interaction occurs.
+- Every damaging attack and interaction event has single-trigger protection.
+- Echo contact does not secretly deal direct combat damage where the established rule forbids it.
+- Resonance marks target the correct entity ID and obey the valid time window.
+- Convergence is a qualifying live follow-up, not an automatic Echo damage bonus.
+- Relay respects range, landing, collision, obstruction, resource, cooldown, and state restrictions.
+- Gravity Pin and Echo Collapse must have explicit activation, cost, duration, and cooldown rules.
+- Pause freezes the relevant simulation-time timers.
+- Defeat, victory, restart, return-to-title, and chapter transition clean up delayed effects, active attacks, marks, cooldowns, Echo actors, temporary entities, and held inputs correctly.
+- No boss continues to attack after its authoritative defeat.
+- Chapter transitions and ending selection occur once.
+- Practice encounters cannot advance campaign progression.
+
+Avoid creating independent copies of combat/resource code for each new boss. Implement reusable, narrowly scoped helpers where they genuinely reduce duplication without turning the phase into a broad rewrite.
+
+## 9. Mobile and desktop input integration
+
+Preserve all established controls and ensure new mechanics are discoverable.
+
+New chapter controls:
+- `G`: Gravity Pin, Chapter III where available.
+- `X`: Echo Collapse, Chapter IV where available.
+
+Requirements:
+- Update the actual input controller and tutorial copy together.
+- Add appropriate HUD buttons for Gravity Pin and Echo Collapse in their valid encounters.
+- Ensure disabled/cooldown states are shown correctly.
+- Keep the 390×844 mobile layout usable with the existing directional pad and combat/Echo buttons.
+- Avoid covering boss telegraphs or required action controls.
+- Verify buttons cannot trigger repeated resource spending from overlapping pointer events.
+- Clear all held inputs during pause, death, encounter transition, and restart.
+- Test actual desktop keyboard actions and mobile pointer/touch UI controls.
+
+Do not claim physical multi-touch hardware testing unless a physical device was actually tested.
+
+## 10. Visual and audio identity
+
+The new chapters should be recognizably different while belonging to the same game.
+
+- THE CHOIR: harmonic motion, coherent linked-node presentation, carefully synchronized resonance cues.
+- THE CURATOR: archival machinery, reconstructed traces, readable decoys, controlled spatial distortions.
+- MATRON-V: quarantined medical/industrial surfaces, distinct support-unit silhouettes, surgical attack motions, clear Chrono Sever indicators.
+- Chronicle Loom: a quiet, visually distinct narrative finale with three legible paths and a final result display.
+
+Preserve the upgraded Phase 5.2 character/art direction and HELIX-04 presentation.
+
+Use procedural models/materials in the existing renderer where needed. Reuse geometry/materials sensibly and dispose of temporary objects correctly.
+
+Avoid:
+- Excessive bloom or indistinguishable neon colors.
+- Full-screen effects that obscure combat.
+- Unbounded particles or timed effects.
+- Per-frame full-scene traversals or avoidable allocations.
+- Long unskippable sequences.
+- Repeated sounds/effects triggered on every rendered frame.
+- Large new packages or unnecessary asset dependencies.
+
+The final result should improve visual storytelling and combat readability, not merely increase particle count.
+
+## 11. Test preservation and expansion
+
+Keep the existing 91 regression tests unchanged and passing.
+
+Inspect the actual test harness and add tests using the current conventions. Extend the existing suite; do not create a replacement suite containing only a handful of summary tests.
+
+Add deterministic coverage for at least:
+
+### Campaign progression
+1. Campaign victory in HELIX-04 advances to THE CHOIR exactly once.
+2. THE CHOIR victory advances to THE CURATOR.
+3. THE CURATOR victory advances to MATRON-V.
+4. MATRON-V victory advances to the Chronicle Loom.
+5. The ending choice is available only after a valid Chapter IV campaign victory.
+6. Each ending choice has a distinct authoritative identifier and outcome.
+7. Starting a new run clears the old selected ending.
+8. Practice encounters do not advance campaign state.
+9. Chapter-select/replay does not corrupt a different active run.
+10. Checkpoint and resource state remain consistent across chapter transitions and retry paths.
+
+### THE CHOIR
+11. Linked-node state transitions are deterministic.
+12. Valid Echo/player synchronization completes a node or linked pattern.
+13. Invalid or expired synchronization fails/reset according to the documented contract.
+14. One Echo event cannot activate a node repeatedly.
+15. Boss damage windows only open under their valid conditions.
+16. Defeat, pause/resume, and restart cleanup works.
+
+### THE CURATOR
+17. Reconstructed attack traces have deterministic timing and locked hit geometry.
+18. True and false Echo targets remain distinguishable under the implemented rules.
+19. Decoys cannot be accepted as invalid authoritative boss targets.
+20. Gravity Pin follows its activation, resource, duration, cooldown, and eligibility rules.
+21. Gravity Pin cannot permanently lock or arbitrarily cancel every boss state.
+22. Defeat, pause/resume, and restart cleanup works.
+
+### MATRON-V
+23. Siphon attacks drain resources only according to their bounded authoritative events.
+24. Siphon event rewards/penalties cannot repeat per frame.
+25. Eraser attacks follow the documented Echo-disruption contract.
+26. Chrono Sever has deterministic telegraph, commitment, collision, and counterplay.
+27. Echo Collapse validates its required Echo state and target radius.
+28. Echo Collapse uses resources and cooldown at most once.
+29. Boss damage and phase transitions are deterministic.
+30. Defeat, pause/resume, restart, and chapter transition clear all chapter-specific state.
+
+### Global regression
+31. Echo timing and contact behavior remain correct at supported simulation timestep sizes.
+32. The standard pressure plates and final barrier still require their exact authoritative conditions.
+33. Relay still respects its existing collision and resource contracts.
+34. Resonance and Convergence still preserve their damage/posture/resource rules.
+35. Existing HELIX-04 attack, lifecycle, checkpoint, and defeat/victory tests remain passing.
+36. No delayed prior-chapter event modifies the next chapter's resources or actors.
+
+Do not artificially target a test total by splitting one trivial assertion into many tests. Focus on meaningful behavioral coverage.
+
+Run the existing full simulation test command and enumerate all discovered test files. If the repository's actual test command has changed, explain why and include the exact command used.
+
+## 12. Typecheck, build, and real browser verification
+
+Run the actual project commands for:
+- Complete simulation and integration tests.
+- TypeScript checks.
+- Production build.
+- Existing lint or validation commands.
+
+Perform bounded, real browser scenarios with actual input/UI actions.
+
+Required browser checks:
+
+1. Begin a new campaign from the title screen.
+2. Complete Calibration Bay 04 through the existing authoritative puzzle.
+3. Defeat HELIX-04 through registered combat and transition to Chapter II.
+4. Play THE CHOIR and verify at least one complete linked-node mechanic.
+5. Play THE CURATOR and verify reconstructed traces, decoy logic, and a valid Gravity Pin activation.
+6. Play MATRON-V and verify at least one Siphon/Eraser/Chrono Sever interaction and a valid Echo Collapse.
+7. Defeat MATRON-V and reach the Chronicle Loom.
+8. Select Silence, Witness, and Continuity in separate deterministic runs or replay scenarios; verify each distinct ending.
+9. Restart a chapter and replay the full campaign without stale state.
+10. Verify the standard Test Bay and direct HELIX-04 practice paths remain isolated.
+11. Test desktop controls at 1280×800.
+12. Test mobile layout and touch-supported mechanics at 390×844.
+
+Do not force boss HP, set victory flags, or directly mutate the authoritative world to pretend these are playable wins. Read-only telemetry is acceptable.
+
+If a full unscripted run is impractical to automate, use reproducible partial browser scenarios for each distinct chapter mechanic, and clearly distinguish those scenarios from a complete end-to-end run.
+
+Use bounded waits. Do not run unbounded browser-evaluation loops. Capture diagnostics when a scenario fails.
+
+Inspect live visuals at meaningful states and fix serious visual defects that are actually observed.
+
+## 13. Incremental implementation and recovery safety
+
+Implement this campaign expansion in coherent stages:
+
+- Stage A: campaign flow and chapter/run-state model.
+- Stage B: THE CHOIR and its tests.
+- Stage C: THE CURATOR and its tests.
+- Stage D: MATRON-V and its tests.
+- Stage E: Chronicle Loom endings, chapter selection/replay, and terminal-state tests.
+- Stage F: desktop/mobile integration verification and full regression/build checks.
+
+After each stage, preserve the working code and existing tests. Avoid a single giant rewrite that risks losing all new work if the workspace control plane fails.
+
+Keep the implementation and tests saved before attempting long browser-verification batches. Do not leave the workspace in a state where source edits exist only in memory or a partially completed generation response.
+
+If the workspace fails during a stage, stop, reconnect, and inspect persisted files before retrying. Never assume that a completed agent response means every change was written successfully.
+
+## 14. Definition of done
+
+The campaign expansion is complete only when:
+
+- Chapters II, III, and IV are implemented in the persisted workspace.
+- Chapter V provides the three distinct ending outcomes.
+- The primary campaign progresses from Calibration Bay through HELIX-04, THE CHOIR, THE CURATOR, MATRON-V, and the Chronicle Loom.
+- Existing standard and boss practice modes remain functional and isolated.
+- The first 91 regression tests remain intact and passing.
+- New tests cover the genuinely new chapter-specific mechanics and transitions.
+- TypeScript and production build pass.
+- Desktop and mobile scenarios are actually executed to the extent supported by the environment.
+- No major gameplay, resource, lifecycle, rendering, or control regression remains.
+- The final workspace is inspected after all browser runs to confirm that the completed files and test suite are actually persisted.
+
+### Final report
+
+Provide:
+1. Files changed.
+2. Campaign progression and checkpoint design.
+3. Actual mechanics implemented in each chapter.
+4. The three ending outcomes.
+5. Exact existing and new test counts, with commands.
+6. Typecheck and build results.
+7. Desktop/mobile browser scenarios actually completed.
+8. Visual evidence where available.
+9. Remaining bugs, limitations, and any unverified requirements.
+10. Confirmation of the actual persisted file state after the final successful run.
+
+Do not report Chapters II–V as complete if only their UI or state names exist. Each chapter must have playable, testable authoritative mechanics and a real campaign transition.
+
+Do not start another expansion beyond Chapter V. Stop after this campaign expansion and report the verified result.

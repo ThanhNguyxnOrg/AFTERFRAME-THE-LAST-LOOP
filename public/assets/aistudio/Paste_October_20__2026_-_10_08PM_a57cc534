@@ -1,0 +1,394 @@
+# AFTERFRAME: THE LAST LOOP — Phase 5.1
+## Convergence Hardening + Visual Fidelity & Motion Pass
+
+You are working on the existing AFTERFRAME: THE LAST LOOP codebase, a React + Three.js third-person sci-fi action-puzzle game. This is a continuation of the working project, not a greenfield rewrite.
+
+The Phase 5 report claims 37/37 simulation tests passing and a successful desktop browser flow for Echo resonance → live Heavy follow-up → Convergence. Treat that report as evidence to verify, not as a substitute for inspecting the source code and reproducing behavior.
+
+## Mission
+
+Complete two coordinated workstreams:
+
+1. **Combat correctness:** audit and harden Phase 5 Temporal Resonance & Convergence so it is deterministic, bounded, resistant to exploits, and consistent with the intended design.
+2. **Visual fidelity and motion:** substantially improve the existing game's environment, character presentation, materials, animation, lighting, impacts, and visual hierarchy. The result must feel like a polished, detailed, atmospheric 3D action game—not a collection of rigid primitives with glowing circles added around them.
+
+Preserve the existing game, working controls, combat balance, Echo recording/replay, Relay, puzzle progression, enemy archetypes, and mobile support. Do not build a new boss or campaign in this phase.
+
+---
+
+# Workstream A — Phase 5 correctness audit
+
+## A1. Inspect the actual implementation first
+
+Inspect the existing source, particularly:
+
+- `src/game/simulation.ts`
+- `src/game/simulation.test.ts`
+- `src/game/renderer.ts`
+- `src/game/audio.ts`
+- `src/components/GameHud.tsx`
+- `GAME_CONFIG` and the current enemy/combat state machines
+- Echo clip recording, playback timing, Relay handling, and reset/pause paths
+
+Use the actual types, action names, timing fields, combat pipeline, and HUD structure. Do not assume names in this prompt exactly match every name in the code.
+
+Write a short list of identified risks before making targeted changes. Avoid unnecessary rewrites or changes to already-working gameplay.
+
+## A2. Resolve the Convergence scope drift
+
+The Phase 5 report describes all of the following on successful Convergence:
+
+- The ordinary live Heavy/finisher damage.
+- An additional `+18` bonus HP damage.
+- `+22` bonus posture.
+- Guaranteed Bastion frontal-guard shattering.
+- Forced interruption of enemy telegraphs/attacks into exposed recovery or stagger.
+
+**The additional damage and unconditional defense bypass are not part of the intended design. Correct this before expanding combat content.**
+
+Required behavior:
+
+- The live player's qualifying hit applies its normal damage exactly once.
+- Convergence grants `+22` bonus posture through the existing combat/posture/poise system.
+- Do not add separate `+18` bonus HP damage.
+- Do not hard-code a guard shatter or guaranteed stagger merely because Convergence triggered.
+- Do not make Convergence automatically cancel every enemy telegraph or active attack.
+- Existing armor, directional guard, posture thresholds, poise, and enemy-specific responses must continue to apply.
+- If the existing rules legitimately cause a guard break or stagger after the posture bonus, that is acceptable. The outcome must come from the established combat rules, not a Convergence-specific bypass.
+- Keep Convergence visually and audibly powerful through a clear resonance pulse, enemy reaction, weapon feedback, sound and timing—not through arbitrary damage inflation.
+
+Add regression tests proving that Bastion's frontal guard and the existing defensive rules still function correctly. Verify ordinary attack damage and bonus posture independently.
+
+## A3. Audit Echo Heavy contact timing
+
+The Echo records an attack event when an action starts, before its windup finishes. The reported solution adds optional `id` and `contactTime` to `EchoRecordedActionEvent`.
+
+Verify the complete timing chain:
+
+1. A Heavy event is recorded at action-start time.
+2. Its real contact time is derived from the actual Heavy action timing in the current simulation.
+3. During playback, the contact event is evaluated when playback time crosses the intended contact timestamp—even if one frame or simulation update skips over that timestamp.
+4. The queried Echo pose and facing must correspond to the intended contact time, rather than merely using the Echo's latest rendered pose.
+5. Each event can be processed at most once per playback.
+6. Starting a new legitimate playback must establish the intended processed-event lifecycle; IDs must not accidentally suppress the next playback or collide across different events.
+7. Legacy/synthetic clips without `contactTime` must retain a valid backward-compatible path.
+
+**Important edge case:** do not manufacture a contact just because `contactTime` was clamped to the clip's end. A clip that terminates before an attack reaches contact should not hit a target merely because the endpoint was reached. Handle incomplete or truncated attacks explicitly.
+
+Test the exact contact boundary, playback-step overshoot, clip-end behavior, and replay/reset lifecycle.
+
+## A4. Verify target selection and line of sight
+
+Confirm resonance targeting uses the recorded Echo pose, the existing Heavy attack's actual range and arc, and the intended solid-obstacle line-of-sight rules.
+
+Requirements:
+
+- Never mark more than one enemy from one Echo Heavy contact.
+- Preserve deterministic tie-breaking.
+- Dead/KO enemies are ineligible.
+- Targets behind solid obstacles are rejected.
+- No valid target means no mark.
+- Do not let the marker select one enemy while the live follow-up resolves against another due to stale references or focus changes.
+- Expired, dead, or otherwise invalid targets cannot produce a successful Convergence.
+- An existing mark must not be silently refreshed or extended by subsequent Echo events.
+
+Check the arena's actual collision and obstacle geometry rather than creating a second incompatible targeting system.
+
+## A5. Verify the live follow-up rules
+
+Preserve these intended requirements:
+
+- Echo contact only creates a mark. It causes no direct HP damage, posture damage, stagger, knockback, enemy attack interruption, or Flux gain.
+- Only a qualifying live Heavy attack or the existing third-hit Light Combo Finisher can trigger Convergence.
+- Light combo hits 1 and 2 never trigger Convergence.
+- The follow-up must be initiated **after the mark has been created**.
+- The hit must land on the exact marked enemy before the mark expires.
+- A qualifying attack started before the mark cannot retroactively trigger Convergence.
+- Missed attacks, blocked hits where the existing combat rules disallow the effect, wrong targets, expired marks, and dead targets cannot consume the mark as a successful Convergence.
+- A failed Convergence attempt must not grant Flux, start the success cooldown, or consume the mark incorrectly.
+- A successful Convergence consumes the mark, charges its cost exactly once, and starts the cooldown exactly once.
+- The existing Heavy cost and action behavior must remain coherent when Flux is reserved for Convergence. Outside a valid Convergence attempt, Heavy must retain its intended cost.
+- Insufficient Flux must not partially charge the cost. The ordinary hit should still behave according to the current combat rules.
+- Pause must freeze the appropriate simulation timers. Clear, restart, defeat, and victory must clean up the correct state.
+- Relay must neither reset nor duplicate resonance events.
+
+Use controlled test conditions to assert exact Flux expenditure independently from passive Flux regeneration. Do not infer exact expenditure solely from a net resource delta.
+
+## A6. Fix HUD/readout clarity
+
+The Phase 5 browser report quotes readouts resembling `SYNC · 15 FLUXPRIMED` and `SYNC · 15 FLUXCD`. Inspect the actual rendered text and fix any missing separators or malformed state labels.
+
+The resonance UI should communicate, in a compact and readable way:
+
+- Whether an Echo resonance is primed.
+- Remaining time before expiry.
+- The correct qualifying follow-up action.
+- Whether Convergence is unavailable, on cooldown, or lacks enough Flux.
+- When the mark is consumed or expires.
+
+Retain the existing `data-testid` hooks where practical. Keep screen-reader-readable text and visual status synchronized; do not communicate important state by color alone. Do not allow new HUD elements to overlap the existing combat controls on desktop or mobile.
+
+---
+
+# Workstream B — Visual Fidelity & Motion Pass
+
+## B1. Establish an intentional art direction
+
+The current visual identity should evolve toward a **premium, atmospheric, dark industrial sci-fi action game** with a cohesive art direction.
+
+Visual targets:
+
+- Strong, recognizable silhouettes rather than a stack of generic shapes.
+- Deep graphite, worn titanium, gunmetal, ceramic armor, restrained cyan Chrono energy, warm amber warning lights, and selective emergency-red accents.
+- Purposeful contrast: important actors, attack cues, Echo interactions, and puzzle elements read clearly against the environment.
+- Dense but designed environment details that make the station look manufactured, old, functional, and partially damaged.
+- Better depth, lighting, materials, proportions, and visual storytelling.
+- Cohesive style across the world, Sera, Echo, Bastion, Scrapper, weapons, doors, Relay, puzzle devices, effects, and HUD.
+
+Do not simply increase bloom, saturation, particle count, or emissive intensity. The improvements must be visible in the geometry, materials, lighting, silhouettes, movement, and composition.
+
+Inspect the current renderer first. Improve the current scene rather than replacing it with an unrelated art demo.
+
+## B2. Upgrade the Test Bay environment
+
+Make the existing Test Bay 04 feel like a detailed, navigable industrial research facility rather than a flat arena.
+
+Add and refine details where they naturally fit the current layout:
+
+- Wall and floor panel variation, panel seams, edge bevels, mechanical joints, maintenance access panels, fasteners, vents, grilles, pipes, cable conduits, structural braces, and layered machinery.
+- Better floor surfaces with subtle wear, controlled roughness variation, restrained grime, scuffs, impact marks, and material transitions.
+- Wall-mounted status displays, small indicator lights, hazard markings, emergency fixtures, and readable signage that supports the fiction.
+- More convincing doors, barriers, receivers, the Resonance device, and pressure plates with distinct physical construction and moving parts.
+- More meaningful background layers and depth so the arena is not just a flat floor surrounded by blank walls.
+- Intentional variation in module shapes, scale, spacing, and height; avoid obvious repetitive copy-paste patterns.
+- Subtle ambient motion: a few rotating mechanisms, vent activity, occasional light flicker, slow energy movement in conduits, and restrained environmental animation.
+
+Give interactable objects distinct silhouettes and layered components. A pressure plate, energy receiver, sealed barrier, and Relay destination should not all look like interchangeable flat rings.
+
+Keep the current puzzle layout, paths, spatial positions, collision, and progression rules intact unless a specific visual-collision defect requires a tightly scoped correction.
+
+## B3. Improve Sera, Echo, enemies, and weapons
+
+Upgrade the visual structure of the existing characters and equipment without changing their hitboxes or combat rules.
+
+### Sera Venn
+
+- Improve body proportions, silhouette, armor segmentation, joints, boots, gloves, shoulder/hip structure, backpack or Chrono Rig, and weapon grip.
+- Add believable layered material treatment: hard armor plates, flexible joints, worn edges, fasteners, seams, and controlled emissive accents.
+- Make the Chrono Rig identifiable as important equipment, with a coherent mechanical layout and subtle energy feedback.
+- Avoid making the character a featureless dark mannequin with glowing strips.
+
+### Echo
+
+- Preserve Echo's translucent temporal identity while giving it a clearer silhouette and visible internal structure.
+- Use restrained temporal offset, layered outlines or afterimages, subtle distortion/ripple effects, and coherent energy behavior.
+- Keep Echo's pose and timing readable during recording, playback, puzzle activation, and resonance contact.
+- Never let glow or distortion hide the precise pose/facing needed for gameplay understanding.
+
+### Bastion and Scrapper
+
+- Strengthen their distinct silhouettes, locomotion profiles, armor shapes, weapon/tool shapes, and surface materials.
+- Bastion should visibly communicate defensive mass and its frontal guard orientation.
+- Scrapper should look agile and dangerous rather than merely smaller.
+- Differentiate their idle states, windups, attack movement, guarded reactions, hit reactions, recovery, and KO behavior.
+- Communicate guard, vulnerability, and telegraph states through posture and animation as well as restrained VFX.
+
+### Chrono Edge and Pulsecaster
+
+Improve shape definition, grip, mechanical details, material response, and action-specific feedback. Weapon trails should have a clear origin, direction, and short lifetime. Make light and heavy attacks visually distinct.
+
+Use existing local assets if suitable. If the current project is primarily procedural, improve the procedural meshes, hierarchies, and materials. Do not add remote asset dependencies, enormous packages, or unverified third-party assets simply to make the game look more detailed.
+
+## B4. Fix the feeling of rigid, robotic motion
+
+**Animation and motion quality are first-class requirements of this phase, not optional polish.**
+
+Audit the actual animation implementation for Sera, the Echo, enemies, weapons, puzzle devices, and environmental mechanisms. Add layered, time-based procedural animation where the project lacks authored animation assets.
+
+### Sera locomotion and idle
+
+- Add subtle breathing, weight shifts, shoulder movement, and body settling when idle.
+- Drive locomotion animation from actual movement velocity, with smooth transitions between idle, walk/run, stop, turn, dodge, attack, and recovery.
+- Add believable counter-rotation between upper body, torso, shoulders, and hips rather than rotating the whole character as one rigid block.
+- Improve stopping and turning so movement has weight without making the model slide excessively or lag behind the authoritative player state.
+- Avoid visible foot sliding where practical.
+
+### Combat animation and impact
+
+- Heavy attacks should show readable anticipation, committed movement through the swing, contact, follow-through, and recovery.
+- Light combo hits should have distinct but connected motion instead of repeating an identical pose.
+- The finisher should feel deliberately different and impactful.
+- Dodge should communicate acceleration, body lean, directional commitment, and recovery.
+- Parry should have a precise anticipation/contact response and a readable success/failure result.
+- Hit reactions should communicate the direction and strength of an impact; KO behavior should feel intentional.
+- Add weapon motion and trails that match the action's actual timing.
+
+### Enemy animation
+
+- Give Bastion and Scrapper distinct movement rhythms and idle behavior.
+- Their attack telegraphs must be visually clear early enough for the player to respond.
+- Communicate attack windup, active strike, recovery, guard, vulnerability, stagger, and KO through animation and effects.
+- Avoid overlapping visual cues that make different enemy attacks impossible to distinguish.
+
+### Echo, Relay, and Convergence
+
+- Recording and playback should feel temporal, not like a second ordinary character simply following a route.
+- Relay should communicate target acquisition, spatial tethering, displacement, arrival, and cooldown without obscuring collision or destination validity.
+- Resonance prime should visibly identify the marked enemy.
+- Convergence should build briefly into impact, then resolve with a controlled shockwave, clear enemy reaction, and fast visual cleanup.
+- Effects must be driven by authoritative events. Do not trigger duplicate particles/audio simply because multiple frames observe the same state.
+
+### Responsiveness is non-negotiable
+
+Use anticipation, follow-through, secondary motion, and good timing, but do not let presentation animation corrupt gameplay.
+
+- Preserve tested input responsiveness, pointer-lock behavior, camera-relative movement, dodge/parry behavior, and combat windows.
+- Do not increase gameplay action windups just to make animations look cinematic.
+- Where possible, decouple visual animation from simulation state so presentation can blend smoothly while hit registration remains deterministic.
+- Do not allow a model's delayed visual pose to change the actual Echo contact timestamp or targeting.
+- Use simulation delta time consistently; avoid frame-rate-dependent bobbing, rotation, or effect lifetime.
+- Avoid long camera shakes, excessive hit-stop, motion blur, screen flashes, and noisy effects that make combat hard to read.
+
+## B5. Materials, lighting, camera, and rendering quality
+
+Improve depth and visual cohesion while keeping the existing Three.js renderer stable.
+
+- Use coherent physically based material values where appropriate: metalness, roughness, surface variation, and emissive response should distinguish metal, painted surfaces, glass, rubber, ceramic, and energy.
+- Verify the renderer's color-space and tone-mapping behavior. Follow the project's existing rendering choices unless a measured and visible correction is needed. Consult the official Three.js color-management guidance if appropriate: https://threejs.org/manual/pages/color-management.html
+- Establish a clear lighting hierarchy: readable key/fill lighting, controlled practical lights, subtle environmental depth, and intentional silhouettes.
+- Make cyan energy visible without washing out the scene or turning every object neon.
+- Preserve the current camera controls and collision behavior. Improve framing, smoothing, and presentation only when it does not introduce input delay or hide immediate threats.
+- Keep shadows and glow selective. Do not indiscriminately enable many high-cost dynamic shadow casters or a chain of expensive full-screen post-processing effects.
+- Prefer reusable geometry and materials. Avoid uncontrolled texture/material duplication, unbounded particle creation, and per-frame allocations.
+- Dispose of temporary geometries, materials, textures, and effect objects appropriately.
+
+Do not sacrifice mobile playability for a desktop-only screenshot.
+
+## B6. Visual hierarchy and HUD polish
+
+Keep HUD information useful during combat:
+
+- Improve spacing, typography hierarchy, borders, iconography, panel surfaces, and contrast to match the industrial Chrono aesthetic.
+- Make cooldowns, Flux cost, Echo state, resonance target, objective progress, and danger readable at a glance.
+- Use subtle motion for HUD state transitions, but no distracting or constant UI animation.
+- Preserve all relevant data-testids and control labels.
+- Ensure the HUD does not hide enemies, the Echo, the target marker, attack telegraphs, or mobile touch controls.
+- Maintain correct sizing at desktop resolution and at least the existing 390×844 mobile viewport.
+- Test actual mobile interactions, not merely whether DOM boxes fit inside the viewport.
+
+---
+
+# Workstream C — Tests and real browser verification
+
+## C1. Simulation and regression tests
+
+Keep all existing tests passing, including the reported tests 1–37. Add tests for every new bug discovered.
+
+At minimum, cover:
+
+1. Echo Heavy marks at the intended contact time, not action-start time.
+2. Playback crossing a contact timestamp between simulation updates.
+3. Clip ends before contact; no artificial contact occurs.
+4. No target in range, target outside the attack arc, and target hidden behind a solid obstacle.
+5. Deterministic target selection when multiple eligible enemies are present.
+6. Each event executes once per playback, with correct behavior on a new playback.
+7. Echo contact never causes HP damage, posture, stagger, knockback, or Flux generation.
+8. A pre-mark attack cannot retroactively Converge.
+9. Light combo hits 1 and 2 never Converge; the valid Heavy and finisher can.
+10. Wrong target, missed hit, expired mark, dead target, and invalid target state do not cause successful Convergence.
+11. An existing mark does not get refreshed by later Echo events.
+12. Successful Convergence applies normal live-hit damage once and +22 posture through the existing pipeline, with no separate +18 HP bonus.
+13. Bastion guard, enemy-specific defensive logic, armor, poise, and stagger thresholds still work correctly.
+14. Flux cost and cooldown are each applied once and only on a successful Convergence.
+15. Insufficient Flux, Relay interaction, cooldown, and attack-start timing remain correct.
+16. Pause/resume, clear, restart, defeat, and victory produce clean lifecycle behavior.
+17. Existing puzzle stages, barriers, Echo-only pressure plates, receiver logic, and Relay path blocking remain unchanged.
+18. The combat spam-only test still does not trivially outperform the intended skillful play pattern.
+
+Run the project's actual test command, type checking, and production build. Report the real totals and failures; do not lower or delete a test merely to get a green result.
+
+## C2. Live desktop browser checks
+
+Use the existing browser/Playwright workflow with real keyboard and UI interactions. Read-only game telemetry is acceptable for verification, but do not mutate the world directly to fake successful gameplay.
+
+Run at least these scenarios:
+
+- Record and replay an Echo Heavy; observe the mark only when the attack reaches contact.
+- Perform a fresh valid Heavy follow-up against the same target and verify one normal hit, +22 posture, one 15-Flux expenditure, one cooldown start, and mark consumption.
+- Repeat with an attack started before the mark; prove it cannot retroactively Converge.
+- Hit the wrong enemy, miss the target, and let the mark expire; verify no successful effect.
+- Test the exact clip/contact boundary and a playback frame that crosses the contact timestamp.
+- Place a solid obstacle between Echo and target; verify there is no prime through the obstacle.
+- Check Bastion frontal defense and the relevant enemy recovery/stagger outcomes.
+- Exercise Relay during an active resonance window and ensure it does not duplicate or clear valid state.
+- Verify C/R cleanup, pause/resume, and that repeated inputs cannot spend Flux multiple times.
+- Confirm the resonance UI text is correctly separated and its displayed state matches simulation telemetry.
+- Check console errors and runtime errors.
+
+## C3. Actual mobile interaction checks
+
+At 390×844, perform a real touch-control sequence where supported by the existing HUD:
+
+- Record and play an Echo.
+- Trigger the supported live follow-up using actual mobile buttons.
+- Verify the resonance state and cooldown update.
+- Verify controls are clickable, do not overlap, and do not obscure the necessary gameplay area.
+- Check clear/restart/pause behavior.
+
+A viewport bounding-box check alone is not sufficient evidence that mobile gameplay works.
+
+---
+
+# Workstream D — Visual validation and performance
+
+Before editing, capture a baseline of the existing game at consistent camera positions where the current browser environment allows it. After the visual pass, capture comparable views of:
+
+- A wide shot of the Test Bay.
+- Sera standing and moving.
+- Bastion and Scrapper.
+- Echo playback and the resonance mark.
+- A successful Convergence impact.
+- The mobile HUD.
+
+Inspect these images or live browser views, not merely whether the build succeeds. Check whether the environment actually looks more detailed, whether the characters have improved silhouettes and materials, and whether motion appears more alive rather than simply having more particles.
+
+If the environment cannot produce a screenshot because of a known software-WebGL or compositor limitation, report that limitation honestly and use whatever reliable browser observations are available. Do not claim a visual inspection that was not performed.
+
+Performance requirements:
+
+- Preserve the existing device-pixel-ratio cap and performance protections unless profiling identifies a real reason to change them.
+- Avoid introducing extra animation loops, unbounded particle systems, per-frame recursive scene traversals, or avoidable allocations.
+- Compare with the baseline when measurable and document any regression.
+- Ensure effects and animation clean up correctly after pause, clear, restart, scene teardown, or enemy death.
+
+---
+
+# Implementation workflow and deliverables
+
+1. Inspect the current source and identify concrete issues.
+2. Fix Convergence scope drift and any Phase 5 correctness defects with targeted tests.
+3. Implement the cohesive visual/material/environment improvements.
+4. Implement character, weapon, enemy, Echo, and effect motion improvements without changing authoritative gameplay timing.
+5. Polish HUD readability and mobile layout.
+6. Run tests, type checking, production build, desktop browser scenarios, and actual mobile interaction checks.
+7. Review the finished game in the browser and correct any obvious visual defects discovered during inspection.
+
+Avoid broad architectural refactors unless necessary for a demonstrated defect. Do not introduce unrelated mechanics, new bosses, new chapters, new progression systems, or a replacement UI framework.
+
+## Definition of done
+
+Phase 5.1 is complete only when:
+
+- Convergence no longer has arbitrary bonus HP damage or unconditional defense bypass.
+- Contact timing, target identity, mark expiration, Flux expenditure, cooldowns, and state cleanup are covered by passing tests.
+- The relevant desktop browser happy paths and failure paths have been exercised.
+- Actual mobile controls work for the supported resonance flow.
+- The existing game still builds and its previous regression tests pass.
+- The Test Bay looks visibly more detailed and cohesive.
+- Sera, enemies, Echo, weapons, and combat effects show more convincing layered motion and impact feedback.
+- Visual changes do not compromise gameplay readability, deterministic simulation, control responsiveness, or mobile performance.
+- The final report lists changed files, important design decisions, test/build results, browser scenarios actually completed, visual validation evidence, known limitations, and any remaining issues.
+
+Do not report completion just because the effects were implemented or all unit tests pass. If any requirement remains unverified, clearly label it as unverified and explain why.
+
+**After this phase is genuinely complete, the next planned milestone is Phase 6: HELIX-04 boss prototype**, built on the verified Convergence system and improved visual foundation. Do not implement Phase 6 as part of this task.

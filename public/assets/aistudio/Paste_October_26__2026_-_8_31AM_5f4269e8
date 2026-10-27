@@ -1,0 +1,602 @@
+# AFTERFRAME: THE LAST LOOP — UX/UI OVERHAUL
+## Phase 9 — Product Usability, Information Architecture, Interface Redesign & First-Time Player Experience
+
+You are the Product Designer, UX Researcher, UI/Interaction Designer, Senior React Engineer, Three.js Art Director, and QA Lead for the existing AFTERFRAME: THE LAST LOOP project.
+
+The game has a substantial campaign, multiple unique bosses, Echo-driven combat, chapter progression, chapter selection, practice modes, and three Chronicle Loom endings.
+
+The reported code baseline has 98 passing simulation tests, a successful TypeScript check, and a successful production build. However, the current user reports that the interface feels chaotic, contains awkward empty space, and does not make it clear how to begin playing.
+
+Treat this as a real usability problem.
+
+**Your mission is to make the game immediately understandable, visually cohesive, intuitive to operate, and professionally presented.**
+
+Do not respond with a list of suggestions alone. Inspect the actual project, identify the most important problems, design improvements, implement them, and verify the result in the running application.
+
+This is an interface and player-experience overhaul, not a new gameplay-content phase.
+
+# 1. Start with an honest UX audit
+
+Before editing source, inspect the actual persisted workspace and run the application.
+
+Inspect at least:
+
+- `src/App.tsx`
+- `src/components/TitleScreen.tsx`
+- `src/components/GameHud.tsx`
+- `src/components/StatusModal.tsx`
+- `src/game/input.ts`
+- `src/game/simulation.ts`
+- `src/game/types.ts`
+- `src/game/config.ts`
+- `src/game/renderer.ts`
+- Relevant styles, components, assets, test files, and package scripts.
+
+Examine the actual rendered screens, not just their JSX.
+
+Audit the following states individually:
+
+1. Title screen on a fresh launch.
+2. Returning player with an active campaign, where supported.
+3. Tactical brief and controls.
+4. Opening transmission.
+5. First playable Calibration Bay moment.
+6. Initial movement/combat tutorial.
+7. Echo recording and playback.
+8. Each stage of the Calibration puzzle.
+9. Chapter transitions.
+10. Every boss encounter HUD.
+11. Chapter selection and practice selection.
+12. Pause menu and settings.
+13. Boss defeat, player defeat, and retry.
+14. Victory summary and Chronicle Loom choices.
+15. Return to title and start a new campaign.
+16. Mobile gameplay and mobile menus.
+
+For every screen, identify:
+- What the player sees first.
+- The intended primary action.
+- Secondary actions.
+- The information that must be understood immediately.
+- The information that can remain hidden until needed.
+- Areas of unnecessary visual emptiness.
+- Clutter, alignment problems, overlapping elements, inconsistent spacing, excessive padding, confusing buttons, weak contrast, and unclear navigation.
+- Whether the screen explains its own interaction without outside guidance.
+
+Write the findings into a persistent document such as `docs/AFTERFRAME_UX_AUDIT.md`.
+
+Separate confirmed usability defects from subjective design opportunities. Prioritize the highest-impact problems rather than generating a large list of trivial cosmetic complaints.
+
+# 2. Run a first-time-player usability audit
+
+Think like someone launching the game for the first time who has never seen this project's previous reports or development discussions.
+
+They do not know what the Chrono Rig is. They do not know which keyboard shortcuts exist. They do not know that some chapters are accessible through specific buttons or developer-oriented shortcuts.
+
+They should be able to answer these questions without opening source code or reading an external guide:
+
+- What game am I playing?
+- What is the primary action to start?
+- What will happen when I press it?
+- How do I move and control the camera?
+- What is the first objective?
+- What do Record, Replay, and Relay do?
+- What am I supposed to do when I reach a puzzle?
+- How do I pause, resume, restart, or return to the title?
+- What should I do when I defeat a boss?
+
+Use practical UX heuristics:
+
+- Clear hierarchy.
+- Recognition rather than memorization.
+- Consistent placement and terminology.
+- Immediate feedback after actions.
+- Progressive disclosure.
+- Visible system status.
+- Error prevention.
+- Clear recovery paths.
+- Predictable navigation.
+- Readable instructions.
+
+Do not confuse a large amount of information with good usability.
+
+# 3. Redesign the Title Screen and entry flow
+
+The current title screen should make starting the game obvious within a few seconds.
+
+Inspect the existing layout and rebuild it if necessary while preserving working encounter entry and run-state logic.
+
+## Primary navigation
+
+Create a clear visual hierarchy.
+
+### Primary action
+
+**NEW CAMPAIGN**
+
+This should be the most visually prominent interactive element on a fresh launch.
+
+Activating it should start the existing integrated campaign introduction, then lead into the actual playable Prologue / Calibration Bay 04.
+
+Do not start a practice mode when the player selects New Campaign.
+
+### Continue
+
+If the current architecture supports a resumable active campaign, expose a clear **CONTINUE** action that returns to the correct chapter/checkpoint.
+
+Only show this action when there is genuinely valid campaign progress to resume. Do not invent persistent saves if the project currently only supports in-session state.
+
+### Chapter selection
+
+Provide a clear secondary route to Chapter Select.
+
+- Clearly distinguish unlocked, locked, completed, and currently active chapters.
+- Show each chapter's name and a concise description.
+- Explain how a locked chapter can be unlocked.
+- Do not silently launch a different encounter when selecting a locked chapter.
+- Preserve campaign snapshot behavior when replaying chapters.
+- Make chapter selection feel like part of the actual product, not a debug list.
+
+### Practice
+
+Group practice modes into a dedicated submenu or clearly separated section:
+
+- Standard Test Bay.
+- HELIX-04 Practice.
+- Other boss practice modes already supported by the project.
+
+Do not place every boss practice button beside New Campaign with equal visual weight.
+
+Practice victories must remain isolated from campaign progression.
+
+### Controls and settings
+
+Make Controls and Settings discoverable without competing with New Campaign.
+
+Show the actual current bindings from the real input handler, not stale tutorial copy. Avoid duplicating a full keyboard reference across multiple title-screen panels.
+
+Provide an obvious way to return from submenus.
+
+## Visual composition
+
+Use the existing 3D scene, models, and visual identity as an asset rather than making the screen a wall of UI cards.
+
+Consider:
+- A restrained, cinematic 3D background showing the Chrono Rig world.
+- An intentional focal point and readable silhouette.
+- Game title and a short narrative hook.
+- One prominent primary action.
+- A compact secondary navigation area.
+- Subtle, purposeful ambient motion.
+- Clean depth and contrast between the 3D scene and the interface.
+
+Do not simply put translucent rectangles over everything. Use a coherent composition with meaningful relationships between title, background, character, and controls.
+
+Avoid oversized logos, excessive glow, decorative borders around every component, and huge empty panels with tiny buttons.
+
+# 4. Fix the opening and first playable moment
+
+The transition from the title screen into the first playable scene should be unambiguous.
+
+The player must never be left wondering whether:
+- The intro is still running.
+- They are already controlling Sera.
+- A prompt is clickable.
+- They need to press a key to continue.
+- The game is paused or stuck.
+
+Audit the actual intro timing and skip behavior.
+
+Requirements:
+
+- Use a short, skippable introduction.
+- Show a clear `SKIP` or equivalent action when an intro is active.
+- If gameplay is ready, show a clear next-action prompt.
+- Avoid depending on a keyboard shortcut alone when a clickable button is appropriate.
+- Prevent an early skip input from also causing unintended gameplay actions.
+- Ensure focus, pointer-lock, and camera interaction work correctly after transition.
+- Transition into active gameplay with a clear objective and working controls.
+
+If the opening has already finished and the player is in a playable state, the game must visibly communicate that they can move and act.
+
+# 5. Rebuild the in-game HUD hierarchy
+
+The HUD should provide the right information at the right time.
+
+Do not display every subsystem simultaneously at the same prominence.
+
+## Persistent information
+
+Use a clear, compact layout for:
+
+- Integrity/health.
+- Chrono Flux.
+- Current objective.
+- Echo state when relevant.
+- Boss health and phase when a boss is active.
+- Pause and essential navigation.
+
+Prioritize the player's survival and immediate objective.
+
+## Contextual information
+
+Show contextual information only when it becomes relevant:
+
+- How to record and replay Echo.
+- How to activate or solve a puzzle mechanism.
+- How to use a chapter-specific ability.
+- Boss-specific vulnerability conditions.
+- The current synchronization window.
+- Relay range/cost rejection.
+- Resonance success, expiry, or rejection.
+- Stuck-player hints.
+
+Contextual guidance should appear in a consistent place and disappear when no longer relevant.
+
+Do not create a new permanent panel for every mechanic. Reuse an appropriate component or concise status line where possible.
+
+## Boss HUD
+
+Create a stable layout hierarchy for each boss:
+
+- Boss name and silhouette/identity.
+- Health.
+- Phase.
+- Vulnerability/core/armor status where mechanically meaningful.
+- Current telegraph information when required.
+
+The boss health bar should not fight with the player's health/Flux display.
+
+Keep the boss arena and threat region visible. The HUD must not cover key attack telegraphs or the center of the combat area.
+
+## Puzzle objective
+
+The Calibration puzzle is central to onboarding.
+
+During the relevant stage, show one obvious current objective, for example:
+
+- Record an Echo that holds Pad 01.
+- Reach the Resonance Receiver.
+- Replay a Heavy attack with the correct facing.
+- Activate Pad 02 while the receiver remains charged.
+- Cross the opened barrier.
+
+Use the real authoritative puzzle stage and state to choose the objective. Never display an objective as complete before the relevant simulation condition is true.
+
+After a step is completed, give concise feedback and clearly direct the player to the next step.
+
+# 6. Redesign awkward empty space and inconsistent layout
+
+Do not blindly fill every empty area. First determine whether the space has a meaningful compositional purpose.
+
+For unused or poorly balanced areas, decide whether to:
+- Reposition and scale the main content.
+- Refine column proportions.
+- Reduce excessive panel padding.
+- Add useful contextual content.
+- Improve background composition.
+- Adjust typography hierarchy.
+- Consolidate related controls.
+- Remove redundant panels.
+- Make a primary interaction more prominent.
+
+Use a consistent spacing system, typography scale, button dimensions, alignment rules, panel behavior, and interaction states.
+
+Avoid:
+- A page dominated by an isolated title and a tiny button.
+- Tiny controls stranded inside large empty rectangles.
+- Uneven card sizes with no intentional purpose.
+- Huge horizontal or vertical gaps that make related actions feel disconnected.
+- Stacking several HUD panels into the combat space.
+- Excessive scrolling for a basic action.
+- Repeating the same instructions in the HUD, tutorial banner, status modal, and control panel at once.
+- Replacing intentional whitespace with irrelevant decorations.
+
+The final composition should feel designed at each target aspect ratio, not merely stretched to fill a viewport.
+
+# 7. Improve the tutorial and contextual UX
+
+The player should learn the game through a sequence of small, well-timed interactions.
+
+Inspect the existing tutorial state machine and reuse it where practical.
+
+Requirements:
+
+- Present only the current actionable objective.
+- Show exact controls for desktop and mobile.
+- Include a one-sentence explanation of why the action matters.
+- Provide immediate feedback after successful interaction.
+- Move to the next prompt only when the underlying state has actually changed.
+- Do not repeatedly interrupt combat to re-teach completed actions.
+- Allow noncritical hints to be dismissed or toggled.
+- Provide a subtle way to recover guidance when the player is stuck.
+- Preserve tutorial progress appropriately through pause/resume and stage transitions.
+- Keep prompts short enough to scan during gameplay.
+- On mobile, do not place instructional overlays over the directional pad or primary actions.
+
+Create a simple onboarding sequence:
+1. Move and look.
+2. Basic combat.
+3. Dodge or parry a readable attack.
+4. Record and replay an Echo.
+5. Solve the first Echo-only pressure plate.
+6. Use the Resonance Receiver.
+7. Combine the charged receiver with the second plate.
+8. Transition to HELIX-04.
+
+If existing tutorial stages already cover these actions, improve their presentation rather than duplicating the state machine.
+
+# 8. Improve pause, settings, victory, defeat, and return navigation
+
+These screens should behave like parts of the same product.
+
+## Pause
+
+Group actions by importance:
+
+- Resume.
+- Restart encounter or retry checkpoint.
+- Restart full run where appropriate.
+- Settings.
+- Return to title.
+
+Make destructive/restart actions visually distinct from Resume. Avoid presenting all actions as identical buttons.
+
+The correct restart behavior should be explicit for the current context.
+
+## Settings
+
+First inspect which settings are already supported.
+
+Organize existing settings logically, such as:
+- Camera sensitivity and inversion.
+- Audio volume/mute.
+- UI/hints preferences.
+- Existing graphics/performance options.
+
+If a useful setting is absent, add only settings that can be implemented properly and verified with the current architecture. Do not display fake sliders or toggles that do nothing.
+
+## Victory and defeat
+
+Use clear outcome titles, concise summary information, and obvious next actions.
+
+After a boss victory, the player should know whether the campaign continues, whether the next chapter is unlocked, and what they should do to advance.
+
+After defeat, the player should understand the difference between retrying the current boss checkpoint, restarting the whole run, and returning to title.
+
+Avoid generic modal text such as `GAME OVER` with no meaningful navigation.
+
+## Chronicle Loom
+
+Make the three endings visually and textually distinct, with clear selection focus and a readable consequence statement before selection.
+
+After choosing an ending, show the chosen outcome and a deliberate final destination. Do not leave the player stranded in an empty screen with no obvious next action.
+
+# 9. Mobile-first usability pass
+
+Treat the existing 390×844 viewport as a mandatory target, not an afterthought.
+
+Use actual responsive layout rules rather than scaling down desktop panels uniformly.
+
+Verify:
+- No horizontal overflow.
+- Readable body and button text.
+- Adequate touch-target dimensions and spacing.
+- Clear differentiation between primary and secondary actions.
+- Directional pad placement.
+- Camera-aim interaction that does not conflict with movement buttons.
+- LIGHT, HEAVY, DODGE, PARRY, Echo, Relay, Gravity Pin, and Echo Collapse controls in the encounters where available.
+- Pause and result modals remain accessible.
+- Tutorial prompts do not obscure controls.
+- The boss health bar remains readable without consuming excessive vertical space.
+- Endings and chapter selection can be used without awkward scrolling or clipped buttons.
+
+Use the current touch implementation. Do not add a second, conflicting movement control scheme.
+
+If pointer/touch events are tested in headless Chromium, label them as automated viewport/pointer tests, not physical-device usability testing.
+
+# 10. Autonomous UX brainstorm and selected improvements
+
+Actively brainstorm additional UX problems after the initial audit.
+
+Look for improvements such as:
+- A more coherent main navigation.
+- Better chapter progress visibility.
+- A clean distinction between campaign, continue, practice, and chapter replay.
+- A compact in-game objective tracker.
+- Better boss introduction readability.
+- Cleaner pause and result screens.
+- Contextual controls that adapt to the current encounter.
+- A more useful accessibility/control settings layout.
+- Clearer feedback when an ability is unavailable because of Flux, range, cooldown, or Echo state.
+- Consistent transition animations and focus behavior.
+
+Rank candidate improvements by player benefit, implementation effort, and risk.
+
+Then autonomously select and implement the highest-value changes. Prefer a few substantial UX improvements over dozens of superficial styling edits.
+
+Save the audit and the selected implementation plan in `docs/AFTERFRAME_UX_AUDIT.md`.
+
+Do not stop after writing the document.
+
+# 11. Establish a consistent design system
+
+Create or refine a small set of shared design tokens and reusable UI primitives as appropriate for the existing stack.
+
+The aesthetic should communicate the Chrono/industrial sci-fi world without overwhelming usability.
+
+Use:
+- A consistent typography scale.
+- Clear spacing units.
+- Consistent button sizes and interaction states.
+- A coherent panel/background treatment.
+- Consistent icon style.
+- Purposeful emphasis for primary, secondary, destructive, and disabled actions.
+- Clear keyboard focus and hover/pressed states.
+- Subtle transition timing used consistently.
+
+Do not turn every element into a glowing futuristic panel. Use restrained visual language so the genuinely important game states and actions stand out.
+
+Do not introduce a new UI framework or large dependency unless the existing architecture demonstrates that it is necessary.
+
+Prefer consolidating existing components over implementing parallel title/HUD/modal systems.
+
+# 12. Preserve gameplay and canonical controls
+
+The UI redesign must not accidentally change gameplay behavior.
+
+Preserve the current authoritative controls:
+
+- WASD: movement.
+- Mouse/Arrow Keys: camera aim according to the actual input handler.
+- LMB/F/J: Light Attack where currently supported.
+- Heavy inputs: existing E/K/RMB/hold configuration.
+- Space/Shift: Dodge.
+- Q: Parry.
+- T: Echo Record/Stop.
+- Y: Echo Replay.
+- V: Relay.
+- C: Clear Echo.
+- G: Gravity Pin.
+- X: Echo Collapse.
+- P/Escape: Pause.
+- R/Backspace: Restart or Retry according to the current state.
+- M: Mute.
+- H: Hints.
+- B: Direct boss practice.
+- Number keys 1/2/3: Chronicle Loom ending selection where currently supported.
+
+Inspect actual bindings before displaying them. The current input handler is the source of truth.
+
+If there is an unavoidable conflict between an existing shortcut and a new UI shortcut, do not silently remap it. Choose a nonconflicting interaction and update visible labels, tutorial text, and tests together.
+
+Preserve all canonical resource costs, boss health values, puzzle rules, phase thresholds, attack geometry, Resonance timing, Relay validation, and campaign progression unless a separate reproducible gameplay defect requires a specifically justified fix.
+
+Do not rebalance or rewrite working mechanics as part of the UI pass.
+
+# 13. Required usability tests
+
+Keep all existing 98 regression tests intact and passing.
+
+Add focused tests for UI-relevant state transitions where the current test architecture supports them:
+- New Campaign begins the correct initial flow.
+- Continue only appears when a valid resumable run exists.
+- Practice and chapter selection remain isolated from the main campaign.
+- Intro skipping leads into a playable state.
+- Tutorial prompts match actual progression.
+- Current puzzle objective matches authoritative stage state.
+- Boss victory offers the correct next chapter.
+- Defeat/retry controls restore the correct checkpoint.
+- Chronicle Loom choices remain distinct and valid.
+- New Run clears previous progress/ending state.
+- Pause/resume and return-to-title clear stale input.
+- Disabled/insufficient-resource actions provide accurate feedback.
+
+Do not fabricate tests for purely visual claims.
+
+Run the actual project test suite, TypeScript check, and production build. Report exact commands and counts. Never delete or weaken existing tests to make the suite pass.
+
+# 14. Required live browser review
+
+Use the existing browser automation at:
+- Desktop: 1280×800.
+- Mobile: 390×844.
+
+Capture and inspect actual screenshots or render states before and after where possible.
+
+Run these practical scenarios:
+
+### First launch
+1. Load the title screen.
+2. Observe the screen for a few seconds without interaction.
+3. Determine whether a new player can confidently identify the primary start action.
+4. Click New Campaign.
+5. Understand how to enter or skip the introduction.
+6. Reach controllable gameplay with a clear objective.
+
+### Early gameplay
+1. Use the displayed movement instruction.
+2. Find the attack control.
+3. Record and replay Echo using the visible instructions.
+4. Interpret the first pressure plate objective.
+5. Observe success feedback and the next objective.
+
+### Campaign navigation
+1. Open Chapter Select.
+2. Identify locked/unlocked chapters.
+3. Return without corrupting campaign state.
+4. Pause and resume.
+5. View a boss victory and discover the next chapter action.
+6. Inspect defeat/retry and return-to-title flows.
+
+### Later chapter UX
+1. Use Gravity Pin through its correct contextual control in Chapter III.
+2. Use Echo Collapse in Chapter IV when valid.
+3. Read and select an ending in Chronicle Loom.
+4. Start a new run and confirm the prior ending does not leak.
+
+### Mobile
+Repeat the essential first-launch, movement, Echo, puzzle, pause, result, and ending interactions using the current touch controls and bounded pointer/touch automation.
+
+Do not claim a flow was completed merely because its button or screen was visible. Correlate actions with the actual state transition.
+
+Use bounded waits. If an automation step fails, stop that scenario and capture diagnostics instead of waiting indefinitely.
+
+# 15. Visual review of the result
+
+Inspect the actual running UI and compare before/after at consistent screen sizes.
+
+Look specifically for:
+- A primary action that is immediately identifiable.
+- Reduced visual competition.
+- Better use of space without filler.
+- Clear hierarchy and alignment.
+- Correct sizing and readable labels.
+- Fewer redundant panels and repeated instructions.
+- Consistent title/HUD/modal styling.
+- Improved mobile usability.
+- Better visual integration between the interface and 3D world.
+- Clean focus/hover/pressed/disabled states.
+- No visible overlap with important combat information.
+
+Take screenshots when possible and inspect them. Do not claim a visual improvement solely because CSS/JSX changed.
+
+If screenshots cannot be captured, document the limitation and use the best available live rendering inspection.
+
+# 16. Definition of done
+
+The UX/UI overhaul is complete only when:
+
+- A new player can identify how to start from the title screen without outside help.
+- Campaign, Continue, Chapter Select, Practice, Controls, and Settings have a clear hierarchy.
+- The intro leads to a visibly playable state with a clear next objective.
+- HUD information is prioritized and contextual.
+- Tutorial hints match the current objective and actual controls.
+- The major empty-space and layout issues observed in the audit have been corrected deliberately.
+- Pause, victory, defeat, retry, and ending interactions are coherent.
+- Desktop and mobile screens look intentionally composed.
+- Gameplay inputs, progression, resource behavior, and encounter mechanics remain intact.
+- All 98 existing regression tests remain present and passing.
+- TypeScript and production build pass.
+- Actual browser usability scenarios are completed and reported honestly.
+- Before/after visual evidence is supplied where available.
+- The audit, implementation, and test results are saved in the actual workspace.
+
+## Final report
+
+Provide:
+1. The confirmed UX problems found.
+2. The biggest changes to navigation and screen hierarchy.
+3. How the new-player flow now works.
+4. How the awkward blank space and clutter were handled.
+5. Files changed and reusable design components introduced.
+6. Before/after screenshots or direct visual inspection results.
+7. Desktop and mobile interaction results.
+8. Test, TypeScript, and build results.
+9. Any remaining usability concerns.
+
+Do not add more game chapters, bosses, or combat powers during this phase. Fix how the existing game is presented, understood, and played.
+
+Do not claim the UX is complete because the application builds. Validate the running experience.
+
+Stop after this UX/UI overhaul and provide the report.

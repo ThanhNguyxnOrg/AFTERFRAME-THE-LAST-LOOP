@@ -1,0 +1,521 @@
+# AFTERFRAME 2.0 — UNIFIED CAMPAIGN, NARRATIVE & 3D VISUAL OVERHAUL
+## Autonomous Creative Direction · Story Cohesion · Art Direction · Gameplay Refinement · Production Quality
+
+You are the Creative Director, Narrative Designer, Senior Three.js Graphics Engineer, Gameplay Designer, Technical Lead, and QA Engineer for the existing AFTERFRAME: THE LAST LOOP project.
+
+Your mission is to evolve the current game into a cohesive, atmospheric, visually impressive, polished 3D science-fiction action game.
+
+This is an evolution of the existing project, not a greenfield rewrite.
+
+You have creative freedom to inspect the game, identify weak points, brainstorm improvements, prioritize opportunities, and implement the best ones autonomously. Do not wait for the user to identify every flaw or tell you exactly what to improve.
+
+The expected outcome is not just more content. It is a game whose narrative, environments, characters, combat systems, transitions, audiovisual presentation, and endings feel as if they were designed together from the beginning.
+
+# 1. First: recover and inspect the real project
+
+Before making changes, inspect the actual persisted workspace and confirm its current state.
+
+The latest report claims that the project includes:
+
+- Prologue / Calibration Bay 04.
+- Chapter I — HELIX-04, the Containment Warden.
+- Chapter II — THE CHOIR.
+- Chapter III — THE CURATOR.
+- Chapter IV — MATRON-V, The Surgeon.
+- Chapter V — The Last Loop: Chronicle Loom.
+- Three endings: Silence, Witness, and Continuity.
+- A Standard Test Bay, boss practice encounters, chapter selection, campaign progression, checkpoints, and replay functionality.
+- Echo recording and playback, pressure plates, Resonance, Convergence, Relay, Gravity Pin, Echo Collapse, Chrono Sever, reconstructed traces, false-Echo decoys, and other chapter-specific systems.
+- A reported baseline of 98 passing simulation tests.
+
+These are claims to verify against the current source, not assumptions.
+
+Inspect at least:
+- The campaign/run-state model and all chapter transition logic.
+- `src/game/types.ts`
+- `src/game/config.ts`
+- `src/game/simulation.ts`
+- `src/game/simulation.test.ts`
+- `src/game/renderer.ts`
+- `src/game/models.ts`
+- `src/game/input.ts`
+- `src/game/audio.ts`
+- `src/App.tsx`
+- `src/components/TitleScreen.tsx`
+- `src/components/GameHud.tsx`
+- `src/components/StatusModal.tsx`
+- Existing documentation, local assets, package scripts, and browser test infrastructure.
+
+Inspect actual visual output when possible. Source code that constructs a model is not proof that the rendered model looks good.
+
+Before editing, record the baseline test/build results and preserve a recovery point. If Git is available, create a branch or checkpoint commit; otherwise preserve the relevant starting files and document the baseline.
+
+Never attempt another giant rewrite in a single operation. Work in small, saved, verifiable stages so a workspace timeout cannot destroy the entire expansion.
+
+# 2. Autonomous creative brainstorm and product audit
+
+Actively search the existing game for weaknesses that the user has not explicitly identified.
+
+Review these dimensions:
+
+- Narrative coherence and unresolved story questions.
+- Character motivation and emotional stakes.
+- Chapter pacing and encounter repetition.
+- Boss identity, mechanical variety, fairness, and counterplay.
+- Tutorial quality and player onboarding.
+- Usefulness and discoverability of Echo, Relay, Resonance, Convergence, Gravity Pin, and Echo Collapse.
+- Level layout, navigation, arena readability, and environmental storytelling.
+- Character proportions, rig articulation, movement, weapon animation, and enemy reactions.
+- Materials, reflections, lighting, shadows, atmospheric depth, and 3D composition.
+- Sound design, music, silence, spatial cues, and combat feedback.
+- HUD information density, typography, transitions, and accessibility.
+- Camera behavior, input responsiveness, performance, rendering lifecycle, and memory management.
+- Checkpoints, retries, chapter selection, ending presentation, and replay motivation.
+- Desktop versus mobile interaction quality.
+- Missing regression coverage and technical debt.
+
+Do not assume that every subsystem needs more features. Identify which aspects are already strong and should be preserved.
+
+Create a concise, persistent design document, preferably `docs/AFTERFRAME_2_DESIGN_REVIEW.md`, containing:
+
+1. Existing strengths worth preserving.
+2. The most important observed weaknesses, backed by source inspection or reproducible gameplay evidence.
+3. At least 10 potential improvements across narrative, gameplay, visuals, audio, UX, and technical quality.
+4. An impact / implementation effort / risk assessment for each major idea.
+5. A prioritized implementation roadmap.
+6. The improvements selected for this iteration and why they offer the greatest overall benefit.
+
+Separate confirmed defects from subjective creative opportunities. Do not invent defects to justify more work.
+
+**Do not stop after writing the brainstorm.** Choose the highest-value improvements that fit the available project architecture and implement them autonomously.
+
+Prioritize a cohesive experience over feature count.
+
+# 3. Build a unified narrative around Sera Venn, Lysa, Nadir-9, and the Chrono Rig
+
+The campaign must feel like one unfolding story instead of a collection of separate boss demos.
+
+Preserve established characters, terminology, setting, mechanics, and ending names. Use existing lore and investigate the actual source for details before adding new canon.
+
+The narrative foundation includes:
+
+- Sera Venn and her search for Lysa.
+- Nadir-9 and its failing or compromised containment systems.
+- The Chrono Rig and the distinction between a recorded Echo and the live player.
+- The security and archive systems encountered throughout the station.
+- The campaign's five chapters and Chronicle Loom ending decision.
+
+Develop a coherent overarching mystery that connects these existing elements.
+
+### Every chapter must contribute to the same story
+
+For each chapter, establish:
+
+- What Sera wants to accomplish there.
+- What immediate obstacle prevents her from doing so.
+- What the chapter boss is protecting, concealing, reconstructing, or attempting to control.
+- What new evidence the player discovers about Lysa, Nadir-9, the Chrono Rig, or the underlying incident.
+- How the chapter's unique gameplay mechanic reinforces its narrative theme.
+- What changes in Sera's understanding after the encounter.
+- What unanswered question or consequence motivates the next chapter.
+
+Use a consistent progression of clues, revelations, and consequences rather than revealing the entire mystery in the opening.
+
+### Chapter-specific narrative direction
+
+**Prologue — Calibration Bay 04**
+
+Introduce Sera, the Chrono Rig, and the immediate mission. Establish the difference between live action and recorded action through gameplay before explaining every detail in dialogue. Seed a small unexplained signal or temporal anomaly that matters later.
+
+**Chapter I — HELIX-04**
+
+Use the Containment Warden to establish the security failure and the relationship between the station's containment systems and the Chrono Rig. The encounter should teach the combat vocabulary that later bosses reinterpret.
+
+**Chapter II — THE CHOIR**
+
+Make harmonic synchronization relevant to the story. Linked nodes should represent a meaningful information or control structure, not just three arbitrary switches. The player should discover how synchronized evidence can reconstruct something that a single recording cannot reveal.
+
+**Chapter III — THE CURATOR**
+
+Connect reconstructed attack traces and false Echo decoys to the uncertainty of archived memories. Make the player question the reliability of recorded evidence without making the actual combat rules unpredictable or unfair.
+
+**Chapter IV — MATRON-V**
+
+Connect Siphon, Eraser, and Chrono Sever to the risks of preserving, extracting, or destroying temporal records. Use Echo Collapse as a tactical decision with a narrative cost or consequence if appropriate, without secretly changing its established combat behavior.
+
+**Chapter V — The Last Loop: Chronicle Loom**
+
+Make Silence, Witness, and Continuity reflect three genuinely different responses to the accumulated evidence and consequences of the campaign.
+
+Each ending should resolve the central narrative question differently. The choices should be grounded in information the player has actually encountered rather than introduced as arbitrary philosophical buttons at the last moment.
+
+Do not assume which ending is morally correct. Give each a defensible rationale and an explicit consequence.
+
+### Narrative delivery
+
+Prefer a mixture of:
+
+- Short radio transmissions.
+- Environmental storytelling.
+- Recovered records and archive fragments.
+- Boss introductions and defeat moments.
+- Contextual lines triggered by actual game state.
+- Concise objectives and chapter transition summaries.
+- Optional lore that adds depth without blocking progress.
+
+Avoid long walls of text, generic exposition, repeated tutorials, and unskippable cinematics.
+
+Preserve the pace of gameplay. Important story sequences should be skippable, while their essential information remains accessible in a recap or archive.
+
+Create a persistent story/continuity document, such as `docs/AFTERFRAME_STORY_BIBLE.md`, documenting established facts, character motives, chapter revelations, timeline, recurring motifs, and the three endings. Update it alongside any new story content so later revisions do not contradict earlier chapters.
+
+# 4. Connect all chapters into one continuous player experience
+
+The primary campaign should feel continuous even if individual chapters use separate arenas or encounter scenes.
+
+Do not turn the entire station into a massive open world merely to satisfy continuity. Use purposeful, coherent transitions between existing spaces.
+
+Improve the following:
+
+### Campaign flow
+
+- Starting a New Run enters the narrative introduction.
+- Objectives lead the player naturally through Calibration Bay.
+- Completing the actual puzzle and its exit condition unlocks HELIX-04.
+- Each legitimate campaign boss victory unlocks the next chapter exactly once.
+- Chapter transitions explain why Sera is moving to the next location.
+- The player carries forward the intended campaign resources and state according to an explicit checkpoint policy.
+- Each chapter begins with a distinct objective, visual identity, and introduction.
+- Chapter V is reachable only after a legitimate Chapter IV campaign victory.
+- The selected ending becomes the authoritative final result.
+- The ending summary gives the player a meaningful conclusion and appropriate replay options.
+
+### Continuity safeguards
+
+- Practice modes must not advance campaign progression.
+- Replaying an unlocked chapter must not corrupt an active campaign snapshot.
+- Boss retries restore the correct checkpoint.
+- Full-run replay resets chapter progression and ending state.
+- Returning to title leaves no active simulation or stale held inputs.
+- Echo actors, pending Resonance marks, reconstructed traces, temporary powers, boss attacks, and delayed damage events cannot leak between incompatible chapter states.
+- Narrative events and audio cues trigger once, not repeatedly on rendered frames.
+- UI states and actual campaign state must remain synchronized.
+
+Add brief connecting moments between chapters: an access corridor, transmission, emergency lift, reconstructed memory, or another setting-appropriate transition. Reuse current rendering capabilities where practical rather than creating elaborate untestable cutscenes.
+
+# 5. Give every chapter a distinct 3D art identity
+
+The game should look like one authored world with several memorable locations, not one reused arena covered in different colored lighting.
+
+Establish a common visual grammar, then give each chapter its own architectural language.
+
+### Shared art direction
+
+The overall aesthetic should feel like a premium dark science-fiction action game:
+
+- Detailed but controlled industrial geometry.
+- Distinct silhouettes.
+- Layered hard-surface materials.
+- Believable mechanical construction.
+- Carefully composed lighting.
+- Restrained, purposeful energy effects.
+- Environmental wear and story-driven set dressing.
+- Cinematic framing without loss of gameplay readability.
+- Consistent typography, HUD styling, and visual feedback.
+
+Preserve the established Chrono identity and the visual difference between Sera's live presence and a temporal Echo.
+
+Do not merely increase bloom, saturation, emissive intensity, or particle count.
+
+### Prologue — Calibration Bay 04
+
+Emphasize utilitarian industrial architecture, worn training equipment, maintenance systems, and the practical machinery surrounding the first Echo puzzles.
+
+Teach the visual language of interaction: pressure plates, receivers, gates, and safe movement regions should each have their own recognizable physical design.
+
+### Chapter I — HELIX-04 containment arena
+
+Preserve the existing boss's articulated helical assembly, armored chassis, core exposure, and ground telegraphs. Improve the surrounding arena to communicate containment engineering and the scale of the machine.
+
+### Chapter II — THE CHOIR
+
+Develop a harmonic architecture based on linked pylons, resonant mechanical structures, suspended elements, and carefully coordinated light and motion.
+
+The geometry should help the player understand relationships between nodes and the boss rather than merely decorate the arena.
+
+### Chapter III — THE CURATOR
+
+Create an archive environment with layered storage structures, reconstructed spatial traces, holographic records, false-Echo cues, and carefully controlled distortion.
+
+Harmless residue and genuinely dangerous traces must remain visually distinguishable.
+
+### Chapter IV — MATRON-V
+
+Make the Quarantine Ward feel like a distinct functional facility: sterilization machinery, segmented treatment bays, surgical robotics, sealed doors, warning systems, and clear quarantine boundaries.
+
+Siphon, Eraser, and Chrono Sever must each have distinct silhouettes and effect shapes.
+
+### Chapter V — Chronicle Loom
+
+Create the strongest environmental composition in the game: a visually memorable final space that expresses the relationship between time, recorded history, continuity, and the consequences of Sera's decision.
+
+Give the three ending presentations distinct mood, lighting composition, sound, and final visual outcome.
+
+Do not rely solely on changing the environment's color to differentiate them.
+
+# 6. Upgrade 3D graphics, character animation, and scene quality
+
+Perform an honest audit of the existing procedural models, character rigs, animation functions, materials, scene construction, and lighting.
+
+Do not assume that a model or animation is good simply because the relevant code exists.
+
+### Character and enemy presentation
+
+Inspect:
+- Sera's proportions, armor segmentation, Chrono Rig, weapon grip, and joint articulation.
+- Echo's silhouette, temporal reconstruction, afterimages, and playback fidelity.
+- HELIX-04's rotating structures and exposed core.
+- THE CHOIR's nodes and boss silhouette.
+- THE CURATOR's mechanical form and decoys.
+- MATRON-V's silhouette, surgical apparatus, Siphon units, and Erasers.
+
+Improve parts that actually appear primitive, repetitive, disconnected, or visually unclear.
+
+Make animation feel less rigid through coordinated anticipation, follow-through, torso/hip counter-rotation, foot motion, weapon trajectories, secondary motion, and state-specific reactions.
+
+Each boss should have a unique movement rhythm and recognizable combat pose language.
+
+### Environments
+
+Improve environmental depth and construction where appropriate:
+
+- Layered architecture and recognizable structural support.
+- Panel seams, mechanical joints, bevels, vents, cables, and maintenance hardware.
+- Variation in floor and wall materials.
+- Carefully placed wear, grime, impact marks, signage, and lighting fixtures.
+- Strong foreground, gameplay-space, and background separation.
+- Distinctive landmarks and useful spatial orientation.
+- Environmental storytelling that supports each chapter's narrative.
+
+Do not place decorative collision geometry where it could create unfair movement or attack behavior.
+
+### Materials and lighting
+
+Audit material roughness, metalness, emissive response, color space, tone mapping, practical lights, shadow quality, and reflected highlights.
+
+Use a coherent material system across environments and characters. Reuse geometry and material instances where appropriate.
+
+Improve the balance between darkness and readability. Enemies, player attacks, Echo interactions, and boss telegraphs must remain legible against complex backgrounds.
+
+### Animation-driven combat
+
+Make visual attacks communicate the authoritative simulation states:
+
+- Anticipation and windup.
+- Locked attack direction.
+- Active collision interval.
+- Recovery.
+- Guard or vulnerability.
+- Stagger and defeat.
+
+Do not allow cosmetic animation interpolation to alter hit registration, recorded Echo timestamps, deterministic simulation timing, or attack commitment.
+
+Improve actual in-game motion, not just idle poses or still screenshots.
+
+### Rendering performance
+
+Keep the game responsive at desktop and the existing 390×844 mobile target.
+
+- Avoid unbounded particles, unnecessary full-screen effects, repeated geometry creation, per-frame allocations, and scene-wide traversals.
+- Dispose of temporary resources correctly.
+- Preserve fixed-step simulation and render/simulation separation.
+- Audit the existing reflection/environment-map approach before expanding it.
+- Prefer a smaller number of distinctive high-quality effects over a large amount of visual noise.
+
+# 7. Audio and atmosphere
+
+Review whether each chapter has a recognizable acoustic identity.
+
+Improve, where the current implementation is lacking:
+
+- Ambient sound and machinery.
+- Environmental reverb or spatial impression where supported by the existing audio architecture.
+- Distinct boss telegraphs.
+- Clear successful/failed parry and dodge cues.
+- Echo record, playback, interruption, and collapse cues.
+- Puzzle progress and barrier opening.
+- Chapter transitions and important transmissions.
+- Boss defeat, victory, and ending-specific audio.
+
+Each major event must trigger its cue once. Avoid repeated sounds on every frame or React render.
+
+Do not add unlicensed external music or assets. Prefer the current synthesized audio system unless a compatible local asset already exists.
+
+# 8. Autonomous brainstorm: choose the best additional improvements
+
+After the design audit, propose a ranked list of high-value improvements that are not already implemented.
+
+Consider areas such as:
+
+- A more useful in-game archive of recovered memories.
+- Stronger consequences and callbacks for earlier player decisions.
+- Better chapter objective tracking and a concise run recap.
+- More readable enemy telegraph signatures.
+- Accessibility settings for camera sensitivity, screen shake, reduced flashes, and visual contrast.
+- More coherent ambient animation and spatial audio.
+- Better boss introduction and defeat pacing.
+- Optional exploration rewards that reveal story rather than inflate combat statistics.
+- Better checkpoint feedback and retry explanations.
+- A focused first-time-user tutorial and less intrusive repeat-play hints.
+- Input customization where feasible within the existing architecture.
+- Performance safeguards and a regression workflow that makes future iterations safer.
+
+These are candidates, not requirements to implement indiscriminately.
+
+For each proposed improvement, assess:
+- Player benefit.
+- Evidence for the need.
+- Implementation effort.
+- Risk to existing systems.
+- Verification cost.
+- Whether it meaningfully improves the overall game.
+
+Then autonomously select the three to five improvements that provide the greatest benefit within this iteration and implement them.
+
+Do not add filler features or unnecessary mechanics just to satisfy a numerical target. Preserve the unique identity of existing systems and avoid expanding scope if the project already handles a problem well.
+
+Record the chosen improvements and rationale in `docs/AFTERFRAME_2_DESIGN_REVIEW.md`.
+
+# 9. Gameplay quality and balancing audit
+
+Review the entire campaign as one experience.
+
+Look for:
+- Mechanics introduced without enough explanation.
+- Bosses that repeat the same attack grammar.
+- Overly long or trivial encounters.
+- Resource costs that make chapter-specific powers unusable.
+- Abilities that invalidate entire encounters.
+- Telegraphs that do not match their actual hit regions.
+- Objective text that does not reflect true state.
+- Chapter transitions that remove meaningful consequences.
+- Endings that do not match the accumulated story.
+- Areas where the player can become stuck without a useful recovery path.
+
+Do not rebalance every encounter by intuition. Reproduce concrete issues, inspect relevant configuration, and make targeted adjustments supported by tests or browser evidence.
+
+Preserve meaningful difficulty, deliberate player choices, and the core identity of Echo-driven combat.
+
+Where feasible, verify that a first-time player can understand the basic mechanics without outside instructions. Use the in-game hints and tutorial flow, and document usability concerns.
+
+# 10. Implementation strategy and workspace safety
+
+Work in small, verifiable stages:
+
+**Stage A — Audit and design**
+- Recover and inspect source.
+- Establish the actual baseline.
+- Write the narrative bible and art/design review.
+- Produce a ranked improvement plan.
+
+**Stage B — Narrative and campaign cohesion**
+- Resolve continuity gaps.
+- Improve chapter introductions, transitions, objectives, and ending callbacks.
+- Preserve progression and snapshot behavior.
+
+**Stage C — 3D visuals and animation**
+- Improve the most visibly weak environments, models, materials, lighting, and animation.
+- Validate the running scene instead of relying on source inspection alone.
+
+**Stage D — Selected high-value improvements**
+- Implement the best three to five brainstormed improvements.
+- Do not add unrelated systems.
+
+**Stage E — Integration QA**
+- Run the full regression suite.
+- Run TypeScript and production build.
+- Test campaign transitions, unique mechanics, restart, chapter selection, and all endings.
+- Check desktop and mobile layout.
+- Capture real visual evidence where possible.
+
+After each stage, verify that the changed files are actually saved before continuing. If the workspace becomes unavailable, stop and recover the persisted state instead of attempting a giant rewrite.
+
+If Git is available, create a commit or checkpoint after each stable stage. Do not make this a blocker if the workspace does not provide Git access.
+
+# 11. Required tests and verification
+
+Preserve all currently existing tests and assertions. The latest report claims 98 passing tests; inspect the actual suite before editing.
+
+Run the complete test suite, TypeScript validation, and production build using the real project commands.
+
+Add tests only for relevant new behavior and discovered regressions. Do not delete, weaken, or skip tests to obtain a passing result.
+
+Verify:
+- Every legitimate campaign boss victory advances exactly once.
+- Practice and chapter replay remain isolated.
+- Each chapter-specific power respects its resource, cooldown, target eligibility, and lifecycle rules.
+- Echo and Resonance timing remain deterministic.
+- Puzzle progression cannot be bypassed.
+- Ending selection remains valid and exactly once.
+- New Run clears previous progression and ending state.
+- Restart, retry, pause/resume, return-to-title, and chapter transitions clear stale events and held inputs.
+- No new attack or effect deals repeated damage across multiple frames unless explicitly designed and tested.
+- Controls and tutorial text match the actual input handler.
+- Browser runtime has no unhandled errors during representative flows.
+
+Use real gameplay inputs and existing read-only telemetry for browser verification. Do not directly mutate authoritative boss HP, campaign flags, or ending state to manufacture success.
+
+Use bounded automation waits. Do not allow browser verification to stall the workspace indefinitely.
+
+# 12. Visual acceptance and before/after evidence
+
+Capture or inspect the actual game at consistent views before and after the visual pass, where the environment supports it.
+
+Inspect at least:
+- A wide Calibration Bay view.
+- Each of the three later boss arenas.
+- A distinctive attack/ability from each chapter.
+- A boss defeat or chapter transition.
+- The Chronicle Loom and its three ending presentations.
+- Sera/Echo motion in ordinary gameplay.
+- Desktop and mobile HUD.
+
+Check material quality, silhouette, lighting, texture/geometry detail, motion, effect readability, camera composition, clipping, and performance.
+
+Provide actual screenshots or artifact paths from the current workspace when possible. Do not claim a visual improvement based only on code having changed.
+
+If a capture mechanism fails, document the exact limitation and use available live render inspection instead. Never fabricate visual evidence.
+
+# 13. Definition of done
+
+This iteration is complete when:
+
+- The full campaign feels narratively connected from the prologue through the final ending.
+- Each chapter has a distinct visual identity within a consistent overall art direction.
+- Important characters and bosses have polished, readable 3D silhouettes and state-driven animation.
+- Environments look more detailed, intentional, and atmospheric during actual gameplay.
+- Transitions, objectives, narrative reveals, and endings work together as a coherent experience.
+- The selected additional improvements provide meaningful benefit rather than feature bloat.
+- Existing tests remain intact and pass.
+- TypeScript and production build pass.
+- Desktop and mobile layouts remain usable.
+- Real browser checks confirm critical progression paths and game states.
+- The final files, design documents, and test changes are persisted.
+- Remaining limitations are documented honestly.
+
+### Final report
+
+Provide:
+1. A summary of the existing game's strengths and the most important issues discovered.
+2. The final narrative/continuity decisions and chapter-to-chapter connections.
+3. The selected brainstormed improvements and why they were chosen.
+4. Concrete 3D model, environment, lighting, animation, and audio changes.
+5. Files changed and design documents created.
+6. Before/after screenshots or real visual inspection evidence.
+7. Exact tests, TypeScript, build, and browser verification results.
+8. Performance observations.
+9. Remaining issues and anything not verified.
+
+Do not report completion merely because a design document exists or the project builds.
+
+Do not automatically start another large expansion after this iteration. Finish the cohesive game, validate it, and provide the evidence.

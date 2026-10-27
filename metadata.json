@@ -1,0 +1,6 @@
+{
+  "name": "AFTERFRAME: THE LAST LOOP",
+  "description": "A third-person sci-fi action-puzzle game set aboard the damaged orbital research station Nadir-9.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

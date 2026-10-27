@@ -1,0 +1,523 @@
+# AFTERFRAME: THE LAST LOOP — PHASE 6
+## HELIX-04 Boss Prototype: Combat AI, Temporal Mechanics, Cinematic Presentation & Verification
+
+You are continuing the existing AFTERFRAME: THE LAST LOOP game built with React and Three.js. Implement the first real boss encounter, HELIX-04, on top of the existing and tested game.
+
+This is a continuation of the current codebase. Do not rewrite the game, replace its framework, or create an unrelated standalone boss demo.
+
+### Current project baseline
+
+The latest Phase 5.2 report claims:
+
+- Phase 1–5.1 simulation tests remain passing: 39/39.
+- TypeScript checks and production build pass.
+- Sera, Echo, Bastion-09, Scrapper-X2, and Scout-01 have procedural rigs and more layered motion.
+- Echo recording/replay, pressure plates, progression barriers, Relay, Resonance, and Convergence are implemented.
+- Convergence must preserve the intended rules: a qualifying live attack deals its ordinary damage once and adds +22 posture through the existing combat system; Echo contact itself deals no combat damage or posture.
+- Desktop and mobile browser views have been inspected.
+
+Treat these as reported baselines, not proof that every requirement is currently correct. Inspect the actual source and reproduce relevant behavior before changing it.
+
+## 1. Mission and scope
+
+Build a playable, polished first boss encounter against **HELIX-04**, a major containment guardian associated with Nadir-9.
+
+The encounter should feel like the first genuine boss battle in a dark industrial science-fiction action game. It must combine:
+
+- Learnable attack patterns and readable telegraphs.
+- Distinctive boss geometry, animation, materials, sound, and impact feedback.
+- Existing live combat, dodge, parry, Echo recording/replay, Resonance, Convergence, and Relay.
+- At least two meaningful fight phases.
+- A proper boss health display, phase transitions, defeat state, and reliable restart.
+- Deterministic simulation logic and real browser verification.
+
+Do not add THE CHOIR, THE CURATOR, MATRON-V, WARDEN PRIME, or a full campaign. HELIX-04 is the only new boss in this phase.
+
+The deliverable is a complete, testable prototype encounter, not merely a boss model, a health bar, or a visually impressive attack animation.
+
+## 2. Inspect the existing game first
+
+Inspect the actual implementation before choosing where and how to integrate the encounter.
+
+Relevant areas may include:
+
+- `src/game/simulation.ts`
+- `src/game/simulation.test.ts`
+- `src/game/renderer.ts`
+- `src/game/audio.ts`
+- `src/components/GameHud.tsx`
+- `src/App.tsx`
+- Game configuration, enemy AI/state machines, combat resolution, collision, scene objects, and victory/defeat/reset handling.
+
+Use the project's actual types and action names. Do not assume that every name in this prompt already exists.
+
+Understand these systems specifically:
+
+1. How enemy actors are created, moved, targeted, damaged, staggered, and removed after defeat.
+2. How player hit registration, guards, posture/poise, hitstun, and recovery currently work.
+3. How Echo playback and timestamped Heavy contacts resolve.
+4. How Resonance marks an exact enemy ID and how Convergence consumes the mark.
+5. How Relay validates a landing position, checks obstacles, and spends Flux.
+6. How game pause, defeat, victory, C clear, and R restart behave.
+7. How enemy meshes and procedural character rigs are built and updated.
+8. How the current arena and its physical boundaries are represented.
+
+Preserve the existing combat and progression contracts.
+
+Before implementation, identify the intended integration point, the boss's state model, the attack patterns, the phase-transition conditions, and the likely collision/rendering risks.
+
+### Encounter accessibility
+
+The boss must be reachable through a reliable and discoverable game flow.
+
+Prefer integrating the fight as the next encounter after the existing calibration progression when the current architecture supports this cleanly. If that would destabilize completed puzzle progression, provide a clearly discoverable, deterministic boss-test entry through the existing project's UI or development flow.
+
+Do not silently replace the existing game start, remove the puzzle, change established controls, or make HELIX-04 accessible only through hidden console commands.
+
+Existing progression, puzzle, and restart behavior must remain testable.
+
+## 3. Boss identity and visual design
+
+### HELIX-04 — Containment Warden
+
+Design an original boss with a strong, readable silhouette and a coherent mechanical purpose.
+
+It should feel like an industrial containment machine adapted for combat, not a generic robot or an enlarged Bastion.
+
+Suggested visual identity:
+
+- A massive armored central chassis enclosing a bright but restrained Chrono-reactor core.
+- A layered rotating containment cage or helical mechanical assembly surrounding the core.
+- Large articulated shoulders, segmented armor plating, visible joints, and grounded heavy limbs or mechanically supported hovering components.
+- Several distinct mechanical attack surfaces, such as a heavy striking arm and rotating outer blade assemblies.
+- Clearly visible physical openings or shutters that expose the core during vulnerable windows.
+- Cyan temporal-energy systems that connect visually to the established Chrono Rig and Echo identity.
+- Industrial metal, ceramic armor, worn edges, mechanical joints, controlled emissive lighting, and selectively placed amber/red warning signals.
+
+These are design directions, not permission to implement every idea as an independent high-cost effect. Choose a cohesive design that fits the existing procedural renderer.
+
+### Required presentation states
+
+The boss needs visibly distinct poses and silhouettes for:
+
+- Dormant or encounter-introduction state.
+- Tracking/positioning.
+- Each attack's anticipation and telegraph.
+- Attack commitment and active strike.
+- Missed attack and recovery.
+- Core exposed / resonance opportunity.
+- Guarded or armored state.
+- Posture break / stagger where permitted by the existing combat rules.
+- Phase transition.
+- Defeat and cleanup.
+
+The rotating cage, core shutters, and mechanical limbs should visibly react to these states. Do not rely only on changing an emissive color to communicate the entire state machine.
+
+Add secondary mechanical motion, constrained procedural articulation, weapon motion, and appropriate sound. Keep the boss's attack hitboxes authoritative and independent of cosmetic interpolation.
+
+## 4. Boss simulation and deterministic AI
+
+Implement a clear state machine using the project's existing conventions.
+
+Use explicit states equivalent to:
+
+- Dormant / Intro
+- Combat / Decision
+- Telegraph
+- Attack Active
+- Recovery
+- Core Exposed
+- Phase Transition
+- Defeated
+
+A different state structure is fine if it is cleaner and consistent with the codebase.
+
+Requirements:
+
+- All combat state transitions are driven by simulation time/delta time, not arbitrary wall-clock timers.
+- Pause freezes boss timers and attack activity.
+- Attack events resolve exactly once when the active hit window begins.
+- One attack must not apply repeated damage to the player on every frame while its hitbox overlaps.
+- The boss cannot continue attacking after defeat.
+- Phase transitions, posture breaks, audio triggers, and defeat events cannot fire repeatedly because several simulation updates observe the same condition.
+- Restart returns the boss to its initial health, phase, attack state, posture, timers, and arena state.
+- The AI must remain predictable enough for a player to learn its patterns without becoming a simple random attack generator.
+- Target tracking must be bounded. A telegraphed attack must not continuously rotate or teleport its hitbox onto the player's latest position after the player has already committed to dodging.
+- Attack decisions must respect appropriate distance, line of sight, recovery, and range constraints.
+
+Keep AI logic in the authoritative simulation where possible. Rendered animations and particle effects must not decide whether a hit occurred.
+
+Use a dedicated configuration section for tunable boss parameters if the project already follows that pattern. Keep timing, damage, range, posture thresholds, transition thresholds, and cooldowns inspectable and adjustable.
+
+## 5. Attack moveset: clear tells, distinct counters
+
+Implement three substantial attacks with distinct silhouettes, geometry, timing, sound, and counterplay.
+
+Numbers below are initial tuning targets, not immutable constants. Adapt them to the current combat scale and validate them in the running game.
+
+### Attack A — Vector Ram
+
+HELIX-04 lowers its chassis, charges its directional assembly, and commits to a powerful forward line attack.
+
+Telegraph:
+- The boss visibly leans toward the intended direction.
+- A floor projection or other clear indicator identifies the dangerous lane.
+- A rising mechanical charge sound communicates commitment.
+
+Active attack:
+- A short, committed forward lunge with a defined travel range and hit window.
+- The attack cannot turn indefinitely to track Sera after commitment.
+- Collision and damage use the authoritative simulation.
+
+Counterplay:
+- Move out of the indicated lane or use the established dodge timing.
+- If the boss misses, it should have an exploitable recovery window.
+
+The attack should test positioning rather than require a perfect input at an invisible instant.
+
+### Attack B — Helical Sweep
+
+The outer helical assembly winds up and produces a wide melee sweep.
+
+Telegraph:
+- The rotating assembly visibly changes orientation and speed.
+- The intended arc, direction, and dangerous radius are communicated by animation and restrained spatial feedback.
+- The cue begins early enough for the player to reposition or choose an appropriate defensive action.
+
+Active attack:
+- A committed sweeping arc with clearly defined angular coverage and reach.
+- Do not silently change the attack's hitbox after the telegraph.
+- Do not apply damage merely because Sera is near the boss's model; use a tested attack envelope.
+
+Counterplay:
+- Evade beyond the valid arc/range, exploit a genuine safe region, or use a timing-based defensive response where supported by existing mechanics.
+- A successful bait or dodge should produce a readable boss recovery.
+
+Do not make this attack an unavoidable full-circle hit unless the game communicates and supports a distinct, reliable counter.
+
+### Attack C — Anchor Slam
+
+HELIX-04 raises a heavy striking assembly, locks its orientation, and strikes the floor, sending out a powerful ground impact.
+
+Telegraph:
+- Strong upward anticipation and a readable attack origin.
+- A visible floor footprint or radial warning indicates the actual dangerous region.
+- A distinct audio build-up differs from the Vector Ram and Helical Sweep.
+
+Active attack:
+- One well-defined impact and, if appropriate, one expanding shockwave.
+- Ground-wave damage is triggered once per attack event, not repeatedly on every frame the player overlaps its radius.
+- The radius and timing are deterministic.
+
+Counterplay:
+- Leave the indicated danger zone or use the existing dodge mechanics against the actual active window.
+- Avoid a design that requires jumping or another unsupported movement verb.
+- The boss's recovery should give the player a meaningful response opportunity.
+
+### Attack fairness and readability
+
+Each telegraph should reveal enough information about:
+
+- What kind of attack is coming.
+- Its direction or danger region.
+- When it is about to commit.
+- Which existing player action can respond to it.
+
+Use at least two coordinated signals among body animation, spatial indicators, sound, and environmental feedback where useful. Do not depend on color alone.
+
+The goal is a learnable challenge, not an unreadable collection of glowing effects.
+
+## 6. Two-phase encounter structure
+
+### Phase I — Containment Protocol
+
+This phase should teach the player the boss's attack grammar.
+
+- Introduce one or two patterns before combining all three.
+- Preserve sufficient spacing between major attacks for the player to learn, attack, and recover.
+- Use clear windows after missed attacks or committed moves.
+- Keep the core armor visually and mechanically consistent with what the player sees.
+- Allow ordinary player attacks to function under the established defense/armor rules.
+- Make positioning relevant: frontal armor should reward recognizing the guard orientation, without making every frontal attack completely useless or requiring an invisible trick.
+
+The boss should be dangerous but not an artificial damage sponge. Skillful movement and learning should matter more than simply having more HP.
+
+### Phase II — Helix Overload
+
+Trigger the phase transition once, using a well-defined boss-health threshold. Choose and document an appropriate threshold using the actual encounter scale; around the halfway point is a reasonable starting target.
+
+The transition must be visible, audible, and brief enough to preserve gameplay momentum.
+
+In this phase:
+
+- Increase pressure by introducing a more demanding combination or variation of the existing attacks.
+- Change the rotation, cadence, mechanical posture, or attack sequence so the phase is visibly distinct.
+- Maintain readable tells and safe counterplay.
+- Do not simply increase every speed and damage value until the encounter becomes unfair.
+- Do not introduce multiple overlapping danger zones with no viable response.
+- Preserve enough recovery opportunities to reward correct dodges, parries, positioning, and successful Resonance/Convergence.
+
+The boss should feel like an escalation of the same machine, not an unrelated second enemy.
+
+## 7. Echo, Resonance, Convergence, and Relay integration
+
+These mechanics are central to AFTERFRAME. HELIX-04 must demonstrate them meaningfully without rewriting their core behavior.
+
+### Echo
+
+The boss must be compatible with the existing recording/playback system.
+
+- Echo replay remains independent of Sera's live movement.
+- The recorded action's contact time, Echo pose, facing, and current playback timing remain authoritative.
+- Echo resonance contact never applies direct HP damage, posture, stagger, knockback, or Flux gain.
+- Do not add a boss-specific fake Echo attack that bypasses the existing event/contact path.
+- Preserve the current processed-event lifecycle and prevent duplicate contact events.
+
+Make the boss's committed attack behavior and vulnerable positioning legible enough that players can learn to use their recorded sequences deliberately.
+
+Do not silently make Echo actions more accurate than recorded or let the Echo hit the boss through a wall or from outside its genuine attack envelope.
+
+### Resonance and Convergence
+
+The boss should have a meaningful relationship with the existing resonance system.
+
+Requirements:
+
+- A valid Echo Heavy contact may prime a Resonance mark on HELIX-04 only when the established targeting rules and boss-specific eligibility conditions are satisfied.
+- If you introduce a boss-specific core exposure window, make its eligibility rules explicit, deterministic, visually readable, and covered by tests.
+- The correct mark must refer to the actual HELIX-04 instance.
+- A live qualifying Heavy or third-hit Light Finisher must hit the same marked boss within the valid window and after the mark was created.
+- Wrong targets, expiry, missed attacks, and invalid timing must not cause a successful Convergence.
+- Successful Convergence consumes resources and starts cooldown according to the existing rules.
+- Normal live-hit damage is applied once, plus the existing +22 posture bonus through the current combat/posture pipeline.
+- No extra Convergence bonus HP damage.
+- No unconditional guard bypass or guaranteed stagger.
+- Boss stagger and posture breaks must respect existing defensive logic plus any clearly documented boss-specific poise rules.
+
+Convergence should create a meaningful opening, but should not cause permanent stagger-locking or bypass entire boss phases.
+
+If repeated successful Convergences need a limit, use a documented boss-specific recovery/poise rule that the player can observe. Do not secretly invalidate the ordinary resonance system.
+
+### Relay
+
+Relay is a positioning tool, not a way to ignore the arena.
+
+- Preserve range checks, Flux cost, cooldown, landing validation, obstacle checks, and enemy-collision constraints.
+- Relay must not bypass closed phase boundaries, locked barriers, or other solid obstacles.
+- It must not place Sera inside the boss, inside its active damaging hitbox, or outside the intended arena.
+- Its success and failure feedback must remain legible during combat.
+- A Relay must not reset boss attack state, duplicate Resonance contacts, or create free invulnerability.
+- Relay landing cannot automatically resolve an attack or grant a guaranteed Convergence.
+
+Allow Relay to help with repositioning and punish windows while preserving the meaning of the boss's attacks.
+
+## 8. Boss damage, posture, death, and progression
+
+Use the project's existing authoritative combat pipeline wherever feasible.
+
+- Boss damage comes from actual registered player hits.
+- Damage, defenses, posture, and status changes must be deterministic.
+- Attacks from Echo do not damage the boss directly.
+- Convergence does not receive arbitrary extra HP damage.
+- Boss health cannot become negative in a way that retriggers defeat events.
+- Defeat interrupts future attack scheduling.
+- Boss death triggers one clear terminal encounter event.
+- Existing player defeat and restart behavior remains reliable.
+- If an encounter-specific completion state is added, it must be integrated cleanly with the project's existing game-state model.
+
+Do not implement victory by merely hiding the boss mesh or setting its health display to zero while its simulation continues running.
+
+The completion flow should include a short, coherent defeat presentation and readable completion state. Avoid a long non-interactive cinematic that makes the prototype difficult to test.
+
+## 9. Boss HUD and feedback
+
+Add a dedicated boss HUD that is consistent with the current industrial Chrono UI.
+
+Show:
+
+- HELIX-04's name.
+- Current health and health-bar fraction.
+- Current phase or a clear phase indicator.
+- Meaningful core/armor status if that state affects gameplay.
+- Posture/stagger state if it is part of the boss's established combat model.
+- A short, readable encounter objective if needed.
+
+Requirements:
+
+- Health, phase, and vulnerability indicators must derive from actual simulation state.
+- A health bar cannot animate to values different from authoritative health.
+- The UI must not misrepresent a guarded hit, a missed Convergence, or a failed Relay.
+- Use suitable typography, spacing, and controlled transitions.
+- Preserve player combat HUD, Flux, Echo state, Resonance readout, and mobile controls.
+- At 390×844, the boss HUD must not block critical controls or cover important telegraphs.
+
+Add or preserve stable test IDs for boss health, phase, current attack/telegraph state where practical, and terminal state.
+
+## 10. Boss visuals, animation, and audio
+
+Use the upgraded Phase 5.2 procedural rigging, materials, reflection environment, and authoritative effect system.
+
+The result must be an actual visible 3D character with articulated moving parts, not a flat 2D health-bar presentation or a static mesh with particles.
+
+Prioritize:
+
+- Distinct attack anticipation, commitment, impact, and recovery poses.
+- Mechanical counter-rotation and secondary motion that fits the boss's mass.
+- A visible transition between armored and exposed-core states.
+- Distinct weapon movement and impact direction.
+- Subtle core pulse and energy movement during appropriate states.
+- One authoritative VFX event per attack, parry interaction, phase transition, Resonance prime, Convergence, and defeat.
+- Unique sound signatures for the three major attacks, successful defensive interaction, core exposure, phase transition, and defeat.
+- Concise spatial cues that help the player understand danger without overwhelming the mix.
+
+Keep rendering effects subordinate to gameplay readability.
+
+Do not create effects with unbounded lifetimes. Dispose of boss-specific geometries, materials, textures, and transient objects appropriately according to the existing renderer's resource lifecycle.
+
+## 11. Tests and verification gate
+
+### A. Deterministic simulation tests
+
+Keep all existing simulation tests passing. Do not weaken or delete regression tests to get a green result.
+
+Add targeted tests covering at least:
+
+1. HELIX-04 initial state and deterministic spawn.
+2. Boss attack-state transitions under controlled simulation time.
+3. The phase transition occurring exactly once at the specified threshold.
+4. Deterministic attack decision behavior for a repeated input sequence.
+5. Vector Ram telegraph direction, commitment, active collision, and recovery.
+6. Helical Sweep attack arc and counterplay outside the valid hit region.
+7. Anchor Slam impact timing, damage region, and once-per-event behavior.
+8. Player damage not repeating every frame while overlapping one attack.
+9. Boss attack telegraphs pausing and resuming correctly.
+10. The boss cannot attack, damage Sera, or schedule new attacks after defeat.
+11. Ordinary live player damage follows the existing combat pipeline.
+12. Resonance cannot damage the boss directly.
+13. A valid Resonance mark references HELIX-04 and cannot silently target another enemy.
+14. Valid Convergence deals one ordinary hit plus the established +22 posture bonus, with no extra bonus HP damage.
+15. Invalid, expired, or wrong-target Convergence fails correctly.
+16. Boss-specific poise/stagger rules prevent permanent stun loops without ignoring legitimate combat results.
+17. Relay respects range, landing, obstruction, Flux, and cooldown rules during the encounter.
+18. Death, victory, pause/resume, clear, and restart reset boss state and visuals correctly.
+19. Defeated-state and phase-transition presentation events cannot duplicate across simulation substeps.
+20. The existing puzzle, Echo-only pressure plates, progression barriers, Relay, Resonance, and Convergence regression tests remain intact.
+
+Test the boss across more than one simulation timestep where useful. Do not make gameplay timing depend on the render frame rate.
+
+### B. Existing project checks
+
+Run the actual project commands for:
+
+- Simulation unit tests.
+- TypeScript checking.
+- Production build.
+- Any additional lint or checks already used by the repository.
+
+Report exact commands and actual results.
+
+### C. Live browser tests
+
+Use the project's current browser/Playwright workflow with actual keyboard and UI interactions.
+
+Do not directly mutate authoritative game state to fake combat success. Read-only test telemetry is acceptable if already supported.
+
+Verify at least:
+
+1. A player can reach and start the encounter through the intended flow.
+2. HELIX-04 introduces itself through a brief, functional presentation.
+3. Each of its three attacks is visibly telegraphed and executes in the expected region.
+4. The player can successfully evade or otherwise counter each attack using supported controls.
+5. A missed boss attack creates a genuine punish opportunity.
+6. The player can damage the boss, and its health display follows real damage.
+7. The phase transition occurs correctly and the second phase uses its intended pattern variation.
+8. Record an Echo action, play it back under appropriate conditions, prime the boss where valid, and land a qualifying live Convergence follow-up.
+9. Verify the Echo causes no direct damage and Convergence causes no bonus HP damage.
+10. Verify Relay placement and rejection around boss boundaries and obstacles.
+11. Verify boss defeat, player defeat/restart, pause/resume, and cleanup.
+12. Check for console errors and runtime errors.
+
+Where reliable browser automation permits, exercise the full encounter from start to defeat. If complete automated execution is not reliable, report which sections were actually executed and which were verified through controlled partial scenarios.
+
+### D. Mobile checks
+
+At 390×844, use actual touch interactions to verify:
+
+- Boss HUD visibility.
+- Movement and dodge.
+- Relevant combat actions and defensive inputs.
+- Echo recording/playback.
+- The supported Resonance/Convergence sequence.
+- Relay controls.
+- Pause and restart.
+
+A viewport bounding-box check alone does not constitute mobile gameplay verification.
+
+### E. Visual inspection
+
+Inspect the actual running encounter at repeatable positions:
+
+- Wide view of the boss arena.
+- HELIX-04 idle and combat stance.
+- Vector Ram telegraph and impact.
+- Helical Sweep windup and attack.
+- Anchor Slam warning and ground impact.
+- Exposed core and Resonance mark.
+- Convergence.
+- Phase transition.
+- Defeat state.
+- Mobile HUD.
+
+Capture screenshots when the environment permits, and examine them for silhouette quality, visual hierarchy, clipping, hitbox/visual mismatch, arena readability, and effect clutter.
+
+If the browser environment prevents screenshots, state that clearly and use the best available inspection method. Do not claim to have visually verified an image that was never captured or inspected.
+
+## 12. Performance and lifecycle safeguards
+
+The Phase 5.2 report mentions procedural reflection-map creation/disposal and an `afterDraw` timer-pacing change in `src/App.tsx`.
+
+Inspect these changes before building on them:
+
+- Confirm render pacing does not stall or delay player input.
+- Keep authoritative simulation timing separate from visual interpolation.
+- Do not hide rendering cost behind arbitrary delays that make the game feel sluggish.
+- Do not allow added boss animations, dynamic effects, reflection maps, or particles to cause unbounded memory growth.
+- Reuse geometry and materials where appropriate.
+- Remove temporary objects and listeners through the existing cleanup lifecycle.
+- Verify repeated boss restarts do not accumulate scene objects or trigger repeated event handlers.
+
+Fix these issues only where the implementation demonstrates a real defect; avoid gratuitous rewrites of already-working systems.
+
+## 13. Definition of done
+
+Phase 6 is complete only when:
+
+- HELIX-04 is a real playable boss encounter, not just a visual mockup.
+- Its identity is visually distinct from the current enemy archetypes.
+- All three attacks have distinct, fair telegraphs and verified hit regions.
+- The second phase changes the encounter meaningfully without removing counterplay.
+- Echo, Resonance, Convergence, and Relay work coherently inside the encounter.
+- Boss health, posture/poise, damage, phase transitions, and defeat are authoritative and deterministic.
+- The player can win and can reliably restart after victory or defeat.
+- Existing regression tests pass and new boss tests pass.
+- Type checking and production build pass.
+- Desktop browser behavior and the required mobile interaction flows are verified as far as the environment permits.
+- Visual inspection confirms the boss is articulated, readable, and meaningfully more impressive than existing enemies.
+- No significant gameplay responsiveness, performance, collision, or lifecycle regression is introduced.
+
+### Final report requirements
+
+When finished, provide:
+
+1. A short summary of the encounter and its two phases.
+2. The concrete files changed.
+3. The three attacks and their actual verified counterplay.
+4. How Resonance/Convergence and Relay interact with HELIX-04.
+5. The exact test, typecheck, build, and browser results.
+6. Which browser scenarios were actually completed.
+7. Screenshots or visual validation evidence where available.
+8. Remaining bugs, limitations, and any unverified requirements.
+
+Do not report Phase 6 complete merely because a boss model, state machine, or health bar exists.
+
+**After HELIX-04 passes this gate, stop and provide the report. Do not automatically begin Phase 7 until the encounter's results have been reviewed.**

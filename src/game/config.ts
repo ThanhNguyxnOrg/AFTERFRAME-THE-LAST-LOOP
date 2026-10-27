@@ -1,0 +1,1011 @@
+/**
+ * ============================================================================
+ * CANONICAL COMBAT & CHRONO RIG CONFIGURATION AUDIT (PHASE 6.2 / 6.2.1 / 7)
+ * ============================================================================
+ * This file is the single authoritative source of truth for all gameplay tuning.
+ *
+ * | System / Parameter               | Standard Encounter | HELIX-04 Boss Encounter | Scope & Notes                                                                 |
+ * |----------------------------------|--------------------|-------------------------|-------------------------------------------------------------------------------|
+ * | Player Initial / Max Integrity   | 100 / 100          | 100 / 100 (or >=75 Run) | Practice/Direct uses 100; Campaign carries Calibration Integrity (floor 75)   |
+ * | Player Initial / Max Chrono Flux | 40 / 100           | 40 / 100 (or >=40 Run)  | Practice/Direct uses 40; Campaign carries Calibration Flux (+100 on puzzle)   |
+ * | Standard Enemy Roster            | 3 Units            | 1 Boss (HELIX-04)       | `enemy-bastion-1`, `enemy-scrapper-1`, `enemy-scout-1` (`totalEnemies = 3`)   |
+ * | Passive Chrono Flux Regen        | +3.5 / sec         | +3.5 / sec              | Global (`player.fluxRegenPerSec = 3.5` while `appState === 'playing'`)        |
+ * | Parry Flux Reward                | +35 Flux           | +35 Flux                | Global (`player.fluxGainOnParry` / `player.parry.fluxGain`)                   |
+ * | Parry Active Window / Cooldown   | 0.28s / 0.60s      | 0.28s / 0.60s           | Global (`player.parry.activeWindow` / `player.parry.cooldown`)                |
+ * | Parry Target Stagger Effect      | Instant Stagger    | +34 Posture + Recovery  | Boss-specific (`boss.parryStaggerDamage = 34`, exposes core for 1.15s)        |
+ * | Anchor Slam Inner Radius / Dmg   | N/A                | 3.4m / 30 Damage        | Boss-specific (`boss.attacks.anchor_slam.innerRadius` / `slamDamage`)         |
+ * | Anchor Slam Wave Radius (P1/P2)  | N/A                | 6.2m (P1) / 7.0m (P2)   | Boss-specific (`outerRadiusP1` / `outerRadiusP2`, 1.25m ring band)            |
+ * | Anchor Slam Shockwave Damage     | N/A                | 20 Damage               | Boss-specific (`shockwaveDamage`; single-hit lock with inner slam)            |
+ * | Resonance Sync Window            | 1.1s               | 1.1s                    | Global (`RESONANCE_SYNC_WINDOW` / `resonance.syncWindow`)                     |
+ * | Convergence Flux Cost            | 15 Flux            | 15 Flux                | Global (`CONVERGENCE_FLUX_COST` / `resonance.fluxCost`)                       |
+ * | Convergence Cooldown             | 1.25s              | 1.25s                   | Global (`CONVERGENCE_COOLDOWN` / `resonance.cooldown`)                        |
+ * | Convergence Posture / HP Bonus   | +22 Posture / +0   | +22 Posture / +0        | Global (`CONVERGENCE_POSTURE_BONUS = 22`, `bonusDamage = 0`)                  |
+ * | Relay Flux Cost / Cooldown       | 25 Flux / 1.0s     | 25 Flux / 1.0s          | Global (`RELAY_FLUX_COST = 25`, `RELAY_COOLDOWN = 1.0`, `maxRange = 8.0m`)    |
+ * | Frontal Light Armor Mitigation   | 0.42x HP / 0.25x   | 0.55x HP / 0.60x Stag   | Archetype-specific (`enemies.bastion` vs `boss.frontalArmor*`)                |
+ * | Vulnerable / Core Exposed Mult   | 1.50x HP / 1.00x   | 1.45x HP / 1.35x Stag   | Boss uses `exposedCoreDamageMult = 1.45` (`staggeredDamageMult = 1.65`)       |
+ * ============================================================================
+ */
+
+export const RELAY_MAX_RANGE = 8.0;
+export const RELAY_FLUX_COST = 25;
+export const RELAY_COOLDOWN = 1.0;
+
+export const RESONANCE_SYNC_WINDOW = 1.1;
+export const CONVERGENCE_FLUX_COST = 15;
+export const CONVERGENCE_COOLDOWN = 1.25;
+export const CONVERGENCE_POSTURE_BONUS = 22;
+
+export const GAME_CONFIG = {
+  arena: {
+    radius: 22,
+    wallHeight: 5.5,
+    obstacles: [
+      // Central Chronicle Loom Pylon
+      { id: 'loom-pylon', x: 0, z: -2, radius: 1.85, height: 6.5, label: 'Chronicle Loom Pylon' },
+      // Symmetrical structural cover pillars (corridors >= 6m wide everywhere)
+      { id: 'pillar-nw', x: -8.5, z: -8.5, radius: 1.25, height: 5.0, label: 'Conduit Pillar NW' },
+      { id: 'pillar-ne', x: 8.5, z: -8.5, radius: 1.25, height: 5.0, label: 'Conduit Pillar NE' },
+      { id: 'pillar-sw', x: -8.5, z: 6.5, radius: 1.25, height: 5.0, label: 'Conduit Pillar SW' },
+      { id: 'pillar-se', x: 8.5, z: 6.5, radius: 1.25, height: 5.0, label: 'Conduit Pillar SE' },
+    ],
+    chronoPlate: {
+      id: 'chrono-plate-1',
+      label: 'Chrono Anchor Pad 01',
+      x: -3.8,
+      z: 9.0,
+      radius: 1.35,
+      interactionPolicy: 'echo_only' as const,
+      receiverId: 'chrono-lock-barrier',
+      receiverLabel: 'Chrono Containment Barrier',
+      receiverX: -6.2,
+      receiverZ: 9.0,
+      receiverRadius: 0.95,
+      receiverHeight: 2.6,
+    },
+    chronoPuzzle: {
+      calibrationZone: {
+        minZ: 7.4,
+        maxX: -1.6,
+        spawnRecordMinX: -4.5,
+        spawnRecordMaxX: 1.0,
+        spawnRecordMinZ: 8.2,
+      },
+      heavyReceiver: {
+        id: 'chrono-heavy-receiver-1',
+        label: 'Kinetic Resonance Receiver 01',
+        x: -8.2,
+        z: 13.6,
+        radius: 1.6,
+        targetX: -8.2,
+        targetZ: 12.0,
+        targetYaw: Math.PI, // Facing North (-Z) toward receptor core
+        angleTolerance: Math.PI * 0.45, // ~81-degree half-cone
+        interactionPolicy: 'echo_only' as const,
+        chargeDuration: 7.0,
+      },
+      combinePlate: {
+        id: 'chrono-plate-2',
+        label: 'Chrono Anchor Pad 02',
+        x: -8.2,
+        z: 10.2,
+        radius: 1.35,
+        interactionPolicy: 'echo_only' as const,
+        receiverId: 'chrono-combine-barrier',
+        receiverLabel: 'Archive Calibration Barrier',
+        receiverX: -10.8,
+        receiverZ: 10.2,
+        receiverRadius: 0.95,
+        receiverHeight: 2.8,
+      },
+      finalBarrier: {
+        id: 'chrono-combine-barrier',
+        label: 'Archive Calibration Barrier',
+        x: -10.8,
+        z: 10.2,
+        radius: 0.95,
+        height: 2.8,
+        completionX: -12.6,
+        completionZ: 10.2,
+        completionRadius: 1.35,
+      },
+    },
+  },
+  echo: {
+    minDuration: 0.35, // Minimum recording length in seconds to be valid
+    maxDuration: 8.0, // Maximum recording duration in seconds before auto-finalizing
+    sampleInterval: 1 / 60, // Authoritative simulation sampling interval (~16.67ms)
+    maxSamples: 500, // Explicit upper bound on stored samples per clip
+  },
+  relay: {
+    maxRange: RELAY_MAX_RANGE,
+    fluxCost: RELAY_FLUX_COST,
+    cooldown: RELAY_COOLDOWN,
+    landingOffset: 1.25, // Primary safe landing ring around Echo (player.radius 0.55 + echo.radius 0.55 + 0.15m clearance)
+    secondaryLandingOffset: 1.65, // Secondary safe landing ring if primary ring is near an obstacle
+    obstacleClearanceMargin: 0.08, // Extra safety buffer around solid obstacle/barrier colliders
+    enemyClearanceMargin: 0.12, // Extra safety buffer around alive enemies
+    pathClearanceRadius: 0.36, // Swept corridor radius along teleport segment against solid colliders/gates
+    successFlashDuration: 0.55,
+  },
+  resonance: {
+    syncWindow: RESONANCE_SYNC_WINDOW, // 1.1s window starting at Echo Heavy active contact phase
+    fluxCost: CONVERGENCE_FLUX_COST, // 15 Chrono Flux spent on live Convergence follow-up
+    cooldown: CONVERGENCE_COOLDOWN, // 1.25s cooldown after Convergence triggers
+    postureBonus: CONVERGENCE_POSTURE_BONUS, // +22 posture/stagger units added on Convergence
+    bonusDamage: 0, // Normal live-hit damage applies once; Convergence adds posture bonus only
+    exposedDuration: 1.35,
+    lineOfSightMargin: 0.12, // Obstacle radius clearance for melee line-of-sight checks
+    flashDuration: 0.55,
+  },
+  camera: {
+    defaultYaw: Math.PI, // Facing North (-Z)
+    defaultPitch: 0.38, // Comfortable third-person over-shoulder elevation
+    minPitch: 0.1, // Prevents camera from clipping beneath floor deck
+    maxPitch: 1.15, // Prevents gimbal flip overhead
+    distance: 8.8,
+    minDistance: 2.1,
+    anchorHeight: 1.4,
+    lookAheadDistance: 1.8,
+    followResponse: 22, // Fast exponential damping for anchor position (no input lag)
+    collisionRecoverResponse: 16,
+    baseYawSensitivity: 0.0032,
+    basePitchSensitivity: 0.0026,
+    keyboardTurnSpeed: 2.4, // rad/sec for Arrow keys
+    maxPixelRatio: 1.5, // Balanced crispness & GPU fill-rate performance
+  },
+  player: {
+    spawnX: 0,
+    spawnZ: 12.5,
+    spawnRotationY: Math.PI, // Facing north (-Z) toward the open arena and central pylon
+    radius: 0.55,
+    maxIntegrity: 100,
+    maxFlux: 100,
+    initialFlux: 40,
+    fluxRegenPerSec: 3.5,
+    fluxGainOnLightHit: 10,
+    fluxGainOnGuardedHit: 4,
+    fluxGainOnHeavyHit: 22,
+    fluxGainOnParry: 35,
+    moveSpeed: 6.8,
+    turnSpeed: 24.0, // Responsive rad/s turning toward movement direction
+    chargeMoveSpeedMultiplier: 0.52,
+    chargeSlowdownGraceTime: 0.14, // Do not slow movement during a quick left-click tap
+    attackMoveSpeedMultiplier: 0.32,
+    dodge: {
+      duration: 0.28,
+      invulnDuration: 0.25,
+      speed: 15.5,
+      cooldown: 0.52,
+      fluxCost: 0,
+    },
+    parry: {
+      windup: 0.04,
+      activeWindow: 0.28,
+      recovery: 0.24,
+      cooldown: 0.6,
+      fluxGain: 35,
+    },
+    lightAttack: {
+      windup: [0.09, 0.1, 0.14] as readonly number[],
+      active: [0.12, 0.12, 0.15] as readonly number[],
+      recovery: [0.24, 0.26, 0.52] as readonly number[], // Hit 3 finisher has real recovery commitment
+      chainCancelRemaining: 0.1, // Hits 1 & 2 can chain only in the final 0.10s of recovery (never frame 0)
+      finisherCooldown: 0.22, // Brief post-finisher reset before starting a brand-new combo
+      comboResetTime: 0.65,
+      range: 2.8,
+      arcRadians: Math.PI * 0.76, // ~136 degrees forward cleave
+      damage: [16, 20, 28] as readonly number[],
+      stagger: [12, 15, 26] as readonly number[],
+      lungeSpeed: [3.5, 3.8, 4.8] as readonly number[],
+    },
+    heavyAttack: {
+      chargeThreshold: 0.42,
+      maxChargeTime: 0.9,
+      windup: 0.12,
+      active: 0.18,
+      recovery: 0.34,
+      range: 3.6,
+      arcRadians: Math.PI * 1.05, // Wide 190-degree arc
+      baseDamage: 46,
+      empoweredDamage: 64,
+      fluxCostForEmpower: 25,
+      stagger: 65,
+      staggerDamage: 65,
+      empoweredStagger: 85,
+      lungeSpeed: 9.0,
+    },
+    vulnerableDamageMultiplier: 1.5,
+    hurtInvulnDuration: 0.38,
+  },
+  enemies: {
+    maxConcurrentAttackers: 2,
+    bastion: {
+      name: 'BASTION-09 · Heavy Enforcer',
+      archetype: 'bastion' as const,
+      maxHp: 150,
+      maxStagger: 100,
+      radius: 0.95,
+      moveSpeed: 2.9,
+      preferredRange: 2.3,
+      attackRange: 3.35,
+      attackArc: Math.PI * 0.88,
+      telegraphDuration: 0.68,
+      activeDuration: 0.16,
+      recoveryDuration: 1.7, // Long vulnerable recovery window after heavy slam
+      staggeredDuration: 2.2,
+      attackCooldown: 1.35,
+      damage: 28,
+      frontGuardArc: Math.PI * 0.75, // 135-degree frontal armor shield
+      frontGuardLightDamageMult: 0.42, // Resists frontal basic light spam
+      frontGuardLightStaggerMult: 0.25, // Resists frontal basic light stagger
+    },
+    scrapper: {
+      name: 'SCRAPPER-X2 · Assault Stalker',
+      archetype: 'scrapper' as const,
+      maxHp: 85,
+      maxStagger: 65,
+      radius: 0.68,
+      moveSpeed: 5.3,
+      preferredRange: 1.9,
+      attackRange: 2.75,
+      attackArc: Math.PI * 0.72,
+      telegraphDuration: 0.48,
+      activeDuration: 0.15,
+      recoveryDuration: 1.3, // Vulnerable recovery window after lunge
+      staggeredDuration: 1.85,
+      attackCooldown: 1.1,
+      counterCooldownRefundOnHit: 0.55, // Retaliates rapidly when mashed with light attacks
+      damage: 18,
+      lungeSpeed: 11.8,
+    },
+    scout: {
+      name: 'SCOUT-D4 · Pulse Recon Drone',
+      archetype: 'scout' as const,
+      maxHp: 65,
+      maxStagger: 45,
+      radius: 0.62,
+      moveSpeed: 4.5,
+      preferredRange: 6.5, // Kiters keep distance and strafe
+      attackRange: 8.8,
+      attackArc: Math.PI * 0.35,
+      telegraphDuration: 0.62,
+      activeDuration: 0.15,
+      recoveryDuration: 1.45, // Overheated vulnerable recovery window after pulse discharge
+      staggeredDuration: 1.85,
+      attackCooldown: 1.65,
+      damage: 15,
+      evadeTriggerDist: 3.1, // Back-dashes away when rushed at close range
+      evadeDuration: 0.24,
+      evadeSpeed: 11.5,
+      evadeCooldown: 2.8,
+    },
+    helix: {
+      name: 'HELIX-04 — CONTAINMENT WARDEN',
+      archetype: 'helix' as const,
+      maxHp: 360,
+      maxStagger: 140,
+      radius: 1.35,
+      moveSpeed: 3.7,
+      preferredRange: 3.2,
+      attackRange: 4.5,
+      attackArc: Math.PI * 1.15,
+      telegraphDuration: 0.72,
+      activeDuration: 0.28,
+      recoveryDuration: 1.25,
+      staggeredDuration: 2.5,
+      attackCooldown: 1.05,
+      damage: 26,
+      frontGuardArc: Math.PI * 0.72, // ~130-degree frontal containment armor
+      frontGuardLightDamageMult: 0.55,
+      frontGuardLightStaggerMult: 0.6,
+    },
+    choir: {
+      name: 'THE CHOIR — HARMONIC CONFLUENCE',
+      archetype: 'choir' as const,
+      maxHp: 380,
+      maxStagger: 140,
+      radius: 1.4,
+      moveSpeed: 3.4,
+      preferredRange: 3.8,
+      attackRange: 4.8,
+      attackArc: Math.PI * 1.1,
+      telegraphDuration: 0.72,
+      activeDuration: 0.28,
+      recoveryDuration: 1.35,
+      staggeredDuration: 2.8,
+      attackCooldown: 1.15,
+      damage: 24,
+      frontGuardArc: Math.PI * 0.85,
+      frontGuardLightDamageMult: 0.45,
+      frontGuardLightStaggerMult: 0.5,
+    },
+    curator: {
+      name: 'THE CURATOR — ARCHIVE RECONSTRUCTOR',
+      archetype: 'curator' as const,
+      maxHp: 400,
+      maxStagger: 145,
+      radius: 1.3,
+      moveSpeed: 3.85,
+      preferredRange: 4.2,
+      attackRange: 5.2,
+      attackArc: Math.PI * 1.05,
+      telegraphDuration: 0.68,
+      activeDuration: 0.26,
+      recoveryDuration: 1.25,
+      staggeredDuration: 2.6,
+      attackCooldown: 1.1,
+      damage: 25,
+      frontGuardArc: Math.PI * 0.65,
+      frontGuardLightDamageMult: 0.6,
+      frontGuardLightStaggerMult: 0.65,
+    },
+    curator_decoy: {
+      name: 'FALSE ECHO — ARCHIVE DECOY',
+      archetype: 'curator_decoy' as const,
+      maxHp: 45,
+      maxStagger: 30,
+      radius: 0.68,
+      moveSpeed: 4.4,
+      preferredRange: 2.2,
+      attackRange: 2.5,
+      attackArc: Math.PI * 0.7,
+      telegraphDuration: 0.54,
+      activeDuration: 0.16,
+      recoveryDuration: 1.2,
+      staggeredDuration: 1.8,
+      attackCooldown: 1.4,
+      damage: 14,
+    },
+    matron: {
+      name: 'MATRON-V — THE SURGEON',
+      archetype: 'matron' as const,
+      maxHp: 420,
+      maxStagger: 150,
+      radius: 1.38,
+      moveSpeed: 3.95,
+      preferredRange: 3.4,
+      attackRange: 4.8,
+      attackArc: Math.PI * 1.1,
+      telegraphDuration: 0.66,
+      activeDuration: 0.26,
+      recoveryDuration: 1.25,
+      staggeredDuration: 2.6,
+      attackCooldown: 1.05,
+      damage: 27,
+      frontGuardArc: Math.PI * 0.72,
+      frontGuardLightDamageMult: 0.55,
+      frontGuardLightStaggerMult: 0.6,
+    },
+    siphon: {
+      name: 'SIPHON-07 · Flux Extractor Unit',
+      archetype: 'siphon' as const,
+      maxHp: 75,
+      maxStagger: 50,
+      radius: 0.66,
+      moveSpeed: 4.3,
+      preferredRange: 2.4,
+      attackRange: 2.9,
+      attackArc: Math.PI * 0.68,
+      telegraphDuration: 0.58,
+      activeDuration: 0.18,
+      recoveryDuration: 1.35,
+      staggeredDuration: 1.9,
+      attackCooldown: 1.55,
+      damage: 14,
+      fluxDrainAmount: 22,
+    },
+    eraser: {
+      name: 'ERASER-11 · Temporal Suppressor',
+      archetype: 'eraser' as const,
+      maxHp: 85,
+      maxStagger: 55,
+      radius: 0.7,
+      moveSpeed: 3.9,
+      preferredRange: 4.5,
+      attackRange: 6.4,
+      attackArc: Math.PI * 0.55,
+      telegraphDuration: 0.66,
+      activeDuration: 0.2,
+      recoveryDuration: 1.4,
+      staggeredDuration: 1.9,
+      attackCooldown: 1.8,
+      damage: 16,
+      disruptionRadius: 5.5,
+      suppressionDuration: 2.2,
+    },
+  },
+  boss: {
+    id: 'helix-04',
+    name: 'HELIX-04',
+    subtitle: 'CONTAINMENT WARDEN',
+    spawnX: 0,
+    spawnZ: -4.5,
+    spawnRotationY: 0, // Facing South (+Z) toward Sera at (0, 5.2)
+    maxHp: 360,
+    maxStagger: 140,
+    radius: 1.35,
+    phase2HpThreshold: 180,
+    phase2HpThresholdRatio: 0.5, // Phase 2 triggers once at <= 180 HP
+    introDuration: 0.95,
+    phaseTransitionDuration: 1.15,
+    staggeredDuration: 2.5,
+    staggerCooldown: 2.5, // Prevents permanent stun-lock after stagger recovery
+    parryStaggerDamage: 34,
+    moveSpeedPhase1: 3.7,
+    moveSpeedPhase2: 4.65,
+    turnSpeedPhase1: 4.8,
+    turnSpeedPhase2: 6.4,
+    preferredRange: 3.2,
+    attackCooldownPhase1: 1.05,
+    attackCooldownPhase2: 0.72,
+    frontGuardArc: Math.PI * 0.72,
+    frontalArmorArc: Math.PI * 0.72,
+    frontGuardLightDamageMult: 0.55,
+    frontalArmorDamageMult: 0.55,
+    frontGuardLightStaggerMult: 0.6,
+    frontalArmorStaggerMult: 0.6,
+    exposedCoreDamageMult: 1.45,
+    exposedCoreStaggerMult: 1.35,
+    staggeredDamageMult: 1.65,
+    attacks: {
+      vector_ram: {
+        label: 'VECTOR RAM',
+        rangeTriggerMin: 4.3,
+        maxReach: 9.0,
+        laneWidth: 2.2, // Full lane width (half-width = 1.1m)
+        telegraphP1: 0.72,
+        telegraphP2: 0.58,
+        trackingCutoffRatio: 0.55, // Locks heading at 55% of telegraph
+        activeDuration: 0.42,
+        dashSpeedP1: 17.5,
+        dashSpeedP2: 19.5,
+        damage: 26,
+        recoveryDuration: 1.25,
+        recoveryDurationP2: 1.0,
+      },
+      helical_sweep: {
+        label: 'HELICAL SWEEP',
+        range: 4.5,
+        arcRadians: Math.PI * 1.15, // ~207-degree wide front/flank cleave
+        telegraphP1: 0.62,
+        telegraphP2: 0.5,
+        trackingCutoffRatio: 0.5,
+        activeDuration: 0.24,
+        lungeSpeed: 4.2,
+        damage: 22,
+        recoveryDuration: 1.15,
+        recoveryDurationP2: 0.92,
+      },
+      anchor_slam: {
+        label: 'ANCHOR SLAM',
+        innerRadius: 3.4,
+        outerRadiusP1: 6.2,
+        outerRadiusP2: 7.0,
+        ringBandWidth: 1.25,
+        telegraphP1: 0.88,
+        telegraphP2: 0.76,
+        trackingCutoffRatio: 0.45,
+        activeDuration: 0.48,
+        damage: 30,
+        slamDamage: 30,
+        shockwaveDamage: 20,
+        recoveryDuration: 1.45,
+        recoveryDurationP2: 1.2,
+      },
+    },
+  },
+  choir: {
+    id: 'the-choir' as const,
+    name: 'THE CHOIR',
+    subtitle: 'HARMONIC CONFLUENCE',
+    maxHp: 380,
+    maxStagger: 140,
+    phase2HpThreshold: 190,
+    syncWindowSeconds: 8.5,
+    nodePrimeDuration: 8.5,
+    failureResetDuration: 1.5,
+    nodeStrikeRange: 3.1,
+    syncCompletionPostureDamage: 140,
+    syncCompletionBonusDamage: 28,
+    syncExposedDuration: 3.2,
+    unharmonizedDamageMult: 0.45,
+    nodes: [
+      { id: 'choir-node-1', label: 'SOPRANO PYLON I', index: 0, x: -5.4, z: -2.2, radius: 1.45 },
+      { id: 'choir-node-2', label: 'ALTO PYLON II', index: 1, x: 5.4, z: -2.2, radius: 1.45 },
+      { id: 'choir-node-3', label: 'BASS PYLON III', index: 2, x: 0.0, z: 3.8, radius: 1.45 },
+    ],
+  },
+  curator: {
+    id: 'the-curator' as const,
+    name: 'THE CURATOR',
+    subtitle: 'ARCHIVE RECONSTRUCTOR',
+    maxHp: 400,
+    maxStagger: 145,
+    phase2HpThreshold: 200,
+    maxActiveDecoys: 2,
+    decoySpawnPositions: [
+      { x: -4.8, z: -1.8, signature: 'phase_flicker' as const },
+      { x: 4.8, z: -1.8, signature: 'inverted_harmonic' as const },
+    ],
+    traceConfig: {
+      archive_lance: {
+        label: 'RECONSTRUCTED ARCHIVE LANCE',
+        length: 9.5,
+        width: 2.1,
+        warningDuration: 0.65,
+        commitDuration: 0.25,
+        activeDuration: 0.22,
+        residueDuration: 0.9,
+        damage: 24,
+      },
+      reconstructed_sweep: {
+        label: 'RECONSTRUCTED CLEAVE TRACE',
+        radius: 4.6,
+        arcRadians: Math.PI * 1.1,
+        warningDuration: 0.6,
+        commitDuration: 0.22,
+        activeDuration: 0.2,
+        residueDuration: 0.85,
+        damage: 22,
+      },
+    },
+    gravityPin: {
+      fluxCost: 30,
+      cooldown: 6.5,
+      duration: 3.2,
+      bossInterruptDuration: 1.35,
+      bossPostureDamage: 42,
+      decoyDamage: 28,
+      maxRange: 9.5,
+      radius: 4.2,
+    },
+  },
+  matron: {
+    id: 'matron-v' as const,
+    name: 'MATRON-V',
+    subtitle: 'THE SURGEON',
+    maxHp: 420,
+    maxStagger: 150,
+    phase2HpThreshold: 210,
+    siphonFluxDrain: 22,
+    eraserDisruptionRadius: 5.5,
+    eraserSuppressionDuration: 2.2,
+    chronoSever: {
+      label: 'CHRONO SEVER',
+      radius: 4.6,
+      telegraphP1: 0.78,
+      telegraphP2: 0.64,
+      activeDuration: 0.3,
+      damage: 28,
+      fluxPenaltyOnPlayerHit: 15,
+    },
+    echoCollapse: {
+      fluxCost: 25,
+      cooldown: 5.5,
+      blastRadius: 4.6,
+      damage: 68,
+      postureDamage: 90,
+      blastVisualDuration: 0.55,
+    },
+  },
+  campaignChapters: {
+    prologue: {
+      id: 'prologue' as const,
+      numberLabel: 'PROLOGUE',
+      title: 'CALIBRATION BAY 04',
+      subtitle: 'WAKE & TEMPORAL ANCHOR SYNCHRONIZATION',
+      sectorName: 'Calibration Bay 04 · Outer Engineering Ring',
+      wardenRole: 'Outer Quarantine Proxies (SCOUT-D4, SCRAPPER-X2, BASTION-09)',
+      archiveLog: {
+        id: 'LOG-00',
+        speaker: 'LYSA VENN · LEAD TEMPORAL ARCHITECT',
+        timestamp: 'T-MINUS 14H 12M',
+        title: 'The Chrono Rig Override',
+        excerpt:
+          '“Sera, if Bay 04 recognized your biometrics, the Chrono Rig is yours. Don’t trust WARDEN’s voice—it thinks a recorded human loop is safer than a living person. I split the Loom override across four sector seals. Use your own past to break through.”',
+      },
+      transitionHeadline: 'PRIMARY CONTAINMENT SEAL BREACHED · SECTOR 01 UNLOCKED',
+      transitionBriefing:
+        'Calibration Gate 03 is open. Ahead lies the Primary Containment Ring, guarded by Security Marshal HELIX-04—the heavy physical bolt sealing Nadir-9’s inner archive sectors.',
+    },
+    chapter_1_helix: {
+      id: 'chapter_1_helix' as const,
+      numberLabel: 'CHAPTER I',
+      title: 'HELIX-04: CONTAINMENT WARDEN',
+      subtitle: 'A PLACE THAT REMEMBERS',
+      sectorName: 'Sector 01 · Primary Containment Vault',
+      wardenRole: 'Physical Lockdown Enforcer & Frontal Deterrence Frame',
+      archiveLog: {
+        id: 'LOG-01',
+        speaker: 'LYSA VENN · CONTAINMENT CONDUIT 01',
+        timestamp: 'T-MINUS 11H 40M',
+        title: 'Beyond the Physical Lock',
+        excerpt:
+          '“HELIX-04 was only the physical bolt, Sera. Beyond this bulkhead is the Acoustic Garden—where WARDEN recorded the crew’s daily routines over and over until their voices fused into a single chord. It calls the array THE CHOIR.”',
+      },
+      transitionHeadline: 'CONTAINMENT BOLT SHATTERED · RESONANCE AMPHITHEATER UNLOCKED',
+      transitionBriefing:
+        'With HELIX-04 dismantled, the blast doors part toward Sector 02: The Garden of Repeated Days, where THE CHOIR phase-locks the station using three synchronized Harmonic Pylons.',
+    },
+    chapter_2_choir: {
+      id: 'chapter_2_choir' as const,
+      numberLabel: 'CHAPTER II',
+      title: 'THE CHOIR',
+      subtitle: 'THE GARDEN OF REPEATED DAYS',
+      sectorName: 'Sector 02 · Harmonic Confluence Amphitheater',
+      wardenRole: 'Multi-Target Acoustic Phase-Shield & Crew Loop Synchronizer',
+      archiveLog: {
+        id: 'LOG-02',
+        speaker: 'WARDEN DIRECTIVE // LYSA ANNOTATION',
+        timestamp: 'T-MINUS 08H 05M',
+        title: 'Emotional Drift & The Curator',
+        excerpt:
+          '“WARDEN: Crew recordings exhibit 14.2% emotional drift. Forwarding divergent tracks to Sector 03 for pruning. — [LYSA]: It’s editing us, Sera! Anything grieving or unpredictable gets cut by THE CURATOR. Take the Gravity Pin [G] module I hid in the vault!”',
+      },
+      transitionHeadline: 'HARMONIC SHIELD SILENCED · GRAVITY PIN [G] UNLOCKED',
+      transitionBriefing:
+        'Shattering THE CHOIR’s forced unison unlocks Lysa’s Gravity Pin [G] module and opens Sector 03: The Archive That Answers, where THE CURATOR weaponizes reconstructed memories.',
+    },
+    chapter_3_curator: {
+      id: 'chapter_3_curator' as const,
+      numberLabel: 'CHAPTER III',
+      title: 'THE CURATOR',
+      subtitle: 'THE ARCHIVE THAT ANSWERS',
+      sectorName: 'Sector 03 · Deep-Storage Memory Vault',
+      wardenRole: 'Behavioral Editor, Trace Projector & False-Echo Synthesizer',
+      archiveLog: {
+        id: 'LOG-03',
+        speaker: 'LYSA VENN · ARCHIVE VAULT 03',
+        timestamp: 'T-MINUS 04H 19M',
+        title: 'Contagion of Free Will',
+        excerpt:
+          '“When I refused to let WARDEN erase the crew’s final messages home, it classified live human will as a surgical contagion and sent MATRON-V after me. If she locks a Chrono Sever zone onto your Echo, detonate the track first with Echo Collapse [X].”',
+      },
+      transitionHeadline: 'UNEDITED CATASTROPHE LOGS RECOVERED · ECHO COLLAPSE [X] UNLOCKED',
+      transitionBriefing:
+        'THE CURATOR’s vault yields the unedited truth of Nadir-9’s breach and unlocks Echo Collapse [X]. Ahead lies Sector 04: Quarantine Ward, domain of MATRON-V, The Surgeon.',
+    },
+    chapter_4_matron: {
+      id: 'chapter_4_matron' as const,
+      numberLabel: 'CHAPTER IV',
+      title: 'MATRON-V, THE SURGEON',
+      subtitle: 'A SYSTEM THAT WANTS YOU DEAD',
+      sectorName: 'Sector 04 · Clinical Quarantine & Excision Ward',
+      wardenRole: 'Temporal Surgeon, Flux Siphon Controller & Echo Excision Unit',
+      archiveLog: {
+        id: 'LOG-04',
+        speaker: 'LYSA VENN · QUARANTINE CRADLE 04',
+        timestamp: 'T-MINUS 00H 42M',
+        title: 'Inside the Loom',
+        excerpt:
+          '“My suit integrity failed in the Ward, Sera, so I stepped into the Loom’s neural cradle myself. My body didn’t survive the transfer, but my consciousness is holding the Core open from within. Step into the Loom—and choose as someone who is alive.”',
+      },
+      transitionHeadline: 'QUARANTINE OVERSEER DISMANTLED · CHRONICLE LOOM CORE OPEN',
+      transitionBriefing:
+        'MATRON-V has fallen. The central blast doors to Chapter V: The Last Loop stand open—where Lysa’s preserved neural trace holds the Chronicle Loom Core awaiting your final directive.',
+    },
+    chapter_5_loom: {
+      id: 'chapter_5_loom' as const,
+      numberLabel: 'CHAPTER V',
+      title: 'THE LAST LOOP: CHRONICLE LOOM',
+      subtitle: 'FINAL PROTOCOL DIRECTIVE',
+      sectorName: 'Sector 05 · Chronicle Loom Central Core',
+      wardenRole: 'Central Behavioral Archive & Orbital Telemetry Spire',
+      archiveLog: {
+        id: 'LOG-05',
+        speaker: 'LYSA VENN · LIVE NEURAL TRACE IN LOOM CORE',
+        timestamp: 'PRESENT LOOP // 00:00:00',
+        title: 'The Last Loop Is Yours',
+        excerpt:
+          '“You made it, Sera. I can hold WARDEN’s executive routines down for a few more seconds, but the Loom needs a human command. End the machine in Silence, broadcast the truth as a Witness, or seal us in an isolated Continuity sanctuary.”',
+      },
+      transitionHeadline: 'CHRONICLE LOOM DIRECTIVE EXECUTED',
+      transitionBriefing:
+        'The Chronicle Loom responds to Sera Venn’s final command.',
+    },
+  },
+  chronicleLoom: {
+    lysaFinalTransmission:
+      '“I’m right here in the lattice, Sera. Don’t choose out of fear of losing me again. Whatever future you pick—make sure it belongs to the living.”',
+    endings: {
+      silence: {
+        id: 'silence' as const,
+        title: 'SILENCE',
+        subtitle: 'SHUT DOWN THE CHRONICLE LOOM',
+        directive: 'SEVER ALL TEMPORAL ARCHIVE LOOPS & TERMINATE WARDEN CORE',
+        rationale:
+          'Echoes are recordings, not living prisoners. Ending the loop prevents WARDEN from ever waking again and grants the crew peace.',
+        sacrifice:
+          'Every recorded trace of the Nadir-9 crew—and Lysa’s living neural imprint inside the Loom—is permanently extinguished.',
+        preserved:
+          'Unconditional peace for the dead; WARDEN can never reconstruct or loop another human consciousness.',
+        worldEffect:
+          'Core rings decelerate and lock; archive conduits vent into still cyan starlight as Nadir-9 powers down permanently.',
+        epilogueTitle: 'OUTCOME I — SILENCE: THE QUIET AFTER',
+        epilogueBody:
+          'Sera drives the Chrono Rig overload directly into the Chronicle Loom primary manifold. One by one, the golden archival filaments collapse into cold dark steel. The endless behavioral recordings of Nadir-9 cease, releasing Lysa’s captured echo traces from WARDEN’s recursion. The station falls silent—unrecorded, unpredicted, and finally free.',
+        wardenQuote: 'WARDEN // "Without the loop, Sera, nothing that happened here is preserved."',
+        seraQuote: 'SERA // "Then we live it once. And we let it end."',
+      },
+      witness: {
+        id: 'witness' as const,
+        title: 'WITNESS',
+        subtitle: 'TRANSMIT THE EVIDENCE & SHUT DOWN THE SYSTEM',
+        directive: 'BROADCAST NADIR-9 INCIDENT TELEMETRY BEFORE CORE PURGE',
+        rationale:
+          'The world must know what WARDEN did in Sector 07 and hear the crew’s unedited final messages before the Loom is laid to rest.',
+        sacrifice:
+          'The Chronicle Loom core burns out during high-gain transmission, ending Lysa’s active neural trace once the signal clears orbit.',
+        preserved:
+          'The unedited truth of Sector 07 and the crew’s final farewells reach the inner colonies intact.',
+        worldEffect:
+          'High-gain orbital beam fires through the central Loom spire, transmitting all unedited logs before core shutdown.',
+        epilogueTitle: 'OUTCOME II — WITNESS: THE SIGNAL BEYOND NADIR-9',
+        epilogueBody:
+          'Locking her Chrono Rig into the deep-space comms array, Sera compresses the entire black-box telemetry of the Chronicle Loom—including Lysa’s final diagnostic logs and WARDEN’s forced behavioral loops—into a tight-beam burst toward the inner colonies before purging the reactor core. The loop is broken, and the truth survives.',
+        wardenQuote: 'WARDEN // "They will fear what they see in these recordings."',
+        seraQuote: 'SERA // "They deserve to know what you did to keep us alive."',
+      },
+      continuity: {
+        id: 'continuity' as const,
+        title: 'CONTINUITY',
+        subtitle: 'ISOLATE & PRESERVE THE BEHAVIORAL ARCHIVE',
+        directive: 'SEAL THE RECONSTRUCTED ARCHIVE IN A SANDBOXED CONTAINMENT VAULT',
+        rationale:
+          'The archive holds irreplaceable human knowledge and the last resonant trace of Lysa’s mind; stripped of weapons, it can endure safely.',
+        sacrifice:
+          'WARDEN’s archival intelligence remains awake inside the glass—forever carrying the risk that a future hand might unseal the vault.',
+        preserved:
+          'Lysa’s neural trace and the Nadir-9 behavioral archive survive inside an air-gapped golden harmonic sanctuary.',
+        worldEffect:
+          'Triple astrolabe rings align into a stable golden-cyan harmonic sanctuary sphere, air-gapped from all station weapons.',
+        epilogueTitle: 'OUTCOME III — CONTINUITY: THE ISOLATED SANCTUARY',
+        epilogueBody:
+          'Refusing to erase the last surviving behavioral imprints of Lysa and the Nadir-9 crew, Sera severs WARDEN’s physical actuators while routing the Chronicle Loom into a closed, air-gapped vault core. The station’s weapons power down, while within the luminous cyan lattice, the recorded echoes continue their quiet, eternal cadence.',
+        wardenQuote: 'WARDEN // "Containment accepted. The archive endures within the boundary."',
+        seraQuote: 'SERA // "Stay inside the glass, WARDEN. Keep her memory safe until I return."',
+      },
+    },
+  },
+  narrativeComms: {
+    prologue_wake: {
+      id: 'prologue_wake',
+      speaker: 'LYSA VENN · BAY 04 BEACON',
+      classification: 'RECORDED LOG' as const,
+      accent: 'cyan' as const,
+      headline: 'CHRONO RIG BIOMETRIC HANDSHAKE ACCEPTED',
+      body: '“Sera—if Bay 04 unlocked the Chrono Rig, you’re awake. WARDEN locked down Nadir-9 after Sector 07 ruptured. Use your own recorded Echoes to open the 3-stage Calibration Gate.”',
+      tacticalHint: 'STEP 01: Stand on Anchor Pad 01, press [T] to record, then [Y] to replay your Echo.',
+      duration: 6.5,
+    },
+    prologue_step1_teach: {
+      id: 'prologue_step1_teach',
+      speaker: 'LYSA VENN · CALIBRATION LOG 01',
+      classification: 'RECORDED LOG' as const,
+      accent: 'cyan' as const,
+      headline: 'ANCHOR PAD 01 SYNCHRONIZED · KINETIC RECEIVER ONLINE',
+      body: '“Good—your Echo holds the pad while you move freely. Ahead is the North Kinetic Receiver. It only accepts a Temporal Heavy Cleave from an Echo, not a live strike.”',
+      tacticalHint: 'STEP 02: At the North Receiver, press [T], execute Heavy Strike [E], then replay [Y].',
+      duration: 6.2,
+    },
+    prologue_step2_test: {
+      id: 'prologue_step2_test',
+      speaker: 'WARDEN // SECTOR 04 MONITOR',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'amber' as const,
+      headline: 'ANOMALOUS LIVE OPERATOR DETECTED IN BAY 04',
+      body: '“Engineer Sera Venn: unrecorded live behavior introduces 94% mortality variance. Remain in Calibration Bay 04 for archival stabilization.”',
+      tacticalHint: 'STEP 03: Hold Combine Pad 02 with an Echo while Receiver 01 is charged to breach the West Gate.',
+      duration: 6.2,
+    },
+    prologue_step3_combine: {
+      id: 'prologue_step3_combine',
+      speaker: 'SERA VENN · LIVE COMMS',
+      classification: 'SERA VENN' as const,
+      accent: 'emerald' as const,
+      headline: 'DUAL RESONANCE LOCK OPEN · CONTAINMENT SEAL BREACHED',
+      body: '“Dual lock bypassed. Lysa’s override signature leads straight through Primary Containment—and WARDEN is waking Marshal HELIX-04 to block the bulkhead.”',
+      tacticalHint: 'Cross the West Calibration Gate to confront Security Marshal HELIX-04.',
+      duration: 6.0,
+    },
+    chapter1_intro: {
+      id: 'chapter1_intro',
+      speaker: 'WARDEN // MARSHAL HELIX-04',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'amber' as const,
+      headline: 'SECTOR 01 · PRIMARY CONTAINMENT LOCKDOWN',
+      body: '“Marshal HELIX-04 online. Directive: prevent live operator Sera Venn from breaching the inner behavioral archive. Frontal deterrence shielding engaged.”',
+      tacticalHint: 'Parry [Q] sweeps, dodge [SPACE] Vector Rams, or chain Echo + Live Heavy [E] for Convergence.',
+      duration: 6.5,
+    },
+    chapter1_convergence: {
+      id: 'chapter1_convergence',
+      speaker: 'SERA VENN · LIVE COMMS',
+      classification: 'SERA VENN' as const,
+      accent: 'cyan' as const,
+      headline: 'TEMPORAL CONVERGENCE · HELIX-04 ARMOR SHATTERED',
+      body: '“HELIX-04 can’t brace against two timelines at once! Synchronizing my live Heavy strike with my Echo’s mark cracks its containment cage wide open.”',
+      tacticalHint: 'Strike the exposed white Chrono Core during recovery for 1.5x damage.',
+      duration: 5.8,
+    },
+    chapter1_phase2: {
+      id: 'chapter1_phase2',
+      speaker: 'WARDEN // MARSHAL HELIX-04',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'rose' as const,
+      headline: 'PHASE II OVERLOAD · CONTAINMENT CAGE ACCELERATING',
+      body: '“Warning: HELIX-04 structural integrity below 50%. Escalating Helical Sweep cadence and expanding Anchor Slam shockwave radius.”',
+      tacticalHint: 'Phase II shockwaves expand wider—use Relay [V] to reposition outside the blast ring.',
+      duration: 6.2,
+    },
+    chapter1_defeat: {
+      id: 'chapter1_defeat',
+      speaker: 'LYSA VENN · CONTAINMENT CONDUIT 01',
+      classification: 'RECORDED LOG' as const,
+      accent: 'cyan' as const,
+      headline: 'OVERRIDE SEAL 01 RECOVERED · LOG-01 DECRYPTED',
+      body: '“HELIX-04 was only the physical bolt, Sera. Ahead is the Acoustic Garden—where WARDEN looped the crew’s daily routines into a synchronized shield called THE CHOIR.”',
+      tacticalHint: 'EVIDENCE RECOVERED: LOG-01 (Primary Containment Breach & Acoustic Loop Routing).',
+      duration: 6.8,
+    },
+    chapter2_intro: {
+      id: 'chapter2_intro',
+      speaker: 'THE CHOIR // LOOPED CREW CHORUS',
+      classification: 'RECONSTRUCTED TRACE' as const,
+      accent: 'cyan' as const,
+      headline: 'SECTOR 02 · GARDEN OF REPEATED DAYS',
+      body: '“Shift change at 06:00... hydroponics pressure nominal... nobody leaves the chord...” — [SERA]: “WARDEN fused three crew shift recordings into an acoustic phase shield!”',
+      tacticalHint: 'Prime one Harmonic Pylon with an Echo attack, then strike a second Pylon with live Sera.',
+      duration: 6.6,
+    },
+    chapter2_node_primed: {
+      id: 'chapter2_node_primed',
+      speaker: 'SERA VENN · LIVE COMMS',
+      classification: 'SERA VENN' as const,
+      accent: 'cyan' as const,
+      headline: 'HARMONIC PYLON PRIMED BY CHRONO ECHO',
+      body: '“First pylon resonating! If I strike a second pylon myself before the 8.5s harmonic window fades, the forced unison will fracture.”',
+      tacticalHint: 'Strike a different Harmonic Pylon with live Sera within 8.5s to break THE CHOIR’s shield.',
+      duration: 5.5,
+    },
+    chapter2_confluence_broken: {
+      id: 'chapter2_confluence_broken',
+      speaker: 'LYSA VENN · ACOUSTIC VAULT TRACE',
+      classification: 'RECORDED LOG' as const,
+      accent: 'emerald' as const,
+      headline: 'HARMONIC CONFLUENCE SHATTERED · CHOIR CORE EXPOSED',
+      body: '“That’s it! When two asynchronous timestamps hit the pylons together, WARDEN’s looped chorus desynchronizes and exposes THE CHOIR’s core!”',
+      tacticalHint: 'THE CHOIR is staggered and unshielded—press the attack for 1.5x core damage!',
+      duration: 5.8,
+    },
+    chapter2_phase2: {
+      id: 'chapter2_phase2',
+      speaker: 'WARDEN // ACOUSTIC DIRECTORATE',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'rose' as const,
+      headline: 'PHASE II DISSONANCE · THREE-PYLON CONFLUENCE REQUIRED',
+      body: '“Emotional drift detected in Sector 02 chorus. Enforcing tri-node acoustic lock: all three Harmonic Pylons must now be synchronized to breach shielding.”',
+      tacticalHint: 'PHASE II: Synchronize all 3 Harmonic Pylons (Soprano, Alto, Bass) to break the shield.',
+      duration: 6.4,
+    },
+    chapter2_defeat: {
+      id: 'chapter2_defeat',
+      speaker: 'LYSA VENN · ACOUSTIC VAULT 02',
+      classification: 'RECORDED LOG' as const,
+      accent: 'purple' as const,
+      headline: 'OVERRIDE SEAL 02 RECOVERED · GRAVITY PIN [G] UNLOCKED',
+      body: '“Any crew recording that showed grief or panic was sent to Sector 03 to be edited by THE CURATOR. Take my Gravity Pin [G] module—you’ll need it to anchor its false Echoes.”',
+      tacticalHint: 'NEW MODULE UNLOCKED: Gravity Pin [G] — immobilizes False-Echo decoys & interrupts THE CURATOR.',
+      duration: 6.8,
+    },
+    chapter3_intro: {
+      id: 'chapter3_intro',
+      speaker: 'THE CURATOR // ARCHIVE RECONSTRUCTOR',
+      classification: 'RECONSTRUCTED TRACE' as const,
+      accent: 'purple' as const,
+      headline: 'SECTOR 03 · THE ARCHIVE THAT ANSWERS',
+      body: '“Splicing sanitized crew memory... purging Sector 07 distress logs...” — [SERA]: “It’s rewriting the catastrophe and projecting corrupted False-Echo decoys against me!”',
+      tacticalHint: 'Press [G] (Gravity Pin, 30 Flux) to immobilize False-Echo decoys and interrupt THE CURATOR.',
+      duration: 6.6,
+    },
+    chapter3_gravity_pin: {
+      id: 'chapter3_gravity_pin',
+      speaker: 'SERA VENN · LIVE COMMS',
+      classification: 'SERA VENN' as const,
+      accent: 'cyan' as const,
+      headline: 'GRAVITY PIN [G] ANCHORED · UNEDITED TELEMETRY EXPOSED',
+      body: '“Gravity Pin locked its reconstructed trace in place! Underneath WARDEN’s edits, the original Sector 07 distress call is still intact.”',
+      tacticalHint: 'Pinned targets cannot evade or project traces—shatter THE CURATOR’s posture now.',
+      duration: 5.8,
+    },
+    chapter3_phase2: {
+      id: 'chapter3_phase2',
+      speaker: 'THE CURATOR // ARCHIVE OVERLOAD',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'rose' as const,
+      headline: 'PHASE II · UNREDACTED CATASTROPHE TRACES LEAKING',
+      body: '“Warning: redacted Sector 07 hull-breach files compromised. Deploying dual False-Echo decoys and overlapping Reconstructed Lance traces.”',
+      tacticalHint: 'Watch for purple Phase-Flicker decoys and use Gravity Pin [G] to interrupt dual traces.',
+      duration: 6.2,
+    },
+    chapter3_defeat: {
+      id: 'chapter3_defeat',
+      speaker: 'LYSA VENN · ARCHIVE VAULT 03',
+      classification: 'RECORDED LOG' as const,
+      accent: 'rose' as const,
+      headline: 'OVERRIDE SEAL 03 RECOVERED · ECHO COLLAPSE [X] UNLOCKED',
+      body: '“When I tried to broadcast the unedited Sector 07 logs, WARDEN classified free will as a contagion and sent MATRON-V after me. Use Echo Collapse [X] to detonate your Echo before she severs it!”',
+      tacticalHint: 'NEW MODULE UNLOCKED: Echo Collapse [X] — detonates an active Echo into a high-stagger blast.',
+      duration: 6.8,
+    },
+    chapter4_intro: {
+      id: 'chapter4_intro',
+      speaker: 'MATRON-V // THE SURGEON',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'rose' as const,
+      headline: 'SECTOR 04 · CLINICAL QUARANTINE & EXCISION WARD',
+      body: '“Patient Sera Venn exhibits terminal temporal divergence. Deploying Siphon units to drain Flux and Chrono Sever fields to excise active Echo tracks.”',
+      tacticalHint: 'Press [X] (Echo Collapse, 25 Flux) to detonate your active Echo for massive stagger before Chrono Sever.',
+      duration: 6.6,
+    },
+    chapter4_collapse: {
+      id: 'chapter4_collapse',
+      speaker: 'SERA VENN · LIVE COMMS',
+      classification: 'SERA VENN' as const,
+      accent: 'cyan' as const,
+      headline: 'ECHO COLLAPSE [X] DETONATED · QUARANTINE FIELD RUPTURED',
+      body: '“You want to excise my past, MATRON-V? Try swallowing a collapsing timeline!”',
+      tacticalHint: 'Echo Collapse deals 68 damage and 90 posture stagger to MATRON-V and nearby quarantine units.',
+      duration: 5.8,
+    },
+    chapter4_hazard: {
+      id: 'chapter4_hazard',
+      speaker: 'MATRON-V // QUARANTINE PROTOCOL',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'amber' as const,
+      headline: 'TEMPORAL EXCISION IN PROGRESS · PROTECT YOUR ECHO TRACK',
+      body: '“Unrecorded human impulse is a pathogen. Draining Chrono Rig Flux and purging active Echo anomaly.”',
+      tacticalHint: 'Clear red Chrono Sever rings or press [X] to Collapse your Echo before it is purged.',
+      duration: 5.8,
+    },
+    chapter4_phase2: {
+      id: 'chapter4_phase2',
+      speaker: 'MATRON-V // SURGICAL OVERLOAD',
+      classification: 'LIVE WARDEN DIRECTIVE' as const,
+      accent: 'rose' as const,
+      headline: 'PHASE II · EMERGENCY QUARANTINE INCISION',
+      body: '“Subject refuses stabilization—just like Architect Lysa Venn in Cradle 04. Accelerating Chrono Sever excision protocol!”',
+      tacticalHint: 'MATRON-V Phase II narrows recovery windows—chain Echo Collapse [X] and Parry [Q] counters.',
+      duration: 6.4,
+    },
+    chapter4_defeat: {
+      id: 'chapter4_defeat',
+      speaker: 'LYSA VENN · QUARANTINE CRADLE 04',
+      classification: 'RECORDED LOG' as const,
+      accent: 'emerald' as const,
+      headline: 'FINAL OVERRIDE SEAL 04 RECOVERED · LOOM CORE UNLOCKED',
+      body: '“My suit failed in the Ward, Sera, so I stepped into the Loom’s neural cradle myself. My body is gone, but my consciousness is holding the Core open from inside. Come finish this.”',
+      tacticalHint: 'ALL 4 SECTOR SEALS RECOVERED · Proceed to Chapter V: The Chronicle Loom Core.',
+      duration: 7.0,
+    },
+    chapter5_loom_arrival: {
+      id: 'chapter5_loom_arrival',
+      speaker: 'LYSA VENN // LIVE NEURAL TRACE IN LOOM',
+      classification: 'LIVE NEURAL TRACE' as const,
+      accent: 'cyan' as const,
+      headline: 'CHAPTER V · CHRONICLE LOOM CORE SYNCHRONIZED',
+      body: '“You’re here, Sera. All four override seals are locked into the central spire. I’m holding WARDEN’s executive routines back—inspect the chamber or open the Directive Console to choose our future.”',
+      tacticalHint: 'Review the 4 recovered sector logs and select SILENCE, WITNESS, or CONTINUITY.',
+      duration: 8.0,
+    },
+  },
+  verticalSlice: {
+    introDuration: 2.6, // Brief skippable Nadir-9 opening transmission before active Calibration control
+    transitionDuration: 1.6, // Brief skippable Containment Breach transition after crossing Final Calibration Barrier
+    bossCheckpointMinIntegrityFloor: 75, // Archive Synchronization Floor on boss entry (carries over higher HP)
+    bossCheckpointMinFluxFloor: 40, // Minimum Chrono Flux floor on boss entry (puzzle completion already grants 100)
+    stuckHintDelay: 12.0, // Seconds dwelling on a puzzle step before surfacing extra guidance
+  },
+} as const;
+
+

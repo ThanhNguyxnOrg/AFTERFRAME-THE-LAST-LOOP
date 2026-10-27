@@ -1,0 +1,465 @@
+# AFTERFRAME: THE LAST LOOP — PHASE 7
+## Vertical Slice Integration: Opening → Calibration → HELIX-04 → Victory/Defeat → Replay
+
+Continue working in the existing AFTERFRAME: THE LAST LOOP React + Three.js project. This is a vertical-slice integration phase, not a rewrite or a new prototype.
+
+The goal is to turn the existing systems into one coherent, playable, polished experience that a new player can start, learn, complete, fail, and replay without relying on developer-only shortcuts.
+
+## 1. Verified baseline and constraints
+
+The Phase 6.2.1 report claims:
+
+- 71/71 simulation tests passing.
+- TypeScript validation and production build passing.
+- Standard Test Bay and HELIX-04 boss encounter modes functioning.
+- Echo recording/playback, Echo-only pressure plates, Resonance Receiver, progression barriers, Relay, Resonance and Convergence functioning.
+- HELIX-04 has three telegraphed attacks, two phases, boss-specific HUD, victory/defeat handling, and restart.
+- `GAME_CONFIG.player.initialFlux = 40`, `maxFlux = 100`, and initial Integrity is 100.
+- Resonance uses the established 1.1s window, 15 Flux cost, 1.25s cooldown, and +22 posture bonus with zero bonus HP damage.
+- Relay costs 25 Flux, has a 1.0s cooldown, and an 8.0m range under the current canonical configuration.
+- Mobile directional touch controls have been added and exercised in headless Chromium.
+
+Treat these as reported results and inspect the actual code before relying on them. Do not undo the established combat fixes or silently change the canonical configuration.
+
+The earlier reports disagree about the standard encounter's enemy count: the standard start was reported to contain three canonical enemies, whereas a later restart test reported `enemiesAlive: 5`. Investigate this discrepancy during integration and document whether it reflects additional intended enemies, a wave, a counting distinction, or an actual regression. Do not arbitrarily force either number without inspecting the source and running game.
+
+## 2. Inspect and design the vertical slice before editing
+
+Inspect the actual implementation and current project structure, especially:
+
+- `src/App.tsx`
+- `src/game/config.ts`
+- `src/game/simulation.ts`
+- `src/game/simulation.test.ts`
+- `src/game/renderer.ts`
+- `src/game/input.ts`
+- `src/game/audio.ts`
+- `src/components/GameHud.tsx`
+- Existing title screen, StatusModal, pause, defeat/victory UI, encounter entry, encounter reset, and browser test hooks.
+
+Identify the current flow states, encounter modes, gameplay transitions, resource ownership, and cleanup responsibilities.
+
+Before making code changes, write down a concise proposed flow and state-transition plan. Then implement it using the existing architecture where practical.
+
+Avoid introducing a parallel state machine that duplicates `appState`, `encounterMode`, boss state, puzzle stage, and outcome without a clear reason. If a new run/progression state is necessary, make it the authoritative source for progression and integrate it cleanly.
+
+### Required player-facing route
+
+Implement a discoverable primary route through the following experience:
+
+1. Title screen.
+2. Brief, skippable mission introduction.
+3. Calibration Bay 04 gameplay and tutorial.
+4. Echo puzzle progression and barrier completion.
+5. Short transition into the containment encounter.
+6. HELIX-04 boss introduction and complete battle.
+7. Victory or defeat result.
+8. Clear options to retry, replay the whole vertical slice, or return to title.
+
+The player must not need to use `[B]`, `?boss=1`, `window.__afterframeTest`, manually changed HP, developer console commands, or hidden test flags to complete the primary route.
+
+Keep useful direct-launch and practice tools available as explicit secondary options where already implemented, but distinguish them from the primary New Run experience.
+
+The existing standard Test Bay and direct boss-entry routes must remain usable for testing. Do not remove them just to simplify the primary flow.
+
+## 3. Title screen and narrative introduction
+
+Turn the title screen into a clear entry point.
+
+Requirements:
+
+- The primary action should start the integrated vertical slice. Give it a clear label such as `NEW RUN` or `BEGIN MISSION`.
+- Existing standard/practice and direct boss-entry actions may remain, but should be visually secondary and clearly identified as practice/testing encounters.
+- Controls/help should be discoverable before and during gameplay.
+- Preserve the project's existing visual identity and upgraded Phase 5.2 style.
+- Do not expose debugging tools as primary player-facing actions.
+
+Create a short, skippable opening sequence consistent with the existing story: Sera Venn, Nadir-9, the Chrono Rig, the search for Lysa, and the containment guardian HELIX-04.
+
+Use the established lore carefully. Do not introduce unrelated characters, lore revelations, or campaign promises that the existing project cannot support.
+
+Possible presentation:
+- A title/transmission card.
+- One concise mission objective.
+- A short radio-style text exchange or system announcement.
+- A smooth transition into Calibration Bay 04.
+
+Use existing audio, text, environment, and camera systems. Do not require expensive new cinematic assets.
+
+The introduction must be skippable, must not block controls indefinitely, and must not be replayed unexpectedly after a normal pause/resume.
+
+Provide a clear first objective in gameplay. The player should understand where to move and what to accomplish.
+
+## 4. Tutorial integrated into actual gameplay
+
+The tutorial must teach the player's real controls and mechanics without becoming a separate unfinished tutorial scene.
+
+Inspect the authoritative keyboard, pointer, and touch bindings before writing any control labels. Do not invent key mappings. Desktop and mobile instructions must match the real input system.
+
+Teach only what the player needs, when they need it.
+
+### Initial movement and combat
+
+Introduce, through concise contextual prompts:
+
+- Movement and facing/camera controls.
+- A basic Light Attack.
+- Heavy Attack.
+- Dodge.
+- Parry.
+- Player Integrity and Chrono Flux.
+
+Use a practical sequence. For example, the first basic enemy can introduce Light/Heavy attacks; a clear telegraph can invite the player to dodge; a suitable enemy attack can teach parry.
+
+Do not force the player to perfectly parry a dangerous attack in order to progress through the tutorial.
+
+### Echo recording and playback
+
+Teach the difference between Sera's live action and Echo replay.
+
+The player should learn to:
+1. Start recording.
+2. Perform a useful recorded action or route.
+3. Stop recording.
+4. Play the Echo.
+5. Observe that the Echo repeats the recorded behavior independently.
+
+Clearly indicate recording/playback state and the next meaningful action.
+
+### Puzzle tutorial sequence
+
+Reuse the actual existing Calibration Bay puzzle rather than building a second fake tutorial puzzle.
+
+- **Step 1 — Teach:** Echo alone activates the first pressure plate; Sera must move independently to pass the barrier.
+- **Step 2 — Test:** The Echo's recorded Heavy contact charges the Resonance Receiver according to the authoritative timing and eligibility rules.
+- **Step 3 — Combine:** The receiver must be charged and the correct Echo-only pressure plate must be active to open the final progression barrier.
+
+Show a concise objective and an appropriate feedback signal at each step. The tutorial must teach through the same authoritative rules used by ordinary gameplay.
+
+Do not allow the tutorial to claim the gate is open before its real collider/progression state changes.
+
+### Tutorial state behavior
+
+- Contextual prompts should not cover important attack telegraphs or touch controls.
+- Prompts must not reappear continuously after the player has completed the corresponding action.
+- Pause and resume preserve the current objective and tutorial state.
+- Clearing an Echo or restarting the encounter updates the tutorial state coherently.
+- If the player is stuck, provide actionable, concise guidance based on the current objective; do not reveal the complete solution immediately.
+- Provide a way to dismiss noncritical story text and disable repeated tutorial hints where this fits the current UI architecture.
+
+If some of these mechanics are already taught clearly, preserve and integrate the existing behavior rather than duplicating it.
+
+## 5. Integrate Calibration Bay completion with HELIX-04
+
+The current standard encounter and direct boss encounter have separate entry paths. The primary vertical slice must connect them into a coherent progression.
+
+When the player legitimately completes the final calibration puzzle and crosses the intended exit/barrier:
+
+1. Confirm the authoritative puzzle completion and exit condition.
+2. Show the next objective or a short containment-transition cue.
+3. Resolve any active Echo, Resonance mark, temporary telegraph, or transient puzzle state according to explicit lifecycle rules.
+4. Transition to the HELIX-04 encounter through a brief, polished, skippable transition.
+5. Show the boss introduction and then enter combat.
+6. Keep the run's progression state so the player can later view results or replay appropriately.
+
+Do not start HELIX-04 merely because the player has reached a particular coordinate while the puzzle remains incomplete.
+
+Do not permit direct encounter-entry controls to accidentally transition a practice run into the next stage of the main run.
+
+### Resource continuity across the transition
+
+Choose and document a deliberate checkpoint/resource policy.
+
+Prefer carrying the player's current Integrity and Chrono Flux into the boss encounter so the earlier stage has meaningful consequences. However, use the actual game balance to confirm that it is fair.
+
+Requirements:
+- Do not silently refill Flux or Integrity.
+- If a deliberate checkpoint replenishment is required for fairness, communicate the checkpoint/recovery rule visibly and apply it consistently.
+- Reset encounter-local transient state as appropriate: active Echo playback, pending Resonance marks, active attack events, held input, and stage-specific effects must not leak into the new encounter.
+- Do not introduce a hidden free Relay, Convergence, or invulnerability trigger at the scene transition.
+- Save an in-session boss retry checkpoint when HELIX-04 begins. A boss retry should restore the intended boss-entry player condition and boss state; a full-run replay should start the entire experience again.
+- Keep checkpoint state deterministic and clean. Do not introduce a full persistent save system unless the project already has one and it is necessary.
+
+Verify that the player cannot bypass the calibration puzzle through ordinary movement, Relay, Echo, collision exploits, or the practice-entry shortcuts.
+
+## 6. HELIX-04 as the vertical slice climax
+
+Integrate the existing boss prototype as the climax without redesigning it.
+
+Preserve and verify:
+
+- Three distinct telegraphed attacks: Vector Ram, Helical Sweep, and Anchor Slam.
+- Readable commitment and active damaging regions.
+- Valid dodge/parry counterplay.
+- Phase I and the Helix Overload transition into Phase II.
+- Front armor, exposed-core and staggered vulnerability rules.
+- Echo Heavy resonance contact with zero direct damage.
+- Live Heavy or supported Light Finisher Convergence against the correct marked boss instance.
+- Correct Flux costs, cooldowns, +22 posture bonus, and zero extra Convergence HP damage.
+- Relay range, landing validation, obstruction checks, and resource cost.
+- Actual boss victory and defeat outcomes.
+
+The boss should feel like a culmination of skills learned in Calibration Bay. The player should recognize why Echo timing, positioning, dodge/parry, and committed attack recovery matter.
+
+Improve pacing and feedback only where needed for a coherent experience. Do not add new boss attacks or alter the established combat contract without a concrete, tested reason.
+
+### Boss transition and terminal states
+
+- Boss introduction plays once when entering the boss stage, not every time a HUD component renders or a pause menu closes.
+- Phase transition effects and audio trigger once.
+- Victory only happens after actual registered combat reduces boss HP to zero.
+- Defeat only happens after actual gameplay reduces player Integrity to zero.
+- Once the result is terminal, no further combat damage or delayed attack should change the outcome.
+- Results and restart options must match the authoritative outcome.
+- A victory must not be confused with the standard Test Bay puzzle-completion state.
+
+## 7. Victory, defeat, checkpoint retry, and replay
+
+Implement a polished but concise ending flow.
+
+### Victory
+
+When HELIX-04 is defeated through normal gameplay:
+- Stop all boss attacks, telegraphs, and delayed damage events.
+- Play one clear, short boss-defeat presentation.
+- Display a readable victory state consistent with the world and story.
+- Provide useful run information where the telemetry already exists, such as elapsed time, successful Resonance/Convergence events, or parries. Do not invent statistics or report incorrect counts.
+- Offer `RETRY BOSS`, `REPLAY FULL RUN`, and `RETURN TO TITLE` where appropriate.
+
+### Defeat
+
+When Sera is defeated:
+- Stop player/boss combat activity and preserve the real defeat outcome.
+- Clear or freeze active damaging events according to the existing terminal-state contract.
+- Present the defeat state and useful retry options.
+- Offer `RETRY BOSS FROM CHECKPOINT`, `RESTART FULL RUN`, and `RETURN TO TITLE` where appropriate.
+
+### Restart behavior
+
+Define explicit semantics for each restart action.
+
+- **Retry Boss:** Restore the boss-entry checkpoint, reset HELIX-04 to 360 HP and Phase I, restore the documented Integrity/Flux checkpoint values, clear previous Echoes and Resonance marks, reset cooldowns and input state, and rebuild the fight cleanly.
+- **Restart Full Run:** Return to the title/opening or the start of Calibration Bay 04 according to the established UX, restore initial player resources as documented, clear progression, clear stage state, and begin from the beginning.
+- **Return to Title:** Cleanly dispose of or reset gameplay state without leaving a live simulation, delayed effect, held input, audio loop, or duplicated event handler running in the background.
+
+If existing controls already have well-defined semantics, preserve them. Make menu actions and the R shortcut unambiguous so users do not unexpectedly restart the entire run when they intend to retry the boss.
+
+Do not persist a defeated boss, completed puzzle, stale Resonance mark, or previous run's Flux into a new run.
+
+## 8. HUD, tutorial presentation, and feedback integration
+
+Create a coherent hierarchy across title, gameplay tutorial, puzzle objective, boss HUD, pause, victory, and defeat.
+
+Requirements:
+- Consistent typography, spacing, panel appearance, and terminology.
+- Visible current objective and clear progression feedback.
+- Player Integrity and Flux display stays correct.
+- Echo record/playback states remain distinguishable.
+- Resonance/Relay readouts retain readable separators and accurate state text.
+- Boss health, phase, core state, and attack telegraphs continue to match authoritative simulation state.
+- Tutorial prompts and subtitles/callouts are short and actionable.
+- No new panel covers a necessary combat telegraph or mobile action button.
+- Do not communicate critical danger, success, or vulnerability solely through color.
+- Retain the current data-testid hooks and add stable hooks for the main flow state, objective, progression stage, transition, and result actions as practical.
+
+Audit the standard encounter's reset and initial spawn roster during this pass. Resolve the reported discrepancy between three canonical enemies and `enemiesAlive: 5` if it represents an accidental behavior change. Preserve deliberate waves if they are part of the actual current design.
+
+## 9. Audio, visual transitions, and presentation
+
+Use the existing Phase 5.2/6 visuals and synthesized audio to deliver a consistent experience.
+
+Polish:
+- Title/opening transition.
+- Tutorial objective updates.
+- Puzzle stage completion and progression barrier opening.
+- Transition into the containment arena.
+- HELIX-04 introduction.
+- Phase II transition.
+- Boss defeat and victory/defeat result transitions.
+
+Use distinct, concise audio feedback for major milestones. Avoid playing the same cue every frame or restarting it on React re-renders.
+
+Keep scene transitions smooth but brief. Do not add long unskippable cutscenes or freeze the player during essential gameplay without a clear reason.
+
+Preserve the upgraded character animation, Echo temporal effects, arena detail, and boss rig. Do not introduce more geometry/effects simply for decoration if they reduce clarity or performance.
+
+Where existing renderer objects can be reused, reuse them. Clean up temporary effects and stage-specific objects when transitions or restarts occur.
+
+## 10. Desktop and mobile controls
+
+### Desktop
+
+Verify actual controls using the existing input/controller implementation. Preserve responsiveness and the previously tested control mappings.
+
+Ensure that:
+- Tutorial text shows correct controls.
+- Pause, resume, restart, retry, and return-to-title work.
+- Focus and pointer-lock handling do not become stuck after transitions or menus.
+- Held inputs do not carry through a scene transition.
+- The boss introduction does not queue unwanted attacks or movement.
+
+### Mobile
+
+Keep the existing 390×844 target usable.
+
+Verify:
+- The new directional movement pad.
+- Light/Heavy attacks, Dodge, Parry, Echo record/playback, Relay, Clear, and Pause controls where present.
+- The tutorial and puzzle objectives fit without obscuring the movement pad or action buttons.
+- The boss HUD and telegraphs remain readable while controls remain reachable.
+- Restart and return-to-title actions remain usable.
+- The mobile game can be completed as far as the existing touch mapping supports.
+
+Use actual touch/pointer-capable UI interactions. Distinguish browser-simulated pointer/touch testing from testing on physical iOS/Android hardware. Do not claim physical multi-touch was verified if it was not.
+
+## 11. Testing strategy
+
+Preserve all existing simulation and regression tests. Extend the suite around the integrated progression state rather than rewriting every underlying mechanic.
+
+### Deterministic simulation and integration tests
+
+Add tests covering at least:
+
+1. A New Run starts the integrated vertical slice, not a practice encounter.
+2. Tutorial progression follows actual player actions and the real puzzle state.
+3. Echo-only Pressure Plate 01 cannot be activated by Sera standing on it.
+4. Resonance Receiver charging follows the actual Echo Heavy contact timing.
+5. The final barrier requires both the correct charged receiver and the correct Echo-only Pad 02.
+6. Puzzle completion is not triggered by bypassing the barrier or entering an exit coordinate prematurely.
+7. A valid calibration completion transitions once to HELIX-04.
+8. Encounter transition clears stale Echo/Resonance/attack events and held inputs.
+9. Resource carry-over or the explicitly selected checkpoint reward is correct and deterministic.
+10. Practice encounter entry does not modify or advance the integrated campaign's progression.
+11. Boss introduction and Phase II transition events happen exactly once.
+12. A full-run completion through actual player InputFrame controls reaches victory without direct HP mutation.
+13. Player defeat displays the correct outcome and does not keep applying incoming damage.
+14. Retry Boss restores the intended boss checkpoint.
+15. Restart Full Run clears all completion state and returns to the initial stage.
+16. Return to Title stops gameplay activity and removes stale state.
+17. Repeated transitions/restarts do not duplicate audio, meshes, handlers, or delayed events.
+18. Mobile input state does not retain held movement after a transition or terminal state.
+19. The canonical standard enemy roster and practice encounters remain correct.
+20. All prior movement, combat, Echo, puzzle, Relay, Resonance, Convergence, and HELIX-04 regression tests continue to pass.
+
+Use actual project types and test patterns. Do not directly mutate health or boss HP to make an end-to-end test appear successful.
+
+### Static and build checks
+
+Run the existing:
+- Simulation test suite.
+- TypeScript checks.
+- Production build.
+- Any existing lint or application-level validation commands.
+
+Report exact commands and counts.
+
+## 12. Real browser end-to-end verification
+
+Use the existing Playwright workflow with actual input/UI interactions and bounded waits.
+
+Perform the primary route:
+1. Open the title screen.
+2. Start a new run using the primary action.
+3. Observe or skip the introduction.
+4. Complete the calibration tutorial and actual puzzle in order.
+5. Cross the legitimate exit after puzzle completion.
+6. Arrive at HELIX-04 with correct resource and progression state.
+7. Fight the boss using actual movement, attacks, dodge/parry, Echo, Relay, and Convergence as appropriate.
+8. Trigger Phase II through registered damage.
+9. Defeat the boss through registered attacks.
+10. Verify the victory screen and return/replay options.
+
+If an unscripted full playthrough is possible, perform it. If automation cannot reliably complete the whole run, do reproducible partial browser scenarios for each distinct transition and state the limitation honestly.
+
+Do not manufacture success by directly changing authoritative HP, puzzle completion flags, or campaign stage state in the browser. Read-only telemetry may be used to confirm outcomes.
+
+Also verify these separate paths:
+- Player defeat → Retry Boss → valid fresh encounter.
+- Victory → Replay Full Run → Calibration Bay starts cleanly.
+- Return to Title → New Run → no old Flux, Echo, mark, progress, or boss state.
+- Standard Test Bay practice mode still starts correctly.
+- Direct HELIX-04 practice mode still starts correctly.
+- Pause/resume, restart, and scene transitions do not produce runtime errors.
+
+All browser waits must be bounded. Avoid unbounded page-evaluation loops that can stall the automation process.
+
+## 13. Visual and usability validation
+
+Capture and inspect actual running-game views where the browser environment permits:
+
+- Title screen and opening.
+- First tutorial objective.
+- Echo recording/playback and pressure plate.
+- Resonance Receiver charging and final barrier opening.
+- Transition into HELIX-04.
+- HELIX-04 intro and phase transition.
+- Boss victory and defeat.
+- Mobile gameplay with objective text and touch controls visible.
+
+Inspect whether:
+- The player always knows the next meaningful objective.
+- Puzzle progression feedback matches actual game state.
+- Transitions feel intentional rather than abrupt mode resets.
+- The visual hierarchy remains coherent across standard play and boss play.
+- Important status and telegraph information remain readable.
+- No visible control is clipped, covered, or misleading.
+- Repeated transitions do not leave duplicate meshes, audio effects, or outdated HUD elements.
+
+If screenshots cannot be captured, explain the exact environment limitation and use available live browser observations. Do not claim visual comparisons that were not performed.
+
+## 14. Performance and lifecycle
+
+Preserve the existing rendering performance safeguards and simulation determinism.
+
+Audit:
+- Scene transition cleanup.
+- Event listener registration/removal.
+- Audio lifecycle.
+- Timed VFX and particles.
+- Pointer lock/focus.
+- Input clearing on pause, death, restart, and transitions.
+- Echo recording buffers and processed-event IDs.
+- Boss attack timers, shockwaves, and delayed damage.
+- DOM/HUD cleanup.
+- Repeated runs and repeated retries.
+
+Do not add new permanent animation loops or timers just to drive UI transitions. Prefer the existing game timing and state architecture.
+
+No global performance downgrade, input delay, or unbounded memory accumulation should be introduced.
+
+## 15. Definition of done
+
+Phase 7 is complete only when:
+
+- The integrated New Run flow is playable from opening to boss victory.
+- The tutorial teaches the real controls and puzzle in context.
+- The calibration puzzle must be completed according to the authoritative progression rules.
+- The transition into HELIX-04 is clean and preserves the intended resource/checkpoint policy.
+- The boss is playable, winnable, and integrated with the preceding experience.
+- Victory, defeat, retry, full-run replay, and title return all work.
+- Practice encounter modes remain functional and isolated.
+- The standard enemy-roster discrepancy is resolved or explicitly explained.
+- Existing tests pass and meaningful integration tests are added.
+- TypeScript and production build pass.
+- Desktop browser scenarios cover the major progression path and terminal states.
+- Mobile is verified as far as the available automation and control mapping allow.
+- Visual inspection confirms that the game feels like one cohesive experience rather than separate test modes.
+- Remaining physical-device or environment-specific limitations are clearly documented.
+
+### Required final report
+
+Provide:
+
+1. The implemented primary run flow and stage transitions.
+2. The tutorial mechanics and how completion is determined.
+3. Resource/checkpoint policy between Calibration Bay and HELIX-04.
+4. The resolution of the standard enemy-roster discrepancy.
+5. Files changed and any important state-machine decisions.
+6. Test totals, typecheck, production build, and exact browser scenarios.
+7. Desktop and mobile verification results, including device-vs-automation limitations.
+8. Visual evidence where available.
+9. Remaining bugs and unverified requirements.
+
+Do not mark completion just because the title, puzzle, and boss screens exist individually. Demonstrate that the transitions, gameplay state, and terminal outcomes work together.
+
+**After this phase passes, stop and report the results. Do not automatically begin the next phase or expand into the full campaign.**
