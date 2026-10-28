@@ -1,0 +1,50 @@
+{
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "deviceScaleFactor": 1,
+  "physicalDevice": false,
+  "touch": false,
+  "url": "http://127.0.0.1:4173",
+  "startSave": "Fresh nonpersistent browser context, no imported storage; destroyed after run.",
+  "automation": "Full renderer (webdriver=false/non-Headless UA); pointer lock deliberately denied to exercise supported unlocked camera. Test API reads observe state; writes are classified fixtures.",
+  "steps": [
+    {
+      "name": "Phase13 unlocked hover leaves yaw unchanged",
+      "status": "passed_test_fixture",
+      "fixture": "startPracticeStandardRun isolates controls"
+    },
+    {
+      "name": "Phase13 camera drag cancels charge without attack",
+      "status": "passed_test_fixture",
+      "fixture": "Same isolated practice fixture; normal mouse input",
+      "details": [
+        {
+          "state": "charging_heavy:idle:calibration",
+          "at": 1940.7000000011176
+        },
+        {
+          "state": "idle:idle:calibration",
+          "at": 2026.1000000014901
+        }
+      ]
+    },
+    {
+      "name": "Phase13 pointer-interactive panel blocks gameplay click",
+      "status": "passed_test_fixture",
+      "fixture": "Same practice fixture"
+    },
+    {
+      "name": "Phase13 unchanged progress avoids storage writes",
+      "status": "passed_test_fixture",
+      "fixture": "Paused practice fixture; observe unchanged save over 2s",
+      "details": {
+        "durationMs": 2000,
+        "redundantWrites": 0
+      }
+    }
+  ],
+  "errors": []
+}

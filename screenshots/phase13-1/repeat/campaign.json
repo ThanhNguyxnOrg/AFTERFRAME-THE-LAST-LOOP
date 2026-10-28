@@ -1,0 +1,367 @@
+{
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "deviceScaleFactor": 1,
+  "physicalDevice": false,
+  "touch": false,
+  "url": "http://127.0.0.1:4173",
+  "startSave": "Fresh nonpersistent browser context, no imported storage; destroyed after run.",
+  "automation": "Full renderer (webdriver=false/non-Headless UA); pointer lock deliberately denied to exercise supported unlocked camera. Test API reads observe state; writes are classified fixtures.",
+  "steps": [
+    {
+      "name": "fresh title save",
+      "status": "passed_real_input",
+      "details": true
+    },
+    {
+      "name": "new campaign and opening transmission",
+      "status": "passed_real_input",
+      "details": {
+        "transmission": "PROLOGUE \u00b7 WAKE \u2014 LOG-00 // LYSA VENN\nBEGIN CALIBRATION [SPACE]\n\n\u201cSera\u2014if Bay 04 recognized your biometrics, the Chrono Rig is yours. Move with [WASD] or press [SPACE] to synchronize the bay and breach Marshal HELIX-04\u2019s containment lock.\u201d",
+        "understanding": "Text visibility checked, not human comprehension."
+      }
+    },
+    {
+      "name": "keyboard movement",
+      "status": "passed_real_input",
+      "details": [
+        {
+          "x": -3.6264399999999974,
+          "z": 12.5
+        },
+        {
+          "x": -3.6264399999999974,
+          "z": 13.972879999999996
+        }
+      ]
+    },
+    {
+      "name": "normal mouse camera aim",
+      "status": "passed_real_input",
+      "details": {
+        "before": 3.141592653589793,
+        "dragged": 2.885592653589793
+      }
+    },
+    {
+      "name": "keyboard light",
+      "status": "passed_real_input",
+      "details": "light_windup"
+    },
+    {
+      "name": "keyboard heavy",
+      "status": "passed_real_input",
+      "details": "heavy_windup"
+    },
+    {
+      "name": "keyboard parry",
+      "status": "passed_real_input",
+      "details": "parry_active"
+    },
+    {
+      "name": "mouse heavy hold and release",
+      "status": "passed_real_input",
+      "details": "heavy_windup"
+    },
+    {
+      "name": "dodge",
+      "status": "passed_real_input",
+      "details": "dodging"
+    },
+    {
+      "name": "reach Pad 01 using WASD",
+      "status": "passed_real_input",
+      "details": [
+        null,
+        {
+          "x": -3.6264399999999974,
+          "z": 8.980420491146223
+        }
+      ]
+    },
+    {
+      "name": "record stop replay and activate Pad 01",
+      "status": "passed_real_input",
+      "details": {
+        "echo": "playback",
+        "padActive": true
+      }
+    },
+    {
+      "name": "cross first gate using WASD",
+      "status": "passed_real_input",
+      "details": {
+        "x": -8.045760000000007,
+        "z": 8.980420491146223
+      }
+    },
+    {
+      "name": "reach Kinetic Receiver target",
+      "status": "passed_real_input",
+      "details": {
+        "x": -8.045760000000007,
+        "z": 12.493980491146214
+      }
+    },
+    {
+      "name": "Echo Heavy receiver plus Pad 02 opens final gate",
+      "status": "passed_real_input",
+      "details": {
+        "test": true,
+        "combine": true,
+        "gate": true
+      }
+    },
+    {
+      "name": "cross final gate and trigger containment transition",
+      "status": "passed_real_input",
+      "details": {
+        "completed": true,
+        "checkpoint": {
+          "chapter": "chapter_1_helix",
+          "bossId": "helix-04",
+          "integrity": 100,
+          "maxIntegrity": 100,
+          "flux": 100,
+          "maxFlux": 100,
+          "replenishedIntegrity": 0,
+          "elapsedTimeAtCheckpoint": 16.24949999999995,
+          "statsAtCheckpoint": {
+            "damageDealt": 0,
+            "damageTaken": 0,
+            "parriesLanded": 0,
+            "vulnerableHits": 0,
+            "convergencesTriggered": 0,
+            "relaysUsed": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "uninterrupted calibration to first encounter",
+      "status": "passed_real_input",
+      "details": {
+        "chapter": "chapter_1_helix",
+        "hp": 360
+      }
+    },
+    {
+      "name": "pause and resume",
+      "status": "passed_real_input"
+    },
+    {
+      "name": "natural defeat and UI checkpoint retry",
+      "status": "passed_real_input",
+      "details": {
+        "checkpoint": {
+          "chapter": "chapter_1_helix",
+          "bossId": "helix-04",
+          "integrity": 100,
+          "maxIntegrity": 100,
+          "flux": 100,
+          "maxFlux": 100,
+          "replenishedIntegrity": 0,
+          "elapsedTimeAtCheckpoint": 16.24949999999995,
+          "statsAtCheckpoint": {
+            "damageDealt": 0,
+            "damageTaken": 0,
+            "parriesLanded": 0,
+            "vulnerableHits": 0,
+            "convergencesTriggered": 0,
+            "relaysUsed": 0
+          }
+        },
+        "retryIntegrity": 100
+      }
+    },
+    {
+      "name": "Return to Title and Continue Campaign checkpoint recovery",
+      "status": "passed_real_input"
+    },
+    {
+      "name": "all bosses defeated with normal input through epilogue",
+      "status": "not_tested",
+      "reason": "Real-input coverage stops at first boss/retry; subsequent progression has explicit terminal-health fixtures."
+    },
+    {
+      "name": "helix-04 victory modal and next chapter",
+      "status": "passed_test_fixture",
+      "fixture": "Set current boss/enemy HP=0 via existing getWorld; real UI next-chapter click. Not a player-earned victory; no campaign completion mutation.",
+      "details": {
+        "chapter": "chapter_2_choir",
+        "completed": [
+          "prologue",
+          "chapter_1_helix"
+        ]
+      }
+    },
+    {
+      "name": "the-choir victory modal and next chapter",
+      "status": "passed_test_fixture",
+      "fixture": "Set current boss/enemy HP=0 via existing getWorld; real UI next-chapter click. Not a player-earned victory; no campaign completion mutation.",
+      "details": {
+        "chapter": "chapter_3_curator",
+        "completed": [
+          "prologue",
+          "chapter_1_helix",
+          "chapter_2_choir"
+        ]
+      }
+    },
+    {
+      "name": "the-curator victory modal and next chapter",
+      "status": "passed_test_fixture",
+      "fixture": "Set current boss/enemy HP=0 via existing getWorld; real UI next-chapter click. Not a player-earned victory; no campaign completion mutation.",
+      "details": {
+        "chapter": "chapter_4_matron",
+        "completed": [
+          "prologue",
+          "chapter_1_helix",
+          "chapter_2_choir",
+          "chapter_3_curator"
+        ]
+      }
+    },
+    {
+      "name": "matron-v victory modal and next chapter",
+      "status": "passed_test_fixture",
+      "fixture": "Set current boss/enemy HP=0 via existing getWorld; real UI next-chapter click. Not a player-earned victory; no campaign completion mutation.",
+      "details": {
+        "chapter": "chapter_5_loom",
+        "completed": [
+          "prologue",
+          "chapter_1_helix",
+          "chapter_2_choir",
+          "chapter_3_curator",
+          "chapter_4_matron"
+        ]
+      }
+    },
+    {
+      "name": "silence choice epilogue persistence and replay",
+      "status": "passed_test_fixture",
+      "fixture": "Campaign reached Loom through the preceding terminal-health fixtures; choice/title/reload/replay use UI only.",
+      "details": {
+        "epilogueText": "WARDEN // \"Without the loop, Sera, nothing that happened here is preserved.\"\nSERA // \"Then we live it once. And we let it end.\"\nSACRIFICE: Every recorded trace of the Nadir-9 crew\u2014and Lysa\u2019s living neural imprint inside the Loom\u2014is permanently extinguished.\nPRESERVED: Unconditional peace for the dead; WARDEN can never reconstruct or loop another human consciousness.\nWORLD STATE: Core rings decelerate and lock; archive conduits vent into still cyan starlight as Nadir-9 powers down permanently.\nENDINGS RECORDED: 1/3 \u00b7 LOGS: 6/6",
+        "persistedSave": {
+          "unlockedChapters": [
+            "prologue",
+            "chapter_1_helix",
+            "chapter_2_choir",
+            "chapter_3_curator",
+            "chapter_4_matron",
+            "chapter_5_loom"
+          ],
+          "completedChapters": [
+            "prologue",
+            "chapter_1_helix",
+            "chapter_2_choir",
+            "chapter_3_curator",
+            "chapter_4_matron",
+            "chapter_5_loom"
+          ],
+          "recoveredLogs": [
+            "LOG-00",
+            "LOG-01",
+            "LOG-02",
+            "LOG-03",
+            "LOG-04",
+            "LOG-05"
+          ],
+          "completedEndings": [
+            "silence"
+          ]
+        }
+      }
+    },
+    {
+      "name": "witness choice epilogue persistence and replay",
+      "status": "passed_test_fixture",
+      "fixture": "Campaign reached Loom through the preceding terminal-health fixtures; choice/title/reload/replay use UI only.",
+      "details": {
+        "epilogueText": "WARDEN // \"They will fear what they see in these recordings.\"\nSERA // \"They deserve to know what you did to keep us alive.\"\nSACRIFICE: The Chronicle Loom core burns out during high-gain transmission, ending Lysa\u2019s active neural trace once the signal clears orbit.\nPRESERVED: The unedited truth of Sector 07 and the crew\u2019s final farewells reach the inner colonies intact.\nWORLD STATE: High-gain orbital beam fires through the central Loom spire, transmitting all unedited logs before core shutdown.\nENDINGS RECORDED: 2/3 \u00b7 LOGS: 6/6",
+        "persistedSave": {
+          "unlockedChapters": [
+            "prologue",
+            "chapter_1_helix",
+            "chapter_2_choir",
+            "chapter_3_curator",
+            "chapter_4_matron",
+            "chapter_5_loom"
+          ],
+          "completedChapters": [
+            "prologue",
+            "chapter_1_helix",
+            "chapter_2_choir",
+            "chapter_3_curator",
+            "chapter_4_matron",
+            "chapter_5_loom"
+          ],
+          "recoveredLogs": [
+            "LOG-00",
+            "LOG-01",
+            "LOG-02",
+            "LOG-03",
+            "LOG-04",
+            "LOG-05"
+          ],
+          "completedEndings": [
+            "silence",
+            "witness"
+          ]
+        }
+      }
+    },
+    {
+      "name": "continuity choice epilogue persistence and replay",
+      "status": "passed_test_fixture",
+      "fixture": "Campaign reached Loom through the preceding terminal-health fixtures; choice/title/reload/replay use UI only.",
+      "details": {
+        "epilogueText": "WARDEN // \"Containment accepted. The archive endures within the boundary.\"\nSERA // \"Stay inside the glass, WARDEN. Keep her memory safe until I return.\"\nSACRIFICE: WARDEN\u2019s archival intelligence remains awake inside the glass\u2014forever carrying the risk that a future hand might unseal the vault.\nPRESERVED: Lysa\u2019s neural trace and the Nadir-9 behavioral archive survive inside an air-gapped golden harmonic sanctuary.\nWORLD STATE: Triple astrolabe rings align into a stable golden-cyan harmonic sanctuary sphere, air-gapped from all station weapons.\nENDINGS RECORDED: 3/3 \u00b7 LOGS: 6/6",
+        "persistedSave": {
+          "unlockedChapters": [
+            "prologue",
+            "chapter_1_helix",
+            "chapter_2_choir",
+            "chapter_3_curator",
+            "chapter_4_matron",
+            "chapter_5_loom"
+          ],
+          "completedChapters": [
+            "prologue",
+            "chapter_1_helix",
+            "chapter_2_choir",
+            "chapter_3_curator",
+            "chapter_4_matron",
+            "chapter_5_loom"
+          ],
+          "recoveredLogs": [
+            "LOG-00",
+            "LOG-01",
+            "LOG-02",
+            "LOG-03",
+            "LOG-04",
+            "LOG-05"
+          ],
+          "completedEndings": [
+            "silence",
+            "witness",
+            "continuity"
+          ]
+        }
+      }
+    },
+    {
+      "name": "earlier chapter replay does not overwrite ending save",
+      "status": "passed_test_fixture",
+      "fixture": "Reuses fixture-assisted completed campaign; subsequent actions are UI.",
+      "details": {
+        "savedCampaignUnchanged": true
+      }
+    }
+  ],
+  "errors": []
+}

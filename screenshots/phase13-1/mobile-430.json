@@ -1,0 +1,159 @@
+{
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 430,
+    "height": 932
+  },
+  "deviceScaleFactor": 1,
+  "physicalDevice": false,
+  "touch": true,
+  "url": "http://127.0.0.1:4173",
+  "startSave": "Fresh nonpersistent browser context, no imported storage; destroyed after run.",
+  "automation": "Full renderer (webdriver=false/non-Headless UA); pointer lock deliberately denied to exercise supported unlocked camera. Test API reads observe state; writes are classified fixtures.",
+  "steps": [
+    {
+      "name": "touch movement hold release and no scroll",
+      "status": "passed_real_input",
+      "details": {
+        "startX": 0,
+        "released": {
+          "x": -2.8335600000000003,
+          "z": 12.5,
+          "t": 0.7166
+        },
+        "touchType": "CDP trusted touchStart/touchEnd"
+      }
+    },
+    {
+      "name": "touch cancellation releases movement",
+      "status": "passed_real_input",
+      "details": {
+        "touchType": "CDP touchCancel",
+        "stopped": true
+      }
+    },
+    {
+      "name": "touch light",
+      "status": "passed_real_input",
+      "details": {
+        "control": "light",
+        "trustedTouch": true
+      }
+    },
+    {
+      "name": "touch heavy",
+      "status": "passed_real_input",
+      "details": {
+        "control": "heavy",
+        "trustedTouch": true
+      }
+    },
+    {
+      "name": "touch parry",
+      "status": "passed_real_input",
+      "details": {
+        "control": "parry",
+        "trustedTouch": true
+      }
+    },
+    {
+      "name": "touch dodge",
+      "status": "passed_real_input",
+      "details": {
+        "control": "dodge",
+        "trustedTouch": true
+      }
+    },
+    {
+      "name": "touch Echo record stop replay",
+      "status": "passed_real_input"
+    },
+    {
+      "name": "touch pause resume and overlay input isolation",
+      "status": "passed_real_input"
+    },
+    {
+      "name": "boss HUD and touch control spacing",
+      "status": "passed_test_fixture",
+      "fixture": "Existing API starts HELIX to inspect mobile layout.",
+      "details": {
+        "rects": [
+          {
+            "id": "boss-hud",
+            "x": 8,
+            "y": 154,
+            "w": 414,
+            "h": 99.5,
+            "visible": true,
+            "onScreen": true
+          },
+          {
+            "id": "touch-move-pad",
+            "x": 45,
+            "y": 877,
+            "w": 340,
+            "h": 47,
+            "visible": true,
+            "onScreen": true
+          },
+          {
+            "id": "combat-btn-light",
+            "x": 17,
+            "y": 115.5,
+            "w": 51.5,
+            "h": 23.5,
+            "visible": true,
+            "onScreen": true
+          },
+          {
+            "id": "combat-btn-heavy",
+            "x": 72.5,
+            "y": 115.5,
+            "w": 51.5,
+            "h": 23.5,
+            "visible": true,
+            "onScreen": true
+          },
+          {
+            "id": "echo-btn-record",
+            "x": 17,
+            "y": 81,
+            "w": 51.5,
+            "h": 23.5,
+            "visible": true,
+            "onScreen": true
+          },
+          {
+            "id": "hud-btn-pause",
+            "x": 386,
+            "y": 8,
+            "w": 36,
+            "h": 32,
+            "visible": true,
+            "onScreen": true
+          }
+        ],
+        "overlaps": [],
+        "overflow": false,
+        "scrollX": 0,
+        "scrollY": 0
+      }
+    },
+    {
+      "name": "touch defeat result and retry",
+      "status": "passed_test_fixture",
+      "fixture": "Practice boss initialized by prior fixture; defeat occurs naturally; retry uses touch."
+    },
+    {
+      "name": "touch camera drag",
+      "status": "not_tested",
+      "reason": "InputController has mouse camera handlers only; no touch orbit contract or touch camera control is implemented."
+    },
+    {
+      "name": "physical phone/tablet",
+      "status": "not_tested",
+      "reason": "Desktop Chromium touch emulation only; no physical device connected or used."
+    }
+  ],
+  "errors": []
+}

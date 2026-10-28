@@ -394,6 +394,28 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                 {cameraSettings.invertY ? 'INVERTED' : 'STANDARD'}
               </button>
             </div>
+            <div className="space-y-1">
+              <button
+                type="button"
+                id="modal-setting-reduced-motion"
+                data-testid="modal-setting-reduced-motion"
+                aria-label="Reduced motion"
+                aria-pressed={cameraSettings.reducedMotion}
+                aria-describedby="modal-reduced-motion-description"
+                onClick={() =>
+                  onUpdateCameraSettings({ reducedMotion: !cameraSettings.reducedMotion })
+                }
+                className="w-full flex items-center justify-between px-3 py-2 bg-[#0b1018] hover:bg-[#131d2d] border border-slate-700 text-[11px] font-mono-tabular cursor-pointer"
+              >
+                <span className="text-slate-300">Reduced motion</span>
+                <span className={cameraSettings.reducedMotion ? 'text-cyan-300 font-bold' : 'text-slate-500'}>
+                  {cameraSettings.reducedMotion ? 'ON' : 'OFF'}
+                </span>
+              </button>
+              <p id="modal-reduced-motion-description" className="text-[10px] font-mono-tabular text-slate-400">
+                Stops camera shake and title orbit; softens ambient motion. Combat cues stay visible.
+              </p>
+            </div>
           </div>
         )}
 

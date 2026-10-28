@@ -137,7 +137,7 @@ export default function App() {
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() =>
     inputRef.current
       ? inputRef.current.getCameraSettings()
-      : { sensitivity: 1.0, invertY: false }
+      : { sensitivity: 1.0, invertY: false, reducedMotion: false }
   );
 
   const syncDomAndReactHud = useCallback(() => {
@@ -532,6 +532,7 @@ export default function App() {
     document.body.dataset.runMode = world.run.mode;
 
     const sceneRenderer = new ArenaSceneRenderer(mountEl, world);
+    sceneRenderer.setReducedMotion(input.getCameraSettings().reducedMotion);
     rendererRef.current = sceneRenderer;
 
     input.attach(mountEl, {
@@ -976,6 +977,14 @@ export default function App() {
     handleTogglePerfOverlay,
     handleToggleTutorial,
   ]);
+
+  useEffect(() => {
+    rendererRef.current?.setReducedMotion(cameraSettings.reducedMotion);
+    document.body.dataset.reducedMotion = String(cameraSettings.reducedMotion);
+    return () => {
+      delete document.body.dataset.reducedMotion;
+    };
+  }, [cameraSettings.reducedMotion]);
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#07090d]">

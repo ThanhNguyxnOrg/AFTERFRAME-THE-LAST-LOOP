@@ -1,0 +1,2630 @@
+{
+  "machine": "Windows-11-10.0.26300-SP0",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "fixture": "Existing test API starts HELIX and forces vector_ram; no input during sampling. Fresh isolated context; all 4 GLBs loaded. Full renderer path via webdriver=false and non-Headless UA.",
+  "warmup": "Initial HELIX vector_ram: 6000ms rendered. Each run restarts HELIX, renders 1500ms, then forces vector_ram before 6000ms capture.",
+  "runs": [
+    {
+      "start": 46073.700000000186,
+      "durationMs": 6028.599999999817,
+      "samples": 3,
+      "warmup": false,
+      "meanMs": 2011.0333333333353,
+      "p50Ms": 1966.5999999999985,
+      "p95Ms": 1966.5999999999985,
+      "maxMs": 2149.9000000000015,
+      "longTasks": [
+        {
+          "start": 46074.299999999814,
+          "duration": 1915
+        },
+        {
+          "start": 47992.200000000186,
+          "duration": 1955
+        },
+        {
+          "start": 49952.90000000037,
+          "duration": 2140
+        }
+      ],
+      "phases": [
+        {
+          "at": 46069.2,
+          "phase": "1:telegraph:vector_ram"
+        },
+        {
+          "at": 47985.8,
+          "phase": "1:attack:vector_ram"
+        },
+        {
+          "at": 52102.3,
+          "phase": "1:recovery:vector_ram"
+        }
+      ],
+      "longFrames": [
+        {
+          "at": 47985.8,
+          "ms": 1916.6000000000058,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 8.600000000558794,
+          "calls": 464,
+          "geometries": 506,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 49952.4,
+          "ms": 1966.5999999999985,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 16.5,
+          "calls": 492,
+          "geometries": 506,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.18999999999999995,
+          "events": [
+            "player_damaged"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 52102.3,
+          "ms": 2149.9000000000015,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 11.399999999441206,
+          "calls": 518,
+          "geometries": 508,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        }
+      ],
+      "frames": [
+        {
+          "at": 47985.8,
+          "ms": 1916.6000000000058,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 8.600000000558794,
+          "calls": 464,
+          "geometries": 506,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 49952.4,
+          "ms": 1966.5999999999985,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 16.5,
+          "calls": 492,
+          "geometries": 506,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.18999999999999995,
+          "events": [
+            "player_damaged"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 52102.3,
+          "ms": 2149.9000000000015,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 11.399999999441206,
+          "calls": 518,
+          "geometries": 508,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        }
+      ],
+      "assets": [
+        "BlenderAsset_chapter_1_helix",
+        "BlenderAsset_chapter_2_choir",
+        "BlenderAsset_chapter_3_curator",
+        "BlenderAsset_chapter_4_matron"
+      ],
+      "graphics": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "dpr": 1,
+      "antialias": true,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+      "webdriver": false,
+      "traceLongestTasks": [
+        {
+          "name": "V8.GC_MC_BACKGROUND_MARKING",
+          "ts": 5414732353,
+          "dur": 4333247,
+          "pid": 15684,
+          "tid": 2152,
+          "args": {
+            "epoch": 44
+          }
+        },
+        {
+          "name": "V8.GC_MC_BACKGROUND_MARKING",
+          "ts": 5414736085,
+          "dur": 4329517,
+          "pid": 15684,
+          "tid": 3400,
+          "args": {
+            "epoch": 44
+          }
+        },
+        {
+          "name": "V8.GC_MC_BACKGROUND_MARKING",
+          "ts": 5414737456,
+          "dur": 4275029,
+          "pid": 15684,
+          "tid": 4040,
+          "args": {
+            "epoch": 44
+          }
+        },
+        {
+          "name": "V8.GC_MC_BACKGROUND_MARKING",
+          "ts": 5414731960,
+          "dur": 4118366,
+          "pid": 15684,
+          "tid": 22012,
+          "args": {
+            "epoch": 44
+          }
+        },
+        {
+          "name": "V8.GC_MC_BACKGROUND_MARKING",
+          "ts": 5414741509,
+          "dur": 3733901,
+          "pid": 15684,
+          "tid": 22684,
+          "args": {
+            "epoch": 44
+          }
+        },
+        {
+          "name": "V8.GC_MC_BACKGROUND_MARKING",
+          "ts": 5414739159,
+          "dur": 2990233,
+          "pid": 15684,
+          "tid": 9660,
+          "args": {
+            "epoch": 44
+          }
+        },
+        {
+          "name": "V8.GC_MC_BACKGROUND_MARKING",
+          "ts": 5414739566,
+          "dur": 2989709,
+          "pid": 15684,
+          "tid": 15920,
+          "args": {
+            "epoch": 44
+          }
+        },
+        {
+          "name": "RunTask",
+          "ts": 5414733934,
+          "dur": 2140975,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5416884577,
+          "dur": 2128812,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5414761899,
+          "dur": 2109382,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5416902902,
+          "dur": 2106944,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5412773216,
+          "dur": 1955201,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5412785678,
+          "dur": 1936940,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5410855289,
+          "dur": 1915929,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5410871259,
+          "dur": 1896682,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5409078979,
+          "dur": 1773209,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5409089780,
+          "dur": 1753564,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5408484952,
+          "dur": 578168,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5410780506,
+          "dur": 63842,
+          "pid": 2940,
+          "tid": 1696,
+          "args": {}
+        },
+        {
+          "name": "V8.GC_MC_MARK",
+          "ts": 5419023595,
+          "dur": 42222,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "UseBackgroundThreads": true
+          }
+        },
+        {
+          "name": "V8.GC_MC_MARK_FULL_CLOSURE_PARALLEL",
+          "ts": 5419023927,
+          "dur": 41866,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5414737998,
+          "dur": 19101,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 33
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5414738009,
+          "dur": 18973,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445374628,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        },
+        {
+          "name": "RunTask",
+          "ts": 5414767460,
+          "dur": 16731,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5410885528,
+          "dur": 15461,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5419017756,
+          "dur": 13141,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5412784686,
+          "dur": 12730,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5417117464,
+          "dur": 12605,
+          "pid": 15684,
+          "tid": 19288,
+          "args": {}
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5416885450,
+          "dur": 12392,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 35
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5416885458,
+          "dur": 12270,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445375358,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        }
+      ],
+      "trace": "helix-1.trace.json.gz"
+    },
+    {
+      "start": 109811.20000000019,
+      "durationMs": 7705.199999999808,
+      "samples": 4,
+      "warmup": false,
+      "meanMs": 1929.0999999999985,
+      "p50Ms": 1933.2000000000116,
+      "p95Ms": 2099.899999999994,
+      "maxMs": 2233.2999999999884,
+      "longTasks": [
+        {
+          "start": 109812.09999999963,
+          "duration": 2096
+        },
+        {
+          "start": 111909.70000000019,
+          "duration": 1453
+        },
+        {
+          "start": 113364.90000000037,
+          "duration": 1920
+        },
+        {
+          "start": 115288.40000000037,
+          "duration": 2241
+        }
+      ],
+      "phases": [
+        {
+          "at": 109800,
+          "phase": "1:telegraph:vector_ram"
+        },
+        {
+          "at": 111899.9,
+          "phase": "1:attack:vector_ram"
+        },
+        {
+          "at": 115283.1,
+          "phase": "1:recovery:vector_ram"
+        }
+      ],
+      "longFrames": [
+        {
+          "at": 111899.9,
+          "ms": 2099.899999999994,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 22,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 113349.9,
+          "ms": 1450,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 7.800000000745058,
+          "calls": 443,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.4375,
+          "events": [
+            "player_damaged"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 115283.1,
+          "ms": 1933.2000000000116,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7.699999999254942,
+          "calls": 479,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.02499999999999994,
+          "events": [
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 117516.4,
+          "ms": 2233.2999999999884,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7.6000000005587935,
+          "calls": 480,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "frames": [
+        {
+          "at": 111899.9,
+          "ms": 2099.899999999994,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 22,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 113349.9,
+          "ms": 1450,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 7.800000000745058,
+          "calls": 443,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.4375,
+          "events": [
+            "player_damaged"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 115283.1,
+          "ms": 1933.2000000000116,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7.699999999254942,
+          "calls": 479,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.02499999999999994,
+          "events": [
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 117516.4,
+          "ms": 2233.2999999999884,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7.6000000005587935,
+          "calls": 480,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "assets": [
+        "BlenderAsset_chapter_1_helix",
+        "BlenderAsset_chapter_2_choir",
+        "BlenderAsset_chapter_3_curator",
+        "BlenderAsset_chapter_4_matron"
+      ],
+      "graphics": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "dpr": 1,
+      "antialias": true,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+      "webdriver": false,
+      "traceLongestTasks": [
+        {
+          "name": "RunTask",
+          "ts": 5470481973,
+          "dur": 4108221,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5470495562,
+          "dur": 4091384,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5482311812,
+          "dur": 2253800,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5480069325,
+          "dur": 2241263,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5482328383,
+          "dur": 2233306,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5480080253,
+          "dur": 2226479,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5474593044,
+          "dur": 2096541,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5474603574,
+          "dur": 2081330,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5468456193,
+          "dur": 2013264,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5468469582,
+          "dur": 1996008,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5478145854,
+          "dur": 1921037,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5478156789,
+          "dur": 1906393,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5476690692,
+          "dur": 1453815,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5476715102,
+          "dur": 1425596,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5469868910,
+          "dur": 309481,
+          "pid": 2940,
+          "tid": 12436,
+          "args": {}
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5476691058,
+          "dur": 22709,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 75
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5476691070,
+          "dur": 22616,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445388448,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        },
+        {
+          "name": "MinorGC",
+          "ts": 5476695491,
+          "dur": 15838,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "type": "allocation failure",
+            "usedHeapSizeAfter": 14041004,
+            "usedHeapSizeBefore": 15319572
+          }
+        },
+        {
+          "name": "V8.GCScavenger",
+          "ts": 5476695501,
+          "dur": 15684,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "V8.GC_SCAVENGER",
+          "ts": 5476695524,
+          "dur": 15659,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "epoch": 61
+          }
+        },
+        {
+          "name": "V8.GC_SCAVENGER_SCAVENGE",
+          "ts": 5476695546,
+          "dur": 15628,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5474597936,
+          "dur": 15513,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "V8.GC_SCAVENGER_SCAVENGE_PARALLEL_PHASE",
+          "ts": 5476695599,
+          "dur": 15326,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "UseBackgroundThreads": true
+          }
+        },
+        {
+          "name": "V8.GC_SCAVENGER_BACKGROUND_SCAVENGE_PARALLEL",
+          "ts": 5476695623,
+          "dur": 15268,
+          "pid": 15684,
+          "tid": 2152,
+          "args": {
+            "epoch": 61
+          }
+        },
+        {
+          "name": "RunTask",
+          "ts": 5470481350,
+          "dur": 14123,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5480081125,
+          "dur": 13591,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5468465211,
+          "dur": 12537,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5478147734,
+          "dur": 12080,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5468456533,
+          "dur": 10762,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 71
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5468456541,
+          "dur": 10635,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445386493,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        }
+      ],
+      "trace": "helix-2.trace.json.gz"
+    },
+    {
+      "start": 143942.7000000002,
+      "durationMs": 6655.699999999808,
+      "samples": 7,
+      "warmup": false,
+      "meanMs": 952.3571428571429,
+      "p50Ms": 583.3000000000175,
+      "p95Ms": 1883.1999999999825,
+      "maxMs": 1950,
+      "longTasks": [
+        {
+          "start": 143943.09999999963,
+          "duration": 537
+        },
+        {
+          "start": 144481.2999999998,
+          "duration": 550
+        },
+        {
+          "start": 145033.5,
+          "duration": 574
+        },
+        {
+          "start": 145608.40000000037,
+          "duration": 590
+        },
+        {
+          "start": 146199.5,
+          "duration": 577
+        },
+        {
+          "start": 146778.5,
+          "duration": 1870
+        },
+        {
+          "start": 148652.2999999998,
+          "duration": 1938
+        }
+      ],
+      "phases": [
+        {
+          "at": 143931.9,
+          "phase": "1:telegraph:vector_ram"
+        },
+        {
+          "at": 144465.3,
+          "phase": "1:attack:vector_ram"
+        },
+        {
+          "at": 145598.5,
+          "phase": "1:recovery:vector_ram"
+        }
+      ],
+      "longFrames": [
+        {
+          "at": 144465.3,
+          "ms": 533.3999999999942,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 3.599999999627471,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 145031.9,
+          "ms": 566.6000000000058,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 3.2999999998137355,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 145598.5,
+          "ms": 566.6000000000058,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3.7000000001862645,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.27249999999999996,
+          "events": [
+            "player_damaged",
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 146181.9,
+          "ms": 583.3999999999942,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 4.199999999254942,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 146765.2,
+          "ms": 583.3000000000175,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3.400000000372529,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 148648.4,
+          "ms": 1883.1999999999825,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 8.799999999813735,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 150598.4,
+          "ms": 1950,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7.8999999994412065,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "frames": [
+        {
+          "at": 144465.3,
+          "ms": 533.3999999999942,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 3.599999999627471,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 145031.9,
+          "ms": 566.6000000000058,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 3.2999999998137355,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 145598.5,
+          "ms": 566.6000000000058,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3.7000000001862645,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.27249999999999996,
+          "events": [
+            "player_damaged",
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 146181.9,
+          "ms": 583.3999999999942,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 4.199999999254942,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 146765.2,
+          "ms": 583.3000000000175,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3.400000000372529,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 148648.4,
+          "ms": 1883.1999999999825,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 8.799999999813735,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 150598.4,
+          "ms": 1950,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7.8999999994412065,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "assets": [
+        "BlenderAsset_chapter_1_helix",
+        "BlenderAsset_chapter_2_choir",
+        "BlenderAsset_chapter_3_curator",
+        "BlenderAsset_chapter_4_matron"
+      ],
+      "graphics": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "dpr": 1,
+      "antialias": true,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+      "webdriver": false,
+      "traceLongestTasks": [
+        {
+          "name": "RunTask",
+          "ts": 5513433311,
+          "dur": 1938620,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5513445829,
+          "dur": 1921229,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5511559525,
+          "dur": 1869971,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5511565205,
+          "dur": 1861026,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5507670528,
+          "dur": 1052524,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5507677763,
+          "dur": 1043475,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5510389480,
+          "dur": 590227,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5510395420,
+          "dur": 581974,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5510980492,
+          "dur": 577539,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5509814499,
+          "dur": 574175,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5510987306,
+          "dur": 568773,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5509819852,
+          "dur": 566685,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5509262312,
+          "dur": 550362,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5509268370,
+          "dur": 542382,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5508724154,
+          "dur": 537466,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5508730176,
+          "dur": 529698,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5515414216,
+          "dur": 18114,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5513446690,
+          "dur": 13068,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5511563127,
+          "dur": 10356,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5509279729,
+          "dur": 9591,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5513433975,
+          "dur": 9342,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 123
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5513433983,
+          "dur": 9262,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445395650,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        },
+        {
+          "name": "RunTask",
+          "ts": 5509830533,
+          "dur": 8896,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5510996731,
+          "dur": 8635,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5515381423,
+          "dur": 8339,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 125
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5515381432,
+          "dur": 8237,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445398223,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        },
+        {
+          "name": "RunTask",
+          "ts": 5507680176,
+          "dur": 7622,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5510397122,
+          "dur": 7274,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5508730505,
+          "dur": 6769,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5511630623,
+          "dur": 6431,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        }
+      ],
+      "trace": "helix-3.trace.json.gz"
+    },
+    {
+      "start": 256884.40000000037,
+      "durationMs": 6609.499999999651,
+      "samples": 11,
+      "warmup": false,
+      "meanMs": 601.5000000000026,
+      "p50Ms": 600,
+      "p95Ms": 650,
+      "maxMs": 650,
+      "longTasks": [
+        {
+          "start": 256884.7000000002,
+          "duration": 529
+        },
+        {
+          "start": 257414.2999999998,
+          "duration": 566
+        },
+        {
+          "start": 257981.09999999963,
+          "duration": 571
+        },
+        {
+          "start": 258553.40000000037,
+          "duration": 595
+        },
+        {
+          "start": 259149.59999999963,
+          "duration": 595
+        },
+        {
+          "start": 259746.09999999963,
+          "duration": 642
+        },
+        {
+          "start": 260400.2999999998,
+          "duration": 625
+        },
+        {
+          "start": 261029.5,
+          "duration": 608
+        },
+        {
+          "start": 261638.59999999963,
+          "duration": 624
+        },
+        {
+          "start": 262264.5,
+          "duration": 594
+        },
+        {
+          "start": 262859.2000000002,
+          "duration": 620
+        }
+      ],
+      "phases": [
+        {
+          "at": 256877.4,
+          "phase": "1:telegraph:vector_ram"
+        },
+        {
+          "at": 257410.8,
+          "phase": "1:attack:vector_ram"
+        },
+        {
+          "at": 258544.1,
+          "phase": "1:recovery:vector_ram"
+        },
+        {
+          "at": 261627.3,
+          "phase": "1:pursue:null"
+        }
+      ],
+      "longFrames": [
+        {
+          "at": 257410.8,
+          "ms": 533.3999999999942,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 4.8999999994412065,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 257977.4,
+          "ms": 566.6000000000058,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 3.2000000001862645,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 258544.1,
+          "ms": 566.7000000000116,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3.2000000001862645,
+          "calls": 457,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.27249999999999996,
+          "events": [
+            "player_damaged",
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 259144,
+          "ms": 599.8999999999942,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 4.300000000745058,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 259744,
+          "ms": 600,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 4.400000000372529,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 260394,
+          "ms": 650,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 5.099999999627471,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 261027.3,
+          "ms": 633.2999999999884,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 261627.3,
+          "ms": 600,
+          "phase": "1:pursue:null",
+          "renderMs": 3.2999999998137355,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 262260.6,
+          "ms": 633.2999999999884,
+          "phase": "1:pursue:null",
+          "renderMs": 2.5,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 262843.9,
+          "ms": 583.3000000000466,
+          "phase": "1:pursue:null",
+          "renderMs": 2.5,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 263493.9,
+          "ms": 650,
+          "phase": "1:pursue:null",
+          "renderMs": 2,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "frames": [
+        {
+          "at": 257410.8,
+          "ms": 533.3999999999942,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 4.8999999994412065,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_attack_strike",
+            "enemy_attack_strike"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 257977.4,
+          "ms": 566.6000000000058,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 3.2000000001862645,
+          "calls": 441,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 258544.1,
+          "ms": 566.7000000000116,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3.2000000001862645,
+          "calls": 457,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.27249999999999996,
+          "events": [
+            "player_damaged",
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 259144,
+          "ms": 599.8999999999942,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 4.300000000745058,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 259744,
+          "ms": 600,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 4.400000000372529,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 260394,
+          "ms": 650,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 5.099999999627471,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 261027.3,
+          "ms": 633.2999999999884,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 3,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 261627.3,
+          "ms": 600,
+          "phase": "1:pursue:null",
+          "renderMs": 3.2999999998137355,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 262260.6,
+          "ms": 633.2999999999884,
+          "phase": "1:pursue:null",
+          "renderMs": 2.5,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 262843.9,
+          "ms": 583.3000000000466,
+          "phase": "1:pursue:null",
+          "renderMs": 2.5,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        },
+        {
+          "at": 263493.9,
+          "ms": 650,
+          "phase": "1:pursue:null",
+          "renderMs": 2,
+          "calls": 458,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "assets": [
+        "BlenderAsset_chapter_1_helix",
+        "BlenderAsset_chapter_2_choir",
+        "BlenderAsset_chapter_3_curator",
+        "BlenderAsset_chapter_4_matron"
+      ],
+      "graphics": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "dpr": 1,
+      "antialias": true,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+      "webdriver": false,
+      "traceLongestTasks": [
+        {
+          "name": "RunTask",
+          "ts": 5620553109,
+          "dur": 1111556,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5620560751,
+          "dur": 1101705,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5624527114,
+          "dur": 642031,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5624533628,
+          "dur": 633488,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5625181286,
+          "dur": 625282,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5626419573,
+          "dur": 624969,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5627640208,
+          "dur": 620812,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5626424534,
+          "dur": 618690,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5625189168,
+          "dur": 615999,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5627644240,
+          "dur": 615362,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5625810457,
+          "dur": 608366,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5625815583,
+          "dur": 601721,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5623930604,
+          "dur": 595838,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5623334346,
+          "dur": 595222,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5627045460,
+          "dur": 594192,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5627050195,
+          "dur": 587734,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5623340529,
+          "dur": 586706,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5623937845,
+          "dur": 586626,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5622762155,
+          "dur": 571485,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5622195346,
+          "dur": 566017,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5622767712,
+          "dur": 564554,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5622202758,
+          "dur": 556318,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5621665690,
+          "dur": 529030,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5621671150,
+          "dur": 521540,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5624726916,
+          "dur": 441463,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5620033538,
+          "dur": 174094,
+          "pid": 22320,
+          "tid": 9368,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5620033488,
+          "dur": 173040,
+          "pid": 15684,
+          "tid": 23548,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5626089835,
+          "dur": 114440,
+          "pid": 15684,
+          "tid": 23548,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5623517233,
+          "dur": 23440,
+          "pid": 15684,
+          "tid": 23548,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5623342118,
+          "dur": 10028,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        }
+      ],
+      "trace": "helix-4.trace.json.gz"
+    },
+    {
+      "start": 327840.0999999996,
+      "durationMs": 6134.300000000396,
+      "samples": 3,
+      "warmup": false,
+      "meanMs": 2049.933333333349,
+      "p50Ms": 1999.9000000000233,
+      "p95Ms": 1999.9000000000233,
+      "maxMs": 2183.3000000000466,
+      "longTasks": [
+        {
+          "start": 327840.5,
+          "duration": 1989
+        },
+        {
+          "start": 329832.0999999996,
+          "duration": 1964
+        },
+        {
+          "start": 331798.0999999996,
+          "duration": 2179
+        }
+      ],
+      "phases": [
+        {
+          "at": 327824.6,
+          "phase": "1:attack:vector_ram"
+        },
+        {
+          "at": 331791.1,
+          "phase": "1:recovery:vector_ram"
+        }
+      ],
+      "longFrames": [
+        {
+          "at": 329824.5,
+          "ms": 1999.9000000000233,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 10.599999999627471,
+          "calls": 480,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.18999999999999995,
+          "events": [
+            "player_damaged"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 331791.1,
+          "ms": 1966.5999999999767,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7,
+          "calls": 503,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 333974.4,
+          "ms": 2183.3000000000466,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 8.200000000186265,
+          "calls": 503,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "frames": [
+        {
+          "at": 329824.5,
+          "ms": 1999.9000000000233,
+          "phase": "1:attack:vector_ram",
+          "renderMs": 10.599999999627471,
+          "calls": 480,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0.18999999999999995,
+          "events": [
+            "player_damaged"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 331791.1,
+          "ms": 1966.5999999999767,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 7,
+          "calls": 503,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [
+            "boss_core_exposed"
+          ],
+          "state": "playing"
+        },
+        {
+          "at": 333974.4,
+          "ms": 2183.3000000000466,
+          "phase": "1:recovery:vector_ram",
+          "renderMs": 8.200000000186265,
+          "calls": 503,
+          "geometries": 511,
+          "programs": 25,
+          "heap": 39600000,
+          "trauma": 0,
+          "events": [],
+          "state": "playing"
+        }
+      ],
+      "assets": [
+        "BlenderAsset_chapter_1_helix",
+        "BlenderAsset_chapter_2_choir",
+        "BlenderAsset_chapter_3_curator",
+        "BlenderAsset_chapter_4_matron"
+      ],
+      "graphics": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "dpr": 1,
+      "antialias": true,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+      "webdriver": false,
+      "traceLongestTasks": [
+        {
+          "name": "RunTask",
+          "ts": 5687557368,
+          "dur": 3098145,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5687567967,
+          "dur": 3081869,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5696579115,
+          "dur": 2179651,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5696589368,
+          "dur": 2164639,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5700827390,
+          "dur": 2094980,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5700841169,
+          "dur": 2074721,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5698760800,
+          "dur": 2065343,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5700855998,
+          "dur": 2061749,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5698773779,
+          "dur": 2047604,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5692621506,
+          "dur": 1988951,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5692639230,
+          "dur": 1966475,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5694613104,
+          "dur": 1964784,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5690658199,
+          "dur": 1961062,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5690668135,
+          "dur": 1946767,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5694628136,
+          "dur": 1945239,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5683838907,
+          "dur": 1863127,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5683848236,
+          "dur": 1850227,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5685704711,
+          "dur": 1837218,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5685716867,
+          "dur": 1821830,
+          "pid": 22624,
+          "tid": 23348,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5683833090,
+          "dur": 1672617,
+          "pid": 2940,
+          "tid": 21264,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5688874127,
+          "dur": 259324,
+          "pid": 2940,
+          "tid": 3056,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5702939189,
+          "dur": 15848,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5702930571,
+          "dur": 14978,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 258
+            }
+          }
+        },
+        {
+          "name": "FireAnimationFrame",
+          "ts": 5692622058,
+          "dur": 14924,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "id": 249
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5692622067,
+          "dur": 14841,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445429314,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        },
+        {
+          "name": "FunctionCall",
+          "ts": 5702930591,
+          "dur": 14513,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {
+            "data": {
+              "columnNumber": 252122,
+              "frame": "932912954DCC0C102F16D82D3B39C55D",
+              "functionName": "Ce",
+              "isolate": "372825050105300761",
+              "lineNumber": 4228,
+              "sampleTraceId": 7153312445431487,
+              "scriptId": "5",
+              "url": "http://127.0.0.1:4173/assets/index-Btz13RWN.js"
+            }
+          }
+        },
+        {
+          "name": "RunTask",
+          "ts": 5694622652,
+          "dur": 14457,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5700838994,
+          "dur": 14430,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5692622464,
+          "dur": 13418,
+          "pid": 22624,
+          "tid": 21676,
+          "args": {}
+        },
+        {
+          "name": "RunTask",
+          "ts": 5687543865,
+          "dur": 13288,
+          "pid": 15684,
+          "tid": 11268,
+          "args": {}
+        }
+      ],
+      "trace": "helix-5.trace.json.gz"
+    }
+  ],
+  "errors": [],
+  "browser": "153.0.8010.12",
+  "initialWarmup": {
+    "start": 19381.700000000186,
+    "durationMs": 6204.9999999998145,
+    "samples": 3,
+    "warmup": true,
+    "meanMs": 2077.7000000000007,
+    "p50Ms": 1933.2999999999993,
+    "p95Ms": 1933.2999999999993,
+    "maxMs": 2399.800000000003,
+    "longTasks": [
+      {
+        "start": 19381.900000000373,
+        "duration": 1875
+      },
+      {
+        "start": 21261.599999999627,
+        "duration": 2395
+      },
+      {
+        "start": 23661.700000000186,
+        "duration": 1941
+      }
+    ],
+    "phases": [
+      {
+        "at": 19353.6,
+        "phase": "1:telegraph:vector_ram"
+      },
+      {
+        "at": 21253.6,
+        "phase": "1:attack:vector_ram"
+      },
+      {
+        "at": 25586.7,
+        "phase": "1:recovery:vector_ram"
+      }
+    ],
+    "longFrames": [
+      {
+        "at": 21253.6,
+        "ms": 1900,
+        "phase": "1:attack:vector_ram",
+        "renderMs": 8.200000000186265,
+        "calls": 441,
+        "geometries": 506,
+        "programs": 25,
+        "heap": 39600000,
+        "trauma": 0,
+        "events": [
+          "boss_attack_strike",
+          "enemy_attack_strike"
+        ],
+        "state": "playing"
+      },
+      {
+        "at": 23653.4,
+        "ms": 2399.800000000003,
+        "phase": "1:attack:vector_ram",
+        "renderMs": 10.099999999627471,
+        "calls": 441,
+        "geometries": 506,
+        "programs": 25,
+        "heap": 39600000,
+        "trauma": 0,
+        "events": [],
+        "state": "playing"
+      },
+      {
+        "at": 25586.7,
+        "ms": 1933.2999999999993,
+        "phase": "1:recovery:vector_ram",
+        "renderMs": 9.900000000372529,
+        "calls": 435,
+        "geometries": 506,
+        "programs": 25,
+        "heap": 39600000,
+        "trauma": 0.4375,
+        "events": [
+          "player_damaged",
+          "boss_core_exposed"
+        ],
+        "state": "playing"
+      }
+    ],
+    "frames": [
+      {
+        "at": 21253.6,
+        "ms": 1900,
+        "phase": "1:attack:vector_ram",
+        "renderMs": 8.200000000186265,
+        "calls": 441,
+        "geometries": 506,
+        "programs": 25,
+        "heap": 39600000,
+        "trauma": 0,
+        "events": [
+          "boss_attack_strike",
+          "enemy_attack_strike"
+        ],
+        "state": "playing"
+      },
+      {
+        "at": 23653.4,
+        "ms": 2399.800000000003,
+        "phase": "1:attack:vector_ram",
+        "renderMs": 10.099999999627471,
+        "calls": 441,
+        "geometries": 506,
+        "programs": 25,
+        "heap": 39600000,
+        "trauma": 0,
+        "events": [],
+        "state": "playing"
+      },
+      {
+        "at": 25586.7,
+        "ms": 1933.2999999999993,
+        "phase": "1:recovery:vector_ram",
+        "renderMs": 9.900000000372529,
+        "calls": 435,
+        "geometries": 506,
+        "programs": 25,
+        "heap": 39600000,
+        "trauma": 0.4375,
+        "events": [
+          "player_damaged",
+          "boss_core_exposed"
+        ],
+        "state": "playing"
+      }
+    ],
+    "assets": [
+      "BlenderAsset_chapter_1_helix",
+      "BlenderAsset_chapter_2_choir",
+      "BlenderAsset_chapter_3_curator",
+      "BlenderAsset_chapter_4_matron"
+    ],
+    "graphics": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "dpr": 1,
+    "antialias": true,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.8010.12 Safari/537.36",
+    "webdriver": false
+  }
+}

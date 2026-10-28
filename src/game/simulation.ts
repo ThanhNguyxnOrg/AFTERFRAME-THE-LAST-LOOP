@@ -2356,7 +2356,9 @@ export function startCampaignChapterSelect(
   }
 
   const candidateSnap = captureSavedCampaignSnapshotIfNeeded(world);
-  const isReplay = isSnapshotLaterOrChapterCompleted(chapter, candidateSnap);
+  const isReplay =
+    world.run.completedChapters.includes(chapter) ||
+    isSnapshotLaterOrChapterCompleted(chapter, candidateSnap);
   const savedSnap = isReplay ? candidateSnap : null;
   const completed = mergeUniqueChapters(
     candidateSnap?.completedChapters,

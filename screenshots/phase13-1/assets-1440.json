@@ -1,0 +1,456 @@
+{
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "deviceScaleFactor": 1,
+  "physicalDevice": false,
+  "touch": false,
+  "url": "http://127.0.0.1:4173",
+  "startSave": "Fresh nonpersistent browser context, no imported storage; destroyed after run.",
+  "automation": "Full renderer (webdriver=false/non-Headless UA); pointer lock deliberately denied to exercise supported unlocked camera. Test API reads observe state; writes are classified fixtures.",
+  "steps": [
+    {
+      "name": "chapter_1_helix loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": true,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": false,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    },
+    {
+      "name": "chapter_2_choir loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": true,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": false,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    },
+    {
+      "name": "chapter_3_curator loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": true,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": false,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    },
+    {
+      "name": "chapter_4_matron loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": true,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    },
+    {
+      "name": "chapter_1_helix loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": true,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": false,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    },
+    {
+      "name": "chapter_2_choir loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": true,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": false,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    },
+    {
+      "name": "chapter_3_curator loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": true,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": false,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    },
+    {
+      "name": "chapter_4_matron loaded visible and not duplicated",
+      "status": "passed_test_fixture",
+      "fixture": "Existing startBossEncounter fixture selects chapter; real GLTF network/load/render objects inspected.",
+      "details": {
+        "assets": [
+          {
+            "name": "BlenderAsset_chapter_1_helix",
+            "uuid": "ad0819f8-404f-4487-a47c-59d90d536b71",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_2_choir",
+            "uuid": "b0eba66e-2f33-4a09-ac0f-38d3b29ab6a1",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_3_curator",
+            "uuid": "a23722fb-ffb1-491b-a7b4-d3f66424d4da",
+            "visible": false,
+            "meshes": 1
+          },
+          {
+            "name": "BlenderAsset_chapter_4_matron",
+            "uuid": "634a5c96-1a5d-49c4-90f8-8e6f9813a63c",
+            "visible": true,
+            "meshes": 1
+          }
+        ],
+        "requests": [
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/helix_containment_gate.glb",
+            "status": 200,
+            "size": 588948
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/choir_acoustic_organ.glb",
+            "status": 200,
+            "size": 685380
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/curator_archive_monolith.glb",
+            "status": 200,
+            "size": 487608
+          },
+          {
+            "url": "http://127.0.0.1:4173/assets/blender/phase12/matron_surgical_pod.glb",
+            "status": 200,
+            "size": 467660
+          }
+        ]
+      }
+    }
+  ],
+  "errors": []
+}

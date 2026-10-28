@@ -26,6 +26,22 @@ const _lookAtTarget = new THREE.Vector3();
 const _dummyObj = new THREE.Object3D();
 const _color = new THREE.Color();
 
+function disposeMeshResources(root: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    geometries.add(object.geometry);
+    if (Array.isArray(object.material)) {
+      object.material.forEach((material) => materials.add(material));
+    } else {
+      materials.add(object.material);
+    }
+  });
+  geometries.forEach((geometry) => geometry.dispose());
+  materials.forEach((material) => material.dispose());
+}
+
 interface PooledParticle {
   active: boolean;
   x: number;
@@ -355,6 +371,7 @@ export class ArenaSceneRenderer {
   private currentCamPos = new THREE.Vector3(0, 8, 20);
   private currentLookAt = new THREE.Vector3(0, 1.2, 8);
   private titleTourAngle = 0;
+  private reducedMotion = false;
   private prevPlayerRotY = 0;
   private smoothedPlayerTurnRate = 0;
   private prevPlayerVx = 0;
@@ -1139,7 +1156,10 @@ export class ArenaSceneRenderer {
       loader.load(
         config.url,
         (gltf) => {
-          if (this.disposed) return;
+          if (this.disposed) {
+            disposeMeshResources(gltf.scene);
+            return;
+          }
           const asset = gltf.scene;
           asset.name = `BlenderAsset_${chapter}`;
           asset.position.set(config.x, 0, config.z);
@@ -1579,14 +1599,14 @@ export class ArenaSceneRenderer {
     }
   }
 
-  public updateAndRender(
-    world: WorldState,
-    aimYaw: number,
-    aimPitch: number,
-    dt: number,
-    shouldRender = true
-  ): void {
-    const poseAlpha = 1 - Math.exp(-26 * dt);
+  public setReducedMotion(enabled: boolean): void {
+    this.reducedMotion = enabled;
+  }
+
+  private updateEnvironmentPresentation(world: WorldState, dt: number): void {
+    const ambientScale = this.reducedMotion ? 0.15 : 1;
+    const ambientDt = dt * ambientScale;
+    const ambientTime = world.elapsedTime * ambientScale;
 
     // Retract central Chronicle Loom Pylon into floor during Boss Encounter (except Chapter V Chronicle Loom finale!)
     this.loomPylonGroup.position.y =
@@ -1604,21 +1624,21 @@ export class ArenaSceneRenderer {
             : 1.0;
 
     // Rotate concentric Chronicle Loom Pylon gyroscopic rings & bulkhead ventilation fans
-    this.loomRingMesh.rotation.z += dt * 0.68 * ringSpeedScale;
-    this.loomRingMesh.rotation.y += dt * 0.36 * ringSpeedScale;
-    this.loomInnerRingMesh.rotation.x -= dt * 0.92 * ringSpeedScale;
-    this.loomInnerRingMesh.rotation.z += dt * 0.48 * ringSpeedScale;
-    this.loomOuterRingMesh.rotation.y -= dt * 0.28 * ringSpeedScale;
+    this.loomRingMesh.rotation.z += ambientDt * 0.68 * ringSpeedScale;
+    this.loomRingMesh.rotation.y += ambientDt * 0.36 * ringSpeedScale;
+    this.loomInnerRingMesh.rotation.x -= ambientDt * 0.92 * ringSpeedScale;
+    this.loomInnerRingMesh.rotation.z += ambientDt * 0.48 * ringSpeedScale;
+    this.loomOuterRingMesh.rotation.y -= ambientDt * 0.28 * ringSpeedScale;
 
     if (selectedEnding === 'witness') {
       this.loomWitnessBeamMesh.visible = true;
-      this.loomWitnessBeamMat.opacity = 0.36 + Math.sin(world.elapsedTime * 9) * 0.12;
-      this.loomWitnessBeamMesh.rotation.y += dt * 2.4;
+      this.loomWitnessBeamMat.opacity = 0.36 + Math.sin(ambientTime * 9) * 0.12 * ambientScale;
+      this.loomWitnessBeamMesh.rotation.y += ambientDt * 2.4;
       this.loomContinuityDomeMesh.visible = false;
     } else if (selectedEnding === 'continuity') {
       this.loomContinuityDomeMesh.visible = true;
-      this.loomContinuityDomeMat.opacity = 0.46 + Math.sin(world.elapsedTime * 4.5) * 0.12;
-      this.loomContinuityDomeMesh.rotation.y += dt * 0.65;
+      this.loomContinuityDomeMat.opacity = 0.46 + Math.sin(ambientTime * 4.5) * 0.12 * ambientScale;
+      this.loomContinuityDomeMesh.rotation.y += ambientDt * 0.65;
       this.loomWitnessBeamMesh.visible = false;
     } else {
       this.loomWitnessBeamMesh.visible = false;
@@ -1633,11 +1653,11 @@ export class ArenaSceneRenderer {
       chapterEnv.group.visible = CHAPTER_IDS[i] === ch;
       if (chapterEnv.group.visible) {
         for (let r = 0; r < chapterEnv.rotors.length; r++) {
-          chapterEnv.rotors[r].rotation.y += dt * (r % 2 === 0 ? 0.46 : -0.34) * ringSpeedScale;
+          chapterEnv.rotors[r].rotation.y += ambientDt * (r % 2 === 0 ? 0.46 : -0.34) * ringSpeedScale;
         }
         for (let m = 0; m < chapterEnv.pulseMaterials.length; m++) {
           chapterEnv.pulseMaterials[m].opacity =
-            selectedEnding === 'silence' ? 0.08 : 0.28 + Math.sin(world.elapsedTime * 2.8 + m) * 0.12;
+            selectedEnding === 'silence' ? 0.08 : 0.28 + Math.sin(ambientTime * 2.8 + m) * 0.12 * ambientScale;
         }
       }
     }
@@ -1688,12 +1708,12 @@ export class ArenaSceneRenderer {
     }
 
     for (let i = 0; i < this.ventFanMeshes.length; i++) {
-      this.ventFanMeshes[i].rotation.z += dt * (2.6 + (i % 2) * 0.6) * ringSpeedScale;
+      this.ventFanMeshes[i].rotation.z += ambientDt * (2.6 + (i % 2) * 0.6) * ringSpeedScale;
     }
     this.conduitGlowMat.opacity =
       selectedEnding === 'silence'
         ? 0.22
-        : 0.68 + Math.sin(world.elapsedTime * 3.4) * 0.18;
+        : 0.68 + Math.sin(ambientTime * 3.4) * 0.18 * ambientScale;
 
     // Update Phase 11 Sector Storytelling 3D Landmarks (Gameplay-Reactive)
     const activeBossId = world.boss?.id ?? null;
@@ -1794,9 +1814,9 @@ export class ArenaSceneRenderer {
         const defaultSealColor =
           i === 0 ? 0xf59e0b : i === 1 ? 0x38bdf8 : i === 2 ? 0xc084fc : 0xf43f5e;
         const crystal = this.loomSealCrystals[i];
-        crystal.rotation.y += dt * 1.6 * ringSpeedScale;
+        crystal.rotation.y += ambientDt * 1.6 * ringSpeedScale;
         crystal.position.y =
-          1.75 + Math.sin(world.elapsedTime * 2.6 + i * 1.5) * 0.12 * ringSpeedScale;
+          1.75 + Math.sin(ambientTime * 2.6 + i * 1.5) * 0.12 * ringSpeedScale * ambientScale;
         if (selectedEnding === 'silence') {
           this.loomSealMats[i].color.setHex(0x475569);
           this.loomSealMats[i].opacity = 0.35;
@@ -1806,22 +1826,34 @@ export class ArenaSceneRenderer {
           this.loomSealMats[i].opacity = 0.96;
           this.loomSealTetherMats[i].color.setHex(0x38bdf8);
           this.loomSealTetherMats[i].opacity =
-            0.78 + Math.sin(world.elapsedTime * 8 + i) * 0.16;
+            0.78 + Math.sin(ambientTime * 8 + i) * 0.16 * ambientScale;
         } else if (selectedEnding === 'continuity') {
           this.loomSealMats[i].color.setHex(0xfbbf24);
           this.loomSealMats[i].opacity = 0.92;
           this.loomSealTetherMats[i].color.setHex(0xf59e0b);
           this.loomSealTetherMats[i].opacity =
-            0.66 + Math.sin(world.elapsedTime * 4 + i) * 0.14;
+            0.66 + Math.sin(ambientTime * 4 + i) * 0.14 * ambientScale;
         } else {
           this.loomSealMats[i].color.setHex(defaultSealColor);
           this.loomSealMats[i].opacity = 0.88;
           this.loomSealTetherMats[i].color.setHex(defaultSealColor);
           this.loomSealTetherMats[i].opacity =
-            0.52 + Math.sin(world.elapsedTime * 3.5 + i) * 0.15;
+            0.52 + Math.sin(ambientTime * 3.5 + i) * 0.15 * ambientScale;
         }
       }
     }
+
+  }
+
+  public updateAndRender(
+    world: WorldState,
+    aimYaw: number,
+    aimPitch: number,
+    dt: number,
+    shouldRender = true
+  ): void {
+    const poseAlpha = 1 - Math.exp(-26 * dt);
+    this.updateEnvironmentPresentation(world, dt);
 
     // Update Relay Departure/Arrival VFX Columns & Impact Shockwave Ring
     if (this.relayVfxTimer > 0) {
@@ -3827,12 +3859,23 @@ export class ArenaSceneRenderer {
 
     this.updateParticles(dt);
 
-    // =========================================================================
-    // 5. CAMERA CHOREOGRAPHY
-    // =========================================================================
+    this.updateCameraPresentation(world, aimYaw, aimPitch, dt);
+
+    if (shouldRender) {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  private updateCameraPresentation(
+    world: WorldState,
+    aimYaw: number,
+    aimPitch: number,
+    dt: number
+  ): void {
+    const p = world.player;
     if (world.appState === 'title') {
       const tourDamp = 1 - Math.exp(-8 * dt);
-      this.titleTourAngle += dt * 0.22;
+      if (!this.reducedMotion) this.titleTourAngle += dt * 0.22;
       const tourX = p.x + Math.sin(this.titleTourAngle) * 5.2 + 2.2;
       const tourZ = p.z + Math.cos(this.titleTourAngle) * 4.5 + 3.5;
       _desiredCamPos.set(tourX, 3.6, tourZ);
@@ -3892,7 +3935,7 @@ export class ArenaSceneRenderer {
     }
 
     // Apply decaying trauma * trauma camera shake
-    const shakeMag = world.cameraTrauma * world.cameraTrauma * 0.34;
+    const shakeMag = this.reducedMotion ? 0 : world.cameraTrauma * world.cameraTrauma * 0.34;
     const shakeX = shakeMag > 0.001 ? (Math.random() * 2 - 1) * shakeMag : 0;
     const shakeY = shakeMag > 0.001 ? (Math.random() * 2 - 1) * shakeMag : 0;
 
@@ -3902,10 +3945,6 @@ export class ArenaSceneRenderer {
       this.currentCamPos.z
     );
     this.camera.lookAt(this.currentLookAt);
-
-    if (shouldRender) {
-      this.renderer.render(this.scene, this.camera);
-    }
   }
 
   public resize(width: number, height: number): void {
@@ -3918,16 +3957,7 @@ export class ArenaSceneRenderer {
 
   public dispose(): void {
     this.disposed = true;
-    this.scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry?.dispose();
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach((m) => m.dispose());
-        } else {
-          obj.material?.dispose();
-        }
-      }
-    });
+    disposeMeshResources(this.scene);
     this.shadowTex.dispose();
     this.studioEnvTex.dispose();
     this.renderer.dispose();

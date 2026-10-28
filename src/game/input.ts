@@ -18,6 +18,7 @@ export class InputController {
   private settings: CameraSettings = {
     sensitivity: 1.0,
     invertY: false,
+    reducedMotion: false,
   };
 
   private lastPointerX: number | null = null;
@@ -81,14 +82,23 @@ export class InputController {
 
   private loadSettings(): void {
     try {
+      this.settings.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    } catch {
+      this.settings.reducedMotion = false;
+    }
+    try {
       const raw = window.localStorage.getItem(CAMERA_SETTINGS_STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as Partial<CameraSettings>;
+        const parsed = JSON.parse(raw) as Partial<CameraSettings> | null;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
         if (typeof parsed.sensitivity === 'number' && Number.isFinite(parsed.sensitivity)) {
           this.settings.sensitivity = Math.max(0.3, Math.min(2.5, parsed.sensitivity));
         }
         if (typeof parsed.invertY === 'boolean') {
           this.settings.invertY = parsed.invertY;
+        }
+        if (typeof parsed.reducedMotion === 'boolean') {
+          this.settings.reducedMotion = parsed.reducedMotion;
         }
       }
     } catch {
@@ -106,6 +116,9 @@ export class InputController {
     }
     if (typeof next.invertY === 'boolean') {
       this.settings.invertY = next.invertY;
+    }
+    if (typeof next.reducedMotion === 'boolean') {
+      this.settings.reducedMotion = next.reducedMotion;
     }
     try {
       window.localStorage.setItem(CAMERA_SETTINGS_STORAGE_KEY, JSON.stringify(this.settings));
@@ -293,6 +306,7 @@ export class InputController {
 
     // Title screen Enter/Space start handshake
     if (state === 'title' && (code === 'Enter' || code === 'Space')) {
+      if ((e.target as HTMLElement | null)?.closest?.('button, input, a, select, textarea')) return;
       e.preventDefault();
       this.onStartGameCallback?.();
       return;

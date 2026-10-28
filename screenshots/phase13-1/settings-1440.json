@@ -1,0 +1,36 @@
+{
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "deviceScaleFactor": 1,
+  "physicalDevice": false,
+  "touch": false,
+  "url": "http://127.0.0.1:4173",
+  "startSave": "Fresh nonpersistent browser context, no imported storage; destroyed after run.",
+  "automation": "Full renderer (webdriver=false/non-Headless UA); pointer lock deliberately denied to exercise supported unlocked camera. Test API reads observe state; writes are classified fixtures.",
+  "steps": [
+    {
+      "name": "OS default keyboard override and persistence",
+      "status": "passed_real_input",
+      "details": {
+        "osReduce": true,
+        "explicitFalseSurvivesReload": true,
+        "keyboardToggleDoesNotLaunch": true
+      }
+    },
+    {
+      "name": "pause/title synchronization actual camera shake and CSS",
+      "status": "passed_test_fixture",
+      "fixture": "Set paused world.cameraTrauma=1 to measure render presentation; no simulation advance or combat timing mutation.",
+      "details": {
+        "normalCameraXRange": 0.6266978812538295,
+        "reducedCameraXRange": 0.0,
+        "worldUnchanged": true,
+        "pulseAnimation": "none"
+      }
+    }
+  ],
+  "errors": []
+}

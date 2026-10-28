@@ -609,6 +609,7 @@ export interface ObstacleCollider {
 export interface CameraSettings {
   sensitivity: number; // 0.3 to 2.5, default 1.0
   invertY: boolean; // default false
+  reducedMotion: boolean;
 }
 
 export interface PlayerInputFrame {

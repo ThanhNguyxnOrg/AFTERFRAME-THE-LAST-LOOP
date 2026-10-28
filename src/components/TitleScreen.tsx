@@ -868,6 +868,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         {cameraSettings.invertY ? 'INVERTED' : 'STANDARD'}
                       </span>
                     </button>
+                    <div className="sm:col-span-2 space-y-1">
+                      <button
+                        type="button"
+                        id="title-setting-reduced-motion"
+                        data-testid="title-setting-reduced-motion"
+                        aria-label="Reduced motion"
+                        aria-pressed={cameraSettings.reducedMotion}
+                        aria-describedby="title-reduced-motion-description"
+                        onClick={() =>
+                          onUpdateCameraSettings({ reducedMotion: !cameraSettings.reducedMotion })
+                        }
+                        className="w-full flex items-center justify-between px-3 py-2 bg-[#0d1522] hover:bg-[#162236] border border-slate-800 text-[11px] cursor-pointer"
+                      >
+                        <span>Reduced motion</span>
+                        <span className={cameraSettings.reducedMotion ? 'text-cyan-300 font-bold' : 'text-slate-500'}>
+                          {cameraSettings.reducedMotion ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+                      <p id="title-reduced-motion-description" className="text-[10px] text-slate-400">
+                        Stops camera shake and title orbit; softens ambient motion. Combat cues stay visible.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
