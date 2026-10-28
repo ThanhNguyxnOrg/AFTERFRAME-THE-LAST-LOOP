@@ -19,6 +19,8 @@ interface StatusModalProps {
   chapter?: CampaignChapterId;
   pendingNextChapter?: CampaignChapterId | null;
   hasSavedCampaignSnapshot?: boolean;
+  savedCampaignChapter?: CampaignChapterId | null;
+  savedCampaignCheckpoint?: BossCheckpointState | null;
   bossCheckpoint?: BossCheckpointState | null;
   recoveredLogs?: string[];
   completedEndings?: ChronicleLoomEndingId[];
@@ -59,6 +61,8 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   chapter = 'prologue',
   pendingNextChapter = null,
   hasSavedCampaignSnapshot = false,
+  savedCampaignChapter = null,
+  savedCampaignCheckpoint = null,
   bossCheckpoint = null,
   recoveredLogs = [],
   completedEndings = [],
@@ -468,6 +472,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   className="w-full px-4 py-3.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-sm sm:text-base tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap shadow-[0_0_24px_rgba(34,211,238,0.35)]"
                 >
                   Restore Saved Campaign
+                  {savedCampaignChapter ? ` (${NEXT_CHAPTER_LABELS[savedCampaignChapter]})` : ''}
                 </button>
               )}
           </div>
@@ -487,6 +492,10 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   className="sm:col-span-2 w-full px-3.5 py-2.5 bg-[#112233] hover:bg-[#19324a] text-cyan-300 border border-cyan-400/80 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap text-center"
                 >
                   Restore Saved Campaign
+                  {savedCampaignChapter ? ` · ${NEXT_CHAPTER_LABELS[savedCampaignChapter]}` : ''}
+                  {savedCampaignCheckpoint
+                    ? ` (${savedCampaignCheckpoint.integrity} HP / ${savedCampaignCheckpoint.flux} FLX)`
+                    : ''}
                 </button>
               )}
 

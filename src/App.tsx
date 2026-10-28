@@ -17,13 +17,13 @@ import {
   dismissActiveTransmission,
   extractHudSnapshot,
   forceBossAttack,
-  parseAndApplyCampaignProgress,
+  loadCampaignProgressFromStorage,
   resetWorldForPlaying,
   resetWorldForStandardPlaying,
   restoreSavedCampaignProgress,
   retryBossFromCheckpoint,
+  saveCampaignProgressToStorage,
   selectChronicleLoomEnding,
-  serializeCampaignProgress,
   skipBossIntroBanner,
   skipCampaignIntro,
   skipContainmentTransition,
@@ -65,29 +65,20 @@ function getInitialLaunchConfig(): {
   return { appState: 'title', bossMode: false, practiceMode: false };
 }
 
-const CAMPAIGN_STORAGE_KEY = 'afterframe_campaign_progress_v1';
-
 function loadPersistedCampaignProgress(world: WorldState): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const raw = window.localStorage.getItem(CAMPAIGN_STORAGE_KEY);
-    parseAndApplyCampaignProgress(world, raw);
-  } catch {
-    // Ignore storage read errors in restricted environments
-  }
+  loadCampaignProgressFromStorage(world);
 }
 
 let lastPersistedCampaignJson: string | null = null;
 
 function savePersistedCampaignProgress(world: WorldState): void {
-  if (typeof window === 'undefined') return;
-  const serialized = serializeCampaignProgress(world);
-  if (serialized === lastPersistedCampaignJson) return;
-  try {
-    window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, serialized);
-    lastPersistedCampaignJson = serialized;
-  } catch {
-    // Ignore storage write errors in restricted environments
+  const res = saveCampaignProgressToStorage(
+    world,
+    undefined,
+    lastPersistedCampaignJson
+  );
+  if (res.written) {
+    lastPersistedCampaignJson = res.json;
   }
 }
 
@@ -513,13 +504,47 @@ export default function App() {
     inputRef.current?.triggerEchoCollapse();
   }, []);
 
-  const handleTouchMoveHold = useCallback((dx: number, dz: number) => {
-    inputRef.current?.setTouchMoveHold(dx, dz);
-  }, []);
+  const handleTouchMoveHold = useCallback(
+    (dx: number, dz: number, pointerId?: number | null) => {
+      inputRef.current?.setTouchMoveHold(dx, dz, pointerId);
+    },
+    []
+  );
 
   const handleTouchMovePulse = useCallback((dx: number, dz: number) => {
     inputRef.current?.triggerTouchMovePulse(dx, dz);
   }, []);
+
+  const handleTouchCameraStart = useCallback(
+    (
+      id: number,
+      clientX: number,
+      clientY: number,
+      source: 'touch' | 'pointer' = 'pointer'
+    ) => {
+      inputRef.current?.startTouchCameraLook(id, clientX, clientY, source);
+    },
+    []
+  );
+
+  const handleTouchCameraMove = useCallback(
+    (
+      id: number,
+      clientX: number,
+      clientY: number,
+      source: 'touch' | 'pointer' = 'pointer'
+    ) => {
+      inputRef.current?.moveTouchCameraLook(id, clientX, clientY, source);
+    },
+    []
+  );
+
+  const handleTouchCameraEnd = useCallback(
+    (id?: number, source?: 'touch' | 'pointer') => {
+      inputRef.current?.endTouchCameraLook(id, source);
+    },
+    []
+  );
 
   useEffect(() => {
     const mountEl = canvasMountRef.current;
@@ -768,6 +793,29 @@ export default function App() {
         retryBossCheckpoint: (skipIntro?: boolean) => WorldState;
         forceBossAttack: (attack: BossAttackType) => WorldState;
         rotateCamera: (dx: number, dy: number) => { aimYaw: number; aimPitch: number };
+        startTouchCameraLook: (
+          id: number,
+          clientX: number,
+          clientY: number,
+          source?: 'touch' | 'pointer'
+        ) => { started: boolean; aimYaw: number; aimPitch: number };
+        moveTouchCameraLook: (
+          id: number,
+          clientX: number,
+          clientY: number,
+          source?: 'touch' | 'pointer'
+        ) => { moved: boolean; aimYaw: number; aimPitch: number };
+        endTouchCameraLook: (
+          id?: number,
+          source?: 'touch' | 'pointer'
+        ) => { active: boolean; aimYaw: number; aimPitch: number };
+        setTouchMoveHold: (
+          dx: number,
+          dz: number,
+          pointerId?: number | null
+        ) => { x: number; z: number; pointerId: number | null };
+        saveCampaignProgress: () => string | null;
+        loadCampaignProgress: () => WorldState;
         setCameraSettings: (s: Partial<CameraSettings>) => CameraSettings;
         togglePerfOverlay: () => boolean;
       };
@@ -940,6 +988,47 @@ export default function App() {
         sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
         return { aimYaw: input.aimYaw, aimPitch: input.aimPitch };
       },
+      startTouchCameraLook: (
+        id: number,
+        clientX: number,
+        clientY: number,
+        source: 'touch' | 'pointer' = 'touch'
+      ) => {
+        const started = input.startTouchCameraLook(id, clientX, clientY, source);
+        return { started, aimYaw: input.aimYaw, aimPitch: input.aimPitch };
+      },
+      moveTouchCameraLook: (
+        id: number,
+        clientX: number,
+        clientY: number,
+        source: 'touch' | 'pointer' = 'touch'
+      ) => {
+        const moved = input.moveTouchCameraLook(id, clientX, clientY, source);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        return { moved, aimYaw: input.aimYaw, aimPitch: input.aimPitch };
+      },
+      endTouchCameraLook: (id?: number, source?: 'touch' | 'pointer') => {
+        input.endTouchCameraLook(id, source);
+        return {
+          active: input.isTouchCameraActive(),
+          aimYaw: input.aimYaw,
+          aimPitch: input.aimPitch,
+        };
+      },
+      setTouchMoveHold: (dx: number, dz: number, pointerId?: number | null) => {
+        input.setTouchMoveHold(dx, dz, pointerId);
+        return input.getTouchMoveHold();
+      },
+      saveCampaignProgress: () => {
+        savePersistedCampaignProgress(world);
+        return lastPersistedCampaignJson;
+      },
+      loadCampaignProgress: () => {
+        loadPersistedCampaignProgress(world);
+        sceneRenderer.syncEnemyRigs(world);
+        setHud(extractHudSnapshot(world));
+        return world;
+      },
       setCameraSettings: (s: Partial<CameraSettings>) => {
         const updated = input.setCameraSettings(s);
         setCameraSettings(updated);
@@ -1016,7 +1105,15 @@ export default function App() {
           recoveredLogs={hud.run.recoveredLogs}
           completedEndings={hud.run.completedEndings}
           activeChapter={hud.run.chapter}
-          savedCampaignChapter={hud.run.savedCampaignSnapshot?.chapter ?? null}
+          savedCampaignChapter={
+            hud.run.savedCampaignSnapshot
+              ? hud.run.savedCampaignSnapshot.stage === 'completed' &&
+                hud.run.savedCampaignSnapshot.pendingNextChapter
+                ? hud.run.savedCampaignSnapshot.pendingNextChapter
+                : hud.run.savedCampaignSnapshot.chapter
+              : null
+          }
+          savedCampaignCheckpoint={hud.run.savedCampaignSnapshot?.bossCheckpoint ?? null}
           onSelectCampaignChapter={handleSelectCampaignChapter}
           hasSavedCampaignSnapshot={Boolean(
             hud.run.savedCampaignSnapshot &&
@@ -1060,6 +1157,9 @@ export default function App() {
           onRestoreCampaign={handleRestoreSavedCampaign}
           onTouchMoveHold={handleTouchMoveHold}
           onTouchMovePulse={handleTouchMovePulse}
+          onTouchCameraStart={handleTouchCameraStart}
+          onTouchCameraMove={handleTouchCameraMove}
+          onTouchCameraEnd={handleTouchCameraEnd}
         />
       )}
 
@@ -1074,6 +1174,15 @@ export default function App() {
           hud.run.savedCampaignSnapshot &&
             hud.run.savedCampaignSnapshot.selectedEnding === null
         )}
+        savedCampaignChapter={
+          hud.run.savedCampaignSnapshot
+            ? hud.run.savedCampaignSnapshot.stage === 'completed' &&
+              hud.run.savedCampaignSnapshot.pendingNextChapter
+              ? hud.run.savedCampaignSnapshot.pendingNextChapter
+              : hud.run.savedCampaignSnapshot.chapter
+            : null
+        }
+        savedCampaignCheckpoint={hud.run.savedCampaignSnapshot?.bossCheckpoint ?? null}
         bossCheckpoint={hud.run.bossCheckpoint}
         recoveredLogs={hud.run.recoveredLogs}
         completedEndings={hud.run.completedEndings}

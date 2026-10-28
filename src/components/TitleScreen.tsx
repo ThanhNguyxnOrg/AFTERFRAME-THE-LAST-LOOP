@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { GAME_CONFIG } from '../game/config.ts';
 import type {
+  BossCheckpointState,
   BossEncounterId,
   CameraSettings,
   CampaignChapterId,
@@ -19,6 +20,7 @@ interface TitleScreenProps {
   completedEndings?: ChronicleLoomEndingId[];
   activeChapter?: CampaignChapterId;
   savedCampaignChapter?: CampaignChapterId | null;
+  savedCampaignCheckpoint?: BossCheckpointState | null;
   onSelectCampaignChapter?: (chapter: CampaignChapterId) => void;
   hasSavedCampaignSnapshot?: boolean;
   onRestoreSavedCampaign?: () => void;
@@ -165,6 +167,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   completedEndings = [],
   activeChapter = 'prologue',
   savedCampaignChapter = null,
+  savedCampaignCheckpoint = null,
   onSelectCampaignChapter,
   hasSavedCampaignSnapshot = false,
   onRestoreSavedCampaign,
@@ -352,8 +355,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 className="w-full flex items-center justify-between px-6 py-4 bg-cyan-400 hover:bg-cyan-300 active:bg-cyan-500 text-slate-950 font-display font-bold text-base tracking-wider uppercase transition-colors cursor-pointer shadow-[0_0_28px_rgba(34,211,238,0.35)]"
               >
                 <span>CONTINUE CAMPAIGN</span>
-                <span className="text-xs font-mono-tabular font-semibold bg-slate-950/20 px-2 py-0.5">
+                <span
+                  data-testid="title-saved-campaign-badge"
+                  className="text-xs font-mono-tabular font-semibold bg-slate-950/20 px-2 py-0.5"
+                >
                   {getChapterShortName(savedCampaignChapter)}
+                  {savedCampaignCheckpoint
+                    ? ` · ${savedCampaignCheckpoint.integrity} HP / ${savedCampaignCheckpoint.flux} FLX`
+                    : ''}
                 </span>
               </button>
             )}
@@ -749,7 +758,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   <div className="space-y-1 text-slate-300">
                     <div>
                       <span className="text-cyan-300">[WASD]</span> Move ·{' '}
-                      <span className="text-cyan-300">[Mouse / Arrows]</span> Aim
+                      <span className="text-cyan-300">[Mouse / Arrows / CAM ORBIT]</span> Aim
                     </div>
                     <div>
                       <span className="text-cyan-300">[Tap LMB / F / J]</span> 3-Hit Light Combo

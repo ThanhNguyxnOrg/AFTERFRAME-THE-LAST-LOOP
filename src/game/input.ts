@@ -30,9 +30,16 @@ export class InputController {
 
   private touchHoldX = 0;
   private touchHoldZ = 0;
+  private touchMovePointerId: number | null = null;
   private touchPulseX = 0;
   private touchPulseZ = 0;
   private touchPulseTimer = 0;
+
+  private touchCameraPointerId: number | null = null;
+  private touchCameraSource: 'pointer' | 'touch' | null = null;
+  private touchCameraLastX: number | null = null;
+  private touchCameraLastY: number | null = null;
+  private touchCameraActive = false;
 
   private canvasEl: HTMLElement | null = null;
 
@@ -261,9 +268,15 @@ export class InputController {
     this.lastPointerY = null;
     this.touchHoldX = 0;
     this.touchHoldZ = 0;
+    this.touchMovePointerId = null;
     this.touchPulseX = 0;
     this.touchPulseZ = 0;
     this.touchPulseTimer = 0;
+    this.touchCameraPointerId = null;
+    this.touchCameraSource = null;
+    this.touchCameraLastX = null;
+    this.touchCameraLastY = null;
+    this.touchCameraActive = false;
   }
 
   public resetCameraAngles(): void {
@@ -621,9 +634,114 @@ export class InputController {
     this.justPressedKeys.add('KeyQ');
   }
 
-  public setTouchMoveHold(dx: number, dz: number): void {
+  public setTouchMoveHold(dx: number, dz: number, pointerId?: number | null): void {
+    if (dx === 0 && dz === 0) {
+      if (
+        pointerId !== undefined &&
+        pointerId !== null &&
+        this.touchMovePointerId !== null &&
+        this.touchMovePointerId !== pointerId
+      ) {
+        return;
+      }
+      this.touchHoldX = 0;
+      this.touchHoldZ = 0;
+      this.touchMovePointerId = null;
+      return;
+    }
     this.touchHoldX = dx;
     this.touchHoldZ = dz;
+    this.touchMovePointerId = pointerId ?? null;
+  }
+
+  public getTouchMoveHold(): { x: number; z: number; pointerId: number | null } {
+    return {
+      x: this.touchHoldX,
+      z: this.touchHoldZ,
+      pointerId: this.touchMovePointerId,
+    };
+  }
+
+  public startTouchCameraLook(
+    id: number,
+    clientX: number,
+    clientY: number,
+    source: 'pointer' | 'touch' = 'pointer'
+  ): boolean {
+    if (this.touchCameraActive) {
+      if (this.touchCameraSource === 'pointer' && source === 'touch') {
+        this.touchCameraSource = 'touch';
+        this.touchCameraPointerId = id;
+        this.touchCameraLastX = clientX;
+        this.touchCameraLastY = clientY;
+        return true;
+      }
+      if (this.touchCameraSource !== source || this.touchCameraPointerId !== id) {
+        return false;
+      }
+    }
+    this.touchCameraActive = true;
+    this.touchCameraSource = source;
+    this.touchCameraPointerId = id;
+    this.touchCameraLastX = clientX;
+    this.touchCameraLastY = clientY;
+    this.cameraDragJustStarted = true;
+    this.leftMouseDown = false;
+    this.leftMouseJustPressed = false;
+    this.leftMouseJustReleased = false;
+    this.rightMouseJustPressed = false;
+    return true;
+  }
+
+  public moveTouchCameraLook(
+    id: number,
+    clientX: number,
+    clientY: number,
+    source: 'pointer' | 'touch' = 'pointer'
+  ): boolean {
+    if (
+      !this.touchCameraActive ||
+      this.touchCameraSource !== source ||
+      this.touchCameraPointerId !== id
+    ) {
+      return false;
+    }
+    const dx = this.touchCameraLastX !== null ? clientX - this.touchCameraLastX : 0;
+    const dy = this.touchCameraLastY !== null ? clientY - this.touchCameraLastY : 0;
+    this.touchCameraLastX = clientX;
+    this.touchCameraLastY = clientY;
+    if (dx !== 0 || dy !== 0) {
+      this.rotateCameraByDelta(dx, dy);
+      return true;
+    }
+    return false;
+  }
+
+  public endTouchCameraLook(id?: number, source?: 'pointer' | 'touch'): void {
+    if (!this.touchCameraActive) return;
+    if (
+      source !== undefined &&
+      this.touchCameraSource !== null &&
+      this.touchCameraSource !== source
+    ) {
+      return;
+    }
+    if (
+      id !== undefined &&
+      this.touchCameraPointerId !== null &&
+      this.touchCameraPointerId !== id
+    ) {
+      return;
+    }
+    this.touchCameraActive = false;
+    this.touchCameraSource = null;
+    this.touchCameraPointerId = null;
+    this.touchCameraLastX = null;
+    this.touchCameraLastY = null;
+  }
+
+  public isTouchCameraActive(): boolean {
+    return this.touchCameraActive;
   }
 
   public triggerTouchMovePulse(dx: number, dz: number, durationSec = 0.28): void {

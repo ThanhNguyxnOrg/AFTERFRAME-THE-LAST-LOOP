@@ -27,8 +27,21 @@ interface GameHudProps {
   onEchoCollapse?: () => void;
   onSelectLoomEnding?: (ending: ChronicleLoomEndingId) => void;
   onRestoreCampaign?: () => void;
-  onTouchMoveHold?: (dx: number, dz: number) => void;
+  onTouchMoveHold?: (dx: number, dz: number, pointerId?: number | null) => void;
   onTouchMovePulse?: (dx: number, dz: number) => void;
+  onTouchCameraStart?: (
+    id: number,
+    clientX: number,
+    clientY: number,
+    source: 'touch' | 'pointer'
+  ) => void;
+  onTouchCameraMove?: (
+    id: number,
+    clientX: number,
+    clientY: number,
+    source: 'touch' | 'pointer'
+  ) => void;
+  onTouchCameraEnd?: (id?: number, source?: 'touch' | 'pointer') => void;
 }
 
 const TUTORIAL_STEP_META: Record<
@@ -141,6 +154,9 @@ export const GameHud: React.FC<GameHudProps> = ({
   onRestoreCampaign,
   onTouchMoveHold,
   onTouchMovePulse,
+  onTouchCameraStart,
+  onTouchCameraMove,
+  onTouchCameraEnd,
 }) => {
   const [inspectingLoomChamber, setInspectingLoomChamber] = React.useState(false);
 
@@ -229,16 +245,19 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       {/* Top Perimeter Row: Low-Occlusion Layout for Mobile (390x844) & Desktop (1280x800) */}
       <div
-        className={`flex flex-wrap md:flex-nowrap items-start justify-between w-full p-2 sm:p-4 md:p-5 gap-1.5 sm:gap-3 transition-opacity duration-150 ${
+        className={`flex flex-wrap md:flex-nowrap items-start justify-between w-full p-2 sm:p-4 md:p-5 [@media(max-height:540px)]:p-2 gap-1.5 sm:gap-3 transition-opacity duration-150 ${
           hud.loom.active && hud.run.stage === 'chronicle_loom' && !inspectingLoomChamber
             ? 'opacity-20 pointer-events-none'
             : ''
         }`}
       >
         {/* Cluster 1 (Top-Left): Compact Survival Bars, Chrono Echo & Action Deck */}
-        <div className="order-1 w-[236px] sm:w-68 md:w-76 bg-[#090d14]/90 border border-slate-800/90 p-2 sm:p-3 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0">
+        <div
+          data-testid="player-hud"
+          className="order-1 w-[236px] sm:w-68 md:w-76 [@media(max-height:540px)]:w-[236px] bg-[#090d14]/90 border border-slate-800/90 p-2 sm:p-3 [@media(max-height:540px)]:p-2 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
+        >
           {/* Compact Integrity & Flux Bars (Side-by-side on mobile to save vertical space, stacked on sm+) */}
-          <div className="grid grid-cols-2 sm:grid-cols-1 gap-2 sm:gap-1.5 mb-1.5 sm:mb-2">
+          <div className="grid grid-cols-2 sm:grid-cols-1 [@media(max-height:540px)]:grid-cols-2 gap-2 sm:gap-1.5 mb-1.5 sm:mb-2 [@media(max-height:540px)]:mb-1.5">
             {/* Integrity */}
             <div>
               <div className="flex items-baseline justify-between mb-0.5">
@@ -377,7 +396,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                     : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
                 }`}
               >
-                <span className="hidden sm:inline">[T] </span>
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[T] </span>
                 {echo.state === 'recording' ? 'STOP' : 'REC'}
               </button>
 
@@ -400,7 +419,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                     : 'bg-[#0a0f17] border-slate-800/80 text-slate-500'
                 }`}
               >
-                <span className="hidden sm:inline">[Y] </span>PLAY
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Y] </span>PLAY
               </button>
 
               <button
@@ -422,12 +441,12 @@ export const GameHud: React.FC<GameHudProps> = ({
               >
                 {relay.cooldownTimer > 0 ? (
                   <>
-                    <span className="hidden sm:inline">[V] </span>
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>
                     {relay.cooldownTimer.toFixed(1)}s
                   </>
                 ) : (
                   <>
-                    <span className="hidden sm:inline">[V] </span>RELAY
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>RELAY
                   </>
                 )}
               </button>
@@ -443,7 +462,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 }}
                 className="px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-400 transition-colors cursor-pointer whitespace-nowrap"
               >
-                <span className="hidden sm:inline">[C] </span>CLR
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[C] </span>CLR
               </button>
             </div>
 
@@ -452,7 +471,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               className={
                 showContextualRelayOrResonance
                   ? 'mt-1.5 pt-1 border-t border-slate-800/70 space-y-0.5'
-                  : 'hidden sm:block mt-1 pt-1 border-t border-slate-800/60 space-y-0.5'
+                  : 'hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-1 pt-1 border-t border-slate-800/60 space-y-0.5'
               }
             >
               <div
@@ -540,7 +559,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 
           {/* Interactive Combat Deck */}
           <div className="pt-1 border-t border-slate-800/80">
-            <div className="hidden sm:flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-400 mb-1">
+            <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-400 mb-1">
               <span className="whitespace-nowrap shrink-0">COMBO {hud.comboStep}/3</span>
               <span
                 className={`whitespace-nowrap shrink-0 ${
@@ -571,7 +590,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 }}
                 className="px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
               >
-                <span className="hidden sm:inline">[F] </span>LIGHT
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[F] </span>LIGHT
               </button>
 
               <button
@@ -591,7 +610,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                       : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
                 }`}
               >
-                <span className="hidden sm:inline">[E] </span>HEAVY
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[E] </span>HEAVY
               </button>
 
               <button
@@ -617,7 +636,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 }}
                 className="px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
               >
-                <span className="hidden sm:inline">[Q] </span>PARRY
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Q] </span>PARRY
               </button>
             </div>
 
@@ -1108,7 +1127,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 e.currentTarget.blur();
                 onStartBoss();
               }}
-              className={`hidden sm:flex h-8 sm:h-9 px-2 items-center justify-center font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+              className={`hidden lg:flex h-8 sm:h-9 px-2 items-center justify-center font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
                 hud.run.mode === 'practice_boss'
                   ? 'bg-amber-500/20 border-amber-400 text-amber-300'
                   : 'bg-[#090d14]/85 hover:bg-[#162032] border-slate-700/80 text-slate-400 hover:text-amber-300'
@@ -1199,7 +1218,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               <rect x="6" y="4" width="4" height="16" fill="#0f172a" />
               <rect x="14" y="4" width="4" height="16" fill="#0f172a" />
             </svg>
-            <span className="hidden sm:inline text-[10px] font-mono-tabular font-semibold">
+            <span className="hidden lg:inline text-[10px] font-mono-tabular font-semibold">
               PAUSE [P]
             </span>
           </button>
@@ -1293,7 +1312,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             data-testid="live-comms-banner"
             data-comms-id={hud.comms.active.id}
             data-comms-classification={hud.comms.active.classification}
-            className="fixed left-2 sm:left-5 bottom-36 sm:bottom-28 z-15 w-[92vw] sm:w-92 max-w-md bg-[#080d16]/94 border-l-2 border-cyan-400 border-y border-r border-slate-800/95 p-2.5 sm:p-3 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
+            className="fixed left-2 sm:left-5 bottom-36 sm:bottom-28 [@media(max-height:540px)]:left-2.5 [@media(max-height:540px)]:right-auto [@media(max-height:540px)]:bottom-2 [@media(max-height:540px)]:w-[348px] [@media(max-height:540px)]:p-2 z-15 w-[92vw] sm:w-92 max-w-md bg-[#080d16]/94 border-l-2 border-cyan-400 border-y border-r border-slate-800/95 p-2.5 sm:p-3 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
           >
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -1660,7 +1679,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         data-testid="hud-bottom-cluster"
         data-run-mode={hud.run.mode}
         data-run-stage={hud.run.stage}
-        className="fixed bottom-2 sm:bottom-3.5 left-1/2 -translate-x-1/2 w-[94vw] sm:w-auto max-w-[94vw] flex flex-col items-center gap-1.5"
+        className="fixed bottom-2 sm:bottom-3.5 [@media(max-height:540px)]:bottom-2 left-1/2 -translate-x-1/2 [@media(max-height:540px)]:left-auto [@media(max-height:540px)]:right-2.5 [@media(max-height:540px)]:translate-x-0 w-[94vw] sm:w-auto max-w-[94vw] [@media(max-height:540px)]:w-[calc(100vw-264px)] [@media(max-height:540px)]:max-w-[540px] flex flex-col items-center [@media(max-height:540px)]:items-end gap-1.5"
       >
         {/* Checkpoint Saved / Restored Notice Toast */}
         {hud.run.checkpointNotice &&
@@ -1683,11 +1702,11 @@ export const GameHud: React.FC<GameHudProps> = ({
           className={
             hud.run.stage === 'intro' || hud.loom.active
               ? 'sr-only'
-              : 'w-full max-w-xl pointer-events-auto'
+              : 'w-full max-w-xl [@media(max-height:540px)]:max-w-[460px] pointer-events-auto'
           }
         >
           {hud.tutorial.enabled && hud.tutorial.step !== 'completed' ? (
-            <div className="bg-[#090e17]/92 border border-slate-700/90 px-3 py-1.5 sm:px-3.5 sm:py-2 shadow-[0_8px_22px_rgba(0,0,0,0.7)]">
+            <div className="bg-[#090e17]/92 border border-slate-700/90 px-3 py-1.5 sm:px-3.5 sm:py-2 [@media(max-height:540px)]:px-3 [@media(max-height:540px)]:py-1.5 shadow-[0_8px_22px_rgba(0,0,0,0.7)]">
               <div className="flex items-center justify-between gap-2 mb-0.5">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-[9px] font-mono-tabular font-bold uppercase tracking-widest text-amber-300 shrink-0">
@@ -1721,20 +1740,20 @@ export const GameHud: React.FC<GameHudProps> = ({
               </div>
               <p
                 data-testid="tutorial-desktop-prompt"
-                className="hidden sm:block text-[11px] text-slate-100 leading-snug"
+                className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block text-[11px] text-slate-100 leading-snug"
               >
                 {hud.tutorial.desktopPrompt}
               </p>
               <p
                 data-testid="tutorial-mobile-prompt"
-                className="sm:hidden text-[10px] text-slate-100 leading-snug"
+                className="[@media(min-width:640px)_and_(min-height:541px)]:hidden text-[10px] text-slate-100 leading-snug"
               >
                 {hud.tutorial.mobilePrompt}
               </p>
               {tutorialMeta.whyItMatters && (
                 <p
                   data-testid="tutorial-why-context"
-                  className="hidden sm:block mt-0.5 text-[10px] text-slate-400 leading-snug"
+                  className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-0.5 text-[10px] text-slate-400 leading-snug"
                 >
                   {tutorialMeta.whyItMatters}
                 </p>
@@ -1768,79 +1787,164 @@ export const GameHud: React.FC<GameHudProps> = ({
           )}
         </div>
 
-        {/* Mobile Touch 4-Direction Pad */}
-        <div
-          data-testid="touch-move-pad"
-          className="sm:hidden grid grid-cols-4 gap-1.5 w-full max-w-[340px] bg-[#090d14]/92 border border-slate-800/90 p-1.5 pointer-events-auto shadow-[0_8px_20px_rgba(0,0,0,0.65)]"
-        >
-          <button
-            type="button"
-            tabIndex={-1}
-            data-testid="touch-move-up"
-            aria-label="Move Forward [W]"
-            onPointerDown={() => onTouchMoveHold?.(0, -1)}
-            onPointerUp={() => onTouchMoveHold?.(0, 0)}
-            onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-            onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onTouchMovePulse?.(0, -1);
-            }}
-            className="py-2 px-2 text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
+        {/* Mobile Touch Controls Row: 4-Direction Pad + Dedicated Touch Camera Orbit Pad */}
+        <div className="[@media(min-width:640px)_and_(min-height:541px)]:hidden flex items-stretch justify-center gap-1.5 w-full max-w-[460px] pointer-events-auto">
+          <div
+            data-testid="touch-move-pad"
+            style={{ touchAction: 'none' }}
+            className="grid grid-cols-4 gap-1 flex-1 min-w-0 bg-[#090d14]/92 border border-slate-800/90 p-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)]"
           >
-            [W] FWD
-          </button>
-          <button
-            type="button"
+            <button
+              type="button"
+              tabIndex={-1}
+              data-testid="touch-move-up"
+              aria-label="Move Forward [W]"
+              style={{ touchAction: 'none' }}
+              onPointerDown={() => onTouchMoveHold?.(0, -1)}
+              onPointerUp={() => onTouchMoveHold?.(0, 0)}
+              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+              onTouchStart={() => onTouchMoveHold?.(0, -1)}
+              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onTouchMovePulse?.(0, -1);
+              }}
+              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+            >
+              [W] FWD
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              data-testid="touch-move-left"
+              aria-label="Strafe Left [A]"
+              style={{ touchAction: 'none' }}
+              onPointerDown={() => onTouchMoveHold?.(-1, 0)}
+              onPointerUp={() => onTouchMoveHold?.(0, 0)}
+              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+              onTouchStart={() => onTouchMoveHold?.(-1, 0)}
+              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onTouchMovePulse?.(-1, 0);
+              }}
+              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+            >
+              [A] LEFT
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              data-testid="touch-move-down"
+              aria-label="Move Backward [S]"
+              style={{ touchAction: 'none' }}
+              onPointerDown={() => onTouchMoveHold?.(0, 1)}
+              onPointerUp={() => onTouchMoveHold?.(0, 0)}
+              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+              onTouchStart={() => onTouchMoveHold?.(0, 1)}
+              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onTouchMovePulse?.(0, 1);
+              }}
+              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+            >
+              [S] BACK
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              data-testid="touch-move-right"
+              aria-label="Strafe Right [D]"
+              style={{ touchAction: 'none' }}
+              onPointerDown={() => onTouchMoveHold?.(1, 0)}
+              onPointerUp={() => onTouchMoveHold?.(0, 0)}
+              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+              onTouchStart={() => onTouchMoveHold?.(1, 0)}
+              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onTouchMovePulse?.(1, 0);
+              }}
+              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+            >
+              [D] RIGHT
+            </button>
+          </div>
+
+          {/* Dedicated Touch Camera Orbit Pad */}
+          <div
+            role="application"
             tabIndex={-1}
-            data-testid="touch-move-left"
-            aria-label="Strafe Left [A]"
-            onPointerDown={() => onTouchMoveHold?.(-1, 0)}
-            onPointerUp={() => onTouchMoveHold?.(0, 0)}
-            onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-            onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onTouchMovePulse?.(-1, 0);
+            data-testid="touch-camera-look"
+            aria-label="Touch Camera Orbit [Drag to Look]"
+            style={{ touchAction: 'none' }}
+            onPointerDown={(e) => {
+              if (e.pointerType === 'mouse' && e.button !== 0) return;
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                // Ignore if synthetic event does not have an active pointerId
+              }
+              onTouchCameraStart?.(e.pointerId, e.clientX, e.clientY, 'pointer');
             }}
-            className="py-2 px-2 text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
-          >
-            [A] LEFT
-          </button>
-          <button
-            type="button"
-            tabIndex={-1}
-            data-testid="touch-move-down"
-            aria-label="Move Backward [S]"
-            onPointerDown={() => onTouchMoveHold?.(0, 1)}
-            onPointerUp={() => onTouchMoveHold?.(0, 0)}
-            onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-            onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onTouchMovePulse?.(0, 1);
+            onPointerMove={(e) => {
+              onTouchCameraMove?.(e.pointerId, e.clientX, e.clientY, 'pointer');
             }}
-            className="py-2 px-2 text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
-          >
-            [S] BACK
-          </button>
-          <button
-            type="button"
-            tabIndex={-1}
-            data-testid="touch-move-right"
-            aria-label="Strafe Right [D]"
-            onPointerDown={() => onTouchMoveHold?.(1, 0)}
-            onPointerUp={() => onTouchMoveHold?.(0, 0)}
-            onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-            onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onTouchMovePulse?.(1, 0);
+            onPointerUp={(e) => {
+              onTouchCameraEnd?.(e.pointerId, 'pointer');
             }}
-            className="py-2 px-2 text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
+            onPointerCancel={(e) => {
+              onTouchCameraEnd?.(e.pointerId, 'pointer');
+            }}
+            onTouchStart={(e) => {
+              const t = e.changedTouches[0];
+              if (!t) return;
+              onTouchCameraStart?.(t.identifier, t.clientX, t.clientY, 'touch');
+            }}
+            onTouchMove={(e) => {
+              for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                onTouchCameraMove?.(t.identifier, t.clientX, t.clientY, 'touch');
+              }
+            }}
+            onTouchEnd={(e) => {
+              if (e.changedTouches.length === 0) {
+                onTouchCameraEnd?.(undefined, 'touch');
+                return;
+              }
+              for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                onTouchCameraEnd?.(t.identifier, 'touch');
+              }
+            }}
+            onTouchCancel={(e) => {
+              if (e.changedTouches.length === 0) {
+                onTouchCameraEnd?.(undefined, 'touch');
+                return;
+              }
+              for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                onTouchCameraEnd?.(t.identifier, 'touch');
+              }
+            }}
+            className="w-[104px] shrink-0 flex flex-col items-center justify-center bg-[#090d14]/92 active:bg-cyan-500/20 border border-cyan-500/50 px-2 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)] select-none cursor-grab active:cursor-grabbing"
           >
-            [D] RIGHT
-          </button>
+            <span className="text-[9px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300 leading-tight whitespace-nowrap">
+              [CAM ORBIT]
+            </span>
+            <span className="text-[8px] font-mono-tabular uppercase tracking-widest text-slate-400 leading-tight whitespace-nowrap">
+              DRAG LOOK
+            </span>
+          </div>
         </div>
 
         {/* Quiet Desktop Shortcut Reminder (Only shown when Tutorial Banner is hidden or completed, never duplicated or clipped on mobile) */}

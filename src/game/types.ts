@@ -138,6 +138,23 @@ export interface SavedCampaignProgressSnapshot {
   selectedEnding: ChronicleLoomEndingId | null;
 }
 
+export interface PersistedActiveCampaignState {
+  chapter: CampaignChapterId;
+  stage: VerticalSliceStage;
+  pendingNextChapter: CampaignChapterId | null;
+  bossCheckpoint: BossCheckpointState | null;
+  selectedEnding: ChronicleLoomEndingId | null;
+}
+
+export interface PersistedCampaignSaveV2 {
+  version: 2;
+  unlockedChapters: CampaignChapterId[];
+  completedChapters: CampaignChapterId[];
+  recoveredLogs: string[];
+  completedEndings: ChronicleLoomEndingId[];
+  activeCampaign: PersistedActiveCampaignState | null;
+}
+
 export interface VerticalSliceRunState {
   mode: RunMode;
   stage: VerticalSliceStage;

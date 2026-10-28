@@ -33,6 +33,8 @@ import type {
   NarrativeCommsState,
   NarrativeTransmission,
   ObstacleCollider,
+  PersistedActiveCampaignState,
+  PersistedCampaignSaveV2,
   PlayerInputFrame,
   PlayerState,
   PressurePlateState,
@@ -1032,7 +1034,7 @@ const TUTORIAL_COPY: Record<
     desktopPrompt:
       'Move Sera with [WASD] and rotate the camera with Mouse Drag or [Arrow Keys].',
     mobilePrompt:
-      'Use the bottom-left 4-button directional pad ([W] FWD, [A] LEFT, [S] BACK, [D] RIGHT) to move Sera through Calibration Bay 04.',
+      'Use the bottom-left 4-button directional pad ([W] FWD, [A] LEFT, [S] BACK, [D] RIGHT) to move Sera and drag [CAM ORBIT] to look around Calibration Bay 04.',
     stuckHint:
       'Press [W], [A], [S], or [D] (or tap the [W] / [A] / [S] / [D] directional buttons) to step forward into Calibration Bay 04.',
   },
@@ -1344,20 +1346,44 @@ function captureSavedCampaignSnapshotIfNeeded(
     if (world.run.selectedEnding !== null) {
       return null;
     }
+
+    let stage: VerticalSliceStage = world.run.stage;
+    let checkpointToSave: BossCheckpointState | null = world.run.bossCheckpoint
+      ? {
+          ...world.run.bossCheckpoint,
+          statsAtCheckpoint: { ...world.run.bossCheckpoint.statsAtCheckpoint },
+        }
+      : null;
+
+    if (
+      world.outcome === 'victory' &&
+      world.run.pendingNextChapter !== null &&
+      world.run.stage === 'completed'
+    ) {
+      const nextChap = world.run.pendingNextChapter;
+      const nextBossId = getBossIdForChapter(nextChap);
+      checkpointToSave = captureBossCheckpointFromWorld(world, nextChap, nextBossId);
+    } else if (
+      world.run.stage === 'completed' &&
+      world.run.pendingNextChapter === null
+    ) {
+      stage =
+        world.run.chapter === 'prologue'
+          ? 'calibration'
+          : world.run.chapter === 'chapter_5_loom'
+            ? 'chronicle_loom'
+            : 'boss_fight';
+    }
+
     return {
       chapter: world.run.chapter,
-      stage: world.run.stage,
+      stage,
       unlockedChapters: [...world.run.unlockedChapters],
       completedChapters: [...world.run.completedChapters],
       recoveredLogs: [...(world.run.recoveredLogs ?? [])],
       completedEndings: [...(world.run.completedEndings ?? [])],
       pendingNextChapter: world.run.pendingNextChapter,
-      bossCheckpoint: world.run.bossCheckpoint
-        ? {
-            ...world.run.bossCheckpoint,
-            statsAtCheckpoint: { ...world.run.bossCheckpoint.statsAtCheckpoint },
-          }
-        : null,
+      bossCheckpoint: checkpointToSave,
       selectedEnding: world.run.selectedEnding,
     };
   }
@@ -2134,6 +2160,262 @@ function mergeUniqueStrings<T extends string>(
   return out as T[];
 }
 
+export const CAMPAIGN_STORAGE_KEY = 'afterframe_campaign_progress_v1';
+export const CAMPAIGN_SAVE_VERSION = 2 as const;
+
+const VALID_VERTICAL_SLICE_STAGES: readonly VerticalSliceStage[] = [
+  'calibration',
+  'transition_to_boss',
+  'boss_intro',
+  'boss_fight',
+  'chronicle_loom',
+  'completed',
+];
+
+const VALID_BOSS_IDS: readonly BossId[] = [
+  'helix-04',
+  'the-choir',
+  'the-curator',
+  'matron-v',
+];
+
+function isValidVerticalSliceStage(value: unknown): value is VerticalSliceStage {
+  return (
+    typeof value === 'string' &&
+    (VALID_VERTICAL_SLICE_STAGES as readonly string[]).includes(value)
+  );
+}
+
+function isValidBossId(value: unknown): value is BossId {
+  return (
+    typeof value === 'string' &&
+    (VALID_BOSS_IDS as readonly string[]).includes(value)
+  );
+}
+
+function getNextCampaignChapter(
+  chapter: CampaignChapterId
+): CampaignChapterId | null {
+  switch (chapter) {
+    case 'prologue':
+      return 'chapter_1_helix';
+    case 'chapter_1_helix':
+      return 'chapter_2_choir';
+    case 'chapter_2_choir':
+      return 'chapter_3_curator';
+    case 'chapter_3_curator':
+      return 'chapter_4_matron';
+    case 'chapter_4_matron':
+      return 'chapter_5_loom';
+    case 'chapter_5_loom':
+    default:
+      return null;
+  }
+}
+
+function isValidStageForChapter(
+  chapter: CampaignChapterId,
+  stage: VerticalSliceStage,
+  pendingNextChapter: CampaignChapterId | null
+): boolean {
+  if (chapter === 'prologue') {
+    if (stage === 'calibration' || stage === 'intro') return pendingNextChapter === null;
+    if (stage === 'transition_to_boss') {
+      return pendingNextChapter === null || pendingNextChapter === 'chapter_1_helix';
+    }
+    return false;
+  }
+  if (chapter === 'chapter_5_loom') {
+    return stage === 'chronicle_loom' && pendingNextChapter === null;
+  }
+  if (
+    stage === 'boss_intro' ||
+    stage === 'boss_fight' ||
+    stage === 'transition_to_boss'
+  ) {
+    return pendingNextChapter === null;
+  }
+  if (stage === 'completed') {
+    const expectedNext = getNextCampaignChapter(chapter);
+    return pendingNextChapter !== null && pendingNextChapter === expectedNext;
+  }
+  return false;
+}
+
+function sanitizeNonNegativeNumber(v: unknown, maxVal?: number): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
+  if (maxVal !== undefined) {
+    return Math.min(maxVal, v);
+  }
+  return v;
+}
+
+function sanitizePositiveInt(v: unknown, maxVal?: number): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) return null;
+  const rounded = Math.round(v);
+  if (rounded < 1) return null;
+  if (maxVal !== undefined) {
+    return Math.min(maxVal, rounded);
+  }
+  return rounded;
+}
+
+function sanitizeNonNegativeInt(v: unknown, maxVal?: number): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
+  const rounded = Math.round(v);
+  if (rounded < 0) return null;
+  if (maxVal !== undefined) {
+    return Math.min(maxVal, rounded);
+  }
+  return rounded;
+}
+
+function sanitizeBossCheckpoint(
+  raw: unknown,
+  expectedChapter: CampaignChapterId
+): BossCheckpointState | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (!isValidCampaignChapterId(obj.chapter) || obj.chapter !== expectedChapter) {
+    return null;
+  }
+  const expectedBossId = getBossIdForChapter(expectedChapter);
+  if (!isValidBossId(obj.bossId) || obj.bossId !== expectedBossId) {
+    return null;
+  }
+
+  const maxIntegrity =
+    obj.maxIntegrity !== undefined
+      ? sanitizePositiveInt(obj.maxIntegrity, GAME_CONFIG.player.maxIntegrity)
+      : GAME_CONFIG.player.maxIntegrity;
+  const maxFlux =
+    obj.maxFlux !== undefined
+      ? sanitizePositiveInt(obj.maxFlux, GAME_CONFIG.player.maxFlux)
+      : GAME_CONFIG.player.maxFlux;
+  const integrity = sanitizePositiveInt(obj.integrity, GAME_CONFIG.player.maxIntegrity);
+  const flux = sanitizeNonNegativeInt(obj.flux, GAME_CONFIG.player.maxFlux);
+  const replenishedIntegrity = sanitizeNonNegativeInt(
+    obj.replenishedIntegrity,
+    GAME_CONFIG.player.maxIntegrity
+  );
+  const elapsedTimeAtCheckpoint = sanitizeNonNegativeNumber(obj.elapsedTimeAtCheckpoint);
+
+  if (
+    maxIntegrity === null ||
+    maxFlux === null ||
+    integrity === null ||
+    flux === null ||
+    replenishedIntegrity === null ||
+    elapsedTimeAtCheckpoint === null
+  ) {
+    return null;
+  }
+
+  const rawStats = obj.statsAtCheckpoint;
+  if (!rawStats || typeof rawStats !== 'object' || Array.isArray(rawStats)) {
+    return null;
+  }
+  const statsObj = rawStats as Record<string, unknown>;
+  const damageDealt = sanitizeNonNegativeInt(statsObj.damageDealt);
+  const damageTaken = sanitizeNonNegativeInt(statsObj.damageTaken);
+  const parriesLanded = sanitizeNonNegativeInt(statsObj.parriesLanded);
+  const vulnerableHits = sanitizeNonNegativeInt(statsObj.vulnerableHits);
+  const convergencesTriggered = sanitizeNonNegativeInt(statsObj.convergencesTriggered);
+  const relaysUsed = sanitizeNonNegativeInt(statsObj.relaysUsed);
+
+  if (
+    damageDealt === null ||
+    damageTaken === null ||
+    parriesLanded === null ||
+    vulnerableHits === null ||
+    convergencesTriggered === null ||
+    relaysUsed === null
+  ) {
+    return null;
+  }
+
+  return {
+    chapter: obj.chapter,
+    bossId: obj.bossId,
+    integrity,
+    maxIntegrity,
+    flux,
+    maxFlux,
+    replenishedIntegrity,
+    elapsedTimeAtCheckpoint,
+    statsAtCheckpoint: {
+      damageDealt,
+      damageTaken,
+      parriesLanded,
+      vulnerableHits,
+      convergencesTriggered,
+      relaysUsed,
+    },
+  };
+}
+
+function sanitizeActiveCampaign(raw: unknown): PersistedActiveCampaignState | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (!isValidCampaignChapterId(obj.chapter)) return null;
+  if (!isValidVerticalSliceStage(obj.stage)) return null;
+  if (obj.selectedEnding !== null && obj.selectedEnding !== undefined) {
+    return null;
+  }
+
+  let pendingNextChapter: CampaignChapterId | null = null;
+  if (obj.pendingNextChapter !== null && obj.pendingNextChapter !== undefined) {
+    if (!isValidCampaignChapterId(obj.pendingNextChapter)) return null;
+    pendingNextChapter = obj.pendingNextChapter;
+  }
+
+  if (!isValidStageForChapter(obj.chapter, obj.stage, pendingNextChapter)) {
+    return null;
+  }
+
+  let bossCheckpoint: BossCheckpointState | null = null;
+  if (obj.bossCheckpoint !== null && obj.bossCheckpoint !== undefined) {
+    const expectedCheckpointChapter =
+      obj.stage === 'completed' && pendingNextChapter ? pendingNextChapter : obj.chapter;
+    const sanitizedCp = sanitizeBossCheckpoint(obj.bossCheckpoint, expectedCheckpointChapter);
+    if (!sanitizedCp) return null;
+    bossCheckpoint = sanitizedCp;
+  }
+
+  const normalizedStage: VerticalSliceStage =
+    obj.stage === 'boss_intro'
+      ? 'boss_fight'
+      : obj.stage === 'intro'
+        ? 'calibration'
+        : obj.stage;
+
+  return {
+    chapter: obj.chapter,
+    stage: normalizedStage,
+    pendingNextChapter,
+    bossCheckpoint,
+    selectedEnding: null,
+  };
+}
+
+function extractActiveCampaignForSave(
+  world: WorldState
+): PersistedActiveCampaignState | null {
+  const snap = captureSavedCampaignSnapshotIfNeeded(world);
+  if (!snap) return null;
+  if (snap.selectedEnding !== null) return null;
+  if (snap.chapter === 'chapter_5_loom' && snap.stage === 'completed') return null;
+
+  return sanitizeActiveCampaign({
+    chapter: snap.chapter,
+    stage: snap.stage,
+    pendingNextChapter: snap.pendingNextChapter,
+    bossCheckpoint: snap.bossCheckpoint,
+  });
+}
+
 export function parseAndApplyCampaignProgress(
   world: WorldState,
   rawJson: string | null | undefined
@@ -2176,6 +2458,14 @@ export function parseAndApplyCampaignProgress(
 
   const obj = parsed as Record<string, unknown>;
 
+  if (
+    obj.version !== undefined &&
+    obj.version !== 1 &&
+    obj.version !== CAMPAIGN_SAVE_VERSION
+  ) {
+    return false;
+  }
+
   if (Array.isArray(obj.unlockedChapters)) {
     for (let i = 0; i < obj.unlockedChapters.length; i++) {
       const ch = obj.unlockedChapters[i];
@@ -2215,6 +2505,48 @@ export function parseAndApplyCampaignProgress(
     }
   }
 
+  if (obj.version === CAMPAIGN_SAVE_VERSION) {
+    if (obj.activeCampaign === null || obj.activeCampaign === undefined) {
+      if (world.appState === 'title') {
+        world.run.savedCampaignSnapshot = null;
+      }
+    } else {
+      const sanitizedActive = sanitizeActiveCampaign(obj.activeCampaign);
+      if (sanitizedActive) {
+        world.run.unlockedChapters = addUniqueChapter(
+          world.run.unlockedChapters,
+          sanitizedActive.chapter
+        );
+        if (sanitizedActive.pendingNextChapter) {
+          world.run.unlockedChapters = addUniqueChapter(
+            world.run.unlockedChapters,
+            sanitizedActive.pendingNextChapter
+          );
+        }
+        world.run.savedCampaignSnapshot = {
+          chapter: sanitizedActive.chapter,
+          stage: sanitizedActive.stage,
+          unlockedChapters: [...world.run.unlockedChapters],
+          completedChapters: [...world.run.completedChapters],
+          recoveredLogs: [...world.run.recoveredLogs],
+          completedEndings: [...world.run.completedEndings],
+          pendingNextChapter: sanitizedActive.pendingNextChapter,
+          bossCheckpoint: sanitizedActive.bossCheckpoint
+            ? {
+                ...sanitizedActive.bossCheckpoint,
+                statsAtCheckpoint: {
+                  ...sanitizedActive.bossCheckpoint.statsAtCheckpoint,
+                },
+              }
+            : null,
+          selectedEnding: null,
+        };
+      } else if (world.appState === 'title') {
+        world.run.savedCampaignSnapshot = null;
+      }
+    }
+  }
+
   if (world.run.savedCampaignSnapshot) {
     world.run.savedCampaignSnapshot.unlockedChapters = mergeUniqueChapters(
       world.run.savedCampaignSnapshot.unlockedChapters,
@@ -2243,7 +2575,7 @@ export function parseAndApplyCampaignProgress(
 
 export function serializeCampaignProgress(world: WorldState): string {
   const snap = world.run?.savedCampaignSnapshot;
-  const unlockedChapters = mergeUniqueChapters(
+  let unlockedChapters = mergeUniqueChapters(
     snap?.unlockedChapters,
     world.run?.unlockedChapters,
     true
@@ -2263,13 +2595,72 @@ export function serializeCampaignProgress(world: WorldState): string {
     world.run?.completedEndings,
     isValidChronicleLoomEndingId
   );
+  const activeCampaign = extractActiveCampaignForSave(world);
+  if (activeCampaign) {
+    unlockedChapters = addUniqueChapter(unlockedChapters, activeCampaign.chapter);
+    if (activeCampaign.pendingNextChapter) {
+      unlockedChapters = addUniqueChapter(
+        unlockedChapters,
+        activeCampaign.pendingNextChapter
+      );
+    }
+  }
 
-  return JSON.stringify({
+  const payload: PersistedCampaignSaveV2 = {
+    version: CAMPAIGN_SAVE_VERSION,
     unlockedChapters,
     completedChapters,
     recoveredLogs,
     completedEndings,
-  });
+    activeCampaign,
+  };
+
+  return JSON.stringify(payload);
+}
+
+export function loadCampaignProgressFromStorage(
+  world: WorldState,
+  storage?: Pick<Storage, 'getItem'> | null
+): boolean {
+  const targetStorage =
+    storage !== undefined
+      ? storage
+      : typeof window !== 'undefined'
+        ? window.localStorage
+        : null;
+  if (!targetStorage) return false;
+  try {
+    const raw = targetStorage.getItem(CAMPAIGN_STORAGE_KEY);
+    return parseAndApplyCampaignProgress(world, raw);
+  } catch {
+    return false;
+  }
+}
+
+export function saveCampaignProgressToStorage(
+  world: WorldState,
+  storage?: Pick<Storage, 'setItem'> | null,
+  previousJson: string | null = null
+): { written: boolean; json: string } {
+  const serialized = serializeCampaignProgress(world);
+  if (serialized === previousJson) {
+    return { written: false, json: serialized };
+  }
+  const targetStorage =
+    storage !== undefined
+      ? storage
+      : typeof window !== 'undefined'
+        ? window.localStorage
+        : null;
+  if (!targetStorage) {
+    return { written: false, json: serialized };
+  }
+  try {
+    targetStorage.setItem(CAMPAIGN_STORAGE_KEY, serialized);
+    return { written: true, json: serialized };
+  } catch {
+    return { written: false, json: serialized };
+  }
 }
 
 function getCampaignChapterIndex(chapter: CampaignChapterId): number {
@@ -2426,7 +2817,21 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
   const completedEndings = [
     ...(snap.completedEndings ?? world.run?.completedEndings ?? []),
   ];
-  const pending = snap.pendingNextChapter;
+  let targetChapter: CampaignChapterId = snap.chapter;
+  let targetStage: VerticalSliceStage =
+    snap.stage === 'boss_intro' ? 'boss_fight' : snap.stage;
+  let pending: CampaignChapterId | null = snap.pendingNextChapter;
+
+  if (
+    (snap.stage === 'completed' || snap.stage === 'transition_to_boss') &&
+    snap.pendingNextChapter !== null
+  ) {
+    targetChapter = snap.pendingNextChapter;
+    targetStage =
+      targetChapter === 'chapter_5_loom' ? 'chronicle_loom' : 'boss_fight';
+    pending = null;
+  }
+
   const savedCheckpoint = snap.bossCheckpoint
     ? {
         ...snap.bossCheckpoint,
@@ -2434,20 +2839,20 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
       }
     : null;
 
-  if (snap.chapter === 'prologue') {
+  if (targetChapter === 'prologue') {
     startCampaignRun(world, true);
-  } else if (snap.chapter === 'chapter_5_loom') {
+  } else if (targetChapter === 'chapter_5_loom') {
     world.run.bossCheckpoint = savedCheckpoint;
     enterChronicleLoomChapter(world, false);
   } else {
     world.run.bossCheckpoint = savedCheckpoint;
-    transitionCampaignToBoss(world, true, snap.chapter);
+    transitionCampaignToBoss(world, true, targetChapter);
   }
 
   world.run.mode = 'campaign';
-  world.run.chapter = snap.chapter;
-  world.run.stage = snap.stage === 'boss_intro' ? 'boss_fight' : snap.stage;
-  world.run.unlockedChapters = unlocked;
+  world.run.chapter = targetChapter;
+  world.run.stage = targetStage;
+  world.run.unlockedChapters = addUniqueChapter(unlocked, targetChapter);
   world.run.completedChapters = completed;
   world.run.recoveredLogs = recoveredLogs;
   world.run.completedEndings = completedEndings;
@@ -2461,6 +2866,7 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
     world.player.integrity = savedCheckpoint.integrity;
     world.player.ghostIntegrity = savedCheckpoint.integrity;
     world.player.flux = savedCheckpoint.flux;
+    world.elapsedTime = savedCheckpoint.elapsedTimeAtCheckpoint;
     world.stats = {
       damageDealt: savedCheckpoint.statsAtCheckpoint.damageDealt,
       damageTaken: savedCheckpoint.statsAtCheckpoint.damageTaken,
@@ -2512,6 +2918,7 @@ export function selectChronicleLoomEnding(
       world.run.recoveredLogs ?? [],
       'LOG-05'
     );
+    world.run.savedCampaignSnapshot = null;
   }
   world.outcome = 'victory';
   world.run.stage = 'completed';
@@ -4841,6 +5248,16 @@ function handleEnemyZeroHpDefeat(
     isGuarded,
     enemyId: enemy.id,
   });
+}
+
+export function triggerBossDefeat(world: WorldState): boolean {
+  if (!world.boss) return false;
+  const enemy = world.enemies.find((e) => e.id === world.boss!.id);
+  if (!enemy) return false;
+  enemy.hp = 0;
+  world.boss.hp = 0;
+  handleEnemyZeroHpDefeat(world, enemy, 0, false, false, false);
+  return true;
 }
 
 function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
