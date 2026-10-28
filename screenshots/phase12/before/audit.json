@@ -1,0 +1,71 @@
+{
+  "states": [
+    {
+      "prologue": {
+        "chapter": "prologue",
+        "mode": "campaign"
+      }
+    },
+    {
+      "helix04": {
+        "boss": "helix-04",
+        "chapter": "chapter_1_helix",
+        "mode": "practice_boss"
+      }
+    },
+    {
+      "choir": {
+        "boss": "the-choir",
+        "chapter": "chapter_2_choir",
+        "mode": "practice_boss"
+      }
+    },
+    {
+      "curator": {
+        "boss": "the-curator",
+        "chapter": "chapter_3_curator",
+        "mode": "practice_boss"
+      }
+    },
+    {
+      "matron": {
+        "boss": "matron-v",
+        "chapter": "chapter_4_matron",
+        "mode": "practice_boss"
+      }
+    },
+    {
+      "loom": {
+        "chapter": "chapter_5_loom",
+        "mode": "campaign",
+        "loom": true
+      }
+    },
+    {
+      "silence": {
+        "selected": "silence",
+        "appState": "gameover"
+      }
+    },
+    {
+      "witness": {
+        "selected": "witness",
+        "appState": "gameover"
+      }
+    },
+    {
+      "continuity": {
+        "selected": "continuity",
+        "appState": "gameover"
+      }
+    },
+    {
+      "prologue_mobile": {
+        "chapter": "prologue",
+        "mode": "campaign"
+      }
+    }
+  ],
+  "console_errors": [],
+  "page_errors": []
+}

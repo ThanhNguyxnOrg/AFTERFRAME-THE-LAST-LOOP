@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GAME_CONFIG } from './config.ts';
 import {
   buildArenaEnvironment,
+  buildChapterEnvironment,
   createChronoPlateAndReceiverRig,
   createEchoAfterimageGhost,
   createEchoPlayerRig,
@@ -9,12 +10,13 @@ import {
   createRadialShadowTexture,
   createSeraPlayerRig,
   createStudioEnvironmentTexture,
+  type ChapterEnvironmentRig,
   type ChronoPlateAndReceiverRig,
   type EchoAfterimageGhost,
   type EnemyRig,
   type PlayerRig,
 } from './models.ts';
-import type { CombatEvent, ObstacleCollider, WorldState } from './types.ts';
+import type { CampaignChapterId, CombatEvent, ObstacleCollider, WorldState } from './types.ts';
 
 // Pre-allocated module-scope math helpers (Zero GC inside requestAnimationFrame)
 const _targetAnchor = new THREE.Vector3();
@@ -142,9 +144,67 @@ function computeCameraClearDistance(
   return bestDist;
 }
 
+const CHAPTER_IDS: CampaignChapterId[] = [
+  'prologue',
+  'chapter_1_helix',
+  'chapter_2_choir',
+  'chapter_3_curator',
+  'chapter_4_matron',
+  'chapter_5_loom',
+];
+
+const CHAPTER_LOOKS: Record<
+  CampaignChapterId,
+  {
+    background: number;
+    fogDensity: number;
+    hemi: number;
+    key: number;
+    rim: number;
+    loom: number;
+    conduit: number;
+    practical: number;
+    keyIntensity: number;
+    rimIntensity: number;
+    loomIntensity: number;
+  }
+> = {
+  prologue: {
+    background: 0x080d16, fogDensity: 0.0165, hemi: 0x7dd3fc, key: 0xfffbeb,
+    rim: 0x38bdf8, loom: 0x22d3ee, conduit: 0x22d3ee, practical: 0xf59e0b,
+    keyIntensity: 2.65, rimIntensity: 1.55, loomIntensity: 5.4,
+  },
+  chapter_1_helix: {
+    background: 0x0c0d12, fogDensity: 0.018, hemi: 0xa5b4fc, key: 0xffedd5,
+    rim: 0x38bdf8, loom: 0xf59e0b, conduit: 0x22d3ee, practical: 0xf59e0b,
+    keyIntensity: 2.45, rimIntensity: 1.65, loomIntensity: 5.4,
+  },
+  chapter_2_choir: {
+    background: 0x071217, fogDensity: 0.017, hemi: 0x67e8f9, key: 0xfff3c4,
+    rim: 0xfbbf24, loom: 0x38bdf8, conduit: 0x38bdf8, practical: 0xd97706,
+    keyIntensity: 2.35, rimIntensity: 1.5, loomIntensity: 5.8,
+  },
+  chapter_3_curator: {
+    background: 0x0d0818, fogDensity: 0.019, hemi: 0xc4b5fd, key: 0xede9fe,
+    rim: 0xa855f7, loom: 0xc084fc, conduit: 0xa855f7, practical: 0x7c3aed,
+    keyIntensity: 2.25, rimIntensity: 1.7, loomIntensity: 6.0,
+  },
+  chapter_4_matron: {
+    background: 0x14080d, fogDensity: 0.0185, hemi: 0xfecdd3, key: 0xfff1f2,
+    rim: 0xf43f5e, loom: 0xfb7185, conduit: 0xf43f5e, practical: 0xe11d48,
+    keyIntensity: 2.4, rimIntensity: 1.55, loomIntensity: 5.6,
+  },
+  chapter_5_loom: {
+    background: 0x080d16, fogDensity: 0.0155, hemi: 0x7dd3fc, key: 0xfff7d6,
+    rim: 0xfbbf24, loom: 0x22d3ee, conduit: 0x22d3ee, practical: 0xf59e0b,
+    keyIntensity: 2.55, rimIntensity: 1.65, loomIntensity: 7.6,
+  },
+};
+
 export class ArenaSceneRenderer {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
+  private sceneFog: THREE.FogExp2;
   private camera: THREE.PerspectiveCamera;
   private isHeadless: boolean;
   private appliedPixelRatio: number;
@@ -223,6 +283,8 @@ export class ArenaSceneRenderer {
   private chronoSeverMat: THREE.MeshBasicMaterial;
   private chronoSeverWallMesh: THREE.Mesh;
   private chronoSeverWallMat: THREE.MeshBasicMaterial;
+  private chronoSeverStrutsGroup: THREE.Group;
+  private chronoSeverStrutMat: THREE.MeshBasicMaterial;
   private echoCollapseWaveMesh: THREE.Mesh;
   private echoCollapseWaveMat: THREE.MeshBasicMaterial;
   private curatorTraceMeshes: Array<{
@@ -230,6 +292,8 @@ export class ArenaSceneRenderer {
     mat: THREE.MeshBasicMaterial;
     curtainMesh: THREE.Mesh;
     curtainMat: THREE.MeshBasicMaterial;
+    edgeMeshes: THREE.Mesh[];
+    edgeMat: THREE.MeshBasicMaterial;
   }> = [];
 
   // Phase 11 Sector Storytelling 3D Landmarks (Zero-GC pre-allocated groups)
@@ -249,6 +313,7 @@ export class ArenaSceneRenderer {
   private loomSealCrystals: THREE.Mesh[] = [];
   private loomSealMats: THREE.MeshBasicMaterial[] = [];
   private loomSealTetherMats: THREE.MeshBasicMaterial[] = [];
+  private chapterEnvironments = new Map<CampaignChapterId, ChapterEnvironmentRig>();
 
   private camAnchor = new THREE.Vector3();
   private currentCamDist: number = GAME_CONFIG.camera.distance;
@@ -299,7 +364,8 @@ export class ArenaSceneRenderer {
     this.scene = new THREE.Scene();
     const bgHex = 0x080d16;
     this.scene.background = new THREE.Color(bgHex);
-    this.scene.fog = new THREE.FogExp2(bgHex, 0.0165);
+    this.sceneFog = new THREE.FogExp2(bgHex, 0.0165);
+    this.scene.fog = this.sceneFog;
 
     // Equirectangular Studio Reflection Map (enabled on GPU; skipped on headless SwiftShader CPU to avoid per-pixel PMREM stalls)
     this.studioEnvTex = createStudioEnvironmentTexture();
@@ -307,7 +373,7 @@ export class ArenaSceneRenderer {
       this.scene.environment = this.studioEnvTex;
     }
 
-    this.camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 120);
+    this.camera = new THREE.PerspectiveCamera(width / height < 0.75 ? 60 : 52, width / height, 0.1, 120);
 
     // Initialize camera anchor at player spawn
     this.camAnchor.set(
@@ -381,14 +447,23 @@ export class ArenaSceneRenderer {
     this.ventFanMeshes = env.ventFanMeshes;
     this.conduitGlowMat = env.conduitGlowMat;
 
+    for (let i = 0; i < CHAPTER_IDS.length; i++) {
+      const chapter = CHAPTER_IDS[i];
+      const chapterEnv = buildChapterEnvironment(chapter);
+      chapterEnv.group.visible = false;
+      this.chapterEnvironments.set(chapter, chapterEnv);
+      this.scene.add(chapterEnv.group);
+    }
+
     // Chapter V Ending-Reactive Chronicle Loom Visual Assemblies (Witness Orbital Beam & Continuity Sanctuary Dome)
-    const witnessBeamGeo = new THREE.CylinderGeometry(0.42, 0.92, 24, 24, 1, true);
+    const witnessBeamGeo = new THREE.CylinderGeometry(0.72, 1.65, 24, 24, 1, true);
     this.loomWitnessBeamMat = new THREE.MeshBasicMaterial({
-      color: 0xe0f2fe,
+      color: 0x7dd3fc,
       transparent: true,
       opacity: 0,
       side: THREE.DoubleSide,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
     this.loomWitnessBeamMesh = new THREE.Mesh(witnessBeamGeo, this.loomWitnessBeamMat);
     this.loomWitnessBeamMesh.position.set(0, 12.5, 0);
@@ -881,7 +956,30 @@ export class ArenaSceneRenderer {
       tMesh.add(curtainMesh);
 
       this.scene.add(tMesh);
-      this.curatorTraceMeshes.push({ mesh: tMesh, mat: tMat, curtainMesh, curtainMat });
+
+      const edgeMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      const edgeMeshes: THREE.Mesh[] = [];
+      const edgeGeo = new THREE.BoxGeometry(0.12, 0.46, 1);
+      edgeGeo.translate(0, 0.23, 0.5);
+      for (let e = 0; e < 2; e++) {
+        const edge = new THREE.Mesh(edgeGeo, edgeMat);
+        edge.visible = false;
+        edgeMeshes.push(edge);
+        this.scene.add(edge);
+      }
+      this.curatorTraceMeshes.push({
+        mesh: tMesh,
+        mat: tMat,
+        curtainMesh,
+        curtainMat,
+        edgeMeshes,
+        edgeMat,
+      });
     }
 
     // Chapter IV Chrono Sever Anti-Echo Quarantine Zone & Echo Collapse [X] Detonation Wave
@@ -912,6 +1010,23 @@ export class ArenaSceneRenderer {
     this.chronoSeverWallMesh.visible = false;
     this.chronoSeverWallMesh.position.y = 0.95;
     this.scene.add(this.chronoSeverWallMesh);
+
+    this.chronoSeverStrutsGroup = new THREE.Group();
+    this.chronoSeverStrutsGroup.visible = false;
+    this.chronoSeverStrutMat = new THREE.MeshBasicMaterial({
+      color: 0xfb7185,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+    });
+    const severStrutGeo = new THREE.CylinderGeometry(0.035, 0.035, 1.85, 6);
+    for (let s = 0; s < 12; s++) {
+      const angle = (s / 12) * Math.PI * 2;
+      const strut = new THREE.Mesh(severStrutGeo, this.chronoSeverStrutMat);
+      strut.position.set(Math.sin(angle), 0.95, Math.cos(angle));
+      this.chronoSeverStrutsGroup.add(strut);
+    }
+    this.scene.add(this.chronoSeverStrutsGroup);
 
     const collapseGeo = new THREE.RingGeometry(0.65, 1.0, 36);
     collapseGeo.rotateX(-Math.PI * 0.5);
@@ -1428,7 +1543,7 @@ export class ArenaSceneRenderer {
 
     if (selectedEnding === 'witness') {
       this.loomWitnessBeamMesh.visible = true;
-      this.loomWitnessBeamMat.opacity = 0.62 + Math.sin(world.elapsedTime * 9) * 0.18;
+      this.loomWitnessBeamMat.opacity = 0.36 + Math.sin(world.elapsedTime * 9) * 0.12;
       this.loomWitnessBeamMesh.rotation.y += dt * 2.4;
       this.loomContinuityDomeMesh.visible = false;
     } else if (selectedEnding === 'continuity') {
@@ -1441,59 +1556,66 @@ export class ArenaSceneRenderer {
       this.loomContinuityDomeMesh.visible = false;
     }
 
-    // Chapter-specific sector lighting & floor conduit glow identity
+    // Chapter architecture and lighting remain presentation-only.
     const ch = world.run.chapter;
-    if (ch === 'chapter_2_choir') {
-      this.hemiLight.color.setHex(0x67e8f9);
-      this.rimLight.color.setHex(0xfbbf24);
-      this.loomLight.color.setHex(0x38bdf8);
-      this.loomLight.intensity = 5.8;
-      this.conduitGlowMat.color.setHex(0x38bdf8);
-    } else if (ch === 'chapter_3_curator') {
-      this.hemiLight.color.setHex(0xc4b5fd);
-      this.rimLight.color.setHex(0xa855f7);
-      this.loomLight.color.setHex(0xc084fc);
-      this.loomLight.intensity = 6.0;
-      this.conduitGlowMat.color.setHex(0xa855f7);
-    } else if (ch === 'chapter_4_matron') {
-      this.hemiLight.color.setHex(0xfecdd3);
-      this.rimLight.color.setHex(0xf43f5e);
-      this.loomLight.color.setHex(0xfb7185);
-      this.loomLight.intensity = 5.6;
-      this.conduitGlowMat.color.setHex(0xf43f5e);
-    } else if (ch === 'chapter_5_loom') {
+    for (let i = 0; i < CHAPTER_IDS.length; i++) {
+      const chapterEnv = this.chapterEnvironments.get(CHAPTER_IDS[i]);
+      if (!chapterEnv) continue;
+      chapterEnv.group.visible = CHAPTER_IDS[i] === ch;
+      if (chapterEnv.group.visible) {
+        for (let r = 0; r < chapterEnv.rotors.length; r++) {
+          chapterEnv.rotors[r].rotation.y += dt * (r % 2 === 0 ? 0.46 : -0.34) * ringSpeedScale;
+        }
+        for (let m = 0; m < chapterEnv.pulseMaterials.length; m++) {
+          chapterEnv.pulseMaterials[m].opacity =
+            selectedEnding === 'silence' ? 0.08 : 0.28 + Math.sin(world.elapsedTime * 2.8 + m) * 0.12;
+        }
+      }
+    }
+
+    const look = CHAPTER_LOOKS[ch];
+    (this.scene.background as THREE.Color).setHex(look.background);
+    this.sceneFog.color.setHex(look.background);
+    this.sceneFog.density = look.fogDensity;
+    this.hemiLight.color.setHex(look.hemi);
+    this.keyLight.color.setHex(look.key);
+    this.keyLight.intensity = look.keyIntensity;
+    this.rimLight.color.setHex(look.rim);
+    this.rimLight.intensity = look.rimIntensity;
+    this.loomLight.color.setHex(look.loom);
+    this.loomLight.intensity = look.loomIntensity;
+    this.calLight.color.setHex(look.practical);
+    this.conduitGlowMat.color.setHex(look.conduit);
+
+    if (ch === 'chapter_5_loom' && selectedEnding) {
       if (selectedEnding === 'silence') {
+        (this.scene.background as THREE.Color).setHex(0x05070a);
+        this.sceneFog.color.setHex(0x05070a);
+        this.sceneFog.density = 0.022;
         this.hemiLight.color.setHex(0x64748b);
+        this.keyLight.color.setHex(0x94a3b8);
+        this.keyLight.intensity = 1.2;
         this.rimLight.color.setHex(0x475569);
         this.loomLight.color.setHex(0x475569);
         this.loomLight.intensity = 1.25;
         this.conduitGlowMat.color.setHex(0x475569);
       } else if (selectedEnding === 'witness') {
         this.hemiLight.color.setHex(0xe0f2fe);
+        this.keyLight.color.setHex(0xf0f9ff);
+        this.keyLight.intensity = 2.8;
         this.rimLight.color.setHex(0x38bdf8);
         this.loomLight.color.setHex(0xffffff);
         this.loomLight.intensity = 10.5;
         this.conduitGlowMat.color.setHex(0xe0f2fe);
       } else if (selectedEnding === 'continuity') {
         this.hemiLight.color.setHex(0xfef3c7);
+        this.keyLight.color.setHex(0xfffbeb);
+        this.keyLight.intensity = 2.65;
         this.rimLight.color.setHex(0xf59e0b);
         this.loomLight.color.setHex(0xfbbf24);
         this.loomLight.intensity = 8.2;
         this.conduitGlowMat.color.setHex(0xfbbf24);
-      } else {
-        this.hemiLight.color.setHex(0x7dd3fc);
-        this.rimLight.color.setHex(0xfbbf24);
-        this.loomLight.color.setHex(0x22d3ee);
-        this.loomLight.intensity = 7.6;
-        this.conduitGlowMat.color.setHex(0x22d3ee);
       }
-    } else {
-      // Prologue & Chapter I (HELIX-04)
-      this.hemiLight.color.setHex(0x7dd3fc);
-      this.rimLight.color.setHex(0x38bdf8);
-      this.loomLight.color.setHex(0x22d3ee);
-      this.loomLight.intensity = 5.4;
-      this.conduitGlowMat.color.setHex(0x22d3ee);
     }
 
     for (let i = 0; i < this.ventFanMeshes.length; i++) {
@@ -2684,32 +2806,57 @@ export class ArenaSceneRenderer {
       const trace = traces[t];
       if (!trace || !world.curator?.active) {
         tEntry.mesh.visible = false;
+        for (let e = 0; e < tEntry.edgeMeshes.length; e++) {
+          tEntry.edgeMeshes[e].visible = false;
+        }
         continue;
       }
       tEntry.mesh.visible = true;
       tEntry.mesh.position.set(trace.originX, 0.036, trace.originZ);
       tEntry.mesh.rotation.y = Math.atan2(trace.dirX, trace.dirZ);
       tEntry.mesh.scale.set(trace.width, 1, trace.length);
+      const perpX = trace.dirZ;
+      const perpZ = -trace.dirX;
+      for (let e = 0; e < tEntry.edgeMeshes.length; e++) {
+        const side = e === 0 ? -1 : 1;
+        const edge = tEntry.edgeMeshes[e];
+        edge.visible = true;
+        edge.position.set(
+          trace.originX + perpX * side * trace.width * 0.5,
+          0.04,
+          trace.originZ + perpZ * side * trace.width * 0.5
+        );
+        edge.rotation.y = tEntry.mesh.rotation.y;
+        edge.scale.set(1, 1, trace.length);
+      }
       if (trace.isHarmlessResidue || trace.state === 'residue') {
         tEntry.mat.color.setHex(0xa855f7);
         tEntry.mat.opacity = 0.22;
         tEntry.curtainMat.color.setHex(0xa855f7);
         tEntry.curtainMat.opacity = 0.12;
+        tEntry.edgeMat.color.setHex(0xc084fc);
+        tEntry.edgeMat.opacity = 0.32;
       } else if (trace.state === 'executing') {
         tEntry.mat.color.setHex(0xef4444);
         tEntry.mat.opacity = 0.72;
         tEntry.curtainMat.color.setHex(0xef4444);
         tEntry.curtainMat.opacity = 0.52;
+        tEntry.edgeMat.color.setHex(0xffffff);
+        tEntry.edgeMat.opacity = 0.94;
       } else if (trace.state === 'committed') {
         tEntry.mat.color.setHex(0xef4444);
         tEntry.mat.opacity = 0.48;
         tEntry.curtainMat.color.setHex(0xef4444);
         tEntry.curtainMat.opacity = 0.34;
+        tEntry.edgeMat.color.setHex(0xef4444);
+        tEntry.edgeMat.opacity = 0.86;
       } else {
         tEntry.mat.color.setHex(0xf59e0b);
         tEntry.mat.opacity = 0.36;
         tEntry.curtainMat.color.setHex(0xf59e0b);
         tEntry.curtainMat.opacity = 0.24;
+        tEntry.edgeMat.color.setHex(0xfbbf24);
+        tEntry.edgeMat.opacity = 0.72;
       }
     }
 
@@ -2736,10 +2883,25 @@ export class ArenaSceneRenderer {
         world.matron.chronoSeverRadius
       );
       this.chronoSeverWallMesh.rotation.y -= dt * 2.2;
-      this.chronoSeverWallMat.opacity = 0.28 + Math.sin(world.elapsedTime * 10) * 0.1;
+      this.chronoSeverWallMat.opacity = 0.14 + Math.sin(world.elapsedTime * 10) * 0.06;
+
+      this.chronoSeverStrutsGroup.visible = true;
+      this.chronoSeverStrutsGroup.position.set(
+        world.matron.chronoSeverZoneX,
+        0,
+        world.matron.chronoSeverZoneZ
+      );
+      this.chronoSeverStrutsGroup.scale.set(
+        world.matron.chronoSeverRadius,
+        1,
+        world.matron.chronoSeverRadius
+      );
+      this.chronoSeverStrutsGroup.rotation.y += dt * 0.35;
+      this.chronoSeverStrutMat.opacity = 0.62 + Math.sin(world.elapsedTime * 10) * 0.18;
     } else {
       this.chronoSeverMesh.visible = false;
       this.chronoSeverWallMesh.visible = false;
+      this.chronoSeverStrutsGroup.visible = false;
     }
 
     if (world.echoCollapse && world.echoCollapse.blastTimer > 0) {
@@ -3022,6 +3184,39 @@ export class ArenaSceneRenderer {
         if (rig.innerHelixRing) {
           rig.innerHelixRing.rotation.z -= dt * (ringRate * 1.35);
           rig.innerHelixRing.rotation.x = Math.cos(world.elapsedTime * 2.1) * 0.25;
+        }
+
+        if (rig.auxiliaryPivots) {
+          for (let a = 0; a < rig.auxiliaryPivots.length; a++) {
+            const pivot = rig.auxiliaryPivots[a];
+            if (rig.archetype === 'matron') {
+              const side = Number(pivot.userData.side) || 1;
+              const restZ = Number(pivot.userData.restZ) || 0;
+              const flex =
+                bState === 'telegraph'
+                  ? 0.3
+                  : bState === 'attack'
+                    ? -0.44
+                    : bState === 'recovery' || bState === 'staggered'
+                      ? 0.2
+                      : 0;
+              pivot.rotation.z =
+                restZ + side * flex + Math.sin(world.elapsedTime * 2.4 + a * 1.3) * 0.035;
+              pivot.rotation.x = bState === 'staggered' ? -0.18 : 0;
+            } else {
+              const baseY = Number(pivot.userData.baseY);
+              if (Number.isFinite(baseY)) {
+                const motionScale = bState === 'attack' || bState === 'phase_transition' ? 2.4 : 1;
+                pivot.position.y =
+                  baseY + Math.sin(world.elapsedTime * 2.2 + a * 1.15) * 0.035 * motionScale;
+              }
+              if (rig.archetype === 'curator') {
+                pivot.rotation.y =
+                  (Number(pivot.userData.baseRotY) || 0) +
+                  Math.sin(world.elapsedTime * 1.6 + a) * 0.075;
+              }
+            }
+          }
         }
 
         // 3. Physical Core Shutters (Slide/pivot open when coreExposed is true)
@@ -3601,7 +3796,7 @@ export class ArenaSceneRenderer {
         dirX,
         dirY,
         dirZ,
-        GAME_CONFIG.camera.distance,
+        GAME_CONFIG.camera.distance * (this.camera.aspect < 0.75 ? 1.4 : 1),
         world.obstacles,
         GAME_CONFIG.arena.radius
       );
@@ -3647,6 +3842,7 @@ export class ArenaSceneRenderer {
   public resize(width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
     this.camera.aspect = width / height;
+    this.camera.fov = this.camera.aspect < 0.75 ? 60 : 52;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
   }

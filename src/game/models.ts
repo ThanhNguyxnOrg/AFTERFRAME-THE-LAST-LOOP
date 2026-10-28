@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GAME_CONFIG } from './config.ts';
-import type { EnemyArchetype, ObstacleCollider } from './types.ts';
+import type { CampaignChapterId, EnemyArchetype, ObstacleCollider } from './types.ts';
 
 export interface PlayerRig {
   root: THREE.Group;
@@ -91,6 +91,7 @@ export interface EnemyRig {
   telegraphRingMaterial: THREE.MeshBasicMaterial;
   laserSightMesh?: THREE.Mesh;
   laserSightMaterial?: THREE.MeshBasicMaterial;
+  auxiliaryPivots?: THREE.Group[];
 }
 
 /**
@@ -1110,6 +1111,255 @@ export function buildArenaEnvironment(
   };
 }
 
+export interface ChapterEnvironmentRig {
+  group: THREE.Group;
+  rotors: THREE.Object3D[];
+  pulseMaterials: THREE.MeshBasicMaterial[];
+}
+
+export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvironmentRig {
+  const group = new THREE.Group();
+  const rotors: THREE.Object3D[] = [];
+  const pulseMaterials: THREE.MeshBasicMaterial[] = [];
+
+  const palette =
+    chapter === 'chapter_2_choir'
+      ? { structure: 0x243746, shell: 0x9db7bd, accent: 0xd6a84b, glow: 0x67e8f9 }
+      : chapter === 'chapter_3_curator'
+        ? { structure: 0x211a3d, shell: 0x7c6ba8, accent: 0xb45bd9, glow: 0xc084fc }
+        : chapter === 'chapter_4_matron'
+          ? { structure: 0x32101c, shell: 0xf3dfe2, accent: 0xb91c3c, glow: 0xfb7185 }
+          : chapter === 'chapter_5_loom'
+            ? { structure: 0x1c2837, shell: 0x8b9bad, accent: 0xc59a45, glow: 0x7dd3fc }
+            : chapter === 'chapter_1_helix'
+              ? { structure: 0x242c36, shell: 0x8a99a8, accent: 0xd97706, glow: 0x38bdf8 }
+              : { structure: 0x213142, shell: 0x8fa8b8, accent: 0xd18a2d, glow: 0x22d3ee };
+
+  const structureMat = new THREE.MeshStandardMaterial({
+    color: palette.structure,
+    roughness: 0.48,
+    metalness: 0.7,
+  });
+  const shellMat = new THREE.MeshStandardMaterial({
+    color: palette.shell,
+    roughness: chapter === 'chapter_4_matron' ? 0.3 : 0.25,
+    metalness: chapter === 'chapter_4_matron' ? 0.3 : 0.76,
+  });
+  const accentMat = new THREE.MeshStandardMaterial({
+    color: palette.accent,
+    roughness: 0.3,
+    metalness: 0.82,
+  });
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: palette.glow,
+    emissive: palette.glow,
+    emissiveIntensity: 1.15,
+    roughness: 0.22,
+    metalness: 0.38,
+  });
+  const pulseMat = new THREE.MeshBasicMaterial({
+    color: palette.glow,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  pulseMaterials.push(pulseMat);
+
+  const mesh = (
+    parent: THREE.Object3D,
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    x: number,
+    y: number,
+    z: number
+  ): THREE.Mesh => {
+    const part = new THREE.Mesh(geometry, material);
+    part.position.set(x, y, z);
+    parent.add(part);
+    return part;
+  };
+  const box = (
+    parent: THREE.Object3D,
+    material: THREE.Material,
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    h: number,
+    d: number,
+    radius = 0.04
+  ): THREE.Mesh => mesh(parent, new RoundedBoxGeometry(w, h, d, 2, radius), material, x, y, z);
+  const postGeo = new RoundedBoxGeometry(0.34, 4.2, 0.42, 2, 0.05);
+  const beamGeo = new RoundedBoxGeometry(3.6, 0.34, 0.46, 2, 0.05);
+  const pipeGeo = new THREE.CylinderGeometry(0.1, 0.14, 1, 10);
+  const crystalGeo = new THREE.OctahedronGeometry(0.32, 0);
+
+  if (chapter === 'prologue') {
+    for (const [gx, gz] of [[-11, -5], [11, -5], [0, -15.5]] as const) {
+      const gantry = new THREE.Group();
+      gantry.position.set(gx, 0, gz);
+      group.add(gantry);
+      for (const side of [-1, 1]) {
+        mesh(gantry, postGeo, structureMat, side * 1.55, 2.1, 0);
+        box(gantry, accentMat, side * 1.55, 0.42, 0.1, 0.52, 0.28, 0.58);
+      }
+      mesh(gantry, beamGeo, shellMat, 0, 4.18, 0);
+      const scanner = box(gantry, glowMat, 0, 3.84, 0.02, 2.6, 0.08, 0.16, 0.015);
+      rotors.push(scanner);
+      const scanField = mesh(gantry, new THREE.PlaneGeometry(2.8, 3.2), pulseMat, 0, 2.05, 0.05);
+      scanField.rotation.y = Math.PI;
+    }
+    for (let i = 0; i < 10; i++) {
+      const marker = box(group, i % 2 === 0 ? glowMat : accentMat, -5.4 + i * 1.2, 0.022, 7.2, 0.58, 0.035, 0.12, 0.01);
+      marker.rotation.y = 0.12;
+    }
+  } else if (chapter === 'chapter_1_helix') {
+    const ribGeo = new RoundedBoxGeometry(0.54, 7.2, 0.72, 3, 0.08);
+    const boltGeo = new THREE.CylinderGeometry(0.32, 0.32, 2.1, 12);
+    for (const side of [-1, 1]) {
+      const door = new THREE.Group();
+      door.position.set(side * 8.4, 0, -15.2);
+      group.add(door);
+      for (let r = 0; r < 5; r++) {
+        mesh(door, ribGeo, r % 2 === 0 ? structureMat : shellMat, (r - 2) * 0.74, 3.6, 0);
+      }
+      const bolt = mesh(door, boltGeo, accentMat, 0, 3.1, 0.48);
+      bolt.rotation.z = Math.PI / 2;
+      rotors.push(bolt);
+      for (const braceSide of [-1, 1]) {
+        const brace = box(door, structureMat, braceSide * 2.3, 2.3, 0.3, 0.46, 5.1, 0.62);
+        brace.rotation.z = braceSide * 0.34;
+      }
+    }
+    for (const side of [-1, 1]) {
+      for (const z of [-3, 6]) {
+        const pylon = new THREE.Group();
+        pylon.position.set(side * 13.2, 0, z);
+        group.add(pylon);
+        mesh(pylon, new THREE.CylinderGeometry(0.48, 0.68, 3.4, 10), structureMat, 0, 1.7, 0);
+        for (const y of [0.8, 2.3, 3.25]) {
+          const collar = mesh(pylon, new THREE.TorusGeometry(0.58, 0.07, 8, 20), y === 2.3 ? glowMat : accentMat, 0, y, 0);
+          collar.rotation.x = Math.PI / 2;
+        }
+      }
+      for (let i = 0; i < 5; i++) {
+        const chevron = box(group, accentMat, side * (4.8 + i * 0.72), 0.025, -8.4, 0.48, 0.04, 0.16, 0.01);
+        chevron.rotation.y = side * 0.58;
+      }
+    }
+  } else if (chapter === 'chapter_2_choir') {
+    for (let tier = 0; tier < 3; tier++) {
+      const radius = 10.5 + tier * 1.8;
+      for (let i = 0; i < 9; i++) {
+        const angle = -1.08 + (i / 8) * 2.16;
+        const step = box(
+          group,
+          tier === 2 ? shellMat : structureMat,
+          Math.sin(angle) * radius,
+          0.22 + tier * 0.36,
+          -Math.cos(angle) * radius - 1.8,
+          1.75,
+          0.42 + tier * 0.1,
+          1.15,
+          0.06
+        );
+        step.rotation.y = -angle;
+      }
+    }
+    for (const side of [-1, 1]) {
+      const organ = new THREE.Group();
+      organ.position.set(side * 9.6, 0, -8.8);
+      group.add(organ);
+      box(organ, structureMat, 0, 0.36, 0, 2.2, 0.72, 1.15, 0.08);
+      for (let p = 0; p < 7; p++) {
+        const h = 2.8 + (3 - Math.abs(p - 3)) * 0.72;
+        const pipe = mesh(organ, pipeGeo, p === 3 ? glowMat : shellMat, (p - 3) * 0.28, h * 0.5 + 0.65, 0);
+        pipe.scale.y = h;
+        mesh(organ, new THREE.ConeGeometry(0.16, 0.34, 10), accentMat, (p - 3) * 0.28, h + 0.82, 0);
+      }
+    }
+    for (const [r, y] of [[3.2, 5.8], [4.15, 6.25]] as const) {
+      const halo = mesh(group, new THREE.TorusGeometry(r, 0.065, 10, 56), r > 4 ? accentMat : glowMat, 0, y, -4.5);
+      halo.rotation.x = Math.PI * 0.42;
+      rotors.push(halo);
+    }
+  } else if (chapter === 'chapter_3_curator') {
+    const slabGeo = new RoundedBoxGeometry(0.82, 0.42, 0.72, 2, 0.045);
+    for (const side of [-1, 1]) {
+      for (const z of [-11, -3.5]) {
+        const rack = new THREE.Group();
+        rack.position.set(side * 10.8, 0, z);
+        group.add(rack);
+        box(rack, structureMat, 0, 2.2, 0, 1.35, 4.4, 1.0, 0.08);
+        for (let s = 0; s < 6; s++) {
+          const slab = mesh(rack, slabGeo, s % 2 === 0 ? shellMat : accentMat, 0, 0.62 + s * 0.62, 0.58);
+          slab.rotation.y = (s % 2 === 0 ? -1 : 1) * 0.1;
+        }
+        const crystal = mesh(rack, crystalGeo, glowMat, 0, 4.95, 0);
+        crystal.scale.set(0.72, 1.7, 0.62);
+        rotors.push(crystal);
+      }
+      for (let r = 0; r < 4; r++) {
+        const slab = box(group, r % 2 === 0 ? shellMat : structureMat, side * (4.4 + r * 0.72), 2.1 + r * 0.46, -14.6, 0.58, 1.35, 0.24, 0.03);
+        slab.rotation.z = side * (0.08 + r * 0.03);
+      }
+      const rail = box(group, glowMat, side * 6.2, 0.04, -5.5, 0.12, 0.08, 11.5, 0.015);
+      rail.rotation.y = side * 0.08;
+    }
+  } else if (chapter === 'chapter_4_matron') {
+    for (const side of [-1, 1]) {
+      for (const z of [-9, -1.5]) {
+        const pod = new THREE.Group();
+        pod.position.set(side * 10.6, 0, z);
+        group.add(pod);
+        mesh(pod, new THREE.CylinderGeometry(0.58, 0.72, 3.5, 16), structureMat, 0, 1.75, 0);
+        for (const y of [0.32, 3.3]) {
+          mesh(pod, new THREE.CylinderGeometry(0.82, 0.82, 0.26, 16), shellMat, 0, y, 0);
+        }
+        for (const panelSide of [-1, 1]) {
+          const panel = box(pod, shellMat, panelSide * 0.62, 1.82, 0, 0.18, 2.45, 0.82, 0.06);
+          panel.rotation.z = -panelSide * 0.08;
+        }
+        const scan = mesh(pod, new THREE.TorusGeometry(0.73, 0.04, 8, 24), glowMat, 0, 2.0, 0);
+        scan.rotation.x = Math.PI / 2;
+        rotors.push(scan);
+        box(pod, shellMat, 0, 4.5, 0, 2.5, 0.16, 1.15, 0.04);
+        box(pod, glowMat, 0, 4.38, 0, 1.75, 0.06, 0.72, 0.015);
+      }
+      for (let i = 0; i < 4; i++) {
+        box(group, i % 2 === 0 ? shellMat : accentMat, side * 4.8, 0.024, -8 + i * 2.2, 0.16, 0.035, 1.2, 0.01);
+      }
+    }
+  } else {
+    for (const side of [-1, 1]) {
+      for (const z of [-10.5, 3.5]) {
+        const sealTower = new THREE.Group();
+        sealTower.position.set(side * 11.2, 0, z);
+        group.add(sealTower);
+        mesh(sealTower, new THREE.CylinderGeometry(0.38, 0.58, 4.4, 12), structureMat, 0, 2.2, 0);
+        const crown = mesh(sealTower, new THREE.TorusGeometry(0.82, 0.055, 10, 32), accentMat, 0, 4.45, 0);
+        crown.rotation.x = 0.36;
+        rotors.push(crown);
+        const crystal = mesh(sealTower, crystalGeo, glowMat, 0, 4.48, 0);
+        crystal.scale.set(0.7, 1.45, 0.7);
+      }
+    }
+    for (const [radius, tube, mat] of [[4.8, 0.07, accentMat], [5.45, 0.045, glowMat]] as const) {
+      const orbital = mesh(group, new THREE.TorusGeometry(radius, tube, 10, 64), mat, 0, 7.0, -2);
+      orbital.rotation.x = Math.PI * 0.44;
+      rotors.push(orbital);
+    }
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const rune = box(group, i % 3 === 0 ? accentMat : glowMat, Math.sin(angle) * 7.1, 0.026, Math.cos(angle) * 7.1 - 2, 0.58, 0.04, 0.12, 0.01);
+      rune.rotation.y = angle;
+    }
+  }
+
+  return { group, rotors, pulseMaterials };
+}
+
 export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boolean): PlayerRig {
   const root = new THREE.Group();
   const bodyGroup = new THREE.Group();
@@ -1882,6 +2132,386 @@ export function createEchoAfterimageGhost(opacity: number): EchoAfterimageGhost 
   };
 }
 
+interface BespokeBossChassis {
+  coreMesh: THREE.Mesh;
+  coreRimMesh: THREE.Mesh;
+  weaponPivot: THREE.Group;
+  secondaryPivot: THREE.Group;
+  outerHelixRing: THREE.Group;
+  innerHelixRing: THREE.Group;
+  leftShutterPivot: THREE.Group;
+  rightShutterPivot: THREE.Group;
+  auxiliaryPivots: THREE.Group[];
+}
+
+function buildBespokeBossChassis(
+  archetype: 'choir' | 'curator' | 'matron',
+  bodyGroup: THREE.Group,
+  torsoPivot: THREE.Group,
+  headPivot: THREE.Group,
+  coreMaterial: THREE.MeshStandardMaterial,
+  coreRimMaterial: THREE.MeshBasicMaterial,
+  primaryMeshes: THREE.Mesh[],
+  enableShadows: boolean,
+  armorBump: THREE.CanvasTexture
+): BespokeBossChassis {
+  const weaponPivot = new THREE.Group();
+  const secondaryPivot = new THREE.Group();
+  const outerHelixRing = new THREE.Group();
+  const innerHelixRing = new THREE.Group();
+  const leftShutterPivot = new THREE.Group();
+  const rightShutterPivot = new THREE.Group();
+  const auxiliaryPivots: THREE.Group[] = [];
+
+  const darkMetal = new THREE.MeshStandardMaterial({
+    color: archetype === 'choir' ? 0x102631 : archetype === 'curator' ? 0x17132f : 0x270b16,
+    bumpMap: armorBump,
+    bumpScale: 0.012,
+    roughness: 0.46,
+    metalness: 0.72,
+  });
+  const structuralMetal = new THREE.MeshStandardMaterial({
+    color: archetype === 'choir' ? 0x315468 : archetype === 'curator' ? 0x4c4177 : 0x6b1d34,
+    bumpMap: armorBump,
+    bumpScale: 0.008,
+    roughness: 0.3,
+    metalness: 0.82,
+  });
+  const paleShell = new THREE.MeshStandardMaterial({
+    color: archetype === 'choir' ? 0xd7edf0 : archetype === 'curator' ? 0xc4b5fd : 0xfff1f2,
+    bumpMap: armorBump,
+    bumpScale: 0.006,
+    roughness: archetype === 'matron' ? 0.28 : 0.22,
+    metalness: archetype === 'matron' ? 0.28 : 0.62,
+  });
+  const warmMetal = new THREE.MeshStandardMaterial({
+    color: archetype === 'curator' ? 0xd97706 : archetype === 'matron' ? 0x9f1239 : 0xc59032,
+    roughness: 0.26,
+    metalness: 0.86,
+  });
+  const signalMat = new THREE.MeshStandardMaterial({
+    color: archetype === 'choir' ? 0x67e8f9 : archetype === 'curator' ? 0xc084fc : 0xfb7185,
+    emissive: archetype === 'choir' ? 0x0891b2 : archetype === 'curator' ? 0x7e22ce : 0xe11d48,
+    emissiveIntensity: 1.45,
+    roughness: 0.2,
+    metalness: 0.42,
+  });
+
+  const mesh = (
+    parent: THREE.Object3D,
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    x = 0,
+    y = 0,
+    z = 0
+  ): THREE.Mesh => {
+    const part = new THREE.Mesh(geometry, material);
+    part.position.set(x, y, z);
+    parent.add(part);
+    return part;
+  };
+  const hero = (part: THREE.Mesh): THREE.Mesh => {
+    part.castShadow = enableShadows;
+    primaryMeshes.push(part);
+    return part;
+  };
+  const ring = (radius: number, tube: number, material: THREE.Material): THREE.Mesh =>
+    new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 10, 40), material);
+
+  torsoPivot.add(weaponPivot, secondaryPivot, outerHelixRing, innerHelixRing, headPivot);
+
+  let coreMesh: THREE.Mesh;
+  let coreRimMesh: THREE.Mesh;
+
+  if (archetype === 'choir') {
+    hero(mesh(bodyGroup, new THREE.CylinderGeometry(0.52, 0.88, 0.42, 12), darkMetal, 0, 0.62, 0));
+    const lowerResonator = hero(mesh(bodyGroup, new THREE.OctahedronGeometry(0.52, 0), structuralMetal, 0, 1.02, 0));
+    lowerResonator.scale.set(0.82, 1.28, 0.82);
+    mesh(bodyGroup, new THREE.CylinderGeometry(0.2, 0.34, 0.88, 12), warmMetal, 0, 1.35, -0.08);
+
+    coreMesh = hero(mesh(torsoPivot, new THREE.SphereGeometry(0.4, 24, 18), coreMaterial, 0, 2.08, 0.26));
+    coreMesh.scale.set(1, 1.12, 0.78);
+    coreRimMesh = mesh(torsoPivot, new THREE.RingGeometry(0.47, 0.62, 36), coreRimMaterial, 0, 2.08, 0.42);
+
+    const spineGeo = new THREE.CylinderGeometry(0.11, 0.16, 1.45, 10);
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      const support = mesh(torsoPivot, spineGeo, structuralMetal, Math.sin(angle) * 0.56, 1.62, Math.cos(angle) * 0.4 - 0.12);
+      support.rotation.z = Math.sin(angle) * 0.34;
+      support.rotation.x = Math.cos(angle) * 0.24;
+    }
+
+    outerHelixRing.position.set(0, 2.08, -0.02);
+    innerHelixRing.position.set(0, 2.08, -0.02);
+    const outerHalo = ring(1.58, 0.065, warmMetal);
+    outerHalo.rotation.x = 0.32;
+    outerHelixRing.add(outerHalo);
+    const innerHalo = ring(1.12, 0.045, signalMat);
+    innerHalo.rotation.y = 0.48;
+    innerHelixRing.add(innerHalo);
+
+    const spireConfigs = [
+      { x: -0.98, z: -0.24, h: 2.35, y: 1.18 },
+      { x: 0, z: -0.48, h: 3.25, y: 1.06 },
+      { x: 0.98, z: -0.24, h: 2.35, y: 1.18 },
+    ];
+    const pipeGeo = new THREE.CylinderGeometry(0.12, 0.17, 1, 12);
+    const capGeo = new THREE.ConeGeometry(0.2, 0.52, 12);
+    const bandGeo = new THREE.TorusGeometry(0.19, 0.026, 8, 20);
+    for (let i = 0; i < spireConfigs.length; i++) {
+      const cfg = spireConfigs[i];
+      const spire = new THREE.Group();
+      spire.position.set(cfg.x, cfg.y, cfg.z);
+      spire.userData.baseY = cfg.y;
+      torsoPivot.add(spire);
+      auxiliaryPivots.push(spire);
+
+      const pipe = hero(mesh(spire, pipeGeo, paleShell, 0, cfg.h * 0.5, 0));
+      pipe.scale.y = cfg.h;
+      mesh(spire, capGeo, i === 1 ? warmMetal : structuralMetal, 0, cfg.h + 0.24, 0);
+      mesh(spire, new THREE.CylinderGeometry(0.055, 0.07, cfg.h * 0.68, 10), signalMat, 0, cfg.h * 0.55, 0.13);
+      for (const ratio of [0.18, 0.5, 0.78]) {
+        const band = mesh(spire, bandGeo, ratio === 0.5 ? signalMat : warmMetal, 0, cfg.h * ratio, 0);
+        band.rotation.x = Math.PI / 2;
+      }
+    }
+
+    const organPipeGeo = new THREE.CylinderGeometry(0.065, 0.09, 1, 10);
+    for (const side of [-1, 1]) {
+      const bank = new THREE.Group();
+      bank.position.set(side * 1.42, 1.22, -0.12);
+      bank.userData.baseY = bank.position.y;
+      torsoPivot.add(bank);
+      auxiliaryPivots.push(bank);
+      mesh(bank, new RoundedBoxGeometry(0.48, 0.24, 0.54, 2, 0.05), darkMetal, 0, 0, 0);
+      for (let p = 0; p < 4; p++) {
+        const h = 0.78 + p * 0.22;
+        const pipe = mesh(bank, organPipeGeo, p === 3 ? signalMat : paleShell, (p - 1.5) * 0.12, h * 0.5 + 0.1, -0.04 * p);
+        pipe.scale.y = h;
+      }
+    }
+
+    for (const side of [-1, 1]) {
+      const shutter = side < 0 ? leftShutterPivot : rightShutterPivot;
+      shutter.position.set(side * 0.28, 2.08, 0.48);
+      torsoPivot.add(shutter);
+      const baffle = hero(mesh(shutter, new RoundedBoxGeometry(0.32, 0.88, 0.12, 3, 0.04), structuralMetal, side * 0.08, 0, 0));
+      baffle.rotation.z = -side * 0.12;
+      for (const y of [-0.26, 0, 0.26]) {
+        mesh(shutter, new RoundedBoxGeometry(0.3, 0.045, 0.15, 1, 0.015), signalMat, side * 0.08, y, 0.04);
+      }
+    }
+
+    headPivot.position.set(0, 3.08, 0.1);
+    mesh(headPivot, new THREE.CylinderGeometry(0.2, 0.3, 0.5, 12), darkMetal);
+    const crown = ring(0.46, 0.035, warmMetal);
+    crown.position.y = 0.32;
+    headPivot.add(crown);
+    mesh(headPivot, new RoundedBoxGeometry(0.1, 0.42, 0.14, 2, 0.025), signalMat, 0, 0.02, 0.24);
+
+    weaponPivot.position.set(1.42, 1.72, 0.08);
+    secondaryPivot.position.set(-1.42, 1.72, 0.08);
+    const forkStem = mesh(weaponPivot, new THREE.CylinderGeometry(0.07, 0.1, 1.72, 12), warmMetal, 0, 0, 0.72);
+    forkStem.rotation.x = Math.PI / 2;
+    for (const x of [-0.24, 0.24]) {
+      const prong = mesh(weaponPivot, new THREE.CylinderGeometry(0.04, 0.06, 0.92, 10), signalMat, x, 0, 1.62);
+      prong.rotation.x = Math.PI / 2;
+    }
+    for (const z of [1.2, 1.5, 1.8]) {
+      const sonic = ring(0.32, 0.028, signalMat);
+      sonic.position.z = z;
+      weaponPivot.add(sonic);
+    }
+    for (let c = -1; c <= 1; c++) {
+      const chime = mesh(secondaryPivot, new THREE.CylinderGeometry(0.07, 0.07, 1.1 + (1 - Math.abs(c)) * 0.35, 10), c === 0 ? signalMat : paleShell, c * 0.22, 0, 0.82);
+      chime.rotation.x = Math.PI / 2;
+    }
+  } else if (archetype === 'curator') {
+    const base = hero(mesh(bodyGroup, new THREE.OctahedronGeometry(0.74, 0), darkMetal, 0, 0.72, 0));
+    base.scale.set(0.78, 1.15, 0.78);
+    mesh(bodyGroup, new THREE.CylinderGeometry(0.24, 0.46, 0.5, 8), warmMetal, 0, 1.12, 0);
+
+    const slabGeo = new RoundedBoxGeometry(0.92, 0.5, 0.72, 2, 0.055);
+    for (let i = 0; i < 5; i++) {
+      const slab = new THREE.Group();
+      const y = 1.22 + i * 0.42;
+      slab.position.set((i % 2 === 0 ? -1 : 1) * 0.06, y, -0.08);
+      slab.rotation.y = (i - 2) * 0.08;
+      slab.userData.baseY = y;
+      slab.userData.baseRotY = slab.rotation.y;
+      torsoPivot.add(slab);
+      auxiliaryPivots.push(slab);
+      const shell = hero(mesh(slab, slabGeo, i === 2 ? structuralMetal : darkMetal));
+      shell.scale.set(1 - i * 0.055, 1, 1 - i * 0.04);
+      mesh(slab, new RoundedBoxGeometry(0.64, 0.055, 0.76, 1, 0.015), i % 2 === 0 ? signalMat : warmMetal, 0, 0.18, 0.02);
+    }
+
+    coreMesh = hero(mesh(torsoPivot, new THREE.OctahedronGeometry(0.46, 0), coreMaterial, 0, 1.96, 0.5));
+    coreMesh.scale.set(0.86, 1.18, 0.68);
+    coreRimMesh = mesh(torsoPivot, new THREE.RingGeometry(0.48, 0.64, 6), coreRimMaterial, 0, 1.96, 0.64);
+
+    outerHelixRing.position.set(0, 2.18, -0.06);
+    innerHelixRing.position.set(0, 2.18, -0.06);
+    const outerAstrolabe = ring(1.52, 0.048, warmMetal);
+    outerAstrolabe.rotation.x = 0.46;
+    outerHelixRing.add(outerAstrolabe);
+    const shardGeo = new THREE.OctahedronGeometry(0.28, 0);
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const holder = new THREE.Group();
+      holder.rotation.z = angle;
+      outerHelixRing.add(holder);
+      const shard = hero(mesh(holder, shardGeo, i % 2 === 0 ? signalMat : paleShell, 0, 1.5, -0.08));
+      shard.scale.set(0.56, 1.72, 0.48);
+    }
+    const innerMatrix = ring(1.04, 0.035, signalMat);
+    innerMatrix.rotation.y = 0.58;
+    innerHelixRing.add(innerMatrix);
+
+    for (const side of [-1, 1]) {
+      const shutter = side < 0 ? leftShutterPivot : rightShutterPivot;
+      shutter.position.set(side * 0.3, 1.96, 0.54);
+      torsoPivot.add(shutter);
+      const panel = hero(mesh(shutter, new RoundedBoxGeometry(0.3, 0.94, 0.12, 2, 0.035), structuralMetal, side * 0.06, 0, 0));
+      panel.rotation.z = side * 0.12;
+      mesh(shutter, new THREE.OctahedronGeometry(0.12, 0), signalMat, side * 0.08, 0.2, 0.1);
+    }
+
+    headPivot.position.set(0, 3.42, -0.02);
+    const crown = hero(mesh(headPivot, new THREE.OctahedronGeometry(0.52, 0), darkMetal));
+    crown.scale.set(0.78, 1.48, 0.72);
+    const crownWire = mesh(headPivot, new THREE.OctahedronGeometry(0.6, 0), new THREE.MeshBasicMaterial({ color: 0xc084fc, wireframe: true, transparent: true, opacity: 0.72 }));
+    crownWire.scale.set(0.78, 1.35, 0.72);
+    for (const y of [-0.18, 0.02, 0.22]) {
+      mesh(headPivot, new THREE.OctahedronGeometry(0.09, 0), y === 0.02 ? warmMetal : signalMat, 0, y, 0.38);
+    }
+
+    weaponPivot.position.set(1.18, 1.88, 0.02);
+    secondaryPivot.position.set(-1.18, 1.88, 0.02);
+    const staff = mesh(weaponPivot, new THREE.CylinderGeometry(0.065, 0.09, 2.25, 10), warmMetal, 0, 0, 0.92);
+    staff.rotation.x = Math.PI / 2;
+    const staffHead = hero(mesh(weaponPivot, new THREE.OctahedronGeometry(0.38, 0), signalMat, 0, 0, 1.92));
+    staffHead.scale.set(0.8, 0.8, 1.45);
+    for (const side of [-1, 1]) {
+      const wing = mesh(weaponPivot, createCurvedBladeGeometry(1.12, 0.24, 0.05), paleShell, side * 0.28, 0, 1.42);
+      wing.rotation.z = side * Math.PI * 0.5;
+    }
+    const projector = ring(0.46, 0.045, warmMetal);
+    projector.position.z = 0.82;
+    secondaryPivot.add(projector);
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      const emitter = mesh(secondaryPivot, new THREE.OctahedronGeometry(0.18, 0), signalMat, Math.cos(angle) * 0.36, Math.sin(angle) * 0.36, 1.02);
+      emitter.scale.set(0.6, 0.6, 1.5);
+    }
+  } else {
+    const legGeo = new THREE.CapsuleGeometry(0.13, 0.42, 6, 10);
+    for (const side of [-1, 1]) {
+      for (const z of [-0.36, 0.36]) {
+        const leg = hero(mesh(bodyGroup, legGeo, darkMetal, side * 0.66, 0.58, z));
+        leg.rotation.z = -side * 0.22;
+        mesh(bodyGroup, new RoundedBoxGeometry(0.42, 0.18, 0.5, 2, 0.05), structuralMetal, side * 0.74, 0.24, z + 0.08);
+      }
+    }
+    const cradle = hero(mesh(torsoPivot, new RoundedBoxGeometry(1.62, 0.74, 1.24, 5, 0.2), paleShell, 0, 1.22, 0));
+    cradle.scale.set(1.06, 1, 1);
+    mesh(torsoPivot, new RoundedBoxGeometry(1.2, 0.32, 1.34, 3, 0.08), darkMetal, 0, 0.9, -0.02);
+    mesh(torsoPivot, new THREE.CylinderGeometry(0.5, 0.5, 0.28, 24), darkMetal, 0, 1.34, 0.54).rotation.x = Math.PI / 2;
+    const port = ring(0.5, 0.065, warmMetal);
+    port.position.set(0, 1.34, 0.69);
+    torsoPivot.add(port);
+
+    coreMesh = hero(mesh(torsoPivot, new THREE.SphereGeometry(0.37, 24, 18), coreMaterial, 0, 1.34, 0.67));
+    coreMesh.scale.set(1, 1, 0.72);
+    coreRimMesh = mesh(torsoPivot, new THREE.RingGeometry(0.43, 0.57, 36), coreRimMaterial, 0, 1.34, 0.76);
+
+    outerHelixRing.position.set(0, 1.48, -0.08);
+    innerHelixRing.position.set(0, 1.48, -0.08);
+    const outerSurgicalHalo = ring(1.36, 0.045, warmMetal);
+    outerSurgicalHalo.rotation.x = 0.3;
+    outerHelixRing.add(outerSurgicalHalo);
+    const innerSurgicalHalo = ring(1.02, 0.032, signalMat);
+    innerSurgicalHalo.rotation.y = 0.52;
+    innerHelixRing.add(innerSurgicalHalo);
+
+    for (const side of [-1, 1]) {
+      for (const upper of [true, false]) {
+        const limb = new THREE.Group();
+        const restZ = -side * (upper ? 0.46 : 0.82);
+        limb.position.set(side * (upper ? 0.68 : 0.82), upper ? 1.64 : 1.18, -0.38);
+        limb.rotation.z = restZ;
+        limb.userData.restZ = restZ;
+        limb.userData.side = side;
+        limb.userData.upper = upper ? 1 : 0;
+        torsoPivot.add(limb);
+        auxiliaryPivots.push(limb);
+
+        const shoulder = mesh(limb, new THREE.SphereGeometry(0.17, 12, 10), darkMetal);
+        hero(shoulder);
+        const upperStrut = hero(mesh(limb, new THREE.CapsuleGeometry(0.085, 0.68, 6, 10), paleShell, side * 0.32, 0.28, 0));
+        upperStrut.rotation.z = -side * 0.72;
+        mesh(limb, new THREE.SphereGeometry(0.12, 10, 8), warmMetal, side * 0.62, 0.52, 0.04);
+        const forearm = mesh(limb, new THREE.CylinderGeometry(0.055, 0.075, 0.78, 10), darkMetal, side * 0.74, 0.46, 0.34);
+        forearm.rotation.x = Math.PI * 0.42;
+        const scalpel = hero(mesh(limb, createCurvedBladeGeometry(0.96, 0.2, 0.04), signalMat, side * 0.76, 0.36, 0.72));
+        scalpel.rotation.z = side * 0.12;
+      }
+    }
+
+    for (const side of [-1, 1]) {
+      const shutter = side < 0 ? leftShutterPivot : rightShutterPivot;
+      shutter.position.set(side * 0.27, 1.34, 0.73);
+      torsoPivot.add(shutter);
+      const petal = hero(mesh(shutter, new THREE.SphereGeometry(0.42, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), paleShell, side * 0.08, 0, 0));
+      petal.scale.set(0.64, 1.12, 0.28);
+      petal.rotation.z = -side * 0.18;
+      mesh(shutter, new RoundedBoxGeometry(0.07, 0.52, 0.1, 2, 0.02), signalMat, side * 0.06, 0, 0.08);
+      const canister = mesh(torsoPivot, new THREE.CylinderGeometry(0.13, 0.13, 0.78, 12), signalMat, side * 0.58, 1.62, -0.48);
+      canister.rotation.x = -0.2;
+    }
+
+    headPivot.position.set(0, 2.14, 0.1);
+    hero(mesh(headPivot, new RoundedBoxGeometry(0.58, 0.5, 0.56, 4, 0.13), paleShell));
+    for (const x of [-0.17, 0, 0.17]) {
+      const lens = mesh(headPivot, new THREE.CylinderGeometry(0.065, 0.065, 0.15, 12), signalMat, x, x === 0 ? 0.08 : -0.03, 0.29);
+      lens.rotation.x = Math.PI / 2;
+    }
+    const lamp = ring(0.43, 0.035, signalMat);
+    lamp.rotation.x = Math.PI * 0.42;
+    lamp.position.y = 0.4;
+    headPivot.add(lamp);
+
+    weaponPivot.position.set(1.22, 1.16, 0.12);
+    secondaryPivot.position.set(-1.22, 1.16, 0.12);
+    const syringe = mesh(weaponPivot, new RoundedBoxGeometry(0.48, 0.42, 0.78, 3, 0.08), darkMetal, 0, 0, 0.72);
+    hero(syringe);
+    for (const x of [-0.17, 0.17]) {
+      const needle = mesh(weaponPivot, new THREE.ConeGeometry(0.075, 0.96, 10), signalMat, x, 0, 1.42);
+      needle.rotation.x = Math.PI / 2;
+    }
+    for (const y of [-0.12, 0.12]) {
+      const saw = mesh(secondaryPivot, new THREE.CylinderGeometry(0.54, 0.54, 0.045, 24), darkMetal, 0, y, 0.82);
+      const rim = ring(0.54, 0.035, signalMat);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.set(0, y, 0.82);
+      secondaryPivot.add(rim);
+      saw.rotation.x = 0.08;
+    }
+  }
+
+  return {
+    coreMesh,
+    coreRimMesh,
+    weaponPivot,
+    secondaryPivot,
+    outerHelixRing,
+    innerHelixRing,
+    leftShutterPivot,
+    rightShutterPivot,
+    auxiliaryPivots,
+  };
+}
+
 export function createEnemyRig(
   id: string,
   archetype: EnemyArchetype,
@@ -1916,8 +2546,8 @@ export function createEnemyRig(
   root.add(contactShadow);
 
   const primaryMeshes: THREE.Mesh[] = [];
-  const weaponPivot = new THREE.Group();
-  const secondaryPivot = new THREE.Group();
+  let weaponPivot = new THREE.Group();
+  let secondaryPivot = new THREE.Group();
   let leftArmPivot: THREE.Group | undefined;
   let rightArmPivot: THREE.Group | undefined;
   let leftLegPivot: THREE.Group | undefined;
@@ -1936,6 +2566,7 @@ export function createEnemyRig(
   let sweepSectorRimMat: THREE.MeshBasicMaterial | undefined;
   let slamShockwaveRing: THREE.Mesh | undefined;
   let slamShockwaveMat: THREE.MeshBasicMaterial | undefined;
+  let auxiliaryPivots: THREE.Group[] = [];
   let coreMesh: THREE.Mesh;
   let coreRimMesh: THREE.Mesh;
 
@@ -2576,6 +3207,28 @@ export function createEnemyRig(
       metalness: 0.45,
     });
 
+    if (archetype !== 'helix') {
+      const bespoke = buildBespokeBossChassis(
+        archetype,
+        bodyGroup,
+        torsoPivot,
+        headPivot,
+        coreMaterial,
+        coreRimMaterial,
+        primaryMeshes,
+        enableShadows,
+        armorBump
+      );
+      coreMesh = bespoke.coreMesh;
+      coreRimMesh = bespoke.coreRimMesh;
+      weaponPivot = bespoke.weaponPivot;
+      secondaryPivot = bespoke.secondaryPivot;
+      outerHelixRing = bespoke.outerHelixRing;
+      innerHelixRing = bespoke.innerHelixRing;
+      leftShutterPivot = bespoke.leftShutterPivot;
+      rightShutterPivot = bespoke.rightShutterPivot;
+      auxiliaryPivots = bespoke.auxiliaryPivots;
+    } else {
     // 1. Articulated Heavy Hydraulic Containment Legs
     const buildHelixLeg = (sign: number) => {
       const legGroup = new THREE.Group();
@@ -2733,471 +3386,7 @@ export function createEnemyRig(
     secondaryPivot.position.set(-1.28, 0.82, 0.18);
     torsoPivot.add(secondaryPivot);
 
-    if (archetype === 'choir') {
-      // =======================================================================
-      // THE CHOIR — Tri-Spire Acoustic Cathedral & Harmonic Resonance Array
-      // =======================================================================
-      const goldHarmonicMat = new THREE.MeshStandardMaterial({
-        color: 0xfde68a,
-        emissive: 0xd97706,
-        emissiveIntensity: 1.35,
-        roughness: 0.18,
-        metalness: 0.88,
-      });
-
-      // Outer Acoustic Halo with 6 Orbiting Organ-Pipe Resonators
-      const choirOuterHalo = new THREE.Mesh(
-        new THREE.TorusGeometry(1.64, 0.06, 14, 48),
-        goldHarmonicMat
-      );
-      choirOuterHalo.rotation.x = Math.PI * 0.42;
-      outerHelixRing.add(choirOuterHalo);
-
-      for (let p = 0; p < 6; p++) {
-        const pAngle = (p / 6) * Math.PI * 2;
-        const pipeHolder = new THREE.Group();
-        pipeHolder.rotation.y = pAngle;
-        outerHelixRing.add(pipeHolder);
-
-        const pipeLen = p % 2 === 0 ? 1.48 : 1.12;
-        const organPipe = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.085, 0.11, pipeLen, 14),
-          ceramicArmorMat
-        );
-        organPipe.position.set(0, 0.18, -1.58);
-        pipeHolder.add(organPipe);
-
-        const tuningSlot = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.095, 0.095, 0.24, 14),
-          cyanConduitMat
-        );
-        tuningSlot.position.set(0, 0.18 + pipeLen * 0.35, -1.58);
-        pipeHolder.add(tuningSlot);
-      }
-
-      // Inner Counter-Rotating Harmonic Chime Ring
-      const choirInnerHalo = new THREE.Mesh(
-        new THREE.TorusGeometry(1.26, 0.048, 12, 40),
-        cyanConduitMat
-      );
-      choirInnerHalo.rotation.y = Math.PI * 0.32;
-      innerHelixRing.add(choirInnerHalo);
-
-      // 3 Towering Cathedral Acoustic Spires (Soprano Left, Alto Right, Bass Center)
-      const spireConfigs = [
-        { x: -1.18, y: 1.45, z: -0.36, h: 2.1, r: 0.16, tiltZ: 0.18 },
-        { x: 1.18, y: 1.45, z: -0.36, h: 2.1, r: 0.16, tiltZ: -0.18 },
-        { x: 0, y: 1.72, z: -0.54, h: 2.55, r: 0.2, tiltZ: 0 },
-      ];
-      for (const sp of spireConfigs) {
-        const spireGroup = new THREE.Group();
-        spireGroup.position.set(sp.x, sp.y, sp.z);
-        spireGroup.rotation.z = sp.tiltZ;
-        spireGroup.rotation.x = -0.18;
-        torsoPivot.add(spireGroup);
-
-        const spireColumn = new THREE.Mesh(
-          new THREE.CylinderGeometry(sp.r * 0.55, sp.r, sp.h, 16),
-          ceramicArmorMat
-        );
-        spireColumn.castShadow = enableShadows;
-        spireGroup.add(spireColumn);
-        primaryMeshes.push(spireColumn);
-
-        for (const ringY of [-sp.h * 0.25, sp.h * 0.15, sp.h * 0.42]) {
-          const acousticRing = new THREE.Mesh(
-            new THREE.TorusGeometry(sp.r * 1.35, 0.032, 10, 24),
-             ringY > 0 ? cyanConduitMat : goldHarmonicMat
-          );
-          acousticRing.rotation.x = Math.PI / 2;
-          acousticRing.position.y = ringY;
-          spireGroup.add(acousticRing);
-        }
-      }
-
-      // Sculpted Acoustic Pauldrons
-      for (const side of [-1, 1]) {
-        const choirPauldron = new THREE.Mesh(
-          new THREE.ConeGeometry(0.58, 1.05, 16),
-          ceramicArmorMat
-        );
-        choirPauldron.position.set(side * 1.26, 1.08, 0.04);
-        choirPauldron.rotation.z = -side * 0.48;
-        torsoPivot.add(choirPauldron);
-        primaryMeshes.push(choirPauldron);
-      }
-
-      // Multi-Ring Acoustic Crown Head
-      const choirHelm = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.28, 0.38, 0.78, 18),
-        ceramicArmorMat
-      );
-      headPivot.add(choirHelm);
-
-      const choirVisorSlit = new THREE.Mesh(
-        new RoundedBoxGeometry(0.14, 0.56, 0.22, 2, 0.03),
-        cyanConduitMat
-      );
-      choirVisorSlit.position.set(0, 0.02, 0.28);
-      headPivot.add(choirVisorSlit);
-
-      const crownHalo = new THREE.Mesh(
-        new THREE.TorusGeometry(0.54, 0.035, 10, 32),
-        goldHarmonicMat
-      );
-      crownHalo.position.set(0, 0.36, -0.06);
-      headPivot.add(crownHalo);
-
-      // Right Arm: Harmonic Tuning-Fork Resonance Lance
-      const lanceShaft = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.09, 0.12, 2.55, 16),
-        goldHarmonicMat
-      );
-      lanceShaft.rotation.x = Math.PI / 2;
-      lanceShaft.position.set(0, -0.2, 1.08);
-      weaponPivot.add(lanceShaft);
-
-      for (const sideX of [-0.28, 0.28]) {
-        const forkProng = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.045, 0.065, 1.35, 12),
-          cyanConduitMat
-        );
-        forkProng.rotation.x = Math.PI / 2;
-        forkProng.position.set(sideX, -0.2, 2.05);
-        weaponPivot.add(forkProng);
-      }
-      for (const ringZ of [1.45, 1.85, 2.25]) {
-        const sonicRing = new THREE.Mesh(
-          new THREE.TorusGeometry(0.38, 0.04, 10, 24),
-          cyanConduitMat
-        );
-        sonicRing.position.set(0, -0.2, ringZ);
-        weaponPivot.add(sonicRing);
-      }
-
-      // Left Arm: Choral 3-Chime Acoustic Shield Array
-      const chimeHub = new THREE.Mesh(
-        new RoundedBoxGeometry(0.76, 0.28, 0.36, 3, 0.05),
-        goldHarmonicMat
-      );
-      chimeHub.position.set(-0.08, -0.24, 0.72);
-      secondaryPivot.add(chimeHub);
-
-      for (let c = -1; c <= 1; c++) {
-        const chimePipe = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.09, 0.09, 1.55, 14),
-          c === 0 ? cyanConduitMat : ceramicArmorMat
-        );
-        chimePipe.rotation.x = Math.PI / 2;
-        chimePipe.position.set(-0.08 + c * 0.26, -0.24, 1.28);
-        secondaryPivot.add(chimePipe);
-      }
-    } else if (archetype === 'curator') {
-      // =======================================================================
-      // THE CURATOR — Monolithic Archive Reconstructor & Memory Shard Sentinel
-      // =======================================================================
-      const crystalVioletMat = new THREE.MeshStandardMaterial({
-        color: 0xc084fc,
-        emissive: 0x9333ea,
-        emissiveIntensity: 1.75,
-        roughness: 0.14,
-        metalness: 0.65,
-      });
-      const archiveGoldMat = new THREE.MeshStandardMaterial({
-        color: 0xf59e0b,
-        emissive: 0xb45309,
-        emissiveIntensity: 1.25,
-        roughness: 0.22,
-        metalness: 0.85,
-      });
-
-      // Outer Astrolabe Ring with 8 Floating Crystalline Memory Monolith Shards
-      const astrolabeRing = new THREE.Mesh(
-        new THREE.TorusGeometry(1.68, 0.05, 12, 48),
-        archiveGoldMat
-      );
-      astrolabeRing.rotation.x = Math.PI * 0.28;
-      outerHelixRing.add(astrolabeRing);
-
-      for (let m = 0; m < 8; m++) {
-        const mAngle = (m / 8) * Math.PI * 2;
-        const shardHolder = new THREE.Group();
-        shardHolder.rotation.z = mAngle;
-        outerHelixRing.add(shardHolder);
-
-        const monolithShard = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.34, 0),
-          m % 2 === 0 ? crystalVioletMat : ceramicArmorMat
-        );
-        monolithShard.scale.set(0.65, 1.85, 0.45);
-        monolithShard.position.set(0, 1.72, -0.28);
-        shardHolder.add(monolithShard);
-        primaryMeshes.push(monolithShard);
-      }
-
-      // Inner Holographic Archive Matrix Ring
-      const innerMatrixRing = new THREE.Mesh(
-        new THREE.TorusGeometry(1.24, 0.045, 10, 36),
-        crystalVioletMat
-      );
-      innerMatrixRing.rotation.y = Math.PI * 0.35;
-      innerHelixRing.add(innerMatrixRing);
-
-      // Angular Obsidian Data-Stack Pauldrons & Floating Dorsal Archive Slabs
-      for (const side of [-1, 1]) {
-        const archivePauldron = new THREE.Mesh(
-          new RoundedBoxGeometry(0.68, 0.96, 0.88, 3, 0.06),
-          darkTitaniumMat
-        );
-        archivePauldron.position.set(side * 1.28, 1.14, 0.02);
-        archivePauldron.rotation.z = -side * 0.32;
-        torsoPivot.add(archivePauldron);
-        primaryMeshes.push(archivePauldron);
-
-        const pauldronCrystal = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.28, 0),
-          crystalVioletMat
-        );
-        pauldronCrystal.scale.set(0.6, 1.6, 0.6);
-        pauldronCrystal.position.set(side * 1.48, 1.56, -0.08);
-        pauldronCrystal.rotation.z = -side * 0.28;
-        torsoPivot.add(pauldronCrystal);
-      }
-
-      // Tall Monolithic Archive Mitre Crown & Tri-Ocular Scanner Visor
-      const curatorCrown = new THREE.Mesh(
-        new THREE.ConeGeometry(0.46, 1.18, 6),
-        darkTitaniumMat
-      );
-      curatorCrown.position.set(0, 0.34, 0);
-      headPivot.add(curatorCrown);
-
-      for (const eyeY of [-0.06, 0.14, 0.34]) {
-        const ocularLens = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.11, 0),
-          eyeY === 0.14 ? archiveGoldMat : crystalVioletMat
-        );
-        ocularLens.position.set(0, eyeY, 0.32);
-        headPivot.add(ocularLens);
-      }
-
-      const ocularHalo = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.56, 0),
-        new THREE.MeshBasicMaterial({
-          color: 0xc084fc,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.75,
-        })
-      );
-      ocularHalo.position.set(0, 0.42, 0);
-      headPivot.add(ocularHalo);
-
-      // Right Arm: Twin-Pronged Chronicle Reconstruction Glaive Staff
-      const staffShaft = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.085, 0.1, 2.65, 12),
-        archiveGoldMat
-      );
-      staffShaft.rotation.x = Math.PI / 2;
-      staffShaft.position.set(0, -0.22, 1.05);
-      weaponPivot.add(staffShaft);
-
-      const headPrism = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.46, 0),
-        crystalVioletMat
-      );
-      headPrism.scale.set(0.85, 0.85, 1.45);
-      headPrism.position.set(0, -0.22, 2.15);
-      weaponPivot.add(headPrism);
-
-      const glaiveBladeGeo = createCurvedBladeGeometry(1.45, 0.32, 0.06);
-      for (const side of [-1, 1]) {
-        const glaiveWing = new THREE.Mesh(glaiveBladeGeo, ceramicArmorMat);
-        glaiveWing.position.set(side * 0.34, -0.22, 1.55);
-        glaiveWing.rotation.z = side * Math.PI * 0.5;
-        weaponPivot.add(glaiveWing);
-      }
-
-      // Left Arm: Prismatic Trace Projector Matrix
-      const projectorFrame = new THREE.Mesh(
-        new THREE.TorusGeometry(0.52, 0.055, 10, 6),
-        archiveGoldMat
-      );
-      projectorFrame.position.set(-0.08, -0.28, 1.12);
-      secondaryPivot.add(projectorFrame);
-
-      for (let k = 0; k < 3; k++) {
-        const ka = (k / 3) * Math.PI * 2;
-        const crystalEmitter = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.22, 0),
-          crystalVioletMat
-        );
-        crystalEmitter.scale.set(0.6, 0.6, 1.8);
-        crystalEmitter.position.set(
-          -0.08 + Math.cos(ka) * 0.44,
-          -0.28 + Math.sin(ka) * 0.44,
-          1.38
-        );
-        secondaryPivot.add(crystalEmitter);
-      }
-    } else if (archetype === 'matron') {
-      // =======================================================================
-      // MATRON-V, THE SURGEON — 4 Dorsal Surgical Mantis-Limbs & Excision Rig
-      // =======================================================================
-      const surgicalCrimsonMat = new THREE.MeshStandardMaterial({
-        color: 0xf43f5e,
-        emissive: 0xe11d48,
-        emissiveIntensity: 1.85,
-        roughness: 0.14,
-        metalness: 0.55,
-      });
-      const porcelainCarapaceMat = new THREE.MeshStandardMaterial({
-        color: 0xfff1f2,
-        roughness: 0.16,
-        metalness: 0.62,
-      });
-
-      // 4 Articulated Dorsal Surgical Mantis-Arms mounted on outerHelixRing & innerHelixRing
-      const buildSurgicalMantisLimb = (side: number, upper: boolean) => {
-        const limbRoot = new THREE.Group();
-        limbRoot.position.set(side * (upper ? 0.85 : 0.98), upper ? 0.65 : -0.15, -0.38);
-        limbRoot.rotation.z = -side * (upper ? 0.52 : 0.88);
-        limbRoot.rotation.y = side * 0.34;
-
-        const strut1 = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.095, 0.82, 8, 12),
-          porcelainCarapaceMat
-        );
-        strut1.position.set(side * 0.38, 0.36, -0.12);
-        strut1.rotation.z = -side * 0.68;
-        limbRoot.add(strut1);
-
-        const elbowJoint = new THREE.Mesh(
-          new THREE.SphereGeometry(0.14, 12, 12),
-          darkTitaniumMat
-        );
-        elbowJoint.position.set(side * 0.78, 0.68, -0.18);
-        limbRoot.add(elbowJoint);
-
-        const forearmStrut = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.075, 0.055, 0.96, 12),
-          darkTitaniumMat
-        );
-        forearmStrut.position.set(side * 0.96, 0.58, 0.28);
-        forearmStrut.rotation.x = Math.PI * 0.42;
-        limbRoot.add(forearmStrut);
-
-        const scalpelBlade = new THREE.Mesh(
-          createCurvedBladeGeometry(1.18, 0.24, 0.045),
-          surgicalCrimsonMat
-        );
-        scalpelBlade.position.set(side * 0.98, 0.48, 0.65);
-        limbRoot.add(scalpelBlade);
-
-        return limbRoot;
-      };
-
-      outerHelixRing.add(buildSurgicalMantisLimb(-1, true));
-      outerHelixRing.add(buildSurgicalMantisLimb(1, true));
-      innerHelixRing.add(buildSurgicalMantisLimb(-1, false));
-      innerHelixRing.add(buildSurgicalMantisLimb(1, false));
-
-      // Clinical Porcelain Pauldrons & Pressurized Crimson Bio-Canisters
-      for (const side of [-1, 1]) {
-        const clinicalPauldron = new THREE.Mesh(
-          new THREE.SphereGeometry(0.58, 18, 16, 0, Math.PI * 2, 0, Math.PI * 0.62),
-          porcelainCarapaceMat
-        );
-        clinicalPauldron.position.set(side * 1.24, 1.06, 0.04);
-        clinicalPauldron.rotation.z = -side * 0.38;
-        torsoPivot.add(clinicalPauldron);
-        primaryMeshes.push(clinicalPauldron);
-
-        const bioCanister = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.18, 0.18, 0.94, 16),
-          surgicalCrimsonMat
-        );
-        bioCanister.position.set(side * 0.54, 1.44, -0.48);
-        bioCanister.rotation.x = -0.22;
-        torsoPivot.add(bioCanister);
-      }
-
-      // Clinical Tri-Lens Surgical Mask & Overhead Operating Halo Lamp
-      const surgeonMask = new THREE.Mesh(
-        new RoundedBoxGeometry(0.64, 0.62, 0.62, 4, 0.14),
-        porcelainCarapaceMat
-      );
-      headPivot.add(surgeonMask);
-
-      for (const lx of [-0.18, 0, 0.18]) {
-        const lens = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.075, 0.075, 0.16, 14),
-          surgicalCrimsonMat
-        );
-        lens.rotation.x = Math.PI / 2;
-        lens.position.set(lx, 0.04 + (lx === 0 ? 0.1 : -0.04), 0.3);
-        headPivot.add(lens);
-      }
-
-      const surgicalLampHalo = new THREE.Mesh(
-        new THREE.TorusGeometry(0.48, 0.04, 10, 28),
-        surgicalCrimsonMat
-      );
-      surgicalLampHalo.rotation.x = Math.PI * 0.42;
-      surgicalLampHalo.position.set(0, 0.48, 0.08);
-      headPivot.add(surgicalLampHalo);
-
-      // Right Arm: Twin-Pronged High-Frequency Bio-Cauterizer Lance
-      const cauterizerShaft = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.1, 0.13, 2.25, 16),
-        porcelainCarapaceMat
-      );
-      cauterizerShaft.rotation.x = Math.PI / 2;
-      cauterizerShaft.position.set(0, -0.22, 0.95);
-      weaponPivot.add(cauterizerShaft);
-
-      const syringeHousing = new THREE.Mesh(
-        new RoundedBoxGeometry(0.64, 0.58, 0.88, 3, 0.1),
-        darkTitaniumMat
-      );
-      syringeHousing.position.set(0, -0.22, 1.78);
-      weaponPivot.add(syringeHousing);
-
-      for (const sx of [-0.22, 0.22]) {
-        const needleBlade = new THREE.Mesh(
-          new THREE.ConeGeometry(0.095, 1.15, 12),
-          surgicalCrimsonMat
-        );
-        needleBlade.rotation.x = Math.PI / 2;
-        needleBlade.position.set(sx, -0.22, 2.45);
-        weaponPivot.add(needleBlade);
-      }
-
-      // Left Arm: Dual-Disc Rotary Surgical Bone-Saw & Chrono-Clamp
-      const sawMount = new THREE.Mesh(
-        new RoundedBoxGeometry(0.42, 0.36, 0.92, 3, 0.06),
-        porcelainCarapaceMat
-      );
-      sawMount.position.set(-0.08, -0.28, 0.78);
-      secondaryPivot.add(sawMount);
-
-      for (const offsetY of [-0.14, 0.14]) {
-        const sawDisc = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.68, 0.68, 0.05, 24),
-          darkTitaniumMat
-        );
-        sawDisc.position.set(-0.08, -0.28 + offsetY, 1.42);
-        secondaryPivot.add(sawDisc);
-
-        const sawPlasmaRim = new THREE.Mesh(
-          new THREE.TorusGeometry(0.68, 0.045, 10, 28),
-          surgicalCrimsonMat
-        );
-        sawPlasmaRim.rotation.x = Math.PI / 2;
-        sawPlasmaRim.position.set(-0.08, -0.28 + offsetY, 1.42);
-        secondaryPivot.add(sawPlasmaRim);
-      }
-    } else {
+    {
       // =======================================================================
       // HELIX-04 — Security Marshal: Helical Cutter Cage, Anchor Maul & Cleaver
       // =======================================================================
@@ -3372,6 +3561,8 @@ export function createEnemyRig(
         sweepBlade.position.set(0, 0, 0.12);
         sbPivot.add(sweepBlade);
       }
+    }
+
     }
 
     // 10. Boss Spatial Floor Telegraphs (Attached to root so they orient with HELIX-04)
@@ -3679,6 +3870,7 @@ export function createEnemyRig(
     sweepSectorRimMat,
     slamShockwaveRing,
     slamShockwaveMat,
+    auxiliaryPivots,
     telegraphDisc,
     telegraphDiscMaterial,
     telegraphRing,

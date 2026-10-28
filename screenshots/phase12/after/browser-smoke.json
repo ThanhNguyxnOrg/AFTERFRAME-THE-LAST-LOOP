@@ -1,0 +1,26 @@
+{
+  "keyboard_W_moves_player": true,
+  "keyboard_F_starts_attack": true,
+  "practice_boss_isolated": true,
+  "curator_trace_live": true,
+  "checkpoint_retry_restores": true,
+  "checkpoint_retry_details": {
+    "cp": {
+      "integrity": 100,
+      "flux": 40
+    },
+    "defeated": {
+      "outcome": "defeat",
+      "appState": "playing",
+      "integrity": 0
+    },
+    "hp": 360,
+    "maxHp": 360,
+    "integrity": 100,
+    "flux": 40,
+    "outcome": "none"
+  },
+  "ending_persists_reload": true,
+  "mobile_no_horizontal_overflow": true,
+  "console_and_page_errors": []
+}

@@ -760,6 +760,8 @@ export default function App() {
         ) => WorldState;
         restoreSavedCampaignProgress: () => WorldState;
         selectChronicleLoomEnding: (ending: ChronicleLoomEndingId) => WorldState;
+        skipBossIntroBanner: () => WorldState;
+        dismissActiveTransmission: () => WorldState;
         retryBossCheckpoint: (skipIntro?: boolean) => WorldState;
         forceBossAttack: (attack: BossAttackType) => WorldState;
         rotateCamera: (dx: number, dy: number) => { aimYaw: number; aimPitch: number };
