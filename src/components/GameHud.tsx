@@ -564,6 +564,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 type="button"
                 tabIndex={-1}
                 data-testid="combat-btn-light"
+                title="Light combo — tap LMB / F / J"
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onLightAttack?.();
@@ -577,6 +578,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 type="button"
                 tabIndex={-1}
                 data-testid="combat-btn-heavy"
+                title="Charged Heavy — hold LMB / J then release, or tap E / K / RMB"
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onHeavyAttack?.();
@@ -1844,7 +1846,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         {/* Quiet Desktop Shortcut Reminder (Only shown when Tutorial Banner is hidden or completed, never duplicated or clipped on mobile) */}
         {(!hud.tutorial.enabled || hud.tutorial.step === 'completed') && (
           <div className="hidden sm:block text-center text-[10px] font-mono-tabular text-slate-400/90 bg-[#090d14]/85 border border-slate-800/80 px-3 py-1 whitespace-nowrap">
-            [WASD] Move · [LMB/F] Light · [E] Heavy · [Space] Dodge · [Q] Parry · [T] Record · [Y] Replay · [V] Relay · [H] Hints · [P] Pause
+            [WASD] Move · [Tap LMB/F] Light · [E] Heavy · [Space] Dodge · [Q] Parry · [T] Record · [Y] Replay · [V] Relay · [H] Hints · [P] Pause
           </div>
         )}
       </div>

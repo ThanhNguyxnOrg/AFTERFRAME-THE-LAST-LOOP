@@ -5242,6 +5242,15 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
   const moveVec = computeMovementWorldVector(input, _scratchMoveVec);
 
+  if (input.cameraDragJustStarted) {
+    p.bufferedAction = 'none';
+    p.bufferTimer = 0;
+    if (p.actionState === 'charging_heavy') {
+      p.actionState = 'idle';
+      p.chargeTime = 0;
+    }
+  }
+
   // Input buffering for responsive controls
   if (input.dodgeJustPressed) {
     p.bufferedAction = 'dodge';

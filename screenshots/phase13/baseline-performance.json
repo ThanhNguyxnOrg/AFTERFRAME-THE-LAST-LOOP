@@ -1,0 +1,87 @@
+{
+  "standard_combat": {
+    "samples": 119,
+    "meanMs": 9.624369747899157,
+    "p95Ms": 18.199999999999818,
+    "maxMs": 42.29999999999973,
+    "longTasks": [
+      1144,
+      758
+    ],
+    "writes": 15,
+    "headlessDetected": false
+  },
+  "helix_telegraph": {
+    "samples": 119,
+    "meanMs": 11.000840336134457,
+    "p95Ms": 18.199999999999818,
+    "maxMs": 247.60000000000036,
+    "longTasks": [
+      1144,
+      758,
+      51,
+      250
+    ],
+    "writes": 30,
+    "headlessDetected": false
+  },
+  "echo_recording": {
+    "samples": 119,
+    "meanMs": 10.033613445378151,
+    "p95Ms": 18.199999999999818,
+    "maxMs": 24.399999999999636,
+    "longTasks": [
+      1144,
+      758,
+      51,
+      250
+    ],
+    "writes": 43,
+    "headlessDetected": false
+  },
+  "boss_intro": {
+    "samples": 119,
+    "meanMs": 8.352100840336131,
+    "p95Ms": 12.300000000000182,
+    "maxMs": 18.299999999999272,
+    "longTasks": [
+      1144,
+      758,
+      51,
+      250
+    ],
+    "writes": 54,
+    "headlessDetected": false
+  },
+  "loom_witness": {
+    "samples": 119,
+    "meanMs": 8.301680672268912,
+    "p95Ms": 12.200000000000728,
+    "maxMs": 36.30000000000018,
+    "longTasks": [
+      1144,
+      758,
+      51,
+      250
+    ],
+    "writes": 66,
+    "headlessDetected": false
+  },
+  "mobile_matron_sever": {
+    "samples": 119,
+    "meanMs": 6.9764705882353,
+    "p95Ms": 12.100000000000364,
+    "maxMs": 54.5,
+    "longTasks": [
+      1144,
+      758,
+      51,
+      250
+    ],
+    "writes": 77,
+    "headlessDetected": false
+  },
+  "environment": {
+    "webgl": "ANGLE (Intel, Intel(R) UHD Graphics (0x0000A7A8) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  }
+}

@@ -23,6 +23,7 @@ export class InputController {
   private lastPointerX: number | null = null;
   private lastPointerY: number | null = null;
   private isDraggingCamera = false;
+  private cameraDragJustStarted = false;
   private dragDistancePx = 0;
   private pointerLocked = false;
 
@@ -241,6 +242,7 @@ export class InputController {
     this.leftMouseJustReleased = false;
     this.rightMouseJustPressed = false;
     this.isDraggingCamera = false;
+    this.cameraDragJustStarted = false;
     this.dragDistancePx = 0;
     this.lastPointerX = null;
     this.lastPointerY = null;
@@ -376,7 +378,7 @@ export class InputController {
     if (
       target &&
       typeof target.closest === 'function' &&
-      target.closest('button, input, a, [role="dialog"]')
+      target.closest('button, input, a, [role="dialog"], .pointer-events-auto')
     ) {
       return;
     }
@@ -441,6 +443,9 @@ export class InputController {
       if (this.leftMouseDown) {
         this.dragDistancePx += Math.hypot(dx, dy);
         if (this.dragDistancePx > 8) {
+          if (!this.isDraggingCamera) {
+            this.cameraDragJustStarted = true;
+          }
           this.isDraggingCamera = true;
           this.leftMouseDown = false;
           this.leftMouseJustPressed = false;
@@ -452,7 +457,8 @@ export class InputController {
     this.lastPointerX = e.clientX;
     this.lastPointerY = e.clientY;
 
-    if (dx !== 0 || dy !== 0) {
+    const shouldRotateUnlockedCamera = this.isDraggingCamera || (e.buttons & 4) !== 0;
+    if ((isLocked || shouldRotateUnlockedCamera) && (dx !== 0 || dy !== 0)) {
       this.rotateCameraByDelta(dx, dy);
     }
   }
@@ -531,12 +537,14 @@ export class InputController {
     const echoRelayJustPressed = this.justPressedKeys.has('KeyV');
     const gravityPinJustPressed = this.justPressedKeys.has('KeyG');
     const echoCollapseJustPressed = this.justPressedKeys.has('KeyX');
+    const cameraDragJustStarted = this.cameraDragJustStarted;
 
     // Clear one-shot edge triggers
     this.justPressedKeys.clear();
     this.leftMouseJustPressed = false;
     this.leftMouseJustReleased = false;
     this.rightMouseJustPressed = false;
+    this.cameraDragJustStarted = false;
 
     return {
       moveX,
@@ -549,6 +557,7 @@ export class InputController {
       heavyAttackJustPressed,
       dodgeJustPressed,
       parryJustPressed,
+      cameraDragJustStarted,
       echoRecordJustPressed,
       echoPlayJustPressed,
       echoClearJustPressed,

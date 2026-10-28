@@ -77,13 +77,15 @@ function loadPersistedCampaignProgress(world: WorldState): void {
   }
 }
 
+let lastPersistedCampaignJson: string | null = null;
+
 function savePersistedCampaignProgress(world: WorldState): void {
   if (typeof window === 'undefined') return;
+  const serialized = serializeCampaignProgress(world);
+  if (serialized === lastPersistedCampaignJson) return;
   try {
-    window.localStorage.setItem(
-      CAMPAIGN_STORAGE_KEY,
-      serializeCampaignProgress(world)
-    );
+    window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, serialized);
+    lastPersistedCampaignJson = serialized;
   } catch {
     // Ignore storage write errors in restricted environments
   }

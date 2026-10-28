@@ -752,10 +752,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       <span className="text-cyan-300">[Mouse / Arrows]</span> Aim
                     </div>
                     <div>
-                      <span className="text-cyan-300">[LMB / F / J]</span> 3-Hit Light Combo
+                      <span className="text-cyan-300">[Tap LMB / F / J]</span> 3-Hit Light Combo
                     </div>
                     <div>
-                      <span className="text-amber-300">[Hold LMB / E / K / RMB]</span> Heavy Cleave
+                      <span className="text-amber-300">[Hold LMB / J] Charge + Release · [E / K / RMB]</span> Instant Heavy
                     </div>
                     <div>
                       <span className="text-cyan-300">[Space / Shift]</span> Dodge ·{' '}

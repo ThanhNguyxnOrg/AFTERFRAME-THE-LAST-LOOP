@@ -624,6 +624,7 @@ export interface PlayerInputFrame {
   heavyAttackJustPressed: boolean; // Dedicated key (E or Right Click) for instant heavy charge/release
   dodgeJustPressed: boolean;
   parryJustPressed: boolean;
+  cameraDragJustStarted?: boolean; // Cancels a pending mouse charge without turning it into an attack
   echoRecordJustPressed?: boolean; // [R] Start / Stop Echo recording
   echoPlayJustPressed?: boolean; // [T] Start Echo playback
   echoClearJustPressed?: boolean; // [C] Discard / Clear Echo

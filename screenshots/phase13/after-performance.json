@@ -1,0 +1,52 @@
+{
+  "standard_combat": {
+    "samples": 119,
+    "meanMs": 9.522689075630254,
+    "p95Ms": 18.299999999999727,
+    "maxMs": 41.70000000000027,
+    "longTasks": [],
+    "headlessDetected": false
+  },
+  "helix_telegraph": {
+    "samples": 119,
+    "meanMs": 11.765546218487398,
+    "p95Ms": 18.299999999999727,
+    "maxMs": 230.40000000000055,
+    "longTasks": [
+      233
+    ],
+    "headlessDetected": false
+  },
+  "echo_recording": {
+    "samples": 119,
+    "meanMs": 11.562184873949576,
+    "p95Ms": 24.100000000000364,
+    "maxMs": 30.300000000000182,
+    "longTasks": [],
+    "headlessDetected": false
+  },
+  "boss_intro": {
+    "samples": 119,
+    "meanMs": 9.421008403361348,
+    "p95Ms": 18.199999999999818,
+    "maxMs": 30.199999999999818,
+    "longTasks": [],
+    "headlessDetected": false
+  },
+  "loom_witness": {
+    "samples": 119,
+    "meanMs": 8.503361344537812,
+    "p95Ms": 12.399999999999636,
+    "maxMs": 18.299999999999272,
+    "longTasks": [],
+    "headlessDetected": false
+  },
+  "mobile_matron_sever": {
+    "samples": 119,
+    "meanMs": 7.583193277310921,
+    "p95Ms": 12.299999999999272,
+    "maxMs": 54,
+    "longTasks": [],
+    "headlessDetected": false
+  }
+}

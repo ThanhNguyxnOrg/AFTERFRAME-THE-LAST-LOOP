@@ -113,6 +113,90 @@ test('InputController rotates camera 360 degrees horizontally, clamps pitch, sca
   );
 });
 
+test('InputController unlocked camera rotates only during deliberate drag and UI clicks do not enter combat input', () => {
+  const previousDocument = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = {
+    body: { dataset: { state: 'playing' } },
+    pointerLockElement: null,
+  };
+
+  try {
+    const input = new InputController();
+    input.resetCameraAngles();
+    const startYaw = input.aimYaw;
+    const move = (input as unknown as {
+      handleMouseMove: (event: Record<string, unknown>) => void;
+    }).handleMouseMove.bind(input);
+
+    const down = (input as unknown as {
+      handleMouseDown: (event: Record<string, unknown>) => void;
+    }).handleMouseDown.bind(input);
+
+    move({ movementX: 250, movementY: 40, clientX: 650, clientY: 430, buttons: 0 });
+    assert.equal(input.aimYaw, startYaw, 'Unlocked hover movement must not rotate the camera');
+
+    down({ button: 0, clientX: 650, clientY: 430, target: { closest: () => null } });
+    move({ movementX: 12, movementY: 0, clientX: 662, clientY: 430, buttons: 1 });
+    move({ movementX: 12, movementY: 0, clientX: 674, clientY: 430, buttons: 1 });
+    const dragFrame = input.consumeFrameInput(1 / 60);
+    assert.equal(dragFrame.cameraDragJustStarted, true, 'Crossing drag threshold emits one cancel signal');
+    assert.notEqual(input.aimYaw, startYaw, 'Deliberate drag should rotate the camera');
+    assert.equal(
+      input.consumeFrameInput(1 / 60).cameraDragJustStarted,
+      false,
+      'Drag-start cancellation must be a one-frame edge, not a continuous release'
+    );
+
+    down({
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      target: {
+        closest: (selector: string) => (selector.includes('.pointer-events-auto') ? {} : null),
+      },
+    });
+    assert.equal(
+      (input as unknown as { leftMouseDown: boolean }).leftMouseDown,
+      false,
+      'Pointer-auto UI must not initiate a gameplay mouse action behind the overlay'
+    );
+  } finally {
+    (globalThis as { document?: unknown }).document = previousDocument;
+  }
+});
+
+test('camera drag cancels a pending heavy charge without producing a light or heavy attack', () => {
+  const world = createInitialWorld('playing');
+  world.enemies = [];
+
+  const press = createEmptyInput(Math.PI);
+  press.lightAttackJustPressed = true;
+  press.heavyHoldActive = true;
+  stepWorld(world, press, 0.02);
+  assert.equal(world.player.actionState, 'charging_heavy');
+
+  const hold = createEmptyInput(Math.PI);
+  hold.heavyHoldActive = true;
+  stepWorld(world, hold, 0.2);
+  assert.ok(world.player.chargeTime > 0);
+
+  const drag = createEmptyInput(Math.PI);
+  drag.cameraDragJustStarted = true;
+  stepWorld(world, drag, 0.016);
+  assert.equal(world.player.actionState, 'idle', 'Camera drag should cancel the charge to neutral');
+  assert.equal(world.player.chargeTime, 0);
+  assert.equal(world.player.bufferedAction, 'none');
+
+  for (let i = 0; i < 40; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.016);
+  }
+  const actionAtEnd: string = world.player.actionState;
+  assert.ok(
+    !actionAtEnd.startsWith('light_') && !actionAtEnd.startsWith('heavy_'),
+    'Cancelled charge must not be converted into an attack on subsequent frames'
+  );
+});
+
 test('player WASD movement advances position and clamps inside arena bounds', () => {
   const world = createInitialWorld('playing');
   const startZ = world.player.z;

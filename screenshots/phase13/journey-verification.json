@@ -1,0 +1,54 @@
+{
+  "method": "Fresh world via existing test hook; inputs are real keyboard/mouse/touch; action states collected every rAF for 1s",
+  "new_campaign_entered": "campaign",
+  "intro_skipped_stage": "calibration",
+  "real_keyboard_moved": true,
+  "real_F_states": [
+    "idle",
+    "light_active",
+    "light_recovery"
+  ],
+  "real_E_states": [
+    "idle",
+    "heavy_windup",
+    "heavy_active",
+    "heavy_recovery"
+  ],
+  "real_space_states": [
+    "idle",
+    "dodging"
+  ],
+  "real_Q_states": [
+    "idle",
+    "parry_active",
+    "parry_recovery"
+  ],
+  "real_LMB_hold_states": [
+    "idle",
+    "charging_heavy"
+  ],
+  "real_LMB_release_states": [
+    "charging_heavy",
+    "heavy_windup",
+    "heavy_active",
+    "heavy_recovery",
+    "idle"
+  ],
+  "real_echo_recorded": true,
+  "real_echo_playback": [
+    "idle"
+  ],
+  "pause_state": "paused",
+  "resume_state": "playing",
+  "mobile_touch_moved": true,
+  "mobile_light_states": [
+    "idle",
+    "light_active",
+    "light_recovery"
+  ],
+  "mobile_echo_recorded": true,
+  "mobile_horizontal_overflow": false,
+  "console_errors": [],
+  "real_echo_ready_state": "ready",
+  "real_echo_replay_state": "playback"
+}

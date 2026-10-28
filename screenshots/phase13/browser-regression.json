@@ -1,0 +1,11 @@
+{
+  "hoverYawBefore": 3.141592653589793,
+  "hoverYawAfter": 3.141592653589793,
+  "hoverRotated": false,
+  "chargeBeforeDrag": "charging_heavy",
+  "stateAfterDrag": "idle",
+  "chargeAfterDrag": 0,
+  "stateAfterUiClick": "idle",
+  "campaignWritesIn2100ms": 0,
+  "consoleErrors": []
+}
