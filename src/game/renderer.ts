@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GAME_CONFIG } from './config.ts';
 import {
   buildArenaEnvironment,
@@ -152,6 +153,39 @@ const CHAPTER_IDS: CampaignChapterId[] = [
   'chapter_4_matron',
   'chapter_5_loom',
 ];
+
+const BLENDER_CHAPTER_ASSETS: Partial<
+  Record<CampaignChapterId, { url: string; x: number; z: number; scale: number; rotationY: number }>
+> = {
+  chapter_1_helix: {
+    url: '/assets/blender/phase12/helix_containment_gate.glb',
+    x: 0,
+    z: -16.5,
+    scale: 1,
+    rotationY: 0,
+  },
+  chapter_2_choir: {
+    url: '/assets/blender/phase12/choir_acoustic_organ.glb',
+    x: 0,
+    z: -14.2,
+    scale: 0.95,
+    rotationY: 0,
+  },
+  chapter_3_curator: {
+    url: '/assets/blender/phase12/curator_archive_monolith.glb',
+    x: 0,
+    z: -14.2,
+    scale: 1.05,
+    rotationY: 0,
+  },
+  chapter_4_matron: {
+    url: '/assets/blender/phase12/matron_surgical_pod.glb',
+    x: 0,
+    z: -14,
+    scale: 1,
+    rotationY: 0,
+  },
+};
 
 const CHAPTER_LOOKS: Record<
   CampaignChapterId,
@@ -314,6 +348,7 @@ export class ArenaSceneRenderer {
   private loomSealMats: THREE.MeshBasicMaterial[] = [];
   private loomSealTetherMats: THREE.MeshBasicMaterial[] = [];
   private chapterEnvironments = new Map<CampaignChapterId, ChapterEnvironmentRig>();
+  private disposed = false;
 
   private camAnchor = new THREE.Vector3();
   private currentCamDist: number = GAME_CONFIG.camera.distance;
@@ -1086,9 +1121,43 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.particleInstancedMesh);
 
+    this.loadChapterAssets();
+
     // Pre-warm shaders once after initialization on hardware GPU
     if (!this.isHeadless) {
       this.renderer.compile(this.scene, this.camera);
+    }
+  }
+
+  private loadChapterAssets(): void {
+    const loader = new GLTFLoader();
+    for (let i = 0; i < CHAPTER_IDS.length; i++) {
+      const chapter = CHAPTER_IDS[i];
+      const config = BLENDER_CHAPTER_ASSETS[chapter];
+      const target = this.chapterEnvironments.get(chapter);
+      if (!config || !target) continue;
+      loader.load(
+        config.url,
+        (gltf) => {
+          if (this.disposed) return;
+          const asset = gltf.scene;
+          asset.name = `BlenderAsset_${chapter}`;
+          asset.position.set(config.x, 0, config.z);
+          asset.rotation.y = config.rotationY;
+          asset.scale.setScalar(config.scale);
+          asset.traverse((object) => {
+            if (object instanceof THREE.Mesh) {
+              object.castShadow = false;
+              object.receiveShadow = !this.isHeadless;
+            }
+          });
+          target.group.add(asset);
+        },
+        undefined,
+        (error) => {
+          console.error(`Failed to load Blender asset: ${config.url}`, error);
+        }
+      );
     }
   }
 
@@ -3848,6 +3917,7 @@ export class ArenaSceneRenderer {
   }
 
   public dispose(): void {
+    this.disposed = true;
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.geometry?.dispose();

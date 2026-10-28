@@ -153,7 +153,7 @@ Dependency order is intentional: weapon and combat state contracts precede item 
 - `createEnemyRig` now routes Choir, Curator and Matron to those bespoke bodies at `models.ts:3210`; HELIX retains its established hydraulic body and weapon/telegraph implementation.
 - **Choir** is now a suspended tri-spire resonator with organ banks, open core and acoustic baffles. **Curator** is now a floating narrow archive stack with a crystalline crown and six orbital memory shards. **Matron** is now a low, wide porcelain surgical cradle with four articulated dorsal limbs, support feet and a tri-lens scanner.
 - Added optional `auxiliaryPivots` for those unique moving assemblies. Renderer motion at `renderer.ts:3188` derives spire/slab/limb movement from the existing boss AI state; no second gameplay state source was added.
-- No imported model, texture pack, Blender dependency or unverified asset license was introduced.
+- The procedural pass introduced no imported model or unverified asset license. A later, separately verified Blender-authored GLB pass is recorded in section 13.
 
 ### Chapter environments and lighting
 
@@ -210,3 +210,22 @@ Final evidence is in `screenshots/phase12/after/`; the comparison set is in `scr
 - Some decorative upper spire/ring tips can approach the top HUD at extreme mobile camera angles; only the documented default framing and forced attack views were inspected.
 - No RPG inventory/loot/mission system was added. The next implementation milestone remains **Phase 13 — data-driven combat and weapons**, beginning with the real Edge timing/resource contract and an explicit decision on whether the visible Pulsecaster becomes a simulated ranged weapon.
 - No commit or push was created.
+
+## 13. Blender-authored asset addendum
+
+After the procedural Phase 12 commit, a real Blender-to-Three.js handoff was added:
+
+- Tool: **Blender 4.2.3 LTS**, portable Windows build at `C:\Users\Admin\Tools\blender-4.2.3\blender-4.2.3-windows-x64\blender.exe`. The downloaded ZIP was checked against the official SHA-256 `7f8be9b1...189b3a` before extraction; no unverified binary was used.
+- Source: `scripts/blender/create_phase12_assets.py` builds named, beveled parts with PBR materials and exports GLB through Blender's glTF 2.0 exporter.
+- Assets in `public/assets/blender/phase12/`:
+  - `helix_containment_gate.glb` — 588,948 bytes
+  - `choir_acoustic_organ.glb` — 685,380 bytes
+  - `curator_archive_monolith.glb` — 487,608 bytes
+  - `matron_surgical_pod.glb` — 467,660 bytes
+- All four files carry valid `glTF` v2 headers and matching declared lengths.
+- Runtime import: `BLENDER_CHAPTER_ASSETS` maps each asset to its chapter and `ArenaSceneRenderer.loadChapterAssets()` loads it with `GLTFLoader` into the chapter's preallocated group. The async callback is ignored after renderer disposal; loaded meshes are included in the existing scene-graph disposal path.
+- The imports are static environmental hero props. Existing procedural boss rigs remain the animated combat actors, so no imported mesh changes hitboxes or attack ownership.
+- Browser verification: every GLB returned HTTP 200 with the byte lengths above; zero console/page errors. Imported assets were visually inspected in Chapters I–IV.
+- Evidence: `screenshots/phase12-blender/after/` plus `asset-load-report.json`.
+- Final checks after import: `npm run lint` passed, `npm run build` passed, and the simulation suite passed **108/108**. The production build contains all four GLBs under `dist/assets/blender/phase12/`.
+- These asset changes and the import code were not committed or pushed in this addendum.

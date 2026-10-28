@@ -1,0 +1,25 @@
+{
+  "assets": [
+    {
+      "url": "http://127.0.0.1:3000/assets/blender/phase12/helix_containment_gate.glb",
+      "status": 200,
+      "length": "588948"
+    },
+    {
+      "url": "http://127.0.0.1:3000/assets/blender/phase12/choir_acoustic_organ.glb",
+      "status": 200,
+      "length": "685380"
+    },
+    {
+      "url": "http://127.0.0.1:3000/assets/blender/phase12/curator_archive_monolith.glb",
+      "status": 200,
+      "length": "487608"
+    },
+    {
+      "url": "http://127.0.0.1:3000/assets/blender/phase12/matron_surgical_pod.glb",
+      "status": 200,
+      "length": "467660"
+    }
+  ],
+  "console_errors": []
+}
