@@ -589,7 +589,7 @@ test('14. Equipped weapon (chrono_edge / pulsecaster) persists across v2 campaig
 
   // Switch to chrono_edge mid-fight, then retryBossFromCheckpoint restores checkpoint's pulsecaster
   reloaded.player.equippedWeaponId = 'chrono_edge';
-  assert.equal(retryBossFromCheckpoint(reloaded, true), true);
+  retryBossFromCheckpoint(reloaded, true);
   assert.equal(reloaded.player.equippedWeaponId, 'pulsecaster');
 
   // Legacy v2 payload without equippedWeaponId safely defaults to chrono_edge

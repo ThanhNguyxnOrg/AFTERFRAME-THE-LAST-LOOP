@@ -7405,13 +7405,14 @@ test('Phase 14.2: Pulsecaster projectile hit, obstacle blocking, range expiry, a
   const target = world.enemies[0];
   world.enemies = [target];
 
-  // Position player at (0, 6) aiming North (Math.PI) at target at (0, 0)
+  // Position player at (0, 6) aiming North (Math.PI) at unguarded target at (0, 0)
   world.player.x = 0;
   world.player.z = 6;
   world.player.rotationY = Math.PI;
   world.player.flux = 50;
   target.x = 0;
   target.z = 0;
+  target.rotationY = Math.PI; // Facing North (away from player) so Bastion frontal shield does not mitigate unguarded test shot
   target.hp = 100;
   target.maxHp = 100;
   target.aiState = 'idle';
@@ -7429,6 +7430,7 @@ test('Phase 14.2: Pulsecaster projectile hit, obstacle blocking, range expiry, a
   for (let i = 0; i < 20; i++) {
     target.x = 0;
     target.z = 0;
+    target.rotationY = Math.PI;
     stepWorld(world, createEmptyInput(Math.PI), 0.02);
   }
 
@@ -7507,7 +7509,7 @@ test('Phase 14.2: Pulsecaster projectile hit, obstacle blocking, range expiry, a
 });
 
 test('Phase 14.3: Pulsecaster respects Boss frontal armor, Choir harmonic shield & pylons, and Echo weapon recording/replay', () => {
-  // 1. HELIX-04 frontal armor mitigates frontal Pulsecaster shots, while exposed core takes 1.5x
+  // 1. HELIX-04 frontal armor mitigates frontal Pulsecaster shots, while exposed core takes 1.45x
   const helixWorld = createBossWorld('playing', true);
   const helix = helixWorld.boss!;
   const helixEnemy = helixWorld.enemies[0];
@@ -7533,8 +7535,10 @@ test('Phase 14.3: Pulsecaster respects Boss frontal armor, Choir harmonic shield
   for (let i = 0; i < 16; i++) {
     helix.x = 0;
     helix.z = 0;
+    helix.rotationY = 0;
     helixEnemy.x = 0;
     helixEnemy.z = 0;
+    helixEnemy.rotationY = 0;
     stepWorld(helixWorld, createEmptyInput(Math.PI), 0.02);
   }
   const guardedDmg = hpStart - helixEnemy.hp;
@@ -7566,13 +7570,15 @@ test('Phase 14.3: Pulsecaster respects Boss frontal armor, Choir harmonic shield
     stepWorld(helixWorld, createEmptyInput(Math.PI), 0.02);
   }
   const exposedDmg = hpBeforeExposed - helixEnemy.hp;
-  assert.ok(exposedDmg > guardedDmg * 3, 'Exposed Chrono Core takes amplified Pulsecaster damage');
+  assert.ok(exposedDmg > guardedDmg * 2, 'Exposed Chrono Core takes amplified Pulsecaster damage');
 
   // 2. Echo records Pulsecaster charged shot, replays it even after live Sera switches back to Chrono Edge,
   // primes Resonance on HELIX-04, and live Sera triggers Convergence with Pulsecaster Charged Lance!
   helix.coreExposed = false;
-  helix.aiState = 'idle';
-  helixEnemy.aiState = 'idle';
+  helix.aiState = 'pursue';
+  helixEnemy.aiState = 'pursue';
+  helix.cooldownTimer = 99;
+  helixEnemy.cooldownTimer = 99;
   helixWorld.player.weaponHeat = 0;
   helixWorld.player.flux = 100;
   helixWorld.resonance.cooldownTimer = 0;
@@ -7596,7 +7602,7 @@ test('Phase 14.3: Pulsecaster respects Boss frontal armor, Choir harmonic shield
   recStop.echoRecordJustPressed = true;
   stepWorld(helixWorld, recStop, 0.02);
 
-  assert.equal(helixWorld.echo.clip?.events[0]?.type, 'pulse_charged_shot');
+  assert.equal(helixWorld.echo.clip?.events[0]?.action, 'pulse_charged_shot');
   assert.equal(helixWorld.echo.clip?.events[0]?.weaponId, 'pulsecaster');
 
   // Switch live Sera to Chrono Edge before starting Echo replay

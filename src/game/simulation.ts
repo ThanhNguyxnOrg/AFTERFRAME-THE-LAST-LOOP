@@ -53,6 +53,7 @@ import type {
   TutorialStep,
   VerticalSliceRunState,
   VerticalSliceStage,
+  WeaponAttackMode,
   WeaponDefinition,
   WeaponId,
   WorldState,
@@ -3459,30 +3460,29 @@ function spawnEchoPulsecasterProjectile(
     id: projId,
     owner: 'echo',
     weaponId: 'pulsecaster',
-    kind: isHeavy ? 'pulse_heavy' : 'pulse_light',
+    attackMode: isHeavy ? 'pulse_heavy' : 'pulse_light',
     x: startX,
     z: startZ,
     prevX: ev.x,
     prevZ: ev.z,
-    originX: startX,
-    originZ: startZ,
-    dirX,
-    dirZ,
+    vx: dirX * cfg.projectileSpeed,
+    vz: dirZ * cfg.projectileSpeed,
     rotationY: ev.rotationY,
-    speed: cfg.speed,
-    maxRange: cfg.range,
-    traveledDistance: 0,
-    radius: cfg.radius,
+    radius: cfg.projectileRadius,
     damage: 0,
     staggerDamage: 0,
     isHeavy,
     isEmpowered: Boolean(ev.isEmpoweredHeavy),
-    createdAt: world.elapsedTime,
+    maxRange: cfg.maxRange,
+    distanceTraveled: 0,
+    elapsed: 0,
+    maxLifetime: cfg.maxLifetime,
+    active: true,
     attackStartedAt: world.elapsedTime,
     attackMarkId: null,
+    hitTargetIds: [],
     echoClipId: clipId,
     echoEventId: ev.id,
-    active: true,
   });
 }
 
@@ -4878,7 +4878,7 @@ export function isBossArchetype(archetype: EnemyArchetype): boolean {
 
 function applyLivePlayerStrikeToChoirNode(
   world: WorldState,
-  node: ChoirNodeState
+  node: HarmonicNodeState
 ): void {
   const choir = world.choir;
   if (!choir.active || world.outcome !== 'none') return;
@@ -6479,7 +6479,7 @@ function advanceProjectiles(world: WorldState, dt: number): void {
 
     let earliestT = 2;
     let hitKind: 'none' | 'obstacle' | 'node' | 'enemy' = 'none';
-    let hitNode: ChoirNodeState | null = null;
+    let hitNode: HarmonicNodeState | null = null;
     let hitEnemy: EnemyState | null = null;
 
     // 1. Check solid obstacles (including closed barriers)
@@ -6585,11 +6585,13 @@ function advanceProjectiles(world: WorldState, dt: number): void {
         applyLivePlayerStrikeToChoirNode(world, hitNode);
       } else if (hitNode.status === 'inactive') {
         hitNode.status = 'primed';
-        hitNode.primedRemainingTime = GAME_CONFIG.choir.primedWindowDuration;
+        hitNode.primedRemainingTime = GAME_CONFIG.choir.nodePrimeDuration;
         hitNode.failedRemainingTime = 0;
-        world.choir.primedCount += 1;
+        if (world.choir.syncTimer <= 0) {
+          world.choir.syncTimer = world.choir.syncWindowSeconds;
+        }
         world.choir.lastFailureReason = 'none';
-        world.choir.statusMessage = `${hitNode.label} PRIMED BY ECHO (${GAME_CONFIG.choir.primedWindowDuration.toFixed(1)}s) // STRIKE COUNTERPART PYLON WITH LIVE SERA`;
+        world.choir.statusMessage = `${hitNode.label} PRIMED BY ECHO (${GAME_CONFIG.choir.nodePrimeDuration.toFixed(1)}s) // STRIKE COUNTERPART PYLON WITH LIVE SERA`;
         world.events.push({
           type: 'choir_node_primed',
           x: hitNode.x,
@@ -6847,7 +6849,10 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     }
   } else if (p.bufferedAction === 'light') {
     if (isPulsecaster) {
-      if (isNeutralState) {
+      if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
+        p.bufferedAction = 'none';
+        p.lastWeaponShotOutcome = 'overheated';
+      } else if (isNeutralState) {
         p.bufferedAction = 'none';
         if (startPulsecasterLightShot(world, input, moveVec)) {
           return;
@@ -9346,10 +9351,16 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
         ? p.comboIndex + 1
         : 0,
     weapon: {
+      equippedId: p.equippedWeaponId,
       equippedWeaponId: p.equippedWeaponId,
+      name: getWeaponDefinition(p.equippedWeaponId).name,
       label: getWeaponDefinition(p.equippedWeaponId).label,
       shortLabel: getWeaponDefinition(p.equippedWeaponId).shortLabel,
       roleLabel: getWeaponDefinition(p.equippedWeaponId).roleLabel,
+      attackMode: getWeaponDefinition(p.equippedWeaponId).attackMode,
+      primaryLabel: getWeaponDefinition(p.equippedWeaponId).primaryLabel,
+      secondaryLabel: getWeaponDefinition(p.equippedWeaponId).secondaryLabel,
+      effectiveRange: getWeaponDefinition(p.equippedWeaponId).effectiveRange,
       heat: Math.round(p.weaponHeat),
       maxHeat: p.maxWeaponHeat,
       heatRatio: Math.max(0, Math.min(1, p.weaponHeat / Math.max(1, p.maxWeaponHeat))),
@@ -9371,6 +9382,15 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
         p.actionState !== 'parry_active',
       activeProjectiles: world.projectiles.length,
       lastShotOutcome: p.lastWeaponShotOutcome,
+      statusLabel: p.weaponOverheated
+        ? `OVERHEAT ${p.weaponOverheatTimer.toFixed(1)}s`
+        : p.equippedWeaponId === 'pulsecaster'
+          ? `HEAT ${Math.round(p.weaponHeat)}%`
+          : `COMBO ${
+              p.actionState.startsWith('light_') || p.comboWindowTimer > 0
+                ? p.comboIndex + 1
+                : 0
+            }/3`,
     },
     enemiesAlive,
     totalEnemies,

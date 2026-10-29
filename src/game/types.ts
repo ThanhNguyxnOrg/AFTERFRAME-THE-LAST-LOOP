@@ -4,22 +4,29 @@ export type GameOutcome = 'none' | 'victory' | 'defeat';
 
 export type WeaponId = 'chrono_edge' | 'pulsecaster';
 
-export type WeaponAttackMode = 'melee' | 'ranged';
+export type WeaponAttackMode = 'melee' | 'ranged' | 'pulse_light' | 'pulse_heavy';
 
 export type WeaponShotOutcome =
   | 'none'
   | 'fired'
   | 'hit'
+  | 'hit_enemy'
+  | 'hit_node'
   | 'guarded'
   | 'blocked_obstacle'
+  | 'blocked_by_obstacle'
   | 'overheated'
-  | 'on_cooldown';
+  | 'on_cooldown'
+  | 'cooldown'
+  | 'expired';
 
 export interface WeaponDefinition {
   id: WeaponId;
   name: string;
+  label: string;
   shortLabel: string;
   subtitle: string;
+  roleLabel: string;
   description: string;
   attackMode: WeaponAttackMode;
   primaryLabel: string;
@@ -32,30 +39,29 @@ export interface ProjectileState {
   id: string;
   owner: 'player' | 'echo';
   weaponId: WeaponId;
-  kind: 'pulse_light' | 'pulse_heavy';
+  attackMode: 'pulse_light' | 'pulse_heavy';
   x: number;
   z: number;
   prevX: number;
   prevZ: number;
-  originX: number;
-  originZ: number;
-  dirX: number;
-  dirZ: number;
+  vx: number;
+  vz: number;
   rotationY: number;
-  speed: number;
-  maxRange: number;
-  traveledDistance: number;
   radius: number;
   damage: number;
   staggerDamage: number;
   isHeavy: boolean;
   isEmpowered: boolean;
-  createdAt: number;
+  maxRange: number;
+  distanceTraveled: number;
+  elapsed: number;
+  maxLifetime: number;
+  active: boolean;
   attackStartedAt: number;
   attackMarkId: number | null;
+  hitTargetIds: string[];
   echoClipId?: number;
   echoEventId?: string;
-  active: boolean;
 }
 
 export type PlayerActionState =
@@ -1017,17 +1023,24 @@ export interface HudSnapshot {
   comboStep: number;
   weapon: {
     equippedId: WeaponId;
+    equippedWeaponId: WeaponId;
     name: string;
+    label: string;
     shortLabel: string;
+    roleLabel: string;
     attackMode: WeaponAttackMode;
     primaryLabel: string;
     secondaryLabel: string;
     effectiveRange: number;
     heat: number;
     maxHeat: number;
+    heatRatio: number;
     overheated: boolean;
     overheatTimer: number;
     shotCooldownTimer: number;
+    switchCooldownTimer: number;
+    canFire: boolean;
+    canSwitch: boolean;
     lastShotOutcome: WeaponShotOutcome;
     statusLabel: string;
     activeProjectiles: number;
