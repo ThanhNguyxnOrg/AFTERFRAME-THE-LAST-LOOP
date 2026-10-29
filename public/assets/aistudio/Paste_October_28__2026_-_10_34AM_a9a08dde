@@ -1,0 +1,470 @@
+# AFTERFRAME: THE LAST LOOP — PHASE 14
+## Core Action RPG Weapon System: Chrono Edge + Pulsecaster
+
+You are continuing development of the existing AFTERFRAME: THE LAST LOOP repository as a senior gameplay engineer, combat designer, systems architect, and technical UX designer.
+
+Repository:
+https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP
+
+Known latest commit:
+`0c672edf8d368397cfed9301706a2590ab25f3cc`
+
+The game has an established React + TypeScript + Vite + Three.js architecture, a custom deterministic simulation, campaign progression, four boss encounters, Echo/Relay/Resonance systems, chapter-specific puzzles, persistent campaign saves, touch camera controls, reduced-motion support, and four Blender-authored GLB environment assets.
+
+The immediate objective is to make two distinct weapons into real, playable, testable combat systems:
+
+1. **Chrono Edge** — the existing melee combo, charged Heavy, parry and close-range combat identity.
+2. **Pulsecaster** — the existing visual weapon concept, now developed into a genuine ranged weapon with firing, aiming, projectile or equivalent attack simulation, hit feedback, resource limits, and meaningful tactical trade-offs.
+
+This is the beginning of the game's real Action RPG combat progression. Do not build a fake weapon menu or merely attach new meshes to Sera.
+
+The existing game must remain intact.
+
+---
+
+## 1. VERIFY AND INSPECT THE CURRENT REPOSITORY
+
+Before coding:
+
+- Inspect `git status --short`, the current branch, `git log -8 --oneline --decorate`, and the actual workspace state.
+- Check that the current workspace contains the work from commit `0c672ed` or a newer descendant.
+- Preserve existing user work. Never use destructive resets, discard uncommitted changes, or overwrite the project with an older revision.
+- Inspect the current implementations of:
+  - `src/App.tsx`
+  - `src/game/types.ts`
+  - `src/game/config.ts`
+  - `src/game/input.ts`
+  - `src/game/simulation.ts`
+  - `src/game/renderer.ts`
+  - `src/game/models.ts`
+  - `src/game/audio.ts`
+  - `src/components/GameHud.tsx`
+  - `src/components/TitleScreen.tsx`
+  - `src/components/StatusModal.tsx`
+  - `src/game/simulation.test.ts`
+  - `src/game/campaign-release.test.ts`
+  - `src/game/reduced-motion.test.ts`
+  - `src/game/asset-lifecycle.test.ts`
+  - `docs/AFTERFRAME_PHASE13_2_SAVE_AND_TOUCH_AUDIT.md`
+  - `docs/AFTERFRAME_STORY_BIBLE.md`
+
+Read the complete relevant functions and types rather than relying only on search snippets.
+
+Verify the existing action-state machine, input buffering, attack configuration, damage application, enemy collision, boss vulnerability rules, Echo recording/replay, campaign serialization, renderer lifecycle and current UI controls.
+
+The current control contract includes overlapping tap/hold behavior for melee attacks. Existing mappings include Light attack, Heavy attack/charge, Dodge, Parry, Echo recording/replay, Relay, Gravity Pin and Echo Collapse. Verify all mappings against the current implementation before changing any control.
+
+Do not assume that the visible Pulsecaster is already a functional ranged weapon. Verify what it can actually do.
+
+Run the current type-check, build and relevant tests before modifying gameplay. Record the real baseline.
+
+Then implement this phase. Do not stop after producing a report or a design proposal.
+
+## 2. DEFINE A SMALL, DATA-DRIVEN WEAPON MODEL
+
+Create a coherent, typed weapon definition system for the two existing weapons.
+
+At minimum, the weapon model should describe the properties actually used by gameplay, such as:
+
+- Stable weapon ID.
+- Display name and description.
+- Attack mode.
+- Primary attack behavior.
+- Secondary/signature attack behavior.
+- Damage and stagger parameters.
+- Range and any required collision/aiming parameters.
+- Attack cadence, charge duration and recovery.
+- Resource or heat costs.
+- Weapon-specific feedback and presentation.
+- Availability/unlock status if the current campaign design requires it.
+
+Keep balance values in the appropriate configuration/data layer instead of scattering unexplained constants throughout `simulation.ts`, `input.ts`, `renderer.ts` and React components.
+
+Use stable typed IDs such as `chrono_edge` and `pulsecaster`, adapting the names to the conventions in the current code.
+
+Do not introduce an elaborate plugin framework or a generic weapon engine for dozens of hypothetical weapons. Build a small system that handles these two weapons well and can accommodate additional weapons later without rewriting the combat architecture.
+
+Use the current state machine and simulation boundaries wherever practical. Split code into new modules only if it improves clarity and testability.
+
+## 3. CHRONO EDGE — PRESERVE AND IMPROVE THE REAL MELEE SYSTEM
+
+Chrono Edge must continue to feel like the game's primary close-combat weapon.
+
+Preserve the existing:
+- Three-hit Light combo.
+- Heavy charge and release.
+- Dedicated instant Heavy action.
+- Dodge and Parry.
+- Hit-stop, stagger, posture and vulnerability feedback.
+- Existing Echo/Resonance interactions.
+- Boss-specific mechanics and progression.
+
+Audit the current melee timing before changing it. Do not casually change the damage values, attack windows or boss difficulty.
+
+Ensure melee becomes part of the new weapon-selection contract without losing existing functionality.
+
+Requirements:
+- The Light combo connects only within its intended range and valid attack direction.
+- Heavy charge/release does not unexpectedly become a Light attack.
+- Action buffering remains responsive and does not execute stale inputs.
+- Weapon switching cannot silently duplicate, cancel or corrupt an attack.
+- Parry and Dodge remain usable and reliable regardless of weapon selection, unless the source establishes a deliberate existing restriction.
+- Preserve existing attack identity in Echo recording/replay and Resonance Convergence.
+
+Do not redesign the entire melee system unless a confirmed issue requires it.
+
+## 4. PULSECaster — IMPLEMENT A REAL RANGED WEAPON
+
+The Pulsecaster must be mechanically different from Chrono Edge, not merely a ranged animation that damages an enemy through an unrelated melee hitbox.
+
+Inspect the current arena coordinate system and enemy/boss hit detection. Implement a real ranged-attack path consistent with the project's existing simulation architecture.
+
+### Primary fire
+
+A normal Pulsecaster attack must:
+- Fire from a reasonable muzzle/origin on Sera's existing weapon/rig.
+- Follow the actual current aim direction.
+- Travel or resolve through a clearly defined, consistent attack model.
+- Have a meaningful effective range and attack cadence.
+- Apply damage only when the simulation confirms a valid hit.
+- Provide visible hit confirmation and appropriate sound/VFX.
+- Work against valid ordinary enemies and bosses.
+- Produce a clear miss, blocked shot or invalid-target outcome where appropriate.
+- Stop or collide correctly with relevant arena boundaries and obstacles according to the current gameplay rules.
+
+Prefer a simulation-owned projectile with a clear lifetime, velocity, bounded resource usage and collision handling if it fits the existing architecture. If the existing code offers a better well-defined ranged-hit model, select it after inspecting the actual simulation and document why.
+
+Do not use a decorative Three.js projectile as the source of truth for damage.
+
+Do not directly subtract enemy HP from a React click handler or a visual-effect callback.
+
+### Projectile and collision correctness
+
+If using simulated projectiles:
+
+- Define the projectile state with typed data.
+- Update it through the authoritative simulation.
+- Handle enemy collision in the existing world coordinate system.
+- Prevent fast-projectile tunnelling by using appropriate swept/segment collision checks or another robust method.
+- Handle projectile expiry, arena limits, obstacles and hit ownership.
+- Prevent a single projectile from damaging the same target repeatedly unless the chosen weapon behavior explicitly supports piercing.
+- Ensure projectiles are removed or returned to a bounded pool without accumulating indefinitely.
+- Separate visual rendering from authoritative collision/damage logic.
+- Include weapon-specific attack IDs or stable event identities where required for deterministic recording/replay.
+
+Do not add complex rigid-body physics or a new physics engine.
+
+### Resource and heat economy
+
+Give Pulsecaster a meaningful firing limit or resource trade-off.
+
+Inspect the existing Flux economy first. Flux already supports the temporal combat system, so do not silently consume it for every shot and make Echo/Relay abilities unusable.
+
+Design a simple, readable model such as:
+- Regular shots build weapon heat.
+- Heat cools at a predictable rate.
+- Excessive firing causes a clear temporary overheat state.
+- A charged or signature shot has a distinct cost and tactical purpose.
+
+This is an example design direction, not permission to bolt on multiple unrelated resource meters.
+
+Prefer a small, internally consistent system. Use current Flux only when the cost is justified by a distinct tactical benefit.
+
+The weapon's heat, cooldown and resource state must be owned by gameplay state, updated deterministically, safely initialized on new runs, and presented accurately in the UI.
+
+Do not allow resource regeneration, pause, reload or repeated input events to bypass intended limits.
+
+### Charged/signature attack
+
+Give Pulsecaster one signature attack that differs from its regular shot.
+
+For example, a charged precision pulse could offer greater stagger, a longer travel path, or a limited piercing effect at the cost of charge time and/or a meaningful resource.
+
+Choose a behavior that fits the existing combat pacing. It must be visibly distinct, mechanically testable, and balanced against Chrono Edge's Heavy attack.
+
+Do not introduce a large skill tree or multiple Pulsecaster fire modes in this phase.
+
+## 5. MAKE THE TWO WEAPONS TACTICALLY DISTINCT
+
+Chrono Edge and Pulsecaster must create different decisions during actual play.
+
+Evaluate:
+- Safe operating distance.
+- Damage per attack versus damage over time.
+- Stagger and posture pressure.
+- Commitment and recovery.
+- Heat/resource economy.
+- Enemy approach and pressure.
+- Boss telegraphs and counterplay.
+- Synergy with Echo, Relay and Resonance.
+
+The Pulsecaster must not make melee obsolete. Chrono Edge must not make ranged fire pointless.
+
+Preserve boss encounter mechanics such as:
+- Boss shields and vulnerability windows.
+- Choir's harmonic/pylon interactions.
+- Curator's decoys, traces and Gravity Pin counterplay.
+- Matron's Siphon, Eraser, Chrono Sever and Echo Collapse mechanics.
+- HELIX's existing telegraphs and counterplay.
+
+A ranged shot must not bypass a boss's core defense, puzzle requirement, shield gate, or vulnerability rule merely because it can reach the boss from far away.
+
+Where a boss or shield rejects the attack, provide understandable feedback. Where the design permits a ranged attack, allow it to work through the same authoritative combat and damage path.
+
+Do not change collision geometry or boss AI merely to make Pulsecaster easy to use.
+
+## 6. WEAPON SWITCHING AND CONTROLS
+
+Implement a dependable weapon-switching interaction.
+
+Requirements:
+- The player can switch between Chrono Edge and Pulsecaster during normal gameplay.
+- The active weapon is visible and unambiguous.
+- Switching does not occur accidentally while entering text, changing settings, interacting with a modal, or selecting a Chronicle Loom ending.
+- Switching cannot duplicate an attack or let the player bypass recovery/cooldown rules.
+- A switch request during charging or active attack states must have a deliberate, tested behavior. Either safely queue it or reject/cancel it with clear feedback; never convert it into an unintended attack.
+- Input must be cleared correctly on pause, focus loss, visibility change, touch cancellation and chapter transitions.
+
+Inspect every existing keybinding before selecting a switch key. The current game uses some numeric keys for Chronicle Loom ending choices; avoid introducing conflicts with ending selection. Do not assume a key is free without verifying the current input handlers.
+
+Choose a discoverable desktop binding that does not break keyboard navigation. Add a corresponding visible control and accessible label.
+
+Provide a mobile weapon-switch control that works with the existing touch layout and dedicated touch camera-look region. It must not overlap the movement pad, camera-look area, essential combat buttons or boss-critical HUD.
+
+Keep the controls consistent across:
+- Title screen control/settings drawer.
+- In-game HUD.
+- Tutorial prompts.
+- Touch controls.
+- Pause settings.
+- Weapon-switch feedback and tooltips.
+
+Do not implement a control-remapping framework in this phase.
+
+## 7. ECHO MUST RECORD THE ACTUAL WEAPON ACTION
+
+Echo is a defining feature of AFTERFRAME. Weapon support must not silently break it.
+
+Inspect the existing action recording/replay data structures and their deterministic timing model.
+
+When a recorded action fires a Pulsecaster shot or a charged weapon attack:
+- Preserve the correct weapon identity and attack type in the recorded action data.
+- Preserve the appropriate action timing and aim/orientation information supported by the current system.
+- Replay the same weapon action rather than substituting an Edge swing or reading only the player's newly selected weapon.
+- Ensure a weapon switch after recording does not change the historical weapon action of the Echo.
+- Ensure live weapon attacks and Echo replay remain correctly distinguished for damage ownership, resources and event IDs.
+- Prevent duplicate hits, duplicate event processing and resource corruption during replay.
+- Preserve existing recording isolation and Resonance Convergence semantics.
+
+Determine what the existing Echo actor is capable of rendering and simulating. Extend it only as necessary to represent the new attack correctly.
+
+Do not record a rendered projectile mesh or VFX object as the authoritative action. Record the relevant action information and let the simulation reproduce the attack.
+
+Add deterministic regression coverage for:
+1. Recording a Pulsecaster shot.
+2. Replaying it with the expected weapon identity and timing.
+3. Switching the live player to Chrono Edge after recording without changing the Echo's recorded attack.
+4. Replaying charged/signature attacks if the recording model supports them.
+5. Ensuring Echo attacks do not consume the player's current weapon heat or Flux a second time unless explicitly intended by the existing rules.
+6. Preserving all current Echo, Relay, Resonance and chapter puzzle tests.
+
+If the current action recording architecture cannot support this without a broad rewrite, stop and explain the concrete limitation. Prefer an incremental compatible change over an untested rewrite of the Echo system.
+
+## 8. WEAPON STATE, SAVES AND CAMPAIGN COMPATIBILITY
+
+Inspect the Phase 13.2 save schema and migration tests before deciding whether equipped weapon state should persist.
+
+If the current weapon choice can be persisted safely:
+- Include only the minimal required weapon data in the authoritative save format.
+- If the save schema must change, implement a new explicitly versioned schema with backward-compatible migration from existing supported versions.
+- Validate weapon IDs, availability and numeric resources on load.
+- Preserve legacy saves and unlocks.
+- Preserve practice/replay isolation and do not overwrite the saved campaign when playing an earlier chapter.
+- Do not persist transient projectile objects, visual effects, renderer resources or input flags.
+
+If introducing a save-schema change is not necessary for a safe initial two-weapon implementation, keep the change smaller and explicitly document whether the active weapon resets when a fresh game/run begins or when a campaign is resumed.
+
+Do not break `Continue Campaign`, exact checkpoint restoration, chapter replay, Practice isolation, or the three ending archive records.
+
+## 9. HUD, FEEDBACK AND NEW-PLAYER LEARNING
+
+Implement a clear, restrained weapon presentation that fits the existing industrial/time-fracture visual identity.
+
+The player should immediately be able to answer:
+- Which weapon is equipped?
+- How do I switch?
+- What does the primary attack do for this weapon?
+- How do I execute its charged/signature action?
+- Is it ready, charging, cooling down or overheated?
+- Why did a shot fail or get blocked?
+
+Requirements:
+- A clear active-weapon indicator.
+- Appropriate weapon-specific resource/heat information.
+- Distinct but restrained visual feedback for Edge hits, Pulsecaster hits, charged shots, blocked hits and overheat.
+- A short contextual tutorial that introduces Pulsecaster after the player understands basic melee, without flooding the screen with instructions.
+- Consistent language in title controls, gameplay HUD, touch controls and tutorial.
+- Usable presentation on desktop and 390×844 mobile.
+- No overlapping UI, full-screen tutorial wall, distracting permanent pop-ups or critical telegraph obstruction.
+- Reduced-motion mode must continue to work and must not disable necessary weapon or danger feedback.
+
+Use the existing HUD/state-snapshot architecture. Do not create an independent React-side combat state that can drift away from the authoritative simulation.
+
+## 10. AUDIO, ANIMATION AND RENDERING
+
+Inspect existing audio, player rig, weapon meshes, VFX events and renderer lifecycle before adding new feedback.
+
+Make each weapon feel different through concise, consistent signals:
+- Chrono Edge retains a physical, weighty melee identity.
+- Pulsecaster has a precise electronic firing signature, travel/hit confirmation, appropriate recoil or pose response, and clear charged-shot feedback.
+
+Use existing assets and materials where appropriate. Add only the required weapon presentation using the project's existing Three.js approach.
+
+Do not require a new Blender download or new external model pack just to implement the weapon mechanics. The existing Blender-authored chapter GLBs must remain intact.
+
+Reuse geometry/materials and preallocate or pool transient projectile visuals when appropriate. Avoid per-frame creation of meshes, materials, vectors, arrays or audio nodes in hot paths.
+
+Ensure cleanup on chapter changes, renderer disposal, failed loads, game restarts and late asynchronous callbacks.
+
+Do not add excessive screen shake, bloom or particles that obscure enemy attacks or worsen frame spikes.
+
+## 11. TESTS AND BROWSER VERIFICATION
+
+Add focused tests to the existing test suite.
+
+At minimum, cover:
+
+### Weapon definitions and state
+- Valid starting weapon.
+- Switch between the two weapon IDs.
+- Weapon switching during idle, recovery, charge, pause, and gameover.
+- Invalid weapon IDs and invalid weapon states.
+- Cooldown and heat/overheat transitions.
+- Cooling behavior and resource limits.
+- No weapon switching into Chronicle Loom ending selection.
+- Any save/load behavior introduced by this phase.
+
+### Pulsecaster combat
+- Correct range and aim direction.
+- Valid hit against a normal enemy.
+- Miss beyond maximum range.
+- Correct collision with an enemy.
+- Arena boundary and obstacle interaction.
+- No projectile tunnelling at high speed.
+- Single-hit ownership.
+- Projectile lifetime and cleanup.
+- Correct damage/stagger feedback.
+- Correct behavior against a boss shield, vulnerable core, and existing special defenses.
+- No accidental repeated shots caused by DOM event ordering or key-repeat behavior.
+
+### Chrono Edge regression
+- Existing Light combo.
+- Charged Heavy.
+- Instant Heavy.
+- Dodge and Parry.
+- Attack buffer and recovery.
+- Boss damage/counterplay.
+- Existing Flux and Echo mechanics.
+
+### Echo regression
+- Recording and replaying each new supported weapon action.
+- Stable weapon identity after the live weapon changes.
+- Correct timing and event isolation.
+- No unintended double resource consumption or damage.
+- Existing Echo determinism, Relay and Resonance tests remain passing.
+
+### Real browser journeys
+Use real supported UI and keyboard/mouse/touch inputs where practical.
+
+Verify:
+1. Start a fresh campaign.
+2. Learn Chrono Edge.
+3. Switch to Pulsecaster.
+4. Fire at an enemy, hit and miss intentionally.
+5. Charge and release the signature attack.
+6. Switch back to Chrono Edge and perform a melee combo.
+7. Record and replay a Pulsecaster action through Echo.
+8. Use pause/resume, retry, Continue Campaign and chapter transitions without corrupting the equipped weapon or campaign save.
+9. Verify mobile weapon switching, movement, camera orbit, attack buttons and Echo interaction.
+10. Verify the current four GLBs still load and no new console/page errors occur.
+
+Use test hooks only for reproducible setup or observation. Do not claim that a forced HP value is a player-earned kill. Clearly distinguish real-input browser verification from test fixtures.
+
+Run the current simulation, reduced-motion, campaign-release and asset-lifecycle tests alongside the new tests.
+
+## 12. PERFORMANCE AND BALANCING
+
+Do not claim that the new weapon is balanced solely because it works.
+
+Record representative comparisons for Chrono Edge and Pulsecaster:
+- Time to defeat representative ordinary enemies.
+- Effective range.
+- Stagger impact.
+- Resource/heat cost.
+- Recovery/commitment.
+- Practical tactical benefits and weaknesses.
+
+Use reproducible deterministic scenarios and distinguish simulation-only measurements from actual browser rendering performance.
+
+Inspect rendering, event and projectile costs in representative combat. Avoid unbounded projectiles, per-frame garbage, redundant HUD synchronization and duplicate VFX.
+
+Do not change the simulation timing model without evidence. Preserve deterministic Echo replay and existing boss counterplay.
+
+If balance changes become extensive, keep the rules data-driven and explain why each value was selected.
+
+## 13. IMPLEMENTATION PROCESS
+
+Work in this order:
+
+1. Establish the real baseline and inspect the existing architecture.
+2. Write a short implementation plan grounded in actual source files and current combat rules.
+3. Define the minimal weapon data/state/input contracts.
+4. Implement weapon switching and Chrono Edge integration while keeping all existing tests passing.
+5. Implement the authoritative Pulsecaster attack simulation.
+6. Integrate Echo recording/replay with the new weapon action.
+7. Add HUD, tutorial, audio/VFX and mobile controls.
+8. Add regression and browser tests.
+9. Run final checks, inspect screenshots/logs and fix regressions.
+
+Do not try to solve unrelated issues in this phase. Do not do a large refactor just to make the architecture look cleaner.
+
+The weapon system must actually work before you stop.
+
+## 14. REQUIRED DELIVERABLES
+
+Create:
+
+`docs/AFTERFRAME_PHASE14_WEAPONS_AND_COMBAT.md`
+
+The report must include:
+- Actual starting commit and environment.
+- Real baseline test/build results.
+- Weapon definitions and their gameplay trade-offs.
+- Attack/input mapping.
+- Projectile or ranged-hit model and collision rules.
+- Resource/heat economy.
+- Echo recording/replay behavior.
+- Save persistence behavior, if changed.
+- HUD/tutorial/touch updates.
+- Files changed.
+- Focused tests and actual browser-verification results.
+- Combat comparison data and performance observations.
+- Known limitations and recommendations for the following phase.
+
+Before finishing:
+- Run the repository's TypeScript check and production build.
+- Run the complete existing unit-test suite plus new tests.
+- Run the relevant real-input browser checks.
+- Confirm all four existing GLBs, reduced motion, save continuity, touch camera and campaign progression remain intact.
+- Inspect the final source diff for accidental deletions or unrelated changes.
+- Report any failures honestly.
+
+Do not claim an attack, weapon, save behavior, browser journey or performance result is verified unless the corresponding evidence exists.
+
+Do not commit or push unless explicitly requested.
+
+## EXIT CRITERIA
+
+Phase 14 is complete only when Chrono Edge still works, Pulsecaster has real simulation-owned ranged combat, weapon switching is clear and reliable, Echo can reproduce the new weapon action without losing its identity, the player-facing UI explains the controls, and the existing game remains regression-safe.
+
+Do not add inventory, loot rarity, armor, equipment slots, a skill tree or a large collection of additional weapons in this phase. Establish the two-weapon foundation first.

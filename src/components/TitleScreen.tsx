@@ -489,10 +489,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     <span className="text-slate-100 font-semibold">Move & Fight:</span> Use{' '}
                     <span className="text-cyan-300 font-mono-tabular">[WASD]</span> to move,{' '}
                     <span className="text-cyan-300 font-mono-tabular">Mouse / [Arrow Keys]</span>{' '}
-                    to aim, <span className="text-cyan-300 font-mono-tabular">[LMB / F]</span> for
-                    Light combos, and{' '}
+                    to aim, <span className="text-sky-300 font-mono-tabular">[Tab / Z]</span> to
+                    switch between <strong className="text-white">Chrono Edge</strong> &{' '}
+                    <strong className="text-white">Pulsecaster</strong>,{' '}
+                    <span className="text-cyan-300 font-mono-tabular">[LMB / F]</span> for Light
+                    attacks, and{' '}
                     <span className="text-amber-300 font-mono-tabular">[E / R-Click]</span> for
-                    armor-breaking Heavy strikes.
+                    Heavy strikes.
                   </div>
                 </div>
 
@@ -761,10 +764,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       <span className="text-cyan-300">[Mouse / Arrows / CAM ORBIT]</span> Aim
                     </div>
                     <div>
-                      <span className="text-cyan-300">[Tap LMB / F / J]</span> 3-Hit Light Combo
+                      <span className="text-sky-300">[Tab / Z / 1-2]</span> Switch Weapon (Chrono Edge / Pulsecaster)
                     </div>
                     <div>
-                      <span className="text-amber-300">[Hold LMB / J] Charge + Release · [E / K / RMB]</span> Instant Heavy
+                      <span className="text-cyan-300">[Tap LMB / F / J]</span> Light Combo / Pulse Bolt
+                    </div>
+                    <div>
+                      <span className="text-amber-300">[Hold LMB / J] Charge + Release · [E / K / RMB]</span> Heavy / Charged Lance
                     </div>
                     <div>
                       <span className="text-cyan-300">[Space / Shift]</span> Dodge ·{' '}

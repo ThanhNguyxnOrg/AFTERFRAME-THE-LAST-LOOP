@@ -38,6 +38,7 @@ import type {
   PlayerInputFrame,
   PlayerState,
   PressurePlateState,
+  ProjectileState,
   ReconstructedAttackTrace,
   RelayEvaluationStatus,
   RelaySystemState,
@@ -52,6 +53,8 @@ import type {
   TutorialStep,
   VerticalSliceRunState,
   VerticalSliceStage,
+  WeaponDefinition,
+  WeaponId,
   WorldState,
 } from './types.ts';
 
@@ -69,6 +72,8 @@ const _scratchSubstepInput: PlayerInputFrame = {
   heavyAttackJustPressed: false,
   dodgeJustPressed: false,
   parryJustPressed: false,
+  switchWeaponJustPressed: false,
+  selectWeaponId: null,
   echoRecordJustPressed: false,
   echoPlayJustPressed: false,
   echoClearJustPressed: false,
@@ -76,6 +81,19 @@ const _scratchSubstepInput: PlayerInputFrame = {
   gravityPinJustPressed: false,
   echoCollapseJustPressed: false,
 };
+
+export const VALID_WEAPON_IDS: readonly WeaponId[] = ['chrono_edge', 'pulsecaster'];
+
+export function isValidWeaponId(value: unknown): value is WeaponId {
+  return (
+    typeof value === 'string' &&
+    (VALID_WEAPON_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function getWeaponDefinition(weaponId: WeaponId): WeaponDefinition {
+  return GAME_CONFIG.weapons[weaponId];
+}
 
 export function wrapAngle(angle: number): number {
   let a = angle;
@@ -116,6 +134,14 @@ export function createInitialPlayer(): PlayerState {
     ghostIntegrity: GAME_CONFIG.player.maxIntegrity,
     flux: GAME_CONFIG.player.initialFlux,
     maxFlux: GAME_CONFIG.player.maxFlux,
+    equippedWeaponId: GAME_CONFIG.weapons.defaultWeaponId,
+    weaponHeat: 0,
+    maxWeaponHeat: GAME_CONFIG.weapons.pulsecaster.maxHeat,
+    weaponOverheated: false,
+    weaponOverheatTimer: 0,
+    weaponShotCooldownTimer: 0,
+    weaponSwitchCooldownTimer: 0,
+    lastWeaponShotOutcome: 'none',
     actionState: 'idle',
     stateTimer: 0,
     comboIndex: 0,
@@ -1039,13 +1065,13 @@ const TUTORIAL_COPY: Record<
       'Press [W], [A], [S], or [D] (or tap the [W] / [A] / [S] / [D] directional buttons) to step forward into Calibration Bay 04.',
   },
   combat_basics: {
-    title: 'STEP 02 · CHRONO EDGE COMBAT PROTOCOL',
+    title: 'STEP 02 · CHRONO EDGE & PULSECASTER COMBAT',
     desktopPrompt:
-      'Light Strike [LMB / F], Heavy Cleave [Hold LMB / E / R-Click], Phase Dodge [Space], Timed Parry [Q].',
+      'Light Attack [LMB / F], Heavy [Hold LMB / E / R-Click], Switch Weapon [Tab / Z], Dodge [Space], Parry [Q].',
     mobilePrompt:
-      'Tap [LIGHT] or [HEAVY] to strike, [DODGE] to evade telegraphs, and [PARRY] (+35 Flux) on incoming swings.',
+      'Tap [LIGHT] or [HEAVY] to attack, [WEAPON] to swap Chrono Edge / Pulsecaster, [DODGE] to evade, and [PARRY] (+35 Flux).',
     stuckHint:
-      'Perform any attack ([F] / [E]) or defensive maneuver ([Space] / [Q]) to verify Chrono Edge responsiveness.',
+      'Perform any attack ([F] / [E]) or defensive maneuver ([Space] / [Q]), or press [Tab / Z] to switch between Chrono Edge and Pulsecaster.',
   },
   echo_record_replay: {
     title: 'STEP 03 · CHRONO RIG RECORD & REPLAY',
@@ -1250,6 +1276,8 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
     hitstopTimer: 0,
     cameraTrauma: 0,
     player: createInitialPlayer(),
+    projectiles: [],
+    nextProjectileId: 1,
     enemies,
     boss: null,
     obstacles,
@@ -1385,6 +1413,7 @@ function captureSavedCampaignSnapshotIfNeeded(
       pendingNextChapter: world.run.pendingNextChapter,
       bossCheckpoint: checkpointToSave,
       selectedEnding: world.run.selectedEnding,
+      equippedWeaponId: world.player?.equippedWeaponId ?? GAME_CONFIG.weapons.defaultWeaponId,
     };
   }
   return null;
@@ -1603,11 +1632,18 @@ export function startBossEncounter(
   world.elapsedTime = 0;
   world.hitstopTimer = 0;
   world.cameraTrauma = skipIntro ? 0 : 0.28;
+  const preservedEquippedWeapon: WeaponId =
+    world.player && isValidWeaponId(world.player.equippedWeaponId)
+      ? world.player.equippedWeaponId
+      : GAME_CONFIG.weapons.defaultWeaponId;
   world.player = fresh.player;
+  world.player.equippedWeaponId = preservedEquippedWeapon;
   // Position Sera in the central combat lane facing North toward the Boss
   world.player.x = 0;
   world.player.z = 5.2;
   world.player.rotationY = Math.PI;
+  world.projectiles = [];
+  world.nextProjectileId = 1;
   world.enemies = enemies;
   world.boss = boss;
   world.obstacles = fresh.obstacles.map((o) =>
@@ -1684,6 +1720,8 @@ export function startCampaignRun(world: WorldState, skipIntro = false): void {
   world.hitstopTimer = 0;
   world.cameraTrauma = 0;
   world.player = fresh.player;
+  world.projectiles = [];
+  world.nextProjectileId = 1;
   world.enemies = fresh.enemies;
   world.boss = null;
   world.obstacles = fresh.obstacles;
@@ -1741,7 +1779,14 @@ export function startPracticeStandardRun(world: WorldState): void {
   world.elapsedTime = 0;
   world.hitstopTimer = 0;
   world.cameraTrauma = 0;
+  const preservedEquippedWeapon: WeaponId =
+    world.player && isValidWeaponId(world.player.equippedWeaponId)
+      ? world.player.equippedWeaponId
+      : GAME_CONFIG.weapons.defaultWeaponId;
   world.player = fresh.player;
+  world.player.equippedWeaponId = preservedEquippedWeapon;
+  world.projectiles = [];
+  world.nextProjectileId = 1;
   world.enemies = fresh.enemies;
   world.boss = null;
   world.obstacles = fresh.obstacles;
@@ -1800,6 +1845,10 @@ export function captureBossCheckpointFromWorld(
   return {
     chapter,
     bossId,
+    equippedWeaponId:
+      world.player && isValidWeaponId(world.player.equippedWeaponId)
+        ? world.player.equippedWeaponId
+        : GAME_CONFIG.weapons.defaultWeaponId,
     integrity: syncedIntegrity,
     maxIntegrity: world.player.maxIntegrity,
     flux: syncedFlux,
@@ -1969,10 +2018,13 @@ export function transitionCampaignToBoss(
     getTutorialStepForBossId(bossId)
   );
 
-  // Restore exact checkpoint Integrity, Flux, and pre-boss campaign telemetry
+  // Restore exact checkpoint Integrity, Flux, equipped weapon, and pre-boss campaign telemetry
   world.player.integrity = checkpoint.integrity;
   world.player.ghostIntegrity = checkpoint.integrity;
   world.player.flux = checkpoint.flux;
+  if (checkpoint.equippedWeaponId && isValidWeaponId(checkpoint.equippedWeaponId)) {
+    world.player.equippedWeaponId = checkpoint.equippedWeaponId;
+  }
   world.elapsedTime = checkpoint.elapsedTimeAtCheckpoint;
   world.stats = {
     damageDealt: checkpoint.statsAtCheckpoint.damageDealt,
@@ -2022,6 +2074,11 @@ export function enterChronicleLoomChapter(
   world.player.integrity = checkpoint.integrity;
   world.player.ghostIntegrity = checkpoint.integrity;
   world.player.flux = checkpoint.flux;
+  if (checkpoint.equippedWeaponId && isValidWeaponId(checkpoint.equippedWeaponId)) {
+    world.player.equippedWeaponId = checkpoint.equippedWeaponId;
+  }
+  world.projectiles = [];
+  world.nextProjectileId = 1;
   world.enemies = [];
   world.boss = null;
   world.obstacles = fresh.obstacles;
@@ -2335,9 +2392,14 @@ function sanitizeBossCheckpoint(
     return null;
   }
 
+  const equippedWeaponId: WeaponId = isValidWeaponId(obj.equippedWeaponId)
+    ? obj.equippedWeaponId
+    : GAME_CONFIG.weapons.defaultWeaponId;
+
   return {
     chapter: obj.chapter,
     bossId: obj.bossId,
+    equippedWeaponId,
     integrity,
     maxIntegrity,
     flux,
@@ -2391,12 +2453,17 @@ function sanitizeActiveCampaign(raw: unknown): PersistedActiveCampaignState | nu
         ? 'calibration'
         : obj.stage;
 
+  const equippedWeaponId: WeaponId = isValidWeaponId(obj.equippedWeaponId)
+    ? obj.equippedWeaponId
+    : bossCheckpoint?.equippedWeaponId ?? GAME_CONFIG.weapons.defaultWeaponId;
+
   return {
     chapter: obj.chapter,
     stage: normalizedStage,
     pendingNextChapter,
     bossCheckpoint,
     selectedEnding: null,
+    equippedWeaponId,
   };
 }
 
@@ -2413,6 +2480,7 @@ function extractActiveCampaignForSave(
     stage: snap.stage,
     pendingNextChapter: snap.pendingNextChapter,
     bossCheckpoint: snap.bossCheckpoint,
+    equippedWeaponId: snap.equippedWeaponId ?? world.player?.equippedWeaponId,
   });
 }
 
@@ -2540,6 +2608,8 @@ export function parseAndApplyCampaignProgress(
               }
             : null,
           selectedEnding: null,
+          equippedWeaponId:
+            sanitizedActive.equippedWeaponId ?? GAME_CONFIG.weapons.defaultWeaponId,
         };
       } else if (world.appState === 'title') {
         world.run.savedCampaignSnapshot = null;
@@ -2862,6 +2932,15 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
   world.run.isChapterReplay = false;
   world.run.savedCampaignSnapshot = null;
 
+  const restoredWeaponId: WeaponId =
+    (savedCheckpoint?.equippedWeaponId && isValidWeaponId(savedCheckpoint.equippedWeaponId)
+      ? savedCheckpoint.equippedWeaponId
+      : null) ??
+    (snap.equippedWeaponId && isValidWeaponId(snap.equippedWeaponId)
+      ? snap.equippedWeaponId
+      : GAME_CONFIG.weapons.defaultWeaponId);
+  world.player.equippedWeaponId = restoredWeaponId;
+
   if (savedCheckpoint) {
     world.player.integrity = savedCheckpoint.integrity;
     world.player.ghostIntegrity = savedCheckpoint.integrity;
@@ -3023,6 +3102,8 @@ export function createEmptyInput(aimYaw = Math.PI): PlayerInputFrame {
     heavyAttackJustPressed: false,
     dodgeJustPressed: false,
     parryJustPressed: false,
+    switchWeaponJustPressed: false,
+    selectWeaponId: null,
     echoRecordJustPressed: false,
     echoPlayJustPressed: false,
     echoClearJustPressed: false,
@@ -3115,6 +3196,10 @@ function resolveActorSeparation(player: PlayerState, enemies: EnemyState[]): voi
 }
 
 function capturePlayerEchoSample(player: PlayerState, t: number): EchoSample {
+  const chargeThresh =
+    player.equippedWeaponId === 'pulsecaster'
+      ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
+      : GAME_CONFIG.player.heavyAttack.chargeThreshold;
   return {
     t,
     x: player.x,
@@ -3123,11 +3208,9 @@ function capturePlayerEchoSample(player: PlayerState, t: number): EchoSample {
     actionState: player.actionState,
     gaitPhase: player.gaitPhase,
     comboIndex: player.comboIndex,
-    chargeRatio: Math.min(
-      1,
-      player.chargeTime / GAME_CONFIG.player.heavyAttack.chargeThreshold
-    ),
+    chargeRatio: Math.min(1, player.chargeTime / chargeThresh),
     isEmpoweredHeavy: player.isEmpoweredHeavy,
+    weaponId: player.equippedWeaponId,
   };
 }
 
@@ -3145,6 +3228,10 @@ function recordEchoActionEvent(
   } else if (action === 'light_swing') {
     const stepIdx = Math.min(2, Math.max(0, p.comboIndex));
     contactTime = t + (GAME_CONFIG.player.lightAttack.windup[stepIdx] ?? 0.09);
+  } else if (action === 'pulse_shot') {
+    contactTime = t + GAME_CONFIG.weapons.pulsecaster.lightShot.windup;
+  } else if (action === 'pulse_charged_shot') {
+    contactTime = t + GAME_CONFIG.weapons.pulsecaster.heavyShot.windup;
   }
   world.echo.recordingEvents.push({
     id: `clip-${world.echo.clipCounter + 1}-evt-${eventIndex}`,
@@ -3156,6 +3243,7 @@ function recordEchoActionEvent(
     rotationY: p.rotationY,
     comboIndex: p.comboIndex,
     isEmpoweredHeavy: p.isEmpoweredHeavy,
+    weaponId: p.equippedWeaponId,
   });
 }
 
@@ -3248,7 +3336,11 @@ function finalizeEchoRecording(world: WorldState, autoCapped = false): boolean {
             ? GAME_CONFIG.player.heavyAttack.windup
             : ev.action === 'light_swing'
               ? (GAME_CONFIG.player.lightAttack.windup[Math.min(2, Math.max(0, ev.comboIndex))] ?? 0.09)
-              : 0;
+              : ev.action === 'pulse_shot'
+                ? GAME_CONFIG.weapons.pulsecaster.lightShot.windup
+                : ev.action === 'pulse_charged_shot'
+                  ? GAME_CONFIG.weapons.pulsecaster.heavyShot.windup
+                  : 0;
         const rawContact =
           typeof ev.contactTime === 'number' ? ev.contactTime : clampedT + defaultOffset;
         return {
@@ -3292,14 +3384,23 @@ function evaluateEchoClipAtTime(clip: EchoClip, t: number): EchoSample {
       comboIndex: 0,
       chargeRatio: 0,
       isEmpoweredHeavy: false,
+      weaponId: 'chrono_edge',
     };
   }
   if (t <= samples[0].t || samples.length === 1) {
-    return { ...samples[0], t: Math.max(0, t) };
+    return {
+      ...samples[0],
+      t: Math.max(0, t),
+      weaponId: samples[0].weaponId ?? 'chrono_edge',
+    };
   }
   const last = samples[samples.length - 1];
   if (t >= last.t) {
-    return { ...last, t: clip.duration };
+    return {
+      ...last,
+      t: clip.duration,
+      weaponId: last.weaponId ?? 'chrono_edge',
+    };
   }
 
   // Binary search for bounding samples s0.t <= t <= s1.t
@@ -3329,7 +3430,60 @@ function evaluateEchoClipAtTime(clip: EchoClip, t: number): EchoSample {
     comboIndex: alpha < 0.999 ? s0.comboIndex : s1.comboIndex,
     chargeRatio: s0.chargeRatio + (s1.chargeRatio - s0.chargeRatio) * alpha,
     isEmpoweredHeavy: alpha < 0.999 ? s0.isEmpoweredHeavy : s1.isEmpoweredHeavy,
+    weaponId: (alpha < 0.999 ? s0.weaponId : s1.weaponId) ?? 'chrono_edge',
   };
+}
+
+function spawnEchoPulsecasterProjectile(
+  world: WorldState,
+  clipId: number,
+  ev: EchoRecordedActionEvent
+): void {
+  if (ev.action !== 'pulse_shot' && ev.action !== 'pulse_charged_shot') return;
+  const isHeavy = ev.action === 'pulse_charged_shot';
+  const cfg = isHeavy
+    ? GAME_CONFIG.weapons.pulsecaster.heavyShot
+    : GAME_CONFIG.weapons.pulsecaster.lightShot;
+  const dirX = Math.sin(ev.rotationY);
+  const dirZ = Math.cos(ev.rotationY);
+  const muzzleOffset = 0.65;
+  const startX = ev.x + dirX * muzzleOffset;
+  const startZ = ev.z + dirZ * muzzleOffset;
+
+  while (world.projectiles.length >= GAME_CONFIG.weapons.maxActiveProjectiles) {
+    world.projectiles.shift();
+  }
+
+  const projId = `proj-echo-${world.nextProjectileId++}`;
+  world.projectiles.push({
+    id: projId,
+    owner: 'echo',
+    weaponId: 'pulsecaster',
+    kind: isHeavy ? 'pulse_heavy' : 'pulse_light',
+    x: startX,
+    z: startZ,
+    prevX: ev.x,
+    prevZ: ev.z,
+    originX: startX,
+    originZ: startZ,
+    dirX,
+    dirZ,
+    rotationY: ev.rotationY,
+    speed: cfg.speed,
+    maxRange: cfg.range,
+    traveledDistance: 0,
+    radius: cfg.radius,
+    damage: 0,
+    staggerDamage: 0,
+    isHeavy,
+    isEmpowered: Boolean(ev.isEmpoweredHeavy),
+    createdAt: world.elapsedTime,
+    attackStartedAt: world.elapsedTime,
+    attackMarkId: null,
+    echoClipId: clipId,
+    echoEventId: ev.id,
+    active: true,
+  });
 }
 
 function startEchoPlayback(world: WorldState): boolean {
@@ -3383,6 +3537,7 @@ function startEchoPlayback(world: WorldState): boolean {
     comboIndex: pose0.comboIndex,
     chargeRatio: pose0.chargeRatio,
     isEmpoweredHeavy: pose0.isEmpoweredHeavy,
+    weaponId: pose0.weaponId ?? 'chrono_edge',
     elapsed: 0,
     duration: clip.duration,
   };
@@ -3401,13 +3556,18 @@ function startEchoPlayback(world: WorldState): boolean {
   ) {
     const ev = clip.events[echo.nextEventIndex];
     echo.nextEventIndex += 1;
+    if (echo.activeActor && ev.weaponId) {
+      echo.activeActor.weaponId = ev.weaponId;
+    }
     world.events.push({
       type: 'echo_action_visual',
       x: ev.x,
       z: ev.z,
-      isHeavy: ev.action === 'heavy_swing',
+      isHeavy: ev.action === 'heavy_swing' || ev.action === 'pulse_charged_shot',
       echoAction: ev.action,
+      weaponId: ev.weaponId,
     });
+    spawnEchoPulsecasterProjectile(world, clip.id, ev);
     evaluateEchoActionOnPuzzle(world, ev);
   }
 
@@ -3436,6 +3596,15 @@ export function clearEchoState(world: WorldState, reason: 'user' | 'outcome' = '
     reason === 'user'
       ? 'ECHO CLEARED · PRESS [T] TO RECORD NEW SEQUENCE'
       : 'ECHO TERMINATED';
+
+  // Remove any active Echo-owned projectiles when the Echo is cleared
+  if (world.projectiles && world.projectiles.length > 0) {
+    for (let i = world.projectiles.length - 1; i >= 0; i--) {
+      if (world.projectiles[i].owner === 'echo') {
+        world.projectiles.splice(i, 1);
+      }
+    }
+  }
 
   // Clearing the Echo also clears any active pending Resonance mark so no stale target marker survives
   if (world.resonance) {
@@ -3498,9 +3667,11 @@ function evaluateEchoActionOnPuzzle(world: WorldState, ev: EchoRecordedActionEve
   const distEvent = Math.hypot(ev.x - receiver.x, ev.z - receiver.z);
   const distActor = actor ? Math.hypot(actor.x - receiver.x, actor.z - receiver.z) : distEvent;
   const distToPad = Math.min(distEvent, distActor);
+  const isQualifyingHeavy =
+    ev.action === 'heavy_swing' || ev.action === 'pulse_charged_shot';
 
   if (distToPad <= receiver.radius) {
-    if (ev.action !== 'heavy_swing') {
+    if (!isQualifyingHeavy) {
       receiver.lastAttemptOutcome = 'wrong_action';
       world.echo.statusMessage =
         'KINETIC RECEIVER REQUIRES HEAVY CLEAVE [E] · LIGHT/DODGE/PARRY REJECTED';
@@ -3531,7 +3702,7 @@ function evaluateEchoActionOnPuzzle(world: WorldState, ev: EchoRecordedActionEve
         x: receiver.targetX,
         z: receiver.targetZ,
         isHeavy: true,
-        echoAction: 'heavy_swing',
+        echoAction: ev.action,
       });
     } else {
       receiver.lastAttemptOutcome = 'wrong_orientation';
@@ -3542,10 +3713,10 @@ function evaluateEchoActionOnPuzzle(world: WorldState, ev: EchoRecordedActionEve
         x: ev.x,
         z: ev.z,
         isHeavy: true,
-        echoAction: 'heavy_swing',
+        echoAction: ev.action,
       });
     }
-  } else if (ev.action === 'heavy_swing') {
+  } else if (isQualifyingHeavy) {
     if (!receiver.charged) {
       receiver.lastAttemptOutcome = 'out_of_range';
     }
@@ -3600,10 +3771,15 @@ export function queryEchoResonanceTarget(
   world: WorldState,
   attackerX: number,
   attackerZ: number,
-  attackerYaw: number
+  attackerYaw: number,
+  isRangedPulse = false
 ): { target: EnemyState | null; outcome: 'found' | 'out_of_range' | 'line_of_sight_blocked' } {
-  const range = GAME_CONFIG.player.heavyAttack.range;
-  const arcRadians = GAME_CONFIG.player.heavyAttack.arcRadians;
+  const range = isRangedPulse
+    ? GAME_CONFIG.weapons.pulsecaster.heavyShot.range
+    : GAME_CONFIG.player.heavyAttack.range;
+  const arcRadians = isRangedPulse
+    ? Math.PI * 0.34
+    : GAME_CONFIG.player.heavyAttack.arcRadians;
 
   let bestEnemy: EnemyState | null = null;
   let bestDist = Infinity;
@@ -3677,6 +3853,12 @@ export function getEchoActionContactTime(_clip: EchoClip, ev: EchoRecordedAction
     const stepIdx = Math.min(2, Math.max(0, ev.comboIndex));
     return ev.t + (GAME_CONFIG.player.lightAttack.windup[stepIdx] ?? 0.09);
   }
+  if (ev.action === 'pulse_shot') {
+    return ev.t + GAME_CONFIG.weapons.pulsecaster.lightShot.windup;
+  }
+  if (ev.action === 'pulse_charged_shot') {
+    return ev.t + GAME_CONFIG.weapons.pulsecaster.heavyShot.windup;
+  }
   return ev.t;
 }
 
@@ -3691,7 +3873,15 @@ function evaluateDueEchoChoirNodes(
   const strikeRange = GAME_CONFIG.choir.nodeStrikeRange;
   for (let i = 0; i < clip.events.length; i++) {
     const ev = clip.events[i];
-    if (ev.action !== 'heavy_swing' && ev.action !== 'light_swing') continue;
+    const isPulseAction =
+      ev.action === 'pulse_shot' || ev.action === 'pulse_charged_shot';
+    if (
+      ev.action !== 'heavy_swing' &&
+      ev.action !== 'light_swing' &&
+      !isPulseAction
+    ) {
+      continue;
+    }
 
     const contactTime = getEchoActionContactTime(clip, ev);
     const eventId = ev.id ?? `clip-${clip.id}-evt-${i}`;
@@ -3709,6 +3899,7 @@ function evaluateDueEchoChoirNodes(
       clip.samples.length > 0 ? evaluateEchoClipAtTime(clip, contactTime) : null;
     const contactX = contactPose ? contactPose.x : ev.x;
     const contactZ = contactPose ? contactPose.z : ev.z;
+    const contactYaw = contactPose ? contactPose.rotationY : ev.rotationY;
 
     let closestNode: HarmonicNodeState | null = null;
     let bestDist = Infinity;
@@ -3718,6 +3909,15 @@ function evaluateDueEchoChoirNodes(
       if (dist <= strikeRange && dist < bestDist) {
         bestDist = dist;
         closestNode = node;
+      } else if (isPulseAction && dist <= GAME_CONFIG.weapons.pulsecaster.lightShot.range && dist < bestDist) {
+        const angleToNode = Math.atan2(node.x - contactX, node.z - contactZ);
+        if (
+          Math.abs(angleDiff(angleToNode, contactYaw)) <= Math.PI * 0.22 &&
+          hasMeleeLineOfSight(contactX, contactZ, node.x, node.z, world.obstacles)
+        ) {
+          bestDist = dist;
+          closestNode = node;
+        }
       }
     }
 
@@ -3750,7 +3950,7 @@ function evaluateDueEchoResonanceContacts(
 
   for (let i = 0; i < clip.events.length; i++) {
     const ev = clip.events[i];
-    if (ev.action !== 'heavy_swing') continue;
+    if (ev.action !== 'heavy_swing' && ev.action !== 'pulse_charged_shot') continue;
 
     const contactTime = getEchoActionContactTime(clip, ev);
     const eventId = ev.id ?? `clip-${clip.id}-evt-${i}`;
@@ -3788,7 +3988,13 @@ function evaluateDueEchoResonanceContacts(
       continue;
     }
 
-    const query = queryEchoResonanceTarget(world, contactX, contactZ, contactYaw);
+    const query = queryEchoResonanceTarget(
+      world,
+      contactX,
+      contactZ,
+      contactYaw,
+      ev.action === 'pulse_charged_shot'
+    );
     if (!query.target) {
       res.lastOutcome =
         query.outcome === 'line_of_sight_blocked' ? 'line_of_sight_blocked' : 'out_of_range';
@@ -3924,13 +4130,18 @@ function advanceEchoSystem(world: WorldState, dt: number): void {
     ) {
       const ev = clip.events[echo.nextEventIndex];
       echo.nextEventIndex += 1;
+      if (echo.activeActor && ev.weaponId) {
+        echo.activeActor.weaponId = ev.weaponId;
+      }
       world.events.push({
         type: 'echo_action_visual',
         x: ev.x,
         z: ev.z,
-        isHeavy: ev.action === 'heavy_swing',
+        isHeavy: ev.action === 'heavy_swing' || ev.action === 'pulse_charged_shot',
         echoAction: ev.action,
+        weaponId: ev.weaponId,
       });
+      spawnEchoPulsecasterProjectile(world, clip.id, ev);
       evaluateEchoActionOnPuzzle(world, ev);
     }
 
@@ -3959,6 +4170,7 @@ function advanceEchoSystem(world: WorldState, dt: number): void {
       echo.activeActor.comboIndex = pose.comboIndex;
       echo.activeActor.chargeRatio = pose.chargeRatio;
       echo.activeActor.isEmpoweredHeavy = pose.isEmpoweredHeavy;
+      echo.activeActor.weaponId = pose.weaponId ?? echo.activeActor.weaponId ?? 'chrono_edge';
       echo.activeActor.elapsed = echo.playbackTime;
     }
   }
@@ -4369,7 +4581,287 @@ function startParry(
   recordEchoActionEvent(world, 'parry');
 }
 
-export function isQualifyingConvergenceAttack(player: PlayerState, isHeavy: boolean): boolean {
+function resolvePulsecasterAimAngle(
+  world: WorldState,
+  input: PlayerInputFrame,
+  moveVec: { dirX: number; dirZ: number; length: number }
+): number {
+  const p = world.player;
+  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+  let baseAngle: number;
+
+  if (typeof input.aimWorldX === 'number' && typeof input.aimWorldZ === 'number') {
+    baseAngle = Math.atan2(input.aimWorldX - p.x, input.aimWorldZ - p.z);
+  } else if (Math.abs(input.aimYaw) > 1e-5) {
+    baseAngle = wrapAngle(input.aimYaw);
+  } else if (moveVec.length > 0.1) {
+    baseAngle = Math.atan2(moveVec.dirX, moveVec.dirZ);
+  } else {
+    baseAngle = p.rotationY;
+  }
+
+  const assistAngle = findNearestEnemyAngle(
+    p,
+    world.enemies,
+    baseAngle,
+    pulseCfg.aimAssistMaxRange,
+    pulseCfg.aimAssistConeRadians
+  );
+  if (assistAngle !== null) {
+    return moveAngleTowards(baseAngle, assistAngle, 0.42);
+  }
+  return baseAngle;
+}
+
+export function switchPlayerWeapon(world: WorldState, targetWeaponId?: WeaponId): boolean {
+  if (world.appState !== 'playing' || world.outcome !== 'none') {
+    return false;
+  }
+  const p = world.player;
+  if (p.actionState === 'dead') {
+    return false;
+  }
+
+  const nextWeaponId: WeaponId =
+    targetWeaponId && isValidWeaponId(targetWeaponId)
+      ? targetWeaponId
+      : p.equippedWeaponId === 'chrono_edge'
+        ? 'pulsecaster'
+        : 'chrono_edge';
+
+  if (nextWeaponId === p.equippedWeaponId) {
+    return false;
+  }
+  if (p.weaponSwitchCooldownTimer > 0) {
+    return false;
+  }
+
+  // Block weapon switch during committed active/windup/dodge/parry frames so switching cannot cancel or duplicate active attacks
+  const isCommittedAction =
+    p.actionState === 'light_windup' ||
+    p.actionState === 'light_active' ||
+    p.actionState === 'heavy_windup' ||
+    p.actionState === 'heavy_active' ||
+    p.actionState === 'dodging' ||
+    p.actionState === 'parry_active';
+
+  if (isCommittedAction) {
+    return false;
+  }
+
+  // If switching while charging a heavy attack, cleanly cancel the charge without firing an unintended attack
+  if (p.actionState === 'charging_heavy') {
+    p.actionState = 'idle';
+    p.chargeTime = 0;
+  }
+
+  // Clear stale buffered attacks or melee combo chain state while preserving any active recovery timer
+  p.bufferedAction = 'none';
+  p.bufferTimer = 0;
+  p.comboWindowTimer = 0;
+  p.comboIndex = 0;
+  p.equippedWeaponId = nextWeaponId;
+  p.weaponSwitchCooldownTimer = getWeaponDefinition(nextWeaponId).switchCooldown;
+
+  world.events.push({
+    type: 'weapon_switched',
+    x: p.x,
+    z: p.z,
+    weaponId: nextWeaponId,
+  });
+
+  return true;
+}
+
+function startPulsecasterLightShot(
+  world: WorldState,
+  input: PlayerInputFrame,
+  moveVec: { dirX: number; dirZ: number; length: number }
+): boolean {
+  const p = world.player;
+  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+
+  if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
+    p.lastWeaponShotOutcome = 'overheated';
+    return false;
+  }
+  if (p.weaponShotCooldownTimer > 0) {
+    p.lastWeaponShotOutcome = 'cooldown';
+    return false;
+  }
+
+  p.rotationY = resolvePulsecasterAimAngle(world, input, moveVec);
+  p.comboIndex = 0;
+  p.comboWindowTimer = 0;
+  p.actionState = 'light_windup';
+  p.stateTimer = pulseCfg.lightShot.windup;
+  p.attackHitIds = [];
+  p.currentAttackStartedAt = world.elapsedTime;
+  p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
+  p.squashX = 0.94;
+  p.squashY = 1.06;
+
+  recordEchoActionEvent(world, 'pulse_shot');
+  return true;
+}
+
+function startPulsecasterHeavyWindup(
+  world: WorldState,
+  input: PlayerInputFrame,
+  moveVec: { dirX: number; dirZ: number; length: number }
+): boolean {
+  const p = world.player;
+  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+  const heavyCfg = pulseCfg.heavyShot;
+
+  if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
+    p.lastWeaponShotOutcome = 'overheated';
+    p.chargeTime = 0;
+    p.actionState = moveVec.length > 0.05 ? 'moving' : 'idle';
+    return false;
+  }
+  if (p.weaponShotCooldownTimer > 0) {
+    p.lastWeaponShotOutcome = 'cooldown';
+    p.chargeTime = 0;
+    p.actionState = moveVec.length > 0.05 ? 'moving' : 'idle';
+    return false;
+  }
+
+  if (p.actionState !== 'charging_heavy') {
+    p.currentAttackStartedAt = world.elapsedTime;
+    p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
+  }
+
+  p.rotationY = resolvePulsecasterAimAngle(world, input, moveVec);
+
+  const hasActiveResonanceMark =
+    world.resonance.activeMark !== null && world.resonance.cooldownTimer <= 0;
+  p.isEmpoweredHeavy = !hasActiveResonanceMark && p.flux >= heavyCfg.fluxCostForEmpower;
+  if (p.isEmpoweredHeavy) {
+    p.flux = Math.max(0, p.flux - heavyCfg.fluxCostForEmpower);
+  }
+
+  p.actionState = 'heavy_windup';
+  p.stateTimer = heavyCfg.windup;
+  p.chargeTime = 0;
+  p.comboWindowTimer = 0;
+  p.attackHitIds = [];
+  p.squashX = 0.88;
+  p.squashY = 1.12;
+
+  recordEchoActionEvent(world, 'pulse_charged_shot');
+
+  const receiver = world.puzzle?.heavyReceiver;
+  if (receiver && receiver.interactionPolicy === 'echo_only') {
+    const distToReceiver = Math.hypot(p.x - receiver.x, p.z - receiver.z);
+    if (distToReceiver <= receiver.radius) {
+      if (world.echo.state === 'recording') {
+        world.echo.statusMessage =
+          'CHARGED PULSE RECORDED · HOLD ANCHOR PAD OR PRESS [Y] TO REPLAY';
+      } else {
+        receiver.lastAttemptOutcome = 'wrong_actor';
+        world.echo.statusMessage =
+          'ECHO RESONANCE ONLY · RECORD [T] HEAVY [E] & REPLAY [Y]';
+        world.events.push({
+          type: 'echo_receiver_rejected',
+          x: p.x,
+          z: p.z,
+          isHeavy: true,
+        });
+      }
+    }
+  }
+
+  return true;
+}
+
+function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): void {
+  const p = world.player;
+  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+  const shotCfg = isHeavy ? pulseCfg.heavyShot : pulseCfg.lightShot;
+
+  // Apply heat cost & check overheat threshold
+  p.weaponHeat = Math.min(p.maxWeaponHeat, p.weaponHeat + shotCfg.heatCost);
+  p.weaponShotCooldownTimer = shotCfg.cooldown;
+  p.lastWeaponShotOutcome = 'fired';
+
+  if (p.weaponHeat >= p.maxWeaponHeat) {
+    p.weaponHeat = p.maxWeaponHeat;
+    p.weaponOverheated = true;
+    p.weaponOverheatTimer = pulseCfg.overheatLockoutDuration;
+    world.events.push({
+      type: 'pulse_overheated',
+      x: p.x,
+      z: p.z,
+      weaponId: 'pulsecaster',
+    });
+  }
+
+  if (world.projectiles.length >= pulseCfg.maxActiveProjectiles) {
+    world.projectiles.shift();
+  }
+
+  const dirX = Math.sin(p.rotationY);
+  const dirZ = Math.cos(p.rotationY);
+  const muzzleOffset = 0.56;
+  const spawnX = p.x + dirX * muzzleOffset;
+  const spawnZ = p.z + dirZ * muzzleOffset;
+
+  const isEmpowered = isHeavy && p.isEmpoweredHeavy;
+  const damage = isHeavy
+    ? isEmpowered
+      ? pulseCfg.heavyShot.empoweredDamage
+      : pulseCfg.heavyShot.damage
+    : pulseCfg.lightShot.damage;
+  const staggerDamage = isHeavy
+    ? isEmpowered
+      ? pulseCfg.heavyShot.empoweredStaggerDamage
+      : pulseCfg.heavyShot.staggerDamage
+    : pulseCfg.lightShot.staggerDamage;
+
+  world.projectiles.push({
+    id: `proj-${world.nextProjectileId++}`,
+    owner: 'player',
+    weaponId: 'pulsecaster',
+    attackMode: isHeavy ? 'pulse_heavy' : 'pulse_light',
+    x: spawnX,
+    z: spawnZ,
+    prevX: p.x,
+    prevZ: p.z,
+    vx: dirX * shotCfg.projectileSpeed,
+    vz: dirZ * shotCfg.projectileSpeed,
+    rotationY: p.rotationY,
+    radius: shotCfg.projectileRadius,
+    damage,
+    staggerDamage,
+    isHeavy,
+    isEmpowered,
+    maxRange: shotCfg.maxRange,
+    distanceTraveled: 0,
+    elapsed: 0,
+    maxLifetime: shotCfg.maxLifetime,
+    active: true,
+    attackStartedAt: p.currentAttackStartedAt,
+    attackMarkId: p.currentAttackMarkId,
+    hitTargetIds: [],
+  });
+
+  world.events.push({
+    type: isHeavy ? 'player_pulse_heavy_shot' : 'player_pulse_shot',
+    x: spawnX,
+    z: spawnZ,
+    isHeavy,
+    weaponId: 'pulsecaster',
+  });
+}
+
+export function isQualifyingConvergenceAttack(
+  player: PlayerState,
+  isHeavy: boolean,
+  attackMode?: WeaponAttackMode
+): boolean {
+  if (attackMode === 'pulse_heavy') return true;
+  if (attackMode === 'pulse_light') return false;
   if (isHeavy || player.actionState === 'heavy_active') return true;
   if (player.actionState === 'light_active' && player.comboIndex === 2) return true;
   return false;
@@ -4382,6 +4874,126 @@ export function isBossArchetype(archetype: EnemyArchetype): boolean {
     archetype === 'curator' ||
     archetype === 'matron'
   );
+}
+
+function applyLivePlayerStrikeToChoirNode(
+  world: WorldState,
+  node: ChoirNodeState
+): void {
+  const choir = world.choir;
+  if (!choir.active || world.outcome !== 'none') return;
+
+  // Check if another linked node is currently primed by an Echo
+  const otherPrimedNode = choir.nodes.find(
+    (n) => n.id !== node.id && n.status === 'primed' && n.primedRemainingTime > 0
+  );
+
+  if (node.status === 'primed') {
+    // Striking the exact same node that the Echo primed is a single-target repeat; require striking a linked counterpart node!
+    const alreadySyncedCount = choir.nodes.filter((n) => n.status === 'synchronized').length;
+    if (alreadySyncedCount > 0 && otherPrimedNode) {
+      node.status = 'synchronized';
+      node.primedRemainingTime = 0;
+      node.syncOrder = alreadySyncedCount + 1;
+      choir.synchronizedCount = choir.nodes.filter((n) => n.status === 'synchronized').length;
+      world.events.push({
+        type: 'choir_node_synchronized',
+        x: node.x,
+        z: node.z,
+        enemyId: node.id,
+      });
+    } else {
+      // Mismatched single-node strike degrades/fails the node synchronization
+      node.status = 'failed';
+      node.primedRemainingTime = 0;
+      node.failedRemainingTime = GAME_CONFIG.choir.failureResetDuration;
+      choir.failureResetTimer = GAME_CONFIG.choir.failureResetDuration;
+      choir.lastFailureReason = 'same_node_struck';
+      choir.statusMessage = `HARMONIC MISMATCH // ECHO PRIMED ${node.label} — STRIKE A DIFFERENT LINKED NODE WITH LIVE SERA`;
+      world.events.push({
+        type: 'choir_sync_failed',
+        x: node.x,
+        z: node.z,
+        enemyId: node.id,
+      });
+    }
+  } else if (node.status === 'inactive') {
+    if (otherPrimedNode) {
+      // Valid linked-node synchronization! Echo primed otherPrimedNode, live Sera struck this linked counterpart node.
+      otherPrimedNode.status = 'synchronized';
+      otherPrimedNode.primedRemainingTime = 0;
+      otherPrimedNode.syncOrder = 1;
+      node.status = 'synchronized';
+      node.primedRemainingTime = 0;
+      node.syncOrder = 2;
+      choir.synchronizedCount = choir.nodes.filter((n) => n.status === 'synchronized').length;
+      world.hitstopTimer = Math.max(world.hitstopTimer, 0.06);
+      world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.35);
+      world.events.push({
+        type: 'choir_node_synchronized',
+        x: node.x,
+        z: node.z,
+        enemyId: node.id,
+      });
+
+      if (choir.synchronizedCount >= choir.requiredNodeCount) {
+        choir.completedCycles += 1;
+        choir.syncTimer = GAME_CONFIG.choir.syncExposedDuration;
+        choir.statusMessage =
+          'HARMONIC DISRUPTION COMPLETE // THE CHOIR SHIELD SHATTERED — CORE EXPOSED (1.65x)!';
+        if (world.boss && world.boss.id === 'the-choir' && world.boss.hp > 0) {
+          const b = world.boss;
+          b.coreExposed = true;
+          b.activeAttack = null;
+          b.shockwaveActive = false;
+          b.aiState = 'staggered';
+          b.stateDuration = GAME_CONFIG.choir.syncExposedDuration;
+          b.stateTimer = GAME_CONFIG.choir.syncExposedDuration;
+          b.vx = 0;
+          b.vz = 0;
+          b.statusLabel = 'HARMONIC DISRUPTION · CORE EXPOSED (1.65x)';
+          const bonusDmg = GAME_CONFIG.choir.syncCompletionBonusDamage;
+          b.hp = Math.max(1, b.hp - bonusDmg);
+          world.stats.damageDealt += bonusDmg;
+          const bossEnemy = world.enemies.find((e) => e.id === b.id);
+          if (bossEnemy) {
+            bossEnemy.hp = b.hp;
+            bossEnemy.aiState = 'staggered';
+            bossEnemy.stateDuration = b.stateDuration;
+            bossEnemy.stateTimer = b.stateTimer;
+            bossEnemy.vx = 0;
+            bossEnemy.vz = 0;
+            checkAndTriggerBossPhase2(world, b, bossEnemy);
+          }
+        }
+        world.events.push({
+          type: 'choir_sync_completed',
+          x: world.boss?.x ?? 0,
+          z: world.boss?.z ?? 0,
+          enemyId: world.boss?.id,
+        });
+      } else {
+        choir.statusMessage = `NODE LINKED (${choir.synchronizedCount}/${choir.requiredNodeCount}) // SYNCHRONIZE REMAINING LINKED NODE`;
+      }
+    } else if (world.echo.state === 'recording') {
+      // Player is actively recording an Echo strike at this pylon so the Echo can prime it on replay
+      choir.statusMessage = `STRIKE RECORDED ON ${node.label} // PRESS [Y] TO REPLAY ECHO & PRIME PYLON`;
+    } else {
+      // Live player struck an unprimed node while not recording and while no linked node was primed by an Echo
+      node.status = 'failed';
+      node.primedRemainingTime = 0;
+      node.failedRemainingTime = GAME_CONFIG.choir.failureResetDuration;
+      choir.failureResetTimer = GAME_CONFIG.choir.failureResetDuration;
+      choir.lastFailureReason = 'unprimed_node_struck';
+      choir.statusMessage = `UNPRIMED NODE // PRIME A LINKED NODE WITH AN ECHO ATTACK FIRST, THEN STRIKE COUNTERPART`;
+      world.events.push({
+        type: 'choir_sync_failed',
+        x: node.x,
+        z: node.z,
+        enemyId: node.id,
+      });
+    }
+  }
 }
 
 function evaluateLivePlayerStrikeOnChoirNodes(world: WorldState, isHeavy: boolean): void {
@@ -4412,118 +5024,7 @@ function evaluateLivePlayerStrikeOnChoirNodes(world: WorldState, isHeavy: boolea
     }
 
     p.attackHitIds.push(node.id);
-
-    // Check if another linked node is currently primed by an Echo
-    const otherPrimedNode = choir.nodes.find(
-      (n) => n.id !== node.id && n.status === 'primed' && n.primedRemainingTime > 0
-    );
-
-    if (node.status === 'primed') {
-      // Striking the exact same node that the Echo primed is a single-target repeat; require striking a linked counterpart node!
-      const alreadySyncedCount = choir.nodes.filter((n) => n.status === 'synchronized').length;
-      if (alreadySyncedCount > 0 && otherPrimedNode) {
-        node.status = 'synchronized';
-        node.primedRemainingTime = 0;
-        node.syncOrder = alreadySyncedCount + 1;
-        choir.synchronizedCount = choir.nodes.filter((n) => n.status === 'synchronized').length;
-        world.events.push({
-          type: 'choir_node_synchronized',
-          x: node.x,
-          z: node.z,
-          enemyId: node.id,
-        });
-      } else {
-        // Mismatched single-node strike degrades/fails the node synchronization
-        node.status = 'failed';
-        node.primedRemainingTime = 0;
-        node.failedRemainingTime = GAME_CONFIG.choir.failureResetDuration;
-        choir.failureResetTimer = GAME_CONFIG.choir.failureResetDuration;
-        choir.lastFailureReason = 'same_node_struck';
-        choir.statusMessage = `HARMONIC MISMATCH // ECHO PRIMED ${node.label} — STRIKE A DIFFERENT LINKED NODE WITH LIVE SERA`;
-        world.events.push({
-          type: 'choir_sync_failed',
-          x: node.x,
-          z: node.z,
-          enemyId: node.id,
-        });
-      }
-    } else if (node.status === 'inactive') {
-      if (otherPrimedNode) {
-        // Valid linked-node synchronization! Echo primed otherPrimedNode, live Sera struck this linked counterpart node.
-        otherPrimedNode.status = 'synchronized';
-        otherPrimedNode.primedRemainingTime = 0;
-        otherPrimedNode.syncOrder = 1;
-        node.status = 'synchronized';
-        node.primedRemainingTime = 0;
-        node.syncOrder = 2;
-        choir.synchronizedCount = choir.nodes.filter((n) => n.status === 'synchronized').length;
-        world.hitstopTimer = Math.max(world.hitstopTimer, 0.06);
-        world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.35);
-        world.events.push({
-          type: 'choir_node_synchronized',
-          x: node.x,
-          z: node.z,
-          enemyId: node.id,
-        });
-
-        if (choir.synchronizedCount >= choir.requiredNodeCount) {
-          choir.completedCycles += 1;
-          choir.syncTimer = GAME_CONFIG.choir.syncExposedDuration;
-          choir.statusMessage =
-            'HARMONIC DISRUPTION COMPLETE // THE CHOIR SHIELD SHATTERED — CORE EXPOSED (1.65x)!';
-          if (world.boss && world.boss.id === 'the-choir' && world.boss.hp > 0) {
-            const b = world.boss;
-            b.coreExposed = true;
-            b.activeAttack = null;
-            b.shockwaveActive = false;
-            b.aiState = 'staggered';
-            b.stateDuration = GAME_CONFIG.choir.syncExposedDuration;
-            b.stateTimer = GAME_CONFIG.choir.syncExposedDuration;
-            b.vx = 0;
-            b.vz = 0;
-            b.statusLabel = 'HARMONIC DISRUPTION · CORE EXPOSED (1.65x)';
-            const bonusDmg = GAME_CONFIG.choir.syncCompletionBonusDamage;
-            b.hp = Math.max(1, b.hp - bonusDmg);
-            world.stats.damageDealt += bonusDmg;
-            const bossEnemy = world.enemies.find((e) => e.id === b.id);
-            if (bossEnemy) {
-              bossEnemy.hp = b.hp;
-              bossEnemy.aiState = 'staggered';
-              bossEnemy.stateDuration = b.stateDuration;
-              bossEnemy.stateTimer = b.stateTimer;
-              bossEnemy.vx = 0;
-              bossEnemy.vz = 0;
-              checkAndTriggerBossPhase2(world, b, bossEnemy);
-            }
-          }
-          world.events.push({
-            type: 'choir_sync_completed',
-            x: world.boss?.x ?? 0,
-            z: world.boss?.z ?? 0,
-            enemyId: world.boss?.id,
-          });
-        } else {
-          choir.statusMessage = `NODE LINKED (${choir.synchronizedCount}/${choir.requiredNodeCount}) // SYNCHRONIZE REMAINING LINKED NODE`;
-        }
-      } else if (world.echo.state === 'recording') {
-        // Player is actively recording an Echo strike at this pylon so the Echo can prime it on replay
-        choir.statusMessage = `STRIKE RECORDED ON ${node.label} // PRESS [Y] TO REPLAY ECHO & PRIME PYLON`;
-      } else {
-        // Live player struck an unprimed node while not recording and while no linked node was primed by an Echo
-        node.status = 'failed';
-        node.primedRemainingTime = 0;
-        node.failedRemainingTime = GAME_CONFIG.choir.failureResetDuration;
-        choir.failureResetTimer = GAME_CONFIG.choir.failureResetDuration;
-        choir.lastFailureReason = 'unprimed_node_struck';
-        choir.statusMessage = `UNPRIMED NODE // PRIME A LINKED NODE WITH AN ECHO ATTACK FIRST, THEN STRIKE COUNTERPART`;
-        world.events.push({
-          type: 'choir_sync_failed',
-          x: node.x,
-          z: node.z,
-          enemyId: node.id,
-        });
-      }
-    }
+    applyLivePlayerStrikeToChoirNode(world, node);
   }
 }
 
@@ -5628,6 +6129,531 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
   }
 }
 
+function segmentCircleEarliestHitT(
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  cx: number,
+  cz: number,
+  r: number
+): number | null {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const fx = ax - cx;
+  const fz = az - cz;
+
+  const a = dx * dx + dz * dz;
+  if (a < 1e-9) {
+    return fx * fx + fz * fz <= r * r ? 0 : null;
+  }
+
+  const b = 2 * (fx * dx + fz * dz);
+  const c = fx * fx + fz * fz - r * r;
+
+  if (c <= 0) {
+    return 0;
+  }
+
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) {
+    return null;
+  }
+
+  const sqrtDisc = Math.sqrt(discriminant);
+  const t1 = (-b - sqrtDisc) / (2 * a);
+  const t2 = (-b + sqrtDisc) / (2 * a);
+
+  if (t1 >= 0 && t1 <= 1) {
+    return t1;
+  }
+  if (t2 >= 0 && t2 <= 1) {
+    return t2;
+  }
+  return null;
+}
+
+function applyPlayerProjectileHitToEnemy(
+  world: WorldState,
+  proj: ProjectileState,
+  enemy: EnemyState
+): void {
+  const p = world.player;
+  const isHeavy = proj.isHeavy;
+  const baseDamage = proj.damage;
+  const staggerAmount = proj.staggerDamage;
+
+  const dx = enemy.x - proj.prevX;
+  const dz = enemy.z - proj.prevZ;
+  const dist = Math.hypot(dx, dz);
+
+  // Evaluate Temporal Resonance / Convergence eligibility on this ranged hit
+  const res = world.resonance;
+  const activeMark = res.activeMark;
+  let triggeredConvergence = false;
+  let rejectedConvergenceReason: ResonanceOutcome | null = null;
+
+  if (activeMark && activeMark.remainingTime > 0) {
+    if (enemy.id !== activeMark.enemyId) {
+      rejectedConvergenceReason = 'wrong_target';
+      res.lastOutcome = 'wrong_target';
+      res.statusMessage = `WRONG TARGET // STRIKE MARKED ${activeMark.enemyName.toUpperCase()} FOR CONVERGENCE`;
+    } else if (!isQualifyingConvergenceAttack(p, isHeavy, proj.attackMode)) {
+      rejectedConvergenceReason = 'non_qualifying_attack';
+      res.lastOutcome = 'non_qualifying_attack';
+      res.statusMessage = 'RESONANCE REQUIRES CHARGED PULSE [E] OR CHRONO EDGE HEAVY';
+    } else {
+      const startedAfterMark =
+        proj.attackMarkId === activeMark.markId &&
+        proj.attackStartedAt >= activeMark.createdAt - 1e-6;
+      if (!startedAfterMark) {
+        rejectedConvergenceReason = 'attack_started_before_mark';
+        res.lastOutcome = 'attack_started_before_mark';
+        res.statusMessage =
+          'ATTACK STARTED BEFORE MARK · INITIATE FOLLOW-UP AFTER ECHO CONTACT';
+      } else if (res.cooldownTimer > 0) {
+        rejectedConvergenceReason = 'on_cooldown';
+        res.lastOutcome = 'on_cooldown';
+        res.statusMessage = 'CONVERGENCE RECHARGING · WAIT FOR COOLDOWN';
+      } else if (p.flux < res.fluxCost) {
+        rejectedConvergenceReason = 'insufficient_flux';
+        res.lastOutcome = 'insufficient_flux';
+        res.statusMessage = `INSUFFICIENT FLUX FOR CONVERGENCE (${res.fluxCost} REQUIRED)`;
+      } else {
+        triggeredConvergence = true;
+      }
+    }
+
+    if (rejectedConvergenceReason) {
+      world.events.push({
+        type: 'resonance_convergence_rejected',
+        x: enemy.x,
+        z: enemy.z,
+        originX: proj.prevX,
+        originZ: proj.prevZ,
+        isHeavy,
+        enemyId: enemy.id,
+        resonanceOutcome: rejectedConvergenceReason,
+      });
+    }
+  }
+
+  const bossState =
+    world.boss && world.boss.id === enemy.id ? world.boss : null;
+  const isVulnerable =
+    enemy.aiState === 'recovery' ||
+    enemy.aiState === 'staggered' ||
+    (bossState !== null && bossState.coreExposed);
+
+  // Ranged shots respect frontal shields (Bastion Aegis Guard & HELIX-04 Frontal Armor) and Choir harmonic shielding
+  let isGuarded = false;
+  if (enemy.archetype === 'bastion' && !isVulnerable && !isHeavy && !triggeredConvergence) {
+    const angleFromEnemyToShot = Math.atan2(proj.prevX - enemy.x, proj.prevZ - enemy.z);
+    const facingDiff = Math.abs(angleDiff(angleFromEnemyToShot, enemy.rotationY));
+    if (facingDiff <= GAME_CONFIG.enemies.bastion.frontGuardArc * 0.5) {
+      isGuarded = true;
+    }
+  } else if (
+    enemy.archetype === 'helix' &&
+    !isVulnerable &&
+    !triggeredConvergence &&
+    (!bossState || bossState.aiState !== 'phase_transition')
+  ) {
+    // HELIX-04's frontal armor dampens direct ranged fire unless flanked, core-exposed, or shattered via Convergence
+    const angleFromEnemyToShot = Math.atan2(proj.prevX - enemy.x, proj.prevZ - enemy.z);
+    const facingDiff = Math.abs(angleDiff(angleFromEnemyToShot, enemy.rotationY));
+    if (facingDiff <= GAME_CONFIG.boss.frontGuardArc * 0.5) {
+      isGuarded = true;
+    }
+  } else if (
+    enemy.archetype === 'choir' &&
+    !isVulnerable &&
+    world.choir.synchronizedCount < world.choir.requiredNodeCount
+  ) {
+    isGuarded = true;
+  }
+
+  const vulnMult = isVulnerable
+    ? isBossArchetype(enemy.archetype)
+      ? enemy.aiState === 'staggered'
+        ? GAME_CONFIG.boss.staggeredDamageMult
+        : GAME_CONFIG.boss.exposedCoreDamageMult
+      : GAME_CONFIG.player.vulnerableDamageMultiplier
+    : 1.0;
+  const vulnStaggerMult =
+    isVulnerable && bossState !== null
+      ? GAME_CONFIG.boss.exposedCoreStaggerMult
+      : 1.0;
+  const guardDmgMult = isGuarded
+    ? enemy.archetype === 'helix'
+      ? GAME_CONFIG.boss.frontalArmorDamageMult
+      : enemy.archetype === 'choir'
+        ? GAME_CONFIG.choir.unharmonizedDamageMult
+        : GAME_CONFIG.weapons.pulsecaster.guardedDamageMultiplier
+    : 1.0;
+  const guardStaggerMult = isGuarded
+    ? enemy.archetype === 'helix' || enemy.archetype === 'choir'
+      ? GAME_CONFIG.boss.frontalArmorStaggerMult
+      : GAME_CONFIG.weapons.pulsecaster.guardedStaggerMultiplier
+    : 1.0;
+
+  const convergencePostureBonus = triggeredConvergence ? GAME_CONFIG.resonance.postureBonus : 0;
+  const finalDamage = Math.max(
+    1,
+    Math.round(baseDamage * vulnMult * guardDmgMult)
+  );
+  const effectiveStagger =
+    Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult) + convergencePostureBonus;
+
+  if (triggeredConvergence) {
+    p.flux = Math.max(0, p.flux - res.fluxCost);
+    res.activeMark = null;
+    res.cooldownTimer = res.maxCooldown;
+    res.status = 'on_cooldown';
+    res.convergenceCount += 1;
+    res.lastOutcome = 'converged';
+    res.lastConvergedEnemyId = enemy.id;
+    res.lastConvergedX = enemy.x;
+    res.lastConvergedZ = enemy.z;
+    res.flashTimer = GAME_CONFIG.resonance.flashDuration;
+    res.statusMessage = `TEMPORAL CONVERGENCE // +${convergencePostureBonus} POSTURE ON ${enemy.name.toUpperCase()}`;
+  }
+
+  enemy.hp = Math.max(0, enemy.hp - finalDamage);
+  enemy.hitFlashTimer = triggeredConvergence ? 0.24 : 0.12;
+  world.stats.damageDealt += finalDamage;
+
+  if (isVulnerable) {
+    world.stats.vulnerableHits += 1;
+  }
+
+  // Pulsecaster grants small Flux on clean non-empowered hits
+  if (!triggeredConvergence && rejectedConvergenceReason === null) {
+    if (!isHeavy) {
+      const fluxGain = isGuarded
+        ? GAME_CONFIG.weapons.pulsecaster.lightShot.fluxGainOnGuardedHit
+        : GAME_CONFIG.weapons.pulsecaster.lightShot.fluxGainOnHit;
+      p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
+    } else if (!proj.isEmpowered) {
+      p.flux = Math.min(
+        p.maxFlux,
+        p.flux + GAME_CONFIG.weapons.pulsecaster.heavyShot.fluxGainOnHit
+      );
+    }
+  }
+
+  const bossPushScale = bossState !== null ? 0.24 : 0.85;
+  const pushDist =
+    (triggeredConvergence ? 0.55 : isHeavy ? 0.38 : isGuarded ? 0.03 : 0.12) *
+    bossPushScale;
+  const nx = dist > 0.001 ? dx / dist : Math.sin(proj.rotationY);
+  const nz = dist > 0.001 ? dz / dist : Math.cos(proj.rotationY);
+  enemy.x += nx * pushDist;
+  enemy.z += nz * pushDist;
+
+  if (enemy.hp > 0 && enemy.aiState !== 'staggered') {
+    const inHyperArmor = enemy.aiState === 'telegraph' || enemy.aiState === 'attack';
+    const bossStaggerImmune =
+      bossState !== null &&
+      (bossState.staggerCooldownTimer > 0 || bossState.aiState === 'phase_transition');
+
+    if (!bossStaggerImmune) {
+      if (inHyperArmor && !isHeavy) {
+        enemy.stagger = Math.min(enemy.maxStagger - 1, enemy.stagger + effectiveStagger);
+      } else {
+        enemy.stagger = Math.min(enemy.maxStagger, enemy.stagger + effectiveStagger);
+      }
+    }
+
+    if (enemy.stagger >= enemy.maxStagger) {
+      enemy.aiState = 'staggered';
+      enemy.stateDuration = GAME_CONFIG.enemies[enemy.archetype].staggeredDuration;
+      enemy.stateTimer = enemy.stateDuration;
+      enemy.stagger = 0;
+      enemy.vx = 0;
+      enemy.vz = 0;
+      if (bossState) {
+        bossState.aiState = 'staggered';
+        bossState.stateDuration = GAME_CONFIG.boss.staggeredDuration;
+        bossState.stateTimer = bossState.stateDuration;
+        bossState.stagger = 0;
+        bossState.vx = 0;
+        bossState.vz = 0;
+        bossState.activeAttack = null;
+        bossState.shockwaveActive = false;
+        bossState.coreExposed = true;
+        bossState.staggerCooldownTimer =
+          GAME_CONFIG.boss.staggeredDuration + GAME_CONFIG.boss.staggerCooldown;
+        bossState.statusLabel = 'POSTURE BROKEN · CHRONO CORE EXPOSED (1.5x)';
+        world.events.push({
+          type: 'boss_staggered',
+          x: enemy.x,
+          z: enemy.z,
+          enemyId: enemy.id,
+          bossPhase: bossState.phase,
+        });
+      }
+      world.hitstopTimer = Math.max(world.hitstopTimer, triggeredConvergence ? 0.085 : 0.055);
+      world.cameraTrauma = Math.min(1, world.cameraTrauma + (triggeredConvergence ? 0.45 : 0.38));
+      world.events.push({
+        type: 'enemy_staggered',
+        x: enemy.x,
+        z: enemy.z,
+        enemyId: enemy.id,
+      });
+    }
+  }
+
+  if (bossState) {
+    checkAndTriggerBossPhase2(world, bossState, enemy);
+  }
+
+  if (triggeredConvergence) {
+    world.hitstopTimer = Math.max(world.hitstopTimer, 0.08);
+    world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.44);
+    world.events.push({
+      type: 'resonance_convergence',
+      x: enemy.x,
+      z: enemy.z,
+      originX: proj.prevX,
+      originZ: proj.prevZ,
+      amount: finalDamage,
+      postureBonus: convergencePostureBonus,
+      isCriticalOrVulnerable: isVulnerable,
+      isHeavy,
+      isGuarded,
+      enemyId: enemy.id,
+      resonanceOutcome: 'converged',
+      weaponId: 'pulsecaster',
+    });
+  }
+
+  if (enemy.hp <= 0) {
+    handleEnemyZeroHpDefeat(world, enemy, finalDamage, isVulnerable, isHeavy, isGuarded);
+  } else {
+    world.hitstopTimer = Math.max(
+      world.hitstopTimer,
+      isHeavy ? 0.04 : isGuarded ? 0.012 : 0.02
+    );
+    world.cameraTrauma = Math.min(
+      1,
+      world.cameraTrauma + (isHeavy ? 0.28 : isGuarded ? 0.06 : 0.12)
+    );
+    world.events.push({
+      type: 'player_hit_enemy',
+      x: enemy.x,
+      z: enemy.z,
+      amount: finalDamage,
+      isCriticalOrVulnerable: isVulnerable,
+      isHeavy,
+      isGuarded,
+      enemyId: enemy.id,
+      weaponId: 'pulsecaster',
+    });
+  }
+
+  if (bossState) {
+    bossState.x = enemy.x;
+    bossState.z = enemy.z;
+    bossState.hp = enemy.hp;
+    bossState.stagger = enemy.stagger;
+    bossState.hitFlashTimer = enemy.hitFlashTimer;
+  }
+}
+
+function advanceProjectiles(world: WorldState, dt: number): void {
+  if (world.projectiles.length === 0) return;
+
+  for (let i = 0; i < world.projectiles.length; i++) {
+    const proj = world.projectiles[i];
+    if (!proj.active) continue;
+
+    const prevX = proj.x;
+    const prevZ = proj.z;
+    const nextX = prevX + proj.vx * dt;
+    const nextZ = prevZ + proj.vz * dt;
+    proj.prevX = prevX;
+    proj.prevZ = prevZ;
+
+    const stepDist = Math.hypot(nextX - prevX, nextZ - prevZ);
+
+    let earliestT = 2;
+    let hitKind: 'none' | 'obstacle' | 'node' | 'enemy' = 'none';
+    let hitNode: ChoirNodeState | null = null;
+    let hitEnemy: EnemyState | null = null;
+
+    // 1. Check solid obstacles (including closed barriers)
+    for (let o = 0; o < world.obstacles.length; o++) {
+      const obs = world.obstacles[o];
+      if (!isObstacleAuthoritativelySolid(world, obs)) continue;
+      const t = segmentCircleEarliestHitT(
+        prevX,
+        prevZ,
+        nextX,
+        nextZ,
+        obs.x,
+        obs.z,
+        obs.radius + proj.radius * 0.35
+      );
+      if (t !== null && t < earliestT) {
+        earliestT = t;
+        hitKind = 'obstacle';
+        hitNode = null;
+        hitEnemy = null;
+      }
+    }
+
+    // 2. Check Choir Harmonic Nodes when Chapter II Choir is active
+    if (world.choir.active && world.outcome === 'none') {
+      for (let n = 0; n < world.choir.nodes.length; n++) {
+        const node = world.choir.nodes[n];
+        if (proj.hitTargetIds.includes(node.id)) continue;
+        const t = segmentCircleEarliestHitT(
+          prevX,
+          prevZ,
+          nextX,
+          nextZ,
+          node.x,
+          node.z,
+          node.radius + proj.radius
+        );
+        if (t !== null && t < earliestT) {
+          earliestT = t;
+          hitKind = 'node';
+          hitNode = node;
+          hitEnemy = null;
+        }
+      }
+    }
+
+    // 3. Check living enemies & bosses
+    for (let e = 0; e < world.enemies.length; e++) {
+      const enemy = world.enemies[e];
+      if (enemy.aiState === 'ko' || enemy.hp <= 0) continue;
+      if (proj.hitTargetIds.includes(enemy.id)) continue;
+      if (
+        world.boss &&
+        world.boss.id === enemy.id &&
+        (world.boss.aiState === 'dormant' ||
+          world.boss.aiState === 'phase_transition' ||
+          world.boss.aiState === 'ko' ||
+          world.boss.aiState === 'defeated')
+      ) {
+        continue;
+      }
+      const t = segmentCircleEarliestHitT(
+        prevX,
+        prevZ,
+        nextX,
+        nextZ,
+        enemy.x,
+        enemy.z,
+        enemy.radius + proj.radius
+      );
+      if (t !== null && t < earliestT) {
+        earliestT = t;
+        hitKind = 'enemy';
+        hitEnemy = enemy;
+        hitNode = null;
+      }
+    }
+
+    if (hitKind === 'obstacle') {
+      proj.x = prevX + (nextX - prevX) * earliestT;
+      proj.z = prevZ + (nextZ - prevZ) * earliestT;
+      proj.active = false;
+      if (proj.owner === 'player') {
+        world.player.lastWeaponShotOutcome = 'blocked_by_obstacle';
+      }
+      world.events.push({
+        type: 'pulse_impact_obstacle',
+        x: proj.x,
+        z: proj.z,
+        isHeavy: proj.isHeavy,
+        weaponId: 'pulsecaster',
+      });
+      continue;
+    }
+
+    if (hitKind === 'node' && hitNode) {
+      proj.x = hitNode.x;
+      proj.z = hitNode.z;
+      proj.hitTargetIds.push(hitNode.id);
+      proj.active = false;
+      if (proj.owner === 'player') {
+        world.player.lastWeaponShotOutcome = 'hit_node';
+        applyLivePlayerStrikeToChoirNode(world, hitNode);
+      } else if (hitNode.status === 'inactive') {
+        hitNode.status = 'primed';
+        hitNode.primedRemainingTime = GAME_CONFIG.choir.primedWindowDuration;
+        hitNode.failedRemainingTime = 0;
+        world.choir.primedCount += 1;
+        world.choir.lastFailureReason = 'none';
+        world.choir.statusMessage = `${hitNode.label} PRIMED BY ECHO (${GAME_CONFIG.choir.primedWindowDuration.toFixed(1)}s) // STRIKE COUNTERPART PYLON WITH LIVE SERA`;
+        world.events.push({
+          type: 'choir_node_primed',
+          x: hitNode.x,
+          z: hitNode.z,
+          enemyId: hitNode.id,
+        });
+      }
+      continue;
+    }
+
+    if (hitKind === 'enemy' && hitEnemy) {
+      proj.x = prevX + (nextX - prevX) * earliestT;
+      proj.z = prevZ + (nextZ - prevZ) * earliestT;
+      proj.hitTargetIds.push(hitEnemy.id);
+      proj.active = false;
+      if (proj.owner === 'player') {
+        world.player.lastWeaponShotOutcome = 'hit_enemy';
+        applyPlayerProjectileHitToEnemy(world, proj, hitEnemy);
+      } else {
+        // Echo projectile hit visual confirmation without duplicating live player damage
+        hitEnemy.hitFlashTimer = Math.max(hitEnemy.hitFlashTimer, 0.09);
+      }
+      continue;
+    }
+
+    proj.x = nextX;
+    proj.z = nextZ;
+    proj.distanceTraveled += stepDist;
+    proj.elapsed += dt;
+
+    if (Math.hypot(proj.x, proj.z) >= GAME_CONFIG.arena.radius - 0.15) {
+      proj.active = false;
+      if (proj.owner === 'player') {
+        world.player.lastWeaponShotOutcome = 'blocked_by_obstacle';
+      }
+      world.events.push({
+        type: 'pulse_impact_obstacle',
+        x: proj.x,
+        z: proj.z,
+        isHeavy: proj.isHeavy,
+        weaponId: 'pulsecaster',
+      });
+      continue;
+    }
+
+    if (proj.distanceTraveled >= proj.maxRange || proj.elapsed >= proj.maxLifetime) {
+      proj.active = false;
+      if (proj.owner === 'player' && world.player.lastWeaponShotOutcome === 'fired') {
+        world.player.lastWeaponShotOutcome = 'expired';
+      }
+    }
+  }
+
+  // Compact active projectiles in-place
+  let writeIdx = 0;
+  for (let i = 0; i < world.projectiles.length; i++) {
+    const p = world.projectiles[i];
+    if (p.active) {
+      world.projectiles[writeIdx++] = p;
+    }
+  }
+  world.projectiles.length = writeIdx;
+}
+
 function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): void {
   const p = world.player;
   if (p.actionState === 'dead') return;
@@ -5639,9 +6665,35 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   p.hurtFlashTimer = Math.max(0, p.hurtFlashTimer - dt);
   p.comboWindowTimer = Math.max(0, p.comboWindowTimer - dt);
   p.comboCooldownTimer = Math.max(0, p.comboCooldownTimer - dt);
+  p.weaponShotCooldownTimer = Math.max(0, p.weaponShotCooldownTimer - dt);
+  p.weaponSwitchCooldownTimer = Math.max(0, p.weaponSwitchCooldownTimer - dt);
   p.bufferTimer = Math.max(0, p.bufferTimer - dt);
   if (p.bufferTimer <= 0) {
     p.bufferedAction = 'none';
+  }
+
+  // Pulsecaster heat & overheat dissipation (cools whether equipped or holstered)
+  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+  if (p.weaponOverheated) {
+    p.weaponOverheatTimer = Math.max(0, p.weaponOverheatTimer - dt);
+    const lockDuration = Math.max(0.1, pulseCfg.overheatLockoutDuration);
+    const coolFraction = 1 - p.weaponOverheatTimer / lockDuration;
+    p.weaponHeat = Math.max(
+      pulseCfg.overheatClearHeatRatio * p.maxWeaponHeat,
+      p.maxWeaponHeat * (1 - coolFraction * (1 - pulseCfg.overheatClearHeatRatio))
+    );
+    if (p.weaponOverheatTimer <= 0) {
+      p.weaponOverheated = false;
+      p.weaponHeat = pulseCfg.overheatClearHeatRatio * p.maxWeaponHeat;
+      world.events.push({
+        type: 'pulse_overheat_cleared',
+        x: p.x,
+        z: p.z,
+        weaponId: 'pulsecaster',
+      });
+    }
+  } else if (p.weaponHeat > 0) {
+    p.weaponHeat = Math.max(0, p.weaponHeat - pulseCfg.heatCoolRatePerSec * dt);
   }
 
   // Passive Flux regeneration
@@ -5668,6 +6720,15 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       p.actionState = 'idle';
       p.chargeTime = 0;
     }
+  }
+
+  // Process explicit weapon switch or direct weapon slot selection before attack buffering
+  if (input.selectWeaponId && isValidWeaponId(input.selectWeaponId)) {
+    if (input.selectWeaponId !== p.equippedWeaponId) {
+      switchPlayerWeapon(world, input.selectWeaponId);
+    }
+  } else if (input.switchWeaponJustPressed) {
+    switchPlayerWeapon(world);
   }
 
   // Input buffering for responsive controls
@@ -5714,33 +6775,69 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     return;
   }
 
+  const isPulsecaster = p.equippedWeaponId === 'pulsecaster';
   const isNeutralState = p.actionState === 'idle' || p.actionState === 'moving';
   const canChainCancelRecovery =
+    !isPulsecaster &&
     p.actionState === 'light_recovery' &&
     p.comboIndex < 2 &&
     p.stateTimer <= GAME_CONFIG.player.lightAttack.chainCancelRemaining;
 
+  const heavyChargeThreshold = isPulsecaster
+    ? pulseCfg.heavyShot.chargeThreshold
+    : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+  const heavyMaxChargeTime = isPulsecaster
+    ? pulseCfg.heavyShot.maxChargeTime
+    : GAME_CONFIG.player.heavyAttack.maxChargeTime;
+
   // Dedicated heavy attack key (Right-click or E) can initiate from neutral or chain-cancel hits 1 & 2
   if (p.bufferedAction === 'heavy' && (isNeutralState || canChainCancelRecovery)) {
     p.bufferedAction = 'none';
-    p.actionState = 'charging_heavy';
-    p.chargeTime = GAME_CONFIG.player.heavyAttack.chargeThreshold;
-    p.currentAttackStartedAt = world.elapsedTime;
-    p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
-    world.events.push({
-      type: 'player_heavy_charge_ready',
-      x: p.x,
-      z: p.z,
-    });
-    startHeavyWindup(world, input, moveVec);
-    return;
+    if (isPulsecaster) {
+      if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
+        p.lastWeaponShotOutcome = 'overheated';
+      } else if (p.weaponShotCooldownTimer <= 0) {
+        p.actionState = 'charging_heavy';
+        p.chargeTime = heavyChargeThreshold;
+        p.currentAttackStartedAt = world.elapsedTime;
+        p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
+        world.events.push({
+          type: 'player_heavy_charge_ready',
+          x: p.x,
+          z: p.z,
+          weaponId: 'pulsecaster',
+        });
+        startPulsecasterHeavyWindup(world, input, moveVec);
+        return;
+      } else {
+        p.lastWeaponShotOutcome = 'cooldown';
+      }
+    } else {
+      p.actionState = 'charging_heavy';
+      p.chargeTime = heavyChargeThreshold;
+      p.currentAttackStartedAt = world.elapsedTime;
+      p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
+      world.events.push({
+        type: 'player_heavy_charge_ready',
+        x: p.x,
+        z: p.z,
+        weaponId: 'chrono_edge',
+      });
+      startHeavyWindup(world, input, moveVec);
+      return;
+    }
   }
 
   // Light attack & left-click hold charging logic
-  const canStartLightAttack =
-    p.comboCooldownTimer <= 0 && (isNeutralState || canChainCancelRecovery);
+  const canStartLightAttack = isPulsecaster
+    ? p.weaponShotCooldownTimer <= 0 && !p.weaponOverheated && isNeutralState
+    : p.comboCooldownTimer <= 0 && (isNeutralState || canChainCancelRecovery);
 
-  if (isNeutralState && p.comboCooldownTimer <= 0 && input.heavyHoldActive) {
+  if (
+    isNeutralState &&
+    (isPulsecaster ? p.weaponShotCooldownTimer <= 0 && !p.weaponOverheated : p.comboCooldownTimer <= 0) &&
+    input.heavyHoldActive
+  ) {
     if (p.bufferedAction === 'light') {
       p.actionState = 'charging_heavy';
       p.chargeTime = 0;
@@ -5748,10 +6845,19 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
       p.bufferedAction = 'none';
     }
-  } else if (p.bufferedAction === 'light' && canStartLightAttack) {
-    p.bufferedAction = 'none';
-    startLightAttack(world, input, moveVec);
-    return;
+  } else if (p.bufferedAction === 'light') {
+    if (isPulsecaster) {
+      if (isNeutralState) {
+        p.bufferedAction = 'none';
+        if (startPulsecasterLightShot(world, input, moveVec)) {
+          return;
+        }
+      }
+    } else if (canStartLightAttack) {
+      p.bufferedAction = 'none';
+      startLightAttack(world, input, moveVec);
+      return;
+    }
   }
 
   // State machine transitions
@@ -5778,13 +6884,14 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       const prevCharge = p.chargeTime;
       p.chargeTime += dt;
       if (
-        prevCharge < GAME_CONFIG.player.heavyAttack.chargeThreshold &&
-        p.chargeTime >= GAME_CONFIG.player.heavyAttack.chargeThreshold
+        prevCharge < heavyChargeThreshold &&
+        p.chargeTime >= heavyChargeThreshold
       ) {
         world.events.push({
           type: 'player_heavy_charge_ready',
           x: p.x,
           z: p.z,
+          weaponId: p.equippedWeaponId,
         });
       }
 
@@ -5808,14 +6915,22 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       }
 
       const released = input.heavyJustReleased || !input.heavyHoldActive;
-      const reachedMax = p.chargeTime >= GAME_CONFIG.player.heavyAttack.maxChargeTime;
+      const reachedMax = p.chargeTime >= heavyMaxChargeTime;
 
       if (released || reachedMax) {
-        if (p.chargeTime >= GAME_CONFIG.player.heavyAttack.chargeThreshold) {
-          startHeavyWindup(world, input, moveVec);
+        if (p.chargeTime >= heavyChargeThreshold) {
+          if (isPulsecaster) {
+            startPulsecasterHeavyWindup(world, input, moveVec);
+          } else {
+            startHeavyWindup(world, input, moveVec);
+          }
         } else {
           p.chargeTime = 0;
-          startLightAttack(world, input, moveVec);
+          if (isPulsecaster) {
+            startPulsecasterLightShot(world, input, moveVec);
+          } else {
+            startLightAttack(world, input, moveVec);
+          }
         }
       }
       break;
@@ -5823,36 +6938,58 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'light_windup': {
       p.stateTimer -= dt;
-      const lunge = GAME_CONFIG.player.lightAttack.lungeSpeed[p.comboIndex] ?? 3.5;
-      p.vx = Math.sin(p.rotationY) * lunge;
-      p.vz = Math.cos(p.rotationY) * lunge;
-      if (p.stateTimer <= 0) {
-        p.actionState = 'light_active';
-        p.stateTimer = GAME_CONFIG.player.lightAttack.active[p.comboIndex] ?? 0.12;
-        world.events.push({
-          type: 'player_light_swing',
-          x: p.x,
-          z: p.z,
-        });
-        performPlayerMeleeHitCheck(world, false);
+      if (isPulsecaster) {
+        p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * 0.52;
+        p.vz = moveVec.dirZ * GAME_CONFIG.player.moveSpeed * 0.52;
+        if (p.stateTimer <= 0) {
+          p.actionState = 'light_active';
+          p.stateTimer = pulseCfg.lightShot.active;
+          firePlayerPulsecasterProjectile(world, false);
+        }
+      } else {
+        const lunge = GAME_CONFIG.player.lightAttack.lungeSpeed[p.comboIndex] ?? 3.5;
+        p.vx = Math.sin(p.rotationY) * lunge;
+        p.vz = Math.cos(p.rotationY) * lunge;
+        if (p.stateTimer <= 0) {
+          p.actionState = 'light_active';
+          p.stateTimer = GAME_CONFIG.player.lightAttack.active[p.comboIndex] ?? 0.12;
+          world.events.push({
+            type: 'player_light_swing',
+            x: p.x,
+            z: p.z,
+            weaponId: 'chrono_edge',
+          });
+          performPlayerMeleeHitCheck(world, false);
+        }
       }
       break;
     }
 
     case 'light_active': {
       p.stateTimer -= dt;
-      p.vx = Math.sin(p.rotationY) * 1.5;
-      p.vz = Math.cos(p.rotationY) * 1.5;
-      performPlayerMeleeHitCheck(world, false);
-      if (p.stateTimer <= 0) {
-        p.actionState = 'light_recovery';
-        const recDuration = GAME_CONFIG.player.lightAttack.recovery[p.comboIndex] ?? 0.24;
-        p.stateTimer = recDuration;
-        if (p.comboIndex < 2) {
-          p.comboWindowTimer = recDuration + GAME_CONFIG.player.lightAttack.comboResetTime;
-        } else {
+      if (isPulsecaster) {
+        // Gentle recoil step
+        p.vx = -Math.sin(p.rotationY) * 0.65;
+        p.vz = -Math.cos(p.rotationY) * 0.65;
+        if (p.stateTimer <= 0) {
+          p.actionState = 'light_recovery';
+          p.stateTimer = pulseCfg.lightShot.recovery;
           p.comboWindowTimer = 0;
-          p.comboCooldownTimer = recDuration + GAME_CONFIG.player.lightAttack.finisherCooldown;
+        }
+      } else {
+        p.vx = Math.sin(p.rotationY) * 1.5;
+        p.vz = Math.cos(p.rotationY) * 1.5;
+        performPlayerMeleeHitCheck(world, false);
+        if (p.stateTimer <= 0) {
+          p.actionState = 'light_recovery';
+          const recDuration = GAME_CONFIG.player.lightAttack.recovery[p.comboIndex] ?? 0.24;
+          p.stateTimer = recDuration;
+          if (p.comboIndex < 2) {
+            p.comboWindowTimer = recDuration + GAME_CONFIG.player.lightAttack.comboResetTime;
+          } else {
+            p.comboWindowTimer = 0;
+            p.comboCooldownTimer = recDuration + GAME_CONFIG.player.lightAttack.finisherCooldown;
+          }
         }
       }
       break;
@@ -5861,7 +6998,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     case 'light_recovery': {
       p.stateTimer -= dt;
       const moveMult =
-        p.comboIndex === 2
+        !isPulsecaster && p.comboIndex === 2
           ? GAME_CONFIG.player.attackMoveSpeedMultiplier * 0.55
           : GAME_CONFIG.player.attackMoveSpeedMultiplier;
       p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * moveMult;
@@ -5877,34 +7014,57 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'heavy_windup': {
       p.stateTimer -= dt;
-      const lunge = GAME_CONFIG.player.heavyAttack.lungeSpeed;
-      p.vx = Math.sin(p.rotationY) * lunge;
-      p.vz = Math.cos(p.rotationY) * lunge;
-      if (p.stateTimer <= 0) {
-        p.actionState = 'heavy_active';
-        p.stateTimer = GAME_CONFIG.player.heavyAttack.active;
-        p.squashX = 1.24;
-        p.squashY = 0.78;
-        world.events.push({
-          type: 'player_heavy_swing',
-          x: p.x,
-          z: p.z,
-          isHeavy: true,
-        });
-        performPlayerMeleeHitCheck(world, true);
+      if (isPulsecaster) {
+        p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * 0.35;
+        p.vz = moveVec.dirZ * GAME_CONFIG.player.moveSpeed * 0.35;
+        if (p.stateTimer <= 0) {
+          p.actionState = 'heavy_active';
+          p.stateTimer = pulseCfg.heavyShot.active;
+          p.squashX = 1.16;
+          p.squashY = 0.86;
+          firePlayerPulsecasterProjectile(world, true);
+        }
+      } else {
+        const lunge = GAME_CONFIG.player.heavyAttack.lungeSpeed;
+        p.vx = Math.sin(p.rotationY) * lunge;
+        p.vz = Math.cos(p.rotationY) * lunge;
+        if (p.stateTimer <= 0) {
+          p.actionState = 'heavy_active';
+          p.stateTimer = GAME_CONFIG.player.heavyAttack.active;
+          p.squashX = 1.24;
+          p.squashY = 0.78;
+          world.events.push({
+            type: 'player_heavy_swing',
+            x: p.x,
+            z: p.z,
+            isHeavy: true,
+            weaponId: 'chrono_edge',
+          });
+          performPlayerMeleeHitCheck(world, true);
+        }
       }
       break;
     }
 
     case 'heavy_active': {
       p.stateTimer -= dt;
-      p.vx = Math.sin(p.rotationY) * 2.5;
-      p.vz = Math.cos(p.rotationY) * 2.5;
-      performPlayerMeleeHitCheck(world, true);
-      if (p.stateTimer <= 0) {
-        p.actionState = 'heavy_recovery';
-        p.stateTimer = GAME_CONFIG.player.heavyAttack.recovery;
-        p.isEmpoweredHeavy = false;
+      if (isPulsecaster) {
+        p.vx = -Math.sin(p.rotationY) * 1.35;
+        p.vz = -Math.cos(p.rotationY) * 1.35;
+        if (p.stateTimer <= 0) {
+          p.actionState = 'heavy_recovery';
+          p.stateTimer = pulseCfg.heavyShot.recovery;
+          p.isEmpoweredHeavy = false;
+        }
+      } else {
+        p.vx = Math.sin(p.rotationY) * 2.5;
+        p.vz = Math.cos(p.rotationY) * 2.5;
+        performPlayerMeleeHitCheck(world, true);
+        if (p.stateTimer <= 0) {
+          p.actionState = 'heavy_recovery';
+          p.stateTimer = GAME_CONFIG.player.heavyAttack.recovery;
+          p.isEmpoweredHeavy = false;
+        }
       }
       break;
     }
@@ -7757,6 +8917,7 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
   }
 
   advanceEchoSystem(world, dt);
+  advanceProjectiles(world, dt);
 
   // Tick Chapter II, III, IV mechanics
   advanceChoirSystem(world, dt);
@@ -7925,6 +9086,8 @@ export function stepWorld(world: WorldState, input: PlayerInputFrame, rawDt: num
   _scratchSubstepInput.echoRelayJustPressed = false;
   _scratchSubstepInput.gravityPinJustPressed = false;
   _scratchSubstepInput.echoCollapseJustPressed = false;
+  _scratchSubstepInput.switchWeaponJustPressed = false;
+  _scratchSubstepInput.selectWeaponId = null;
 
   for (let s = 0; s < slices; s++) {
     stepWorldSingleSlice(world, s === 0 ? input : _scratchSubstepInput, sliceDt);
@@ -8172,12 +9335,43 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
     playerActionState: p.actionState,
     chargeRatio: Math.min(
       1,
-      p.chargeTime / GAME_CONFIG.player.heavyAttack.chargeThreshold
+      p.chargeTime /
+        (p.equippedWeaponId === 'pulsecaster'
+          ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
+          : GAME_CONFIG.player.heavyAttack.chargeThreshold)
     ),
     comboStep:
-      p.actionState.startsWith('light_') || p.comboWindowTimer > 0
+      p.equippedWeaponId === 'chrono_edge' &&
+      (p.actionState.startsWith('light_') || p.comboWindowTimer > 0)
         ? p.comboIndex + 1
         : 0,
+    weapon: {
+      equippedWeaponId: p.equippedWeaponId,
+      label: getWeaponDefinition(p.equippedWeaponId).label,
+      shortLabel: getWeaponDefinition(p.equippedWeaponId).shortLabel,
+      roleLabel: getWeaponDefinition(p.equippedWeaponId).roleLabel,
+      heat: Math.round(p.weaponHeat),
+      maxHeat: p.maxWeaponHeat,
+      heatRatio: Math.max(0, Math.min(1, p.weaponHeat / Math.max(1, p.maxWeaponHeat))),
+      overheated: p.weaponOverheated,
+      overheatTimer: Number(p.weaponOverheatTimer.toFixed(2)),
+      shotCooldownTimer: Number(p.weaponShotCooldownTimer.toFixed(2)),
+      switchCooldownTimer: Number(p.weaponSwitchCooldownTimer.toFixed(2)),
+      canFire:
+        p.equippedWeaponId === 'chrono_edge'
+          ? p.comboCooldownTimer <= 0
+          : !p.weaponOverheated && p.weaponShotCooldownTimer <= 0,
+      canSwitch:
+        p.weaponSwitchCooldownTimer <= 0 &&
+        p.actionState !== 'light_windup' &&
+        p.actionState !== 'light_active' &&
+        p.actionState !== 'heavy_windup' &&
+        p.actionState !== 'heavy_active' &&
+        p.actionState !== 'dodging' &&
+        p.actionState !== 'parry_active',
+      activeProjectiles: world.projectiles.length,
+      lastShotOutcome: p.lastWeaponShotOutcome,
+    },
     enemiesAlive,
     totalEnemies,
     objectiveText,

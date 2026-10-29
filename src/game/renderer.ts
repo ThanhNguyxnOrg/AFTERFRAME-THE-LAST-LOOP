@@ -316,6 +316,16 @@ export class ArenaSceneRenderer {
   private impactRingTimer = 0;
   private impactRingDuration = 0.28;
 
+  // Phase 14 Pooled Pulsecaster Projectile Meshes
+  private projectilesGroup: THREE.Group;
+  private projectileRigs: Array<{
+    group: THREE.Group;
+    coreMesh: THREE.Mesh;
+    coreMat: THREE.MeshBasicMaterial;
+    haloMesh: THREE.Mesh;
+    haloMat: THREE.MeshBasicMaterial;
+  }> = [];
+
   // Chapter II-IV Arena Mechanics Meshes
   private choirNodesGroup: THREE.Group;
   private choirNodeRigs: Array<{
@@ -771,6 +781,46 @@ export class ArenaSceneRenderer {
     // Chrono Anchor Pressure Plate & Retractable Containment Barrier Assembly
     this.chronoPlateRig = createChronoPlateAndReceiverRig(!this.isHeadless);
     this.scene.add(this.chronoPlateRig.root);
+
+    // Phase 14: Pre-allocate Pooled Pulsecaster Projectile Meshes
+    this.projectilesGroup = new THREE.Group();
+    this.projectilesGroup.name = 'PulsecasterProjectilesPool';
+    this.scene.add(this.projectilesGroup);
+
+    const projCoreGeo = new THREE.CylinderGeometry(0.06, 0.085, 0.72, 10);
+    projCoreGeo.rotateX(Math.PI * 0.5);
+    const projHaloGeo = new THREE.CylinderGeometry(0.13, 0.16, 0.96, 10);
+    projHaloGeo.rotateX(Math.PI * 0.5);
+
+    const maxPooledProjectiles = GAME_CONFIG.weapons.pulsecaster.maxActiveProjectiles + 4;
+    for (let i = 0; i < maxPooledProjectiles; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xe0f2fe,
+        transparent: true,
+        opacity: 0.96,
+      });
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.48,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const coreMesh = new THREE.Mesh(projCoreGeo, coreMat);
+      const haloMesh = new THREE.Mesh(projHaloGeo, haloMat);
+      group.add(coreMesh);
+      group.add(haloMesh);
+      this.projectilesGroup.add(group);
+      this.projectileRigs.push({
+        group,
+        coreMesh,
+        coreMat,
+        haloMesh,
+        haloMat,
+      });
+    }
 
     // Phase 5: Temporal Resonance Target Reticle & Convergence Shockwave Ring
     this.resonanceMarkerGroup = new THREE.Group();
@@ -1554,6 +1604,39 @@ export class ArenaSceneRenderer {
           this.spawnBurst(0, 2.2, -2, 32, 0x22d3ee, 9.5);
           this.triggerImpactRing(0, 0.2, -2, 0xffffff, 0.5);
           break;
+        case 'weapon_switched':
+          this.spawnBurst(
+            ev.x,
+            1.15,
+            ev.z,
+            8,
+            ev.weaponId === 'pulsecaster' ? 0x38bdf8 : 0x22d3ee,
+            3.8
+          );
+          break;
+        case 'player_pulse_shot':
+          this.spawnBurst(ev.x, 1.15, ev.z, 8, 0x38bdf8, 5.2);
+          break;
+        case 'player_pulse_heavy_shot':
+          this.spawnBurst(ev.x, 1.15, ev.z, 16, 0xf59e0b, 7.4);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0x38bdf8, 0.22);
+          break;
+        case 'pulse_overheated':
+          this.spawnBurst(ev.x, 1.2, ev.z, 14, 0xef4444, 5.5);
+          break;
+        case 'pulse_overheat_cleared':
+          this.spawnBurst(ev.x, 1.15, ev.z, 8, 0x22d3ee, 3.6);
+          break;
+        case 'pulse_impact_obstacle':
+          this.spawnBurst(
+            ev.x,
+            1.1,
+            ev.z,
+            ev.isHeavy ? 14 : 8,
+            ev.isHeavy ? 0xf59e0b : 0x38bdf8,
+            ev.isHeavy ? 5.6 : 4.2
+          );
+          break;
       }
     }
   }
@@ -1990,6 +2073,42 @@ export class ArenaSceneRenderer {
     this.playerRig.slashArcMesh.rotation.z = 0;
     this.playerRig.slashArcPivot.rotation.set(0, 0, 0);
 
+    const isPulsecaster = p.equippedWeaponId === 'pulsecaster';
+
+    // Visually distinguish active weapon on Sera's rig
+    if (isPulsecaster) {
+      this.playerRig.bladeMesh.scale.set(0.72, 0.72, 0.28);
+      this.playerRig.bladeMaterial.emissiveIntensity = 0.42;
+      if (p.weaponOverheated) {
+        this.playerRig.pulsecasterMaterial.color.setHex(0xfca5a5);
+        this.playerRig.pulsecasterMaterial.emissive.setHex(0xef4444);
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.4;
+      } else if (p.actionState === 'charging_heavy' || p.actionState.startsWith('heavy_')) {
+        this.playerRig.pulsecasterMaterial.color.setHex(0xfde68a);
+        this.playerRig.pulsecasterMaterial.emissive.setHex(0xf59e0b);
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.5;
+      } else {
+        this.playerRig.pulsecasterMaterial.color.setHex(0xe0f2fe);
+        this.playerRig.pulsecasterMaterial.emissive.setHex(0x38bdf8);
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.15;
+      }
+      // Ready the left-forearm Pulsecaster forward in neutral/moving states
+      targetLeftArmX = -0.58 - swing * 0.18;
+      targetLeftArmY = 0.16;
+      targetLeftArmZ = -0.14;
+      targetLeftForearmX = -0.44;
+      targetRightArmX = 0.18 + swing * 0.24;
+      targetRightArmY = -0.12;
+      targetRightArmZ = 0.14;
+      targetRightForearmX = -0.48;
+    } else {
+      this.playerRig.bladeMesh.scale.set(1, 1, 1);
+      this.playerRig.bladeMaterial.emissiveIntensity = 1.72;
+      this.playerRig.pulsecasterMaterial.color.setHex(0x67e8f9);
+      this.playerRig.pulsecasterMaterial.emissive.setHex(0x06b6d4);
+      this.playerRig.pulsecasterMaterial.emissiveIntensity = 0.85;
+    }
+
     if (p.hurtFlashTimer > 0) {
       this.playerRig.bladeMaterial.emissive.setHex(0xef4444);
     } else if (p.actionState === 'charging_heavy' || p.actionState.startsWith('heavy_')) {
@@ -2000,25 +2119,41 @@ export class ArenaSceneRenderer {
 
     switch (p.actionState) {
       case 'charging_heavy': {
-        const ratio = Math.min(
-          1,
-          p.chargeTime / GAME_CONFIG.player.heavyAttack.chargeThreshold
-        );
-        targetBodyY = -0.05 * ratio;
-        targetBodyRotX = -0.06 * ratio;
-        targetPelvisY = -0.28 - ratio * 0.18;
-        targetTorsoRotX = -0.22 - ratio * 0.18;
-        targetTorsoRotY = -0.52 - ratio * 0.28;
-        targetTorsoRotZ = 0.12;
-        targetRightArmX = -1.18 - ratio * 0.52;
-        targetRightArmY = -0.68;
-        targetRightArmZ = 0.48;
-        targetRightForearmX = -0.64 - ratio * 0.24;
-        targetWeaponRotX = -0.26 * ratio;
-        targetLeftArmX = -0.58;
-        targetLeftArmY = 0.44;
-        targetLeftArmZ = -0.32;
-        targetLeftForearmX = -0.46;
+        const threshold = isPulsecaster
+          ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
+          : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+        const ratio = Math.min(1, p.chargeTime / Math.max(0.01, threshold));
+        if (isPulsecaster) {
+          targetBodyY = -0.04 * ratio;
+          targetBodyRotX = 0.06 * ratio;
+          targetPelvisY = 0.24 + ratio * 0.12;
+          targetTorsoRotX = 0.08 * ratio;
+          targetTorsoRotY = 0.36 + ratio * 0.14;
+          targetTorsoRotZ = -0.06;
+          targetLeftArmX = -1.28 - ratio * 0.14;
+          targetLeftArmY = -0.18;
+          targetLeftArmZ = -0.08;
+          targetLeftForearmX = -0.18;
+          targetRightArmX = 0.28;
+          targetRightArmY = -0.24;
+          targetRightArmZ = 0.22;
+        } else {
+          targetBodyY = -0.05 * ratio;
+          targetBodyRotX = -0.06 * ratio;
+          targetPelvisY = -0.28 - ratio * 0.18;
+          targetTorsoRotX = -0.22 - ratio * 0.18;
+          targetTorsoRotY = -0.52 - ratio * 0.28;
+          targetTorsoRotZ = 0.12;
+          targetRightArmX = -1.18 - ratio * 0.52;
+          targetRightArmY = -0.68;
+          targetRightArmZ = 0.48;
+          targetRightForearmX = -0.64 - ratio * 0.24;
+          targetWeaponRotX = -0.26 * ratio;
+          targetLeftArmX = -0.58;
+          targetLeftArmY = 0.44;
+          targetLeftArmZ = -0.32;
+          targetLeftForearmX = -0.46;
+        }
 
         this.playerRig.chargeRingMaterial.opacity = 0.42 + ratio * 0.54;
         this.playerRig.chargeRingMaterial.color.setHex(
@@ -2030,6 +2165,15 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'light_windup': {
+        if (isPulsecaster) {
+          targetBodyRotX = 0.06;
+          targetTorsoRotY = 0.34;
+          targetLeftArmX = -1.32;
+          targetLeftArmY = -0.18;
+          targetLeftArmZ = -0.08;
+          targetLeftForearmX = -0.16;
+          break;
+        }
         targetBodyRotX = 0.08;
         if (p.comboIndex === 0) {
           // Strike 1 windup: right shoulder coils back for high-to-low diagonal cleave
@@ -2082,6 +2226,15 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'light_active': {
+        if (isPulsecaster) {
+          targetBodyRotX = -0.06;
+          targetTorsoRotY = 0.38;
+          targetLeftArmX = -1.48;
+          targetLeftArmY = -0.16;
+          targetLeftArmZ = -0.06;
+          targetLeftForearmX = -0.08;
+          break;
+        }
         targetBodyRotX = 0.15;
         if (p.comboIndex === 0) {
           // Strike 1 active: crisp right-to-left diagonal slash
@@ -2154,6 +2307,13 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'light_recovery': {
+        if (isPulsecaster) {
+          targetTorsoRotY = 0.26;
+          targetLeftArmX = -1.16;
+          targetLeftArmY = -0.12;
+          targetLeftForearmX = -0.26;
+          break;
+        }
         const recDur = Math.max(
           0.01,
           GAME_CONFIG.player.lightAttack.recovery[p.comboIndex] ?? 0.18
@@ -2184,6 +2344,14 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'heavy_windup': {
+        if (isPulsecaster) {
+          targetBodyY = -0.05;
+          targetTorsoRotY = 0.44;
+          targetLeftArmX = -1.38;
+          targetLeftArmY = -0.22;
+          targetLeftForearmX = -0.14;
+          break;
+        }
         targetBodyY = -0.07;
         targetBodyRotX = -0.1;
         targetPelvisY = -0.36;
@@ -2206,6 +2374,14 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'heavy_active': {
+        if (isPulsecaster) {
+          targetBodyRotX = -0.12;
+          targetTorsoRotY = 0.42;
+          targetLeftArmX = -1.58;
+          targetLeftArmY = -0.18;
+          targetLeftForearmX = -0.06;
+          break;
+        }
         targetBodyY = -0.06;
         targetBodyRotX = 0.28;
         targetPelvisY = 0.44;
@@ -2234,6 +2410,13 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'heavy_recovery': {
+        if (isPulsecaster) {
+          targetTorsoRotY = 0.28;
+          targetLeftArmX = -1.12;
+          targetLeftArmY = -0.12;
+          targetLeftForearmX = -0.24;
+          break;
+        }
         const recDur = Math.max(0.01, GAME_CONFIG.player.heavyAttack.recovery);
         const recAlpha = Math.max(0, Math.min(1, p.stateTimer / recDur));
         targetBodyY = -0.05 * recAlpha;
@@ -2518,20 +2701,38 @@ export class ArenaSceneRenderer {
       this.echoRig.slashArcPivot.rotation.set(0, 0, 0);
       this.echoRig.weaponPivot.rotation.set(0, 0, 0);
 
+      const echoPulsecaster = actor.weaponId === 'pulsecaster';
+      if (echoPulsecaster) {
+        this.echoRig.bladeMesh.scale.set(0.72, 0.72, 0.28);
+      } else {
+        this.echoRig.bladeMesh.scale.set(1, 1, 1);
+      }
+
       switch (actor.actionState) {
         case 'charging_heavy': {
           const ratio = Math.min(1, actor.chargeRatio);
-          this.echoRig.torsoPivot.rotation.set(-0.2 - ratio * 0.16, -0.48 - ratio * 0.28, 0.1);
-          this.echoRig.rightArmPivot.rotation.set(-1.12 - ratio * 0.48, -0.66, 0.46);
-          this.echoRig.rightForearmPivot.rotation.set(-0.62 - ratio * 0.24, 0, 0);
-          this.echoRig.leftArmPivot.rotation.set(-0.54, 0.42, -0.3);
+          if (echoPulsecaster) {
+            this.echoRig.torsoPivot.rotation.set(0.08 * ratio, 0.36 + ratio * 0.14, -0.06);
+            this.echoRig.leftArmPivot.rotation.set(-1.28 - ratio * 0.14, -0.18, -0.08);
+            this.echoRig.leftForearmPivot.rotation.set(-0.18, 0, 0);
+            this.echoRig.rightArmPivot.rotation.set(0.28, -0.24, 0.22);
+          } else {
+            this.echoRig.torsoPivot.rotation.set(-0.2 - ratio * 0.16, -0.48 - ratio * 0.28, 0.1);
+            this.echoRig.rightArmPivot.rotation.set(-1.12 - ratio * 0.48, -0.66, 0.46);
+            this.echoRig.rightForearmPivot.rotation.set(-0.62 - ratio * 0.24, 0, 0);
+            this.echoRig.leftArmPivot.rotation.set(-0.54, 0.42, -0.3);
+          }
           this.echoRig.chargeRingMaterial.opacity = 0.45 + ratio * 0.5;
           this.echoRig.chargeRingMaterial.color.setHex(0x38bdf8);
           this.echoRig.chargeRingMesh.scale.setScalar(0.72 + ratio * 0.56);
           break;
         }
         case 'light_windup': {
-          if (actor.comboIndex === 1) {
+          if (echoPulsecaster) {
+            this.echoRig.torsoPivot.rotation.set(0.06, 0.34, 0);
+            this.echoRig.leftArmPivot.rotation.set(-1.32, -0.18, -0.08);
+            this.echoRig.leftForearmPivot.rotation.set(-0.16, 0, 0);
+          } else if (actor.comboIndex === 1) {
             this.echoRig.torsoPivot.rotation.set(-0.04, 0.52, -0.08);
             this.echoRig.rightArmPivot.rotation.set(-0.46, 0.86, -0.4);
             this.echoRig.rightForearmPivot.rotation.set(-0.6, 0, 0);
@@ -2543,6 +2744,12 @@ export class ArenaSceneRenderer {
           break;
         }
         case 'light_active': {
+          if (echoPulsecaster) {
+            this.echoRig.torsoPivot.rotation.set(-0.06, 0.38, 0);
+            this.echoRig.leftArmPivot.rotation.set(-1.48, -0.16, -0.06);
+            this.echoRig.leftForearmPivot.rotation.set(-0.08, 0, 0);
+            break;
+          }
           const dir = actor.comboIndex === 1 ? -1 : 1;
           const isFinisher = actor.comboIndex >= 2;
           this.echoRig.torsoPivot.rotation.set(0.2, dir * (isFinisher ? 0.82 : 0.56), -0.1 * dir);
@@ -2563,6 +2770,12 @@ export class ArenaSceneRenderer {
           break;
         }
         case 'light_recovery': {
+          if (echoPulsecaster) {
+            this.echoRig.torsoPivot.rotation.set(0, 0.26, 0);
+            this.echoRig.leftArmPivot.rotation.set(-1.16, -0.12, -0.06);
+            this.echoRig.leftForearmPivot.rotation.set(-0.26, 0, 0);
+            break;
+          }
           const dir = actor.comboIndex === 1 ? -1 : 1;
           this.echoRig.torsoPivot.rotation.set(0.12, dir * 0.36, 0);
           this.echoRig.rightArmPivot.rotation.set(-0.18, dir * 0.68, -0.22 * dir);
@@ -2570,12 +2783,24 @@ export class ArenaSceneRenderer {
           break;
         }
         case 'heavy_windup': {
+          if (echoPulsecaster) {
+            this.echoRig.torsoPivot.rotation.set(-0.05, 0.44, 0);
+            this.echoRig.leftArmPivot.rotation.set(-1.38, -0.22, -0.08);
+            this.echoRig.leftForearmPivot.rotation.set(-0.14, 0, 0);
+            break;
+          }
           this.echoRig.torsoPivot.rotation.set(-0.3, -0.68, 0.14);
           this.echoRig.rightArmPivot.rotation.set(-1.38, -0.96, 0.54);
           this.echoRig.rightForearmPivot.rotation.set(-0.66, 0, 0);
           break;
         }
         case 'heavy_active': {
+          if (echoPulsecaster) {
+            this.echoRig.torsoPivot.rotation.set(-0.12, 0.42, 0);
+            this.echoRig.leftArmPivot.rotation.set(-1.58, -0.18, -0.06);
+            this.echoRig.leftForearmPivot.rotation.set(-0.06, 0, 0);
+            break;
+          }
           this.echoRig.torsoPivot.rotation.set(0.36, 0.78, -0.18);
           this.echoRig.rightArmPivot.rotation.set(0.34, 1.44, -0.7);
           this.echoRig.rightForearmPivot.rotation.set(-0.08, 0, 0);
@@ -2586,6 +2811,12 @@ export class ArenaSceneRenderer {
           break;
         }
         case 'heavy_recovery': {
+          if (echoPulsecaster) {
+            this.echoRig.torsoPivot.rotation.set(0, 0.28, 0);
+            this.echoRig.leftArmPivot.rotation.set(-1.12, -0.12, -0.06);
+            this.echoRig.leftForearmPivot.rotation.set(-0.24, 0, 0);
+            break;
+          }
           this.echoRig.torsoPivot.rotation.set(0.2, 0.46, -0.1);
           this.echoRig.rightArmPivot.rotation.set(0.08, 0.88, -0.38);
           this.echoRig.rightForearmPivot.rotation.set(-0.18, 0, 0);
@@ -2611,10 +2842,17 @@ export class ArenaSceneRenderer {
         }
         default: {
           this.echoRig.bodyGroup.rotation.x = echoMoving ? 0.07 : 0;
-          this.echoRig.rightArmPivot.rotation.set(-0.2 + echoSwing * 0.44, 0.14, 0.05);
-          this.echoRig.rightForearmPivot.rotation.set(-0.3, 0, 0);
-          this.echoRig.leftArmPivot.rotation.set(-0.1 - echoSwing * 0.46, -0.06, -0.05);
-          this.echoRig.leftForearmPivot.rotation.set(-0.24, 0, 0);
+          if (echoPulsecaster) {
+            this.echoRig.leftArmPivot.rotation.set(-0.58 - echoSwing * 0.18, 0.16, -0.14);
+            this.echoRig.leftForearmPivot.rotation.set(-0.44, 0, 0);
+            this.echoRig.rightArmPivot.rotation.set(0.18 + echoSwing * 0.24, -0.12, 0.14);
+            this.echoRig.rightForearmPivot.rotation.set(-0.48, 0, 0);
+          } else {
+            this.echoRig.rightArmPivot.rotation.set(-0.2 + echoSwing * 0.44, 0.14, 0.05);
+            this.echoRig.rightForearmPivot.rotation.set(-0.3, 0, 0);
+            this.echoRig.leftArmPivot.rotation.set(-0.1 - echoSwing * 0.46, -0.06, -0.05);
+            this.echoRig.leftForearmPivot.rotation.set(-0.24, 0, 0);
+          }
           break;
         }
       }
@@ -3854,6 +4092,37 @@ export class ArenaSceneRenderer {
         if (rig.torsoPivot) {
           rig.torsoPivot.rotation.x -= 0.18 * hitRatio;
         }
+      }
+    }
+
+    // Phase 14: Sync Pooled Pulsecaster Projectile Meshes
+    const projs = world.projectiles ?? [];
+    for (let i = 0; i < this.projectileRigs.length; i++) {
+      const pRig = this.projectileRigs[i];
+      const proj = projs[i];
+      if (!proj || !proj.active) {
+        pRig.group.visible = false;
+        continue;
+      }
+      pRig.group.visible = true;
+      pRig.group.position.set(proj.x, 1.15, proj.z);
+      pRig.group.rotation.y = proj.rotationY;
+      if (proj.isHeavy) {
+        pRig.group.scale.set(1.35, 1.35, 1.75);
+        pRig.coreMat.color.setHex(0xffffff);
+        pRig.haloMat.color.setHex(
+          proj.owner === 'echo'
+            ? 0x38bdf8
+            : proj.isEmpowered
+              ? 0xf59e0b
+              : 0x22d3ee
+        );
+        pRig.haloMat.opacity = 0.68;
+      } else {
+        pRig.group.scale.set(1, 1, 1);
+        pRig.coreMat.color.setHex(proj.owner === 'echo' ? 0xbae6fd : 0xe0f2fe);
+        pRig.haloMat.color.setHex(proj.owner === 'echo' ? 0x38bdf8 : 0x22d3ee);
+        pRig.haloMat.opacity = 0.48;
       }
     }
 

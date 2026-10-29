@@ -32,6 +32,7 @@ import {
   startCampaignRun,
   startPracticeStandardRun,
   stepWorld,
+  switchPlayerWeapon,
   toggleTutorialHints,
   transitionCampaignToBoss,
 } from './game/simulation.ts';
@@ -43,6 +44,7 @@ import type {
   ChronicleLoomEndingId,
   GameAppState,
   HudSnapshot,
+  WeaponId,
   WorldState,
 } from './game/types.ts';
 
@@ -504,6 +506,10 @@ export default function App() {
     inputRef.current?.triggerEchoCollapse();
   }, []);
 
+  const handleSwitchWeapon = useCallback(() => {
+    inputRef.current?.triggerSwitchWeapon();
+  }, []);
+
   const handleTouchMoveHold = useCallback(
     (dx: number, dz: number, pointerId?: number | null) => {
       inputRef.current?.setTouchMoveHold(dx, dz, pointerId);
@@ -619,6 +625,8 @@ export default function App() {
     let prevBossCoreExposed = world.boss?.coreExposed ?? false;
     let prevBossHp = world.boss?.hp ?? 0;
     let prevCommsId = world.comms.active?.id ?? null;
+    let prevEquippedWeapon = world.player.equippedWeaponId;
+    let prevWeaponOverheated = world.player.weaponOverheated;
 
     const handleVisibilityResume = () => {
       if (!document.hidden) {
@@ -718,6 +726,8 @@ export default function App() {
         currBossCoreExposed !== prevBossCoreExposed ||
         currBossHp !== prevBossHp ||
         currCommsId !== prevCommsId ||
+        world.player.equippedWeaponId !== prevEquippedWeapon ||
+        world.player.weaponOverheated !== prevWeaponOverheated ||
         Math.ceil(world.player.integrity) !== Math.ceil(prevIntegrity);
 
       if (stateChanged || now - lastHudSyncTime >= 100) {
@@ -750,6 +760,8 @@ export default function App() {
         prevBossCoreExposed = currBossCoreExposed;
         prevBossHp = currBossHp;
         prevCommsId = currCommsId;
+        prevEquippedWeapon = world.player.equippedWeaponId;
+        prevWeaponOverheated = world.player.weaponOverheated;
         document.body.dataset.state = world.appState;
         document.body.dataset.encounter = world.encounterMode;
         document.body.dataset.runMode = world.run.mode;
@@ -816,6 +828,10 @@ export default function App() {
         ) => { x: number; z: number; pointerId: number | null };
         saveCampaignProgress: () => string | null;
         loadCampaignProgress: () => WorldState;
+        switchWeapon: (targetWeaponId?: WeaponId) => {
+          switched: boolean;
+          equippedWeaponId: WeaponId;
+        };
         setCameraSettings: (s: Partial<CameraSettings>) => CameraSettings;
         togglePerfOverlay: () => boolean;
       };
@@ -1029,6 +1045,16 @@ export default function App() {
         setHud(extractHudSnapshot(world));
         return world;
       },
+      switchWeapon: (targetWeaponId?: WeaponId) => {
+        const switched = switchPlayerWeapon(world, targetWeaponId);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          switched,
+          equippedWeaponId: world.player.equippedWeaponId,
+        };
+      },
       setCameraSettings: (s: Partial<CameraSettings>) => {
         const updated = input.setCameraSettings(s);
         setCameraSettings(updated);
@@ -1153,6 +1179,7 @@ export default function App() {
           onParry={handleParry}
           onGravityPin={handleGravityPin}
           onEchoCollapse={handleEchoCollapse}
+          onSwitchWeapon={handleSwitchWeapon}
           onSelectLoomEnding={handleSelectLoomEnding}
           onRestoreCampaign={handleRestoreSavedCampaign}
           onTouchMoveHold={handleTouchMoveHold}

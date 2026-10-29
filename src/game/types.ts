@@ -2,6 +2,62 @@ export type GameAppState = 'title' | 'playing' | 'paused' | 'gameover';
 
 export type GameOutcome = 'none' | 'victory' | 'defeat';
 
+export type WeaponId = 'chrono_edge' | 'pulsecaster';
+
+export type WeaponAttackMode = 'melee' | 'ranged';
+
+export type WeaponShotOutcome =
+  | 'none'
+  | 'fired'
+  | 'hit'
+  | 'guarded'
+  | 'blocked_obstacle'
+  | 'overheated'
+  | 'on_cooldown';
+
+export interface WeaponDefinition {
+  id: WeaponId;
+  name: string;
+  shortLabel: string;
+  subtitle: string;
+  description: string;
+  attackMode: WeaponAttackMode;
+  primaryLabel: string;
+  secondaryLabel: string;
+  effectiveRange: number;
+  switchCooldown: number;
+}
+
+export interface ProjectileState {
+  id: string;
+  owner: 'player' | 'echo';
+  weaponId: WeaponId;
+  kind: 'pulse_light' | 'pulse_heavy';
+  x: number;
+  z: number;
+  prevX: number;
+  prevZ: number;
+  originX: number;
+  originZ: number;
+  dirX: number;
+  dirZ: number;
+  rotationY: number;
+  speed: number;
+  maxRange: number;
+  traveledDistance: number;
+  radius: number;
+  damage: number;
+  staggerDamage: number;
+  isHeavy: boolean;
+  isEmpowered: boolean;
+  createdAt: number;
+  attackStartedAt: number;
+  attackMarkId: number | null;
+  echoClipId?: number;
+  echoEventId?: string;
+  active: boolean;
+}
+
 export type PlayerActionState =
   | 'idle'
   | 'moving'
@@ -72,6 +128,7 @@ export type TutorialStep =
 export interface BossCheckpointState {
   chapter?: CampaignChapterId;
   bossId?: BossId;
+  equippedWeaponId?: WeaponId;
   integrity: number;
   maxIntegrity: number;
   flux: number;
@@ -136,6 +193,7 @@ export interface SavedCampaignProgressSnapshot {
   pendingNextChapter: CampaignChapterId | null;
   bossCheckpoint: BossCheckpointState | null;
   selectedEnding: ChronicleLoomEndingId | null;
+  equippedWeaponId?: WeaponId;
 }
 
 export interface PersistedActiveCampaignState {
@@ -144,6 +202,7 @@ export interface PersistedActiveCampaignState {
   pendingNextChapter: CampaignChapterId | null;
   bossCheckpoint: BossCheckpointState | null;
   selectedEnding: ChronicleLoomEndingId | null;
+  equippedWeaponId?: WeaponId;
 }
 
 export interface PersistedCampaignSaveV2 {
@@ -228,7 +287,13 @@ export type EnemyAIState =
 
 export type EchoLifecycleState = 'idle' | 'recording' | 'ready' | 'playback' | 'finished';
 
-export type EchoRecordedActionType = 'light_swing' | 'heavy_swing' | 'dodge' | 'parry';
+export type EchoRecordedActionType =
+  | 'light_swing'
+  | 'heavy_swing'
+  | 'pulse_shot'
+  | 'pulse_charged_shot'
+  | 'dodge'
+  | 'parry';
 
 export type InteractionPermissionPolicy = 'echo_only' | 'player_only' | 'player_or_echo';
 
@@ -242,6 +307,7 @@ export interface EchoSample {
   comboIndex: number;
   chargeRatio: number;
   isEmpoweredHeavy: boolean;
+  weaponId?: WeaponId;
 }
 
 export interface EchoRecordedActionEvent {
@@ -254,6 +320,7 @@ export interface EchoRecordedActionEvent {
   rotationY: number;
   comboIndex: number;
   isEmpoweredHeavy?: boolean;
+  weaponId?: WeaponId;
 }
 
 export interface EchoClip {
@@ -275,6 +342,7 @@ export interface EchoActorState {
   comboIndex: number;
   chargeRatio: number;
   isEmpoweredHeavy: boolean;
+  weaponId: WeaponId;
   elapsed: number;
   duration: number;
 }
@@ -643,10 +711,12 @@ export interface PlayerInputFrame {
   dodgeJustPressed: boolean;
   parryJustPressed: boolean;
   cameraDragJustStarted?: boolean; // Cancels a pending mouse charge without turning it into an attack
-  echoRecordJustPressed?: boolean; // [R] Start / Stop Echo recording
-  echoPlayJustPressed?: boolean; // [T] Start Echo playback
+  switchWeaponJustPressed?: boolean; // [Tab / Z] Toggle active weapon between Chrono Edge and Pulsecaster
+  selectWeaponId?: WeaponId | null; // Explicit weapon selection (e.g., [1] Chrono Edge, [2] Pulsecaster)
+  echoRecordJustPressed?: boolean; // [T] Start / Stop Echo recording
+  echoPlayJustPressed?: boolean; // [Y] Start Echo playback
   echoClearJustPressed?: boolean; // [C] Discard / Clear Echo
-  echoRelayJustPressed?: boolean; // [F] Teleport live Sera to safe landing position adjacent to active Echo
+  echoRelayJustPressed?: boolean; // [V] Teleport live Sera to safe landing position adjacent to active Echo
   gravityPinJustPressed?: boolean; // [G] Chapter III+ Gravity Pin crowd-control field
   echoCollapseJustPressed?: boolean; // [X] Chapter IV+ Echo Collapse tactical detonation
 }
@@ -662,6 +732,14 @@ export interface PlayerState {
   ghostIntegrity: number; // Delayed trailing bar
   flux: number;
   maxFlux: number;
+  equippedWeaponId: WeaponId;
+  weaponHeat: number;
+  maxWeaponHeat: number;
+  weaponOverheated: boolean;
+  weaponOverheatTimer: number;
+  weaponShotCooldownTimer: number;
+  weaponSwitchCooldownTimer: number;
+  lastWeaponShotOutcome: WeaponShotOutcome;
   actionState: PlayerActionState;
   stateTimer: number;
   comboIndex: number; // 0, 1, 2
@@ -824,7 +902,13 @@ export interface CombatEvent {
     | 'echo_collapse_rejected'
     | 'campaign_chapter_advanced'
     | 'chronicle_loom_ending_selected'
-    | 'comms_transmission_started';
+    | 'comms_transmission_started'
+    | 'weapon_switched'
+    | 'player_pulse_shot'
+    | 'player_pulse_heavy_shot'
+    | 'pulse_overheated'
+    | 'pulse_overheat_cleared'
+    | 'pulse_impact_obstacle';
   x: number;
   z: number;
   originX?: number;
@@ -835,6 +919,7 @@ export interface CombatEvent {
   isHeavy?: boolean;
   isGuarded?: boolean;
   enemyId?: string;
+  weaponId?: WeaponId;
   echoAction?: EchoRecordedActionType;
   relayStatus?: RelayEvaluationStatus;
   resonanceOutcome?: ResonanceOutcome;
@@ -870,6 +955,8 @@ export interface WorldState {
   hitstopTimer: number;
   cameraTrauma: number;
   player: PlayerState;
+  projectiles: ProjectileState[];
+  nextProjectileId: number;
   enemies: EnemyState[];
   boss: BossState | null;
   obstacles: ObstacleCollider[];
@@ -928,6 +1015,23 @@ export interface HudSnapshot {
   playerActionState: PlayerActionState;
   chargeRatio: number;
   comboStep: number;
+  weapon: {
+    equippedId: WeaponId;
+    name: string;
+    shortLabel: string;
+    attackMode: WeaponAttackMode;
+    primaryLabel: string;
+    secondaryLabel: string;
+    effectiveRange: number;
+    heat: number;
+    maxHeat: number;
+    overheated: boolean;
+    overheatTimer: number;
+    shotCooldownTimer: number;
+    lastShotOutcome: WeaponShotOutcome;
+    statusLabel: string;
+    activeProjectiles: number;
+  };
   enemiesAlive: number;
   totalEnemies: number;
   objectiveText: string;

@@ -252,8 +252,111 @@ export class SoundEngine {
         case 'comms_transmission_started':
           this.playCommsTransmission();
           break;
+        case 'weapon_switched':
+          this.playWeaponSwitch(ev.weaponId === 'pulsecaster');
+          break;
+        case 'player_pulse_shot':
+          this.playPulsecasterShot(false);
+          break;
+        case 'player_pulse_heavy_shot':
+          this.playPulsecasterShot(true);
+          break;
+        case 'pulse_overheated':
+          this.playPulsecasterOverheat();
+          break;
+        case 'pulse_overheat_cleared':
+          this.playPulsecasterCooldownReady();
+          break;
+        case 'pulse_impact_obstacle':
+          this.playPulsecasterObstacleImpact();
+          break;
       }
     }
+  }
+
+  private playWeaponSwitch(toPulsecaster: boolean): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(toPulsecaster ? 420 : 620, now);
+    osc.frequency.exponentialRampToValueAtTime(toPulsecaster ? 740 : 380, now + 0.08);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+
+  private playPulsecasterShot(isHeavy: boolean): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isHeavy ? 'sawtooth' : 'triangle';
+    osc.frequency.setValueAtTime(this.pitchJitter(isHeavy ? 680 : 820), now);
+    osc.frequency.exponentialRampToValueAtTime(isHeavy ? 140 : 240, now + (isHeavy ? 0.19 : 0.11));
+    gain.gain.setValueAtTime(isHeavy ? 0.15 : 0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + (isHeavy ? 0.2 : 0.12));
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + (isHeavy ? 0.21 : 0.13));
+  }
+
+  private playPulsecasterOverheat(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(480, now);
+    osc.frequency.linearRampToValueAtTime(180, now + 0.26);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.29);
+  }
+
+  private playPulsecasterCooldownReady(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(540, now);
+    osc.frequency.exponentialRampToValueAtTime(860, now + 0.12);
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  }
+
+  private playPulsecasterObstacleImpact(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(this.pitchJitter(360), now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.07);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
   }
 
   private playLightSwing(): void {

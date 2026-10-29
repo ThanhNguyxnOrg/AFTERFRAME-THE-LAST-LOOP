@@ -39,9 +39,11 @@ import {
   startPracticeBossRun,
   startPracticeStandardRun,
   stepWorld,
+  switchPlayerWeapon,
   toggleTutorialHints,
   transitionCampaignToBoss,
   triggerNarrativeTransmission,
+  getWeaponDefinition,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -7338,5 +7340,313 @@ test('Phase 11.1: Campaign persistence sanitization, deduplication, malformed JS
     'continuity',
   ]);
 });
+
+test('Phase 14.1: Weapon definitions, switching, charge cancellation safety, and recovery preservation', () => {
+  const world = createInitialWorld('playing');
+  world.enemies = [];
+
+  assert.equal(world.player.equippedWeaponId, 'chrono_edge');
+  assert.equal(getWeaponDefinition('chrono_edge').label, 'CHRONO EDGE');
+  assert.equal(getWeaponDefinition('pulsecaster').label, 'PULSECASTER');
+
+  // 1. Toggle weapon in neutral state
+  assert.equal(switchPlayerWeapon(world), true);
+  assert.equal(world.player.equippedWeaponId, 'pulsecaster');
+  assert.ok(world.events.some((e) => e.type === 'weapon_switched' && e.weaponId === 'pulsecaster'));
+
+  // Cooldown prevents instant double-toggle on the exact same frame
+  assert.equal(switchPlayerWeapon(world), false);
+  stepWorld(world, createEmptyInput(0), 0.2);
+
+  // 2. Switching during heavy charge cancels the charge cleanly without firing an unintended attack
+  const holdInput = createEmptyInput(0);
+  holdInput.lightAttackJustPressed = true;
+  holdInput.heavyHoldActive = true;
+  stepWorld(world, holdInput, 0.02);
+  assert.equal(world.player.actionState, 'charging_heavy');
+
+  const chargeSwitchInput = createEmptyInput(0);
+  chargeSwitchInput.heavyHoldActive = true;
+  chargeSwitchInput.switchWeaponJustPressed = true;
+  stepWorld(world, chargeSwitchInput, 0.05);
+
+  assert.equal(world.player.equippedWeaponId, 'chrono_edge');
+  assert.equal(world.player.actionState, 'idle');
+  assert.equal(world.player.chargeTime, 0);
+  assert.equal(world.projectiles.length, 0, 'Canceling charge via weapon switch must not fire a projectile');
+
+  stepWorld(world, createEmptyInput(0), 0.2);
+
+  // 3. Committed active/windup/dodge/parry frames reject weapon switch
+  const lightInp = createEmptyInput(0);
+  lightInp.lightAttackJustPressed = true;
+  stepWorld(world, lightInp, 0.02);
+  assert.equal(world.player.actionState, 'light_windup');
+  assert.equal(switchPlayerWeapon(world), false, 'Cannot switch weapon mid-windup');
+  assert.equal(world.player.equippedWeaponId, 'chrono_edge');
+
+  // Advance into light_recovery and verify switching preserves recovery stateTimer (no animation-cancel exploit)
+  for (let i = 0; i < 12; i++) {
+    stepWorld(world, createEmptyInput(0), 0.02);
+    if (world.player.actionState === 'light_recovery') break;
+  }
+  assert.equal(world.player.actionState, 'light_recovery');
+  const remRecovery = world.player.stateTimer;
+  assert.ok(remRecovery > 0);
+  assert.equal(switchPlayerWeapon(world, 'pulsecaster'), true);
+  assert.equal(world.player.equippedWeaponId, 'pulsecaster');
+  assert.equal(world.player.actionState, 'light_recovery', 'Switching during recovery must not cancel recovery state');
+  assert.equal(world.player.stateTimer, remRecovery, 'Recovery timer must remain intact');
+});
+
+test('Phase 14.2: Pulsecaster projectile hit, obstacle blocking, range expiry, and heat/overheat economy', () => {
+  const world = createInitialWorld('playing');
+  world.obstacles = [];
+  const target = world.enemies[0];
+  world.enemies = [target];
+
+  // Position player at (0, 6) aiming North (Math.PI) at target at (0, 0)
+  world.player.x = 0;
+  world.player.z = 6;
+  world.player.rotationY = Math.PI;
+  world.player.flux = 50;
+  target.x = 0;
+  target.z = 0;
+  target.hp = 100;
+  target.maxHp = 100;
+  target.aiState = 'idle';
+  target.cooldownTimer = 99;
+
+  assert.equal(switchPlayerWeapon(world, 'pulsecaster'), true);
+  stepWorld(world, createEmptyInput(Math.PI), 0.2);
+
+  const fluxBeforeLight = world.player.flux;
+  const fireLight = createEmptyInput(Math.PI);
+  fireLight.lightAttackJustPressed = true;
+  stepWorld(world, fireLight, 0.02);
+
+  // Step through windup and projectile travel (~0.35s)
+  for (let i = 0; i < 20; i++) {
+    target.x = 0;
+    target.z = 0;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+
+  assert.equal(
+    target.hp,
+    100 - GAME_CONFIG.weapons.pulsecaster.lightShot.damage,
+    'Pulsecaster primary bolt deals configured damage on hit'
+  );
+  assert.equal(world.player.lastWeaponShotOutcome, 'hit_enemy');
+  assert.ok(
+    world.player.flux >= fluxBeforeLight,
+    'Pulsecaster primary bolt must not drain Chrono Flux'
+  );
+  assert.equal(world.projectiles.length, 0, 'Projectile is removed after hitting target');
+
+  // 2. Solid obstacle between player and target blocks the projectile
+  const hpBeforeBlocked = target.hp;
+  world.obstacles = [
+    {
+      id: 'test-pillar',
+      x: 0,
+      z: 3,
+      radius: 1.1,
+      height: 3.0,
+      label: 'Pillar',
+      disabled: false,
+    },
+  ];
+  stepWorld(world, createEmptyInput(Math.PI), 0.35);
+
+  const fireBlocked = createEmptyInput(Math.PI);
+  fireBlocked.lightAttackJustPressed = true;
+  stepWorld(world, fireBlocked, 0.02);
+
+  let sawObstacleImpact = false;
+  for (let i = 0; i < 18; i++) {
+    target.x = 0;
+    target.z = 0;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    if (world.events.some((e) => e.type === 'pulse_impact_obstacle')) {
+      sawObstacleImpact = true;
+    }
+  }
+  assert.equal(sawObstacleImpact, true, 'Obstacle impact event emitted');
+  assert.equal(world.player.lastWeaponShotOutcome, 'blocked_by_obstacle');
+  assert.equal(target.hp, hpBeforeBlocked, 'Blocked projectile deals 0 damage to enemy behind obstacle');
+
+  // 3. Repeated firing builds heat to 100, triggers overheat lockout, blocks shots while overheated, and cools down
+  world.obstacles = [];
+  world.enemies = [];
+  world.player.weaponHeat = 88;
+  world.player.weaponOverheated = false;
+  world.player.weaponShotCooldownTimer = 0;
+
+  const overheatShot = createEmptyInput(Math.PI);
+  overheatShot.lightAttackJustPressed = true;
+  stepWorld(world, overheatShot, 0.02);
+  for (let i = 0; i < 6; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(world.player.weaponOverheated, true, 'Reaching 100 heat triggers overheat lockout');
+  assert.ok(world.player.weaponOverheatTimer > 0);
+
+  // Attempting to fire while overheated is rejected
+  const blockedByOverheat = createEmptyInput(Math.PI);
+  blockedByOverheat.lightAttackJustPressed = true;
+  stepWorld(world, blockedByOverheat, 0.02);
+  assert.equal(world.player.lastWeaponShotOutcome, 'overheated');
+
+  // Advance past overheat lockout duration (1.6s) and verify recovery
+  for (let i = 0; i < 85; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(world.player.weaponOverheated, false, 'Overheat lockout clears after timer expires');
+  assert.ok(world.player.weaponHeat < 50);
+});
+
+test('Phase 14.3: Pulsecaster respects Boss frontal armor, Choir harmonic shield & pylons, and Echo weapon recording/replay', () => {
+  // 1. HELIX-04 frontal armor mitigates frontal Pulsecaster shots, while exposed core takes 1.5x
+  const helixWorld = createBossWorld('playing', true);
+  const helix = helixWorld.boss!;
+  const helixEnemy = helixWorld.enemies[0];
+  helixWorld.obstacles = [];
+  helixWorld.player.x = 0;
+  helixWorld.player.z = 5.5;
+  helixWorld.player.rotationY = Math.PI;
+  helix.x = 0;
+  helix.z = 0;
+  helix.rotationY = 0; // Facing South toward player at (0, 5.5)
+  helixEnemy.x = 0;
+  helixEnemy.z = 0;
+  helixEnemy.rotationY = 0;
+  helix.cooldownTimer = 99;
+
+  switchPlayerWeapon(helixWorld, 'pulsecaster');
+  stepWorld(helixWorld, createEmptyInput(Math.PI), 0.2);
+
+  const hpStart = helixEnemy.hp;
+  const frontShot = createEmptyInput(Math.PI);
+  frontShot.lightAttackJustPressed = true;
+  stepWorld(helixWorld, frontShot, 0.02);
+  for (let i = 0; i < 16; i++) {
+    helix.x = 0;
+    helix.z = 0;
+    helixEnemy.x = 0;
+    helixEnemy.z = 0;
+    stepWorld(helixWorld, createEmptyInput(Math.PI), 0.02);
+  }
+  const guardedDmg = hpStart - helixEnemy.hp;
+  const expectedGuarded = Math.max(
+    1,
+    Math.round(
+      GAME_CONFIG.weapons.pulsecaster.lightShot.damage * GAME_CONFIG.boss.frontalArmorDamageMult
+    )
+  );
+  assert.equal(guardedDmg, expectedGuarded, 'HELIX-04 frontal armor dampens frontal Pulsecaster shot');
+
+  // Now expose HELIX-04 core and fire again
+  helix.coreExposed = true;
+  helix.aiState = 'recovery';
+  helixEnemy.aiState = 'recovery';
+  helix.stateTimer = 5;
+  helixEnemy.stateTimer = 5;
+  stepWorld(helixWorld, createEmptyInput(Math.PI), 0.35);
+
+  const hpBeforeExposed = helixEnemy.hp;
+  const exposedShot = createEmptyInput(Math.PI);
+  exposedShot.lightAttackJustPressed = true;
+  stepWorld(helixWorld, exposedShot, 0.02);
+  for (let i = 0; i < 16; i++) {
+    helix.x = 0;
+    helix.z = 0;
+    helixEnemy.x = 0;
+    helixEnemy.z = 0;
+    stepWorld(helixWorld, createEmptyInput(Math.PI), 0.02);
+  }
+  const exposedDmg = hpBeforeExposed - helixEnemy.hp;
+  assert.ok(exposedDmg > guardedDmg * 3, 'Exposed Chrono Core takes amplified Pulsecaster damage');
+
+  // 2. Echo records Pulsecaster charged shot, replays it even after live Sera switches back to Chrono Edge,
+  // primes Resonance on HELIX-04, and live Sera triggers Convergence with Pulsecaster Charged Lance!
+  helix.coreExposed = false;
+  helix.aiState = 'idle';
+  helixEnemy.aiState = 'idle';
+  helixWorld.player.weaponHeat = 0;
+  helixWorld.player.flux = 100;
+  helixWorld.resonance.cooldownTimer = 0;
+  helixWorld.resonance.activeMark = null;
+
+  const recStart = createEmptyInput(Math.PI);
+  recStart.echoRecordJustPressed = true;
+  stepWorld(helixWorld, recStart, 0.02);
+
+  const recHeavy = createEmptyInput(Math.PI);
+  recHeavy.heavyAttackJustPressed = true;
+  stepWorld(helixWorld, recHeavy, 0.02);
+  for (let i = 0; i < 20; i++) {
+    helix.x = 0;
+    helix.z = 0;
+    helixEnemy.x = 0;
+    helixEnemy.z = 0;
+    stepWorld(helixWorld, createEmptyInput(Math.PI), 0.02);
+  }
+  const recStop = createEmptyInput(Math.PI);
+  recStop.echoRecordJustPressed = true;
+  stepWorld(helixWorld, recStop, 0.02);
+
+  assert.equal(helixWorld.echo.clip?.events[0]?.type, 'pulse_charged_shot');
+  assert.equal(helixWorld.echo.clip?.events[0]?.weaponId, 'pulsecaster');
+
+  // Switch live Sera to Chrono Edge before starting Echo replay
+  assert.equal(switchPlayerWeapon(helixWorld, 'chrono_edge'), true);
+  stepWorld(helixWorld, createEmptyInput(Math.PI), 0.2);
+
+  const playInp = createEmptyInput(Math.PI);
+  playInp.echoPlayJustPressed = true;
+  stepWorld(helixWorld, playInp, 0.02);
+
+  for (let i = 0; i < 12; i++) {
+    helix.x = 0;
+    helix.z = 0;
+    helixEnemy.x = 0;
+    helixEnemy.z = 0;
+    stepWorld(helixWorld, createEmptyInput(Math.PI), 0.02);
+  }
+
+  assert.equal(
+    helixWorld.echo.activeActor?.weaponId,
+    'pulsecaster',
+    'Echo preserves recorded pulsecaster weaponId even after live Sera switched to chrono_edge'
+  );
+  assert.notEqual(
+    helixWorld.resonance.activeMark,
+    null,
+    'Echo pulse_charged_shot primes Temporal Resonance on HELIX-04'
+  );
+
+  // Switch live Sera back to Pulsecaster and fire a Charged Lance [E] to trigger Convergence!
+  assert.equal(switchPlayerWeapon(helixWorld, 'pulsecaster'), true);
+  stepWorld(helixWorld, createEmptyInput(Math.PI), 0.2);
+
+  const convBefore = helixWorld.resonance.convergenceCount;
+  const liveLance = createEmptyInput(Math.PI);
+  liveLance.heavyAttackJustPressed = true;
+  stepWorld(helixWorld, liveLance, 0.02);
+  for (let i = 0; i < 20; i++) {
+    helix.x = 0;
+    helix.z = 0;
+    helixEnemy.x = 0;
+    helixEnemy.z = 0;
+    stepWorld(helixWorld, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(
+    helixWorld.resonance.convergenceCount,
+    convBefore + 1,
+    'Live Pulsecaster Charged Lance triggers Temporal Convergence on marked target'
+  );
+});
+
 
 

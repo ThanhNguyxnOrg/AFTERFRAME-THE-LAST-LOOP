@@ -25,6 +25,7 @@ interface GameHudProps {
   onParry?: () => void;
   onGravityPin?: () => void;
   onEchoCollapse?: () => void;
+  onSwitchWeapon?: () => void;
   onSelectLoomEnding?: (ending: ChronicleLoomEndingId) => void;
   onRestoreCampaign?: () => void;
   onTouchMoveHold?: (dx: number, dz: number, pointerId?: number | null) => void;
@@ -150,6 +151,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   onParry,
   onGravityPin,
   onEchoCollapse,
+  onSwitchWeapon,
   onSelectLoomEnding,
   onRestoreCampaign,
   onTouchMoveHold,
@@ -557,10 +559,109 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
           </div>
 
-          {/* Interactive Combat Deck */}
+          {/* Interactive Combat & Weapon Deck */}
           <div className="pt-1 border-t border-slate-800/80">
+            {/* Active Weapon Selector + Pulsecaster Heat Readout */}
+            <div
+              data-testid="weapon-hud-module"
+              data-equipped-weapon={hud.weapon.equippedWeaponId}
+              data-overheated={hud.weapon.overheated ? 'true' : 'false'}
+              className="mb-1"
+            >
+              <div className="flex items-center justify-between gap-1.5 mb-0.5 pointer-events-auto">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    aria-hidden="true"
+                    className={`inline-block w-1.5 h-1.5 shrink-0 ${
+                      hud.weapon.overheated
+                        ? 'bg-red-500 animate-pulse'
+                        : hud.weapon.equippedWeaponId === 'pulsecaster'
+                          ? 'bg-sky-400 rounded-full'
+                          : 'bg-cyan-400 rotate-45'
+                    }`}
+                  />
+                  <span
+                    data-testid="weapon-active-label"
+                    className={`text-[9px] sm:text-[10px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
+                      hud.weapon.overheated
+                        ? 'text-red-400'
+                        : hud.weapon.equippedWeaponId === 'pulsecaster'
+                          ? 'text-sky-300'
+                          : 'text-cyan-300'
+                    }`}
+                  >
+                    {hud.weapon.label}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="weapon-switch-btn"
+                  aria-label={`Switch Weapon [Tab / Z] (Currently ${hud.weapon.label})`}
+                  title="Switch Weapon [Tab / Z / 1-2]"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onSwitchWeapon?.();
+                  }}
+                  className={`px-1.5 py-0.5 text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    hud.weapon.equippedWeaponId === 'pulsecaster'
+                      ? 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-400 text-sky-200'
+                      : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
+                  }`}
+                >
+                  <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
+                  {hud.weapon.equippedWeaponId === 'chrono_edge' ? '→ PULSE' : '→ EDGE'}
+                </button>
+              </div>
+
+              {/* Pulsecaster Heat & Status Bar (Always mounted in DOM for deterministic telemetry) */}
+              <div
+                data-testid="pulsecaster-heat-bar"
+                data-heat={hud.weapon.heat}
+                data-max-heat={hud.weapon.maxHeat}
+                data-overheated={hud.weapon.overheated ? 'true' : 'false'}
+                className="flex items-center gap-1.5"
+              >
+                <div className="relative h-1 flex-1 bg-[#05080c] border border-slate-800 overflow-hidden">
+                  <div
+                    className={`absolute inset-y-0 left-0 transition-all duration-75 ${
+                      hud.weapon.overheated
+                        ? 'bg-red-500'
+                        : hud.weapon.heat >= 70
+                          ? 'bg-amber-400'
+                          : 'bg-sky-400'
+                    }`}
+                    style={{ width: `${Math.round(hud.weapon.heatRatio * 100)}%` }}
+                  />
+                </div>
+                <span
+                  data-testid="weapon-status-readout"
+                  className={`text-[8px] sm:text-[9px] font-mono-tabular uppercase whitespace-nowrap shrink-0 ${
+                    hud.weapon.overheated
+                      ? 'text-red-400 font-bold'
+                      : hud.weapon.equippedWeaponId === 'pulsecaster'
+                        ? hud.weapon.heat >= 70
+                          ? 'text-amber-300 font-semibold'
+                          : 'text-sky-300'
+                        : 'text-slate-400'
+                  }`}
+                >
+                  {hud.weapon.overheated
+                    ? `OVERHEAT ${hud.weapon.overheatTimer.toFixed(1)}s`
+                    : hud.weapon.equippedWeaponId === 'pulsecaster'
+                      ? `HEAT ${hud.weapon.heat}%`
+                      : `COMBO ${hud.comboStep}/3`}
+                </span>
+              </div>
+            </div>
+
             <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-400 mb-1">
-              <span className="whitespace-nowrap shrink-0">COMBO {hud.comboStep}/3</span>
+              <span className="whitespace-nowrap shrink-0">
+                {hud.weapon.equippedWeaponId === 'pulsecaster'
+                  ? 'RANGED · 12.5m'
+                  : `COMBO ${hud.comboStep}/3`}
+              </span>
               <span
                 className={`whitespace-nowrap shrink-0 ${
                   resonance.primed && resonance.canConverge
@@ -573,8 +674,12 @@ export const GameHud: React.FC<GameHudProps> = ({
                 {resonance.primed && resonance.canConverge
                   ? 'CONVERGE [E] 15 FLUX'
                   : isEmpoweredReady
-                    ? 'HEAVY [E] EMPOWERED'
-                    : 'HEAVY [E] 25 FLUX'}
+                    ? hud.weapon.equippedWeaponId === 'pulsecaster'
+                      ? 'LANCE [E] EMPOWERED'
+                      : 'HEAVY [E] EMPOWERED'
+                    : hud.weapon.equippedWeaponId === 'pulsecaster'
+                      ? 'LANCE [E] 20 FLUX'
+                      : 'HEAVY [E] 25 FLUX'}
               </span>
             </div>
 
@@ -1950,7 +2055,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         {/* Quiet Desktop Shortcut Reminder (Only shown when Tutorial Banner is hidden or completed, never duplicated or clipped on mobile) */}
         {(!hud.tutorial.enabled || hud.tutorial.step === 'completed') && (
           <div className="hidden sm:block text-center text-[10px] font-mono-tabular text-slate-400/90 bg-[#090d14]/85 border border-slate-800/80 px-3 py-1 whitespace-nowrap">
-            [WASD] Move · [Tap LMB/F] Light · [E] Heavy · [Space] Dodge · [Q] Parry · [T] Record · [Y] Replay · [V] Relay · [H] Hints · [P] Pause
+            [WASD] Move · [Tab/Z] Weapon · [Tap LMB/F] Light · [E] Heavy · [Space] Dodge · [Q] Parry · [T] Record · [Y] Replay · [V] Relay · [H] Hints · [P] Pause
           </div>
         )}
       </div>

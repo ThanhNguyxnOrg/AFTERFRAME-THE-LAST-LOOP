@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from './config.ts';
-import type { CameraSettings, PlayerInputFrame } from './types.ts';
+import type { CameraSettings, PlayerInputFrame, WeaponId } from './types.ts';
 import { wrapAngle } from './simulation.ts';
 
 const CAMERA_SETTINGS_STORAGE_KEY = 'afterframe_camera_settings_v1';
@@ -7,6 +7,7 @@ const CAMERA_SETTINGS_STORAGE_KEY = 'afterframe_camera_settings_v1';
 export class InputController {
   private heldKeys = new Set<string>();
   private justPressedKeys = new Set<string>();
+  private pendingSelectWeaponId: WeaponId | null = null;
   private leftMouseDown = false;
   private leftMouseJustPressed = false;
   private leftMouseJustReleased = false;
@@ -257,6 +258,7 @@ export class InputController {
   public clearAllInputs(): void {
     this.heldKeys.clear();
     this.justPressedKeys.clear();
+    this.pendingSelectWeaponId = null;
     this.leftMouseDown = false;
     this.leftMouseJustPressed = false;
     this.leftMouseJustReleased = false;
@@ -384,6 +386,10 @@ export class InputController {
     if (code === 'Digit3' && this.onSelectLoomEndingCallback?.('continuity')) {
       e.preventDefault();
       return;
+    }
+
+    if (code === 'Tab') {
+      e.preventDefault();
     }
 
     if (!this.heldKeys.has(code)) {
@@ -558,6 +564,15 @@ export class InputController {
       this.justPressedKeys.has('ShiftRight');
 
     const parryJustPressed = this.justPressedKeys.has('KeyQ');
+    const switchWeaponJustPressed =
+      this.justPressedKeys.has('Tab') || this.justPressedKeys.has('KeyZ');
+    const selectWeaponId: WeaponId | null =
+      this.pendingSelectWeaponId ??
+      (this.justPressedKeys.has('Digit1')
+        ? 'chrono_edge'
+        : this.justPressedKeys.has('Digit2')
+          ? 'pulsecaster'
+          : null);
     const echoRecordJustPressed = this.justPressedKeys.has('KeyT');
     const echoPlayJustPressed = this.justPressedKeys.has('KeyY');
     const echoClearJustPressed = this.justPressedKeys.has('KeyC');
@@ -568,6 +583,7 @@ export class InputController {
 
     // Clear one-shot edge triggers
     this.justPressedKeys.clear();
+    this.pendingSelectWeaponId = null;
     this.leftMouseJustPressed = false;
     this.leftMouseJustReleased = false;
     this.rightMouseJustPressed = false;
@@ -585,6 +601,8 @@ export class InputController {
       dodgeJustPressed,
       parryJustPressed,
       cameraDragJustStarted,
+      switchWeaponJustPressed,
+      selectWeaponId,
       echoRecordJustPressed,
       echoPlayJustPressed,
       echoClearJustPressed,
@@ -592,6 +610,14 @@ export class InputController {
       gravityPinJustPressed,
       echoCollapseJustPressed,
     };
+  }
+
+  public triggerSwitchWeapon(): void {
+    this.justPressedKeys.add('KeyZ');
+  }
+
+  public triggerSelectWeapon(weaponId: WeaponId): void {
+    this.pendingSelectWeaponId = weaponId;
   }
 
   public triggerEchoRecord(): void {

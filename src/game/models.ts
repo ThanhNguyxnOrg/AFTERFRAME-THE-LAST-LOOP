@@ -29,6 +29,8 @@ export interface PlayerRig {
   rightFootPivot: THREE.Group;
   bladeMesh: THREE.Mesh;
   bladeMaterial: THREE.MeshStandardMaterial;
+  pulsecasterCoreMesh: THREE.Mesh;
+  pulsecasterMaterial: THREE.MeshStandardMaterial;
   slashArcPivot: THREE.Group;
   slashArcMesh: THREE.Mesh;
   slashArcMaterial: THREE.MeshBasicMaterial;
@@ -1827,9 +1829,17 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
   pulsecasterHousing.rotation.x = 0.35;
   leftForearmPivot.add(pulsecasterHousing);
 
+  const pulsecasterMaterial = new THREE.MeshStandardMaterial({
+    color: 0x67e8f9,
+    emissive: 0x06b6d4,
+    emissiveIntensity: 1.55,
+    roughness: 0.14,
+    metalness: 0.55,
+  });
+
   const pulsecasterCore = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.046, 0.046, 0.27, 12),
-    chronoCyanMat
+    new THREE.CylinderGeometry(0.048, 0.048, 0.28, 12),
+    pulsecasterMaterial
   );
   pulsecasterCore.rotation.x = Math.PI / 2 + 0.35;
   pulsecasterCore.position.set(-0.05, -0.16, 0.17);
@@ -2044,6 +2054,8 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
     rightFootPivot: rightLeg.footPivot,
     bladeMesh,
     bladeMaterial,
+    pulsecasterCoreMesh: pulsecasterCore,
+    pulsecasterMaterial,
     slashArcPivot,
     slashArcMesh,
     slashArcMaterial,

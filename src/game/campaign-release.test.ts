@@ -19,6 +19,7 @@ import {
   startCampaignChapterSelect,
   startCampaignRun,
   startPracticeStandardRun,
+  switchPlayerWeapon,
   transitionCampaignToBoss,
   triggerBossDefeat,
 } from './simulation.ts';
@@ -563,4 +564,42 @@ test('13. Touch camera orbit rotates aimYaw and aimPitch smoothly, respects sens
   assert.equal(input.isTouchCameraActive(), false);
   assert.deepEqual(input.getTouchMoveHold(), { x: 0, z: 0, pointerId: null });
 });
+
+test('14. Equipped weapon (chrono_edge / pulsecaster) persists across v2 campaign checkpoints, full reload, and legacy save fallback', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  assert.equal(switchPlayerWeapon(world, 'pulsecaster'), true);
+  transitionCampaignToBoss(world, true, 'chapter_2_choir');
+
+  assert.equal(world.player.equippedWeaponId, 'pulsecaster');
+  assert.equal(world.run.bossCheckpoint?.equippedWeaponId, 'pulsecaster');
+
+  const savedJson = serializeCampaignProgress(world);
+  const reloaded = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloaded, savedJson), true);
+  assert.equal(reloaded.run.savedCampaignSnapshot?.equippedWeaponId, 'pulsecaster');
+  assert.equal(
+    reloaded.run.savedCampaignSnapshot?.bossCheckpoint?.equippedWeaponId,
+    'pulsecaster'
+  );
+
+  // Continue Campaign restores pulsecaster
+  assert.equal(restoreSavedCampaignProgress(reloaded), true);
+  assert.equal(reloaded.player.equippedWeaponId, 'pulsecaster');
+
+  // Switch to chrono_edge mid-fight, then retryBossFromCheckpoint restores checkpoint's pulsecaster
+  reloaded.player.equippedWeaponId = 'chrono_edge';
+  assert.equal(retryBossFromCheckpoint(reloaded, true), true);
+  assert.equal(reloaded.player.equippedWeaponId, 'pulsecaster');
+
+  // Legacy v2 payload without equippedWeaponId safely defaults to chrono_edge
+  const legacyV2 = JSON.parse(savedJson);
+  delete legacyV2.activeCampaign.equippedWeaponId;
+  delete legacyV2.activeCampaign.bossCheckpoint.equippedWeaponId;
+  const fallbackWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(fallbackWorld, JSON.stringify(legacyV2)), true);
+  assert.equal(restoreSavedCampaignProgress(fallbackWorld), true);
+  assert.equal(fallbackWorld.player.equippedWeaponId, 'chrono_edge');
+});
+
 
