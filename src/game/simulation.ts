@@ -35,6 +35,7 @@ import type {
   ObstacleCollider,
   PersistedActiveCampaignState,
   PersistedCampaignSaveV2,
+  PersistedWeaponProgressionState,
   PlayerInputFrame,
   PlayerState,
   PressurePlateState,
@@ -51,11 +52,18 @@ import type {
   SavedCampaignProgressSnapshot,
   TutorialState,
   TutorialStep,
+  UpgradeEquipOutcome,
+  UpgradePurchaseOutcome,
   VerticalSliceRunState,
   VerticalSliceStage,
   WeaponAttackMode,
   WeaponDefinition,
   WeaponId,
+  WeaponProgressionRewardDefinition,
+  WeaponProgressionRewardId,
+  WeaponProgressionState,
+  WeaponUpgradeDefinition,
+  WeaponUpgradeId,
   WorldState,
 } from './types.ts';
 
@@ -94,6 +102,488 @@ export function isValidWeaponId(value: unknown): value is WeaponId {
 
 export function getWeaponDefinition(weaponId: WeaponId): WeaponDefinition {
   return GAME_CONFIG.weapons[weaponId];
+}
+
+export const VALID_WEAPON_UPGRADE_IDS: readonly WeaponUpgradeId[] = [
+  'edge_breaker_cleave',
+  'edge_harmonic_conductor',
+  'pulse_thermal_sink',
+  'pulse_overcharge_condenser',
+];
+
+export const VALID_PROGRESSION_REWARD_IDS: readonly WeaponProgressionRewardId[] = [
+  'prologue_calibration_teach',
+  'prologue_calibration_test',
+  'prologue_calibration_combine',
+  'prologue_bay_proxies_cleared',
+  'chapter_1_helix_defeated',
+  'chapter_2_choir_defeated',
+  'chapter_3_curator_defeated',
+  'chapter_4_matron_defeated',
+];
+
+export function isValidWeaponUpgradeId(value: unknown): value is WeaponUpgradeId {
+  return (
+    typeof value === 'string' &&
+    (VALID_WEAPON_UPGRADE_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function isValidProgressionRewardId(
+  value: unknown
+): value is WeaponProgressionRewardId {
+  return (
+    typeof value === 'string' &&
+    (VALID_PROGRESSION_REWARD_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function getWeaponUpgradeDefinition(
+  upgradeId: WeaponUpgradeId
+): WeaponUpgradeDefinition {
+  return GAME_CONFIG.weapons.upgrades[upgradeId];
+}
+
+export function getAllWeaponUpgradeDefinitions(): WeaponUpgradeDefinition[] {
+  return VALID_WEAPON_UPGRADE_IDS.map((id) => GAME_CONFIG.weapons.upgrades[id]);
+}
+
+export function getProgressionRewardDefinition(
+  rewardId: WeaponProgressionRewardId
+): WeaponProgressionRewardDefinition {
+  return GAME_CONFIG.weapons.progression.rewards[rewardId];
+}
+
+export function createInitialWeaponProgressionState(): WeaponProgressionState {
+  return {
+    memoryFragments: 0,
+    claimedRewardIds: [],
+    purchasedUpgrades: [],
+    equippedUpgrades: {
+      chrono_edge: null,
+      pulsecaster: null,
+    },
+    lastPurchaseOutcome: null,
+    lastEquipOutcome: null,
+    lastActionMessage: 'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
+  };
+}
+
+export function clonePersistedWeaponProgressionState(
+  prog: PersistedWeaponProgressionState | undefined | null
+): PersistedWeaponProgressionState {
+  if (!prog) {
+    return {
+      memoryFragments: 0,
+      claimedRewardIds: [],
+      purchasedUpgrades: [],
+      equippedUpgrades: {
+        chrono_edge: null,
+        pulsecaster: null,
+      },
+    };
+  }
+  return {
+    memoryFragments: prog.memoryFragments,
+    claimedRewardIds: [...prog.claimedRewardIds],
+    purchasedUpgrades: [...prog.purchasedUpgrades],
+    equippedUpgrades: {
+      chrono_edge: prog.equippedUpgrades?.chrono_edge ?? null,
+      pulsecaster: prog.equippedUpgrades?.pulsecaster ?? null,
+    },
+  };
+}
+
+export function cloneWeaponProgressionState(
+  prog: WeaponProgressionState | undefined | null
+): WeaponProgressionState {
+  if (!prog) {
+    return createInitialWeaponProgressionState();
+  }
+  return {
+    ...clonePersistedWeaponProgressionState(prog),
+    lastPurchaseOutcome: prog.lastPurchaseOutcome ?? null,
+    lastEquipOutcome: prog.lastEquipOutcome ?? null,
+    lastActionMessage:
+      prog.lastActionMessage ||
+      'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
+  };
+}
+
+export function sanitizePersistedWeaponProgressionState(
+  raw: unknown
+): PersistedWeaponProgressionState {
+  const fallback = clonePersistedWeaponProgressionState(null);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return fallback;
+  }
+  const obj = raw as Record<string, unknown>;
+  const memoryFragments =
+    typeof obj.memoryFragments === 'number' &&
+    Number.isFinite(obj.memoryFragments) &&
+    obj.memoryFragments >= 0
+      ? Math.min(999, Math.floor(obj.memoryFragments))
+      : 0;
+
+  const claimedRewardIds: WeaponProgressionRewardId[] = [];
+  if (Array.isArray(obj.claimedRewardIds)) {
+    for (let i = 0; i < obj.claimedRewardIds.length; i++) {
+      const id = obj.claimedRewardIds[i];
+      if (isValidProgressionRewardId(id) && !claimedRewardIds.includes(id)) {
+        claimedRewardIds.push(id);
+      }
+    }
+  }
+
+  const purchasedUpgrades: WeaponUpgradeId[] = [];
+  if (Array.isArray(obj.purchasedUpgrades)) {
+    for (let i = 0; i < obj.purchasedUpgrades.length; i++) {
+      const id = obj.purchasedUpgrades[i];
+      if (isValidWeaponUpgradeId(id) && !purchasedUpgrades.includes(id)) {
+        purchasedUpgrades.push(id);
+      }
+    }
+  }
+
+  const equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null> = {
+    chrono_edge: null,
+    pulsecaster: null,
+  };
+  if (
+    obj.equippedUpgrades &&
+    typeof obj.equippedUpgrades === 'object' &&
+    !Array.isArray(obj.equippedUpgrades)
+  ) {
+    const eqObj = obj.equippedUpgrades as Record<string, unknown>;
+    for (let i = 0; i < VALID_WEAPON_IDS.length; i++) {
+      const wId = VALID_WEAPON_IDS[i];
+      const candidate = eqObj[wId];
+      if (
+        isValidWeaponUpgradeId(candidate) &&
+        purchasedUpgrades.includes(candidate) &&
+        getWeaponUpgradeDefinition(candidate).weaponId === wId
+      ) {
+        equippedUpgrades[wId] = candidate;
+      }
+    }
+  }
+
+  return {
+    memoryFragments,
+    claimedRewardIds,
+    purchasedUpgrades,
+    equippedUpgrades,
+  };
+}
+
+export function getEquippedWeaponUpgrade(
+  world: WorldState,
+  weaponId: WeaponId
+): WeaponUpgradeId | null {
+  const prog = world.progression;
+  if (!prog || !prog.equippedUpgrades) return null;
+  const candidate = prog.equippedUpgrades[weaponId] ?? null;
+  if (
+    candidate &&
+    isValidWeaponUpgradeId(candidate) &&
+    prog.purchasedUpgrades.includes(candidate) &&
+    getWeaponUpgradeDefinition(candidate).weaponId === weaponId
+  ) {
+    return candidate;
+  }
+  return null;
+}
+
+export function getEffectiveConvergenceFluxCost(world: WorldState): number {
+  const baseCost = GAME_CONFIG.resonance.fluxCost;
+  if (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor') {
+    return Math.max(
+      0,
+      baseCost + GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.convergenceFluxCostDelta
+    );
+  }
+  return baseCost;
+}
+
+export function getEffectiveConvergencePostureBonus(world: WorldState): number {
+  const baseBonus = GAME_CONFIG.resonance.postureBonus;
+  if (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor') {
+    return (
+      baseBonus + GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.convergencePostureBonus
+    );
+  }
+  return baseBonus;
+}
+
+export function syncResonanceUpgradeParameters(world: WorldState): void {
+  if (!world.resonance) return;
+  world.resonance.fluxCost = getEffectiveConvergenceFluxCost(world);
+  world.resonance.postureBonus = getEffectiveConvergencePostureBonus(world);
+  if (!world.resonance.activeMark) {
+    world.resonance.syncWindow =
+      GAME_CONFIG.resonance.syncWindow +
+      (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor'
+        ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.syncWindowBonus
+        : 0);
+  }
+}
+
+export function canModifyWeaponUpgrades(world: WorldState): boolean {
+  if (!world || !world.player) return false;
+  if (world.outcome === 'defeat' || world.player.actionState === 'dead') {
+    return false;
+  }
+  if (world.run?.chapter === 'chapter_5_loom' && world.run?.stage === 'chronicle_loom') {
+    return false;
+  }
+  const st = world.player.actionState;
+  const isCommittedAction =
+    st === 'light_windup' ||
+    st === 'light_active' ||
+    st === 'heavy_windup' ||
+    st === 'heavy_active' ||
+    st === 'dodging' ||
+    st === 'parry_active';
+  if (isCommittedAction) {
+    return false;
+  }
+  return true;
+}
+
+export function grantProgressionReward(
+  world: WorldState,
+  rewardId: WeaponProgressionRewardId
+): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  if (world.run.mode !== 'campaign' || world.run.isChapterReplay) {
+    return false;
+  }
+  if (!isValidProgressionRewardId(rewardId)) {
+    return false;
+  }
+  if (world.progression.claimedRewardIds.includes(rewardId)) {
+    return false;
+  }
+
+  const def = getProgressionRewardDefinition(rewardId);
+  world.progression.claimedRewardIds.push(rewardId);
+  world.progression.memoryFragments += def.fragments;
+  const fragText = `+${def.fragments} MEMORY FRAGMENT${def.fragments > 1 ? 'S' : ''}`;
+  world.progression.lastActionMessage = `${fragText} RECOVERED · ${def.label}`;
+  world.run.checkpointNotice = `${fragText} (${world.progression.memoryFragments} TOTAL) · ${def.label}`;
+  world.run.checkpointNoticeTimer = Math.max(world.run.checkpointNoticeTimer, 4.5);
+
+  world.events.push({
+    type: 'progression_reward_granted',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: def.fragments,
+    rewardId,
+  });
+
+  return true;
+}
+
+export function purchaseWeaponUpgrade(
+  world: WorldState,
+  upgradeId: unknown,
+  autoEquip = true
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+
+  if (!isValidWeaponUpgradeId(upgradeId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID WEAPON UPGRADE ID';
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+    });
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT MODIFY WEAPON UPGRADES DURING COMMITTED COMBAT OR DEFEAT';
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      upgradeId,
+    });
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  const def = getWeaponUpgradeDefinition(upgradeId);
+
+  if (prog.purchasedUpgrades.includes(upgradeId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${def.name} IS ALREADY UNLOCKED`;
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId: def.weaponId,
+      upgradeId,
+    });
+    return { success: false, outcome: 'already_owned' };
+  }
+
+  if (prog.memoryFragments < def.cost) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${def.cost} REQUIRED)`;
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId: def.weaponId,
+      upgradeId,
+    });
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+
+  prog.memoryFragments -= def.cost;
+  prog.purchasedUpgrades.push(upgradeId);
+  prog.lastPurchaseOutcome = 'purchased';
+
+  if (autoEquip) {
+    prog.equippedUpgrades[def.weaponId] = upgradeId;
+    prog.lastEquipOutcome = 'equipped';
+    prog.lastActionMessage = `UNLOCKED & EQUIPPED ${def.name} ON ${getWeaponDefinition(def.weaponId).name}`;
+  } else {
+    prog.lastActionMessage = `UNLOCKED ${def.name} (-${def.cost} MEMORY FRAGMENTS)`;
+  }
+
+  syncResonanceUpgradeParameters(world);
+
+  world.events.push({
+    type: 'weapon_upgrade_purchased',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: def.cost,
+    weaponId: def.weaponId,
+    upgradeId,
+  });
+
+  if (autoEquip) {
+    world.events.push({
+      type: 'weapon_upgrade_equipped',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId: def.weaponId,
+      upgradeId,
+    });
+  }
+
+  return { success: true, outcome: 'purchased' };
+}
+
+export function equipWeaponUpgrade(
+  world: WorldState,
+  weaponId: unknown,
+  upgradeId: unknown
+): { success: boolean; outcome: UpgradeEquipOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+
+  if (!isValidWeaponId(weaponId)) {
+    prog.lastEquipOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID TARGET WEAPON SLOT';
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+    });
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastEquipOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT MODIFY WEAPON UPGRADES DURING COMMITTED COMBAT OR DEFEAT';
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId,
+    });
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  if (upgradeId === null || upgradeId === undefined) {
+    prog.equippedUpgrades[weaponId] = null;
+    prog.lastEquipOutcome = 'unequipped';
+    prog.lastActionMessage = `${getWeaponDefinition(weaponId).name} RESTORED TO STANDARD FACTORY CORE`;
+    syncResonanceUpgradeParameters(world);
+    world.events.push({
+      type: 'weapon_upgrade_equipped',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId,
+      upgradeId: null,
+    });
+    return { success: true, outcome: 'unequipped' };
+  }
+
+  if (!isValidWeaponUpgradeId(upgradeId)) {
+    prog.lastEquipOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID WEAPON UPGRADE SELECTION';
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId,
+    });
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  const def = getWeaponUpgradeDefinition(upgradeId);
+  if (def.weaponId !== weaponId) {
+    prog.lastEquipOutcome = 'incompatible_weapon';
+    prog.lastActionMessage = `${def.name} IS ONLY COMPATIBLE WITH ${getWeaponDefinition(def.weaponId).name}`;
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId,
+      upgradeId,
+    });
+    return { success: false, outcome: 'incompatible_weapon' };
+  }
+
+  if (!prog.purchasedUpgrades.includes(upgradeId)) {
+    prog.lastEquipOutcome = 'not_owned';
+    prog.lastActionMessage = `UNLOCK ${def.name} (${def.cost} FRAGMENTS) BEFORE EQUIPPING`;
+    world.events.push({
+      type: 'weapon_upgrade_rejected',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      weaponId,
+      upgradeId,
+    });
+    return { success: false, outcome: 'not_owned' };
+  }
+
+  prog.equippedUpgrades[weaponId] = upgradeId;
+  prog.lastEquipOutcome = 'equipped';
+  prog.lastActionMessage = `EQUIPPED ${def.name} ON ${getWeaponDefinition(weaponId).name}`;
+  syncResonanceUpgradeParameters(world);
+
+  world.events.push({
+    type: 'weapon_upgrade_equipped',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    weaponId,
+    upgradeId,
+  });
+
+  return { success: true, outcome: 'equipped' };
 }
 
 export function wrapAngle(angle: number): number {
@@ -1294,6 +1784,7 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
     echoCollapse: createInitialEchoCollapseState(false),
     loom: createInitialChronicleLoomState(false),
     comms: createInitialNarrativeCommsState(),
+    progression: createInitialWeaponProgressionState(),
     events: [],
     stats: {
       damageDealt: 0,
@@ -1369,6 +1860,9 @@ function captureSavedCampaignSnapshotIfNeeded(
             },
           }
         : null,
+      progression: clonePersistedWeaponProgressionState(
+        world.run.savedCampaignSnapshot.progression ?? world.progression
+      ),
     };
   }
   if (world.run.mode === 'campaign' && !world.run.isChapterReplay) {
@@ -1415,6 +1909,7 @@ function captureSavedCampaignSnapshotIfNeeded(
       bossCheckpoint: checkpointToSave,
       selectedEnding: world.run.selectedEnding,
       equippedWeaponId: world.player?.equippedWeaponId ?? GAME_CONFIG.weapons.defaultWeaponId,
+      progression: clonePersistedWeaponProgressionState(world.progression),
     };
   }
   return null;
@@ -1662,6 +2157,8 @@ export function startBossEncounter(
   world.echoCollapse = echoCollapseState;
   world.loom = loomState;
   world.comms = createInitialNarrativeCommsState();
+  world.progression = cloneWeaponProgressionState(world.progression);
+  syncResonanceUpgradeParameters(world);
   world.events = [
     {
       type: 'boss_activated',
@@ -1695,11 +2192,24 @@ export function createBossWorld(
   return world;
 }
 
-export function startCampaignRun(world: WorldState, skipIntro = false): void {
+export function startCampaignRun(
+  world: WorldState,
+  skipIntro = false,
+  preserveProgression = false
+): void {
   const preserveTutorialEnabled = world.tutorial ? world.tutorial.enabled : true;
   const preservedCompletedEndings = world.run?.completedEndings
     ? [...world.run.completedEndings]
     : [];
+  const preservedProgression = preserveProgression
+    ? cloneWeaponProgressionState(world.progression)
+    : createInitialWeaponProgressionState();
+  const preservedWeaponId: WeaponId =
+    preserveProgression &&
+    world.player &&
+    isValidWeaponId(world.player.equippedWeaponId)
+      ? world.player.equippedWeaponId
+      : GAME_CONFIG.weapons.defaultWeaponId;
   const fresh = createInitialWorld('playing');
   world.appState = 'playing';
   world.encounterMode = 'standard';
@@ -1721,6 +2231,7 @@ export function startCampaignRun(world: WorldState, skipIntro = false): void {
   world.hitstopTimer = 0;
   world.cameraTrauma = 0;
   world.player = fresh.player;
+  world.player.equippedWeaponId = preservedWeaponId;
   world.projectiles = [];
   world.nextProjectileId = 1;
   world.enemies = fresh.enemies;
@@ -1738,6 +2249,8 @@ export function startCampaignRun(world: WorldState, skipIntro = false): void {
   world.echoCollapse = fresh.echoCollapse;
   world.loom = fresh.loom;
   world.comms = createInitialNarrativeCommsState();
+  world.progression = preservedProgression;
+  syncResonanceUpgradeParameters(world);
   world.events = [];
   triggerNarrativeTransmission(world, 'prologue_wake', true);
   world.stats = fresh.stats;
@@ -1803,6 +2316,8 @@ export function startPracticeStandardRun(world: WorldState): void {
   world.echoCollapse = fresh.echoCollapse;
   world.loom = fresh.loom;
   world.comms = createInitialNarrativeCommsState();
+  world.progression = cloneWeaponProgressionState(world.progression);
+  syncResonanceUpgradeParameters(world);
   world.events = [];
   triggerNarrativeTransmission(world, 'prologue_wake', true);
   world.stats = fresh.stats;
@@ -1914,6 +2429,13 @@ export function beginCampaignBossTransition(world: WorldState): void {
   );
 
   if (!world.run.isChapterReplay) {
+    if (world.puzzle?.completed) {
+      grantProgressionReward(world, 'prologue_calibration_combine');
+    }
+    const anyProxyAlive = world.enemies.some((e) => e.hp > 0 && e.aiState !== 'ko');
+    if (world.enemies.length > 0 && !anyProxyAlive) {
+      grantProgressionReward(world, 'prologue_bay_proxies_cleared');
+    }
     world.run.completedChapters = addUniqueChapter(
       world.run.completedChapters,
       'prologue'
@@ -2095,6 +2617,8 @@ export function enterChronicleLoomChapter(
   world.echoCollapse = createInitialEchoCollapseState(true);
   world.loom = createInitialChronicleLoomState(true);
   world.comms = createInitialNarrativeCommsState();
+  world.progression = cloneWeaponProgressionState(world.progression);
+  syncResonanceUpgradeParameters(world);
   world.frozenSummary = null;
 
   world.run = {
@@ -2458,6 +2982,11 @@ function sanitizeActiveCampaign(raw: unknown): PersistedActiveCampaignState | nu
     ? obj.equippedWeaponId
     : bossCheckpoint?.equippedWeaponId ?? GAME_CONFIG.weapons.defaultWeaponId;
 
+  const progression =
+    obj.progression !== undefined
+      ? sanitizePersistedWeaponProgressionState(obj.progression)
+      : undefined;
+
   return {
     chapter: obj.chapter,
     stage: normalizedStage,
@@ -2465,6 +2994,7 @@ function sanitizeActiveCampaign(raw: unknown): PersistedActiveCampaignState | nu
     bossCheckpoint,
     selectedEnding: null,
     equippedWeaponId,
+    ...(progression ? { progression } : {}),
   };
 }
 
@@ -2482,7 +3012,21 @@ function extractActiveCampaignForSave(
     pendingNextChapter: snap.pendingNextChapter,
     bossCheckpoint: snap.bossCheckpoint,
     equippedWeaponId: snap.equippedWeaponId ?? world.player?.equippedWeaponId,
+    progression: snap.progression,
   });
+}
+
+function extractPersistedProgressionForSave(
+  world: WorldState
+): PersistedWeaponProgressionState {
+  const snap = world.run?.savedCampaignSnapshot;
+  if (
+    (world.run?.mode !== 'campaign' || world.run?.isChapterReplay) &&
+    snap?.progression
+  ) {
+    return sanitizePersistedWeaponProgressionState(snap.progression);
+  }
+  return sanitizePersistedWeaponProgressionState(world.progression);
 }
 
 export function parseAndApplyCampaignProgress(
@@ -2574,6 +3118,22 @@ export function parseAndApplyCampaignProgress(
     }
   }
 
+  const topLevelProgression =
+    obj.progression !== undefined
+      ? sanitizePersistedWeaponProgressionState(obj.progression)
+      : null;
+
+  if (topLevelProgression) {
+    world.progression = {
+      ...clonePersistedWeaponProgressionState(topLevelProgression),
+      lastPurchaseOutcome: null,
+      lastEquipOutcome: null,
+      lastActionMessage:
+        'CAMPAIGN PROGRESSION RESTORED · UPGRADE BENCH SYNCHRONIZED',
+    };
+    syncResonanceUpgradeParameters(world);
+  }
+
   if (obj.version === CAMPAIGN_SAVE_VERSION) {
     if (obj.activeCampaign === null || obj.activeCampaign === undefined) {
       if (world.appState === 'title') {
@@ -2582,6 +3142,20 @@ export function parseAndApplyCampaignProgress(
     } else {
       const sanitizedActive = sanitizeActiveCampaign(obj.activeCampaign);
       if (sanitizedActive) {
+        const effectiveProgression =
+          sanitizedActive.progression ??
+          topLevelProgression ??
+          sanitizePersistedWeaponProgressionState(world.progression);
+        if (!topLevelProgression && sanitizedActive.progression) {
+          world.progression = {
+            ...clonePersistedWeaponProgressionState(sanitizedActive.progression),
+            lastPurchaseOutcome: null,
+            lastEquipOutcome: null,
+            lastActionMessage:
+              'CAMPAIGN PROGRESSION RESTORED · UPGRADE BENCH SYNCHRONIZED',
+          };
+          syncResonanceUpgradeParameters(world);
+        }
         world.run.unlockedChapters = addUniqueChapter(
           world.run.unlockedChapters,
           sanitizedActive.chapter
@@ -2611,6 +3185,7 @@ export function parseAndApplyCampaignProgress(
           selectedEnding: null,
           equippedWeaponId:
             sanitizedActive.equippedWeaponId ?? GAME_CONFIG.weapons.defaultWeaponId,
+          progression: clonePersistedWeaponProgressionState(effectiveProgression),
         };
       } else if (world.appState === 'title') {
         world.run.savedCampaignSnapshot = null;
@@ -2639,6 +3214,10 @@ export function parseAndApplyCampaignProgress(
       world.run.completedEndings,
       isValidChronicleLoomEndingId
     );
+    if (!world.run.savedCampaignSnapshot.progression) {
+      world.run.savedCampaignSnapshot.progression =
+        clonePersistedWeaponProgressionState(world.progression);
+    }
   }
 
   return true;
@@ -2666,6 +3245,7 @@ export function serializeCampaignProgress(world: WorldState): string {
     world.run?.completedEndings,
     isValidChronicleLoomEndingId
   );
+  const progression = extractPersistedProgressionForSave(world);
   const activeCampaign = extractActiveCampaignForSave(world);
   if (activeCampaign) {
     unlockedChapters = addUniqueChapter(unlockedChapters, activeCampaign.chapter);
@@ -2684,6 +3264,7 @@ export function serializeCampaignProgress(world: WorldState): string {
     recoveredLogs,
     completedEndings,
     activeCampaign,
+    progression,
   };
 
   return JSON.stringify(payload);
@@ -2839,7 +3420,7 @@ export function startCampaignChapterSelect(
   );
 
   if (chapter === 'prologue') {
-    startCampaignRun(world, skipIntro);
+    startCampaignRun(world, skipIntro, true);
     world.run.unlockedChapters = [...unlocked];
     world.run.completedChapters = [...completed];
     world.run.recoveredLogs = [...recoveredLogs];
@@ -2888,6 +3469,10 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
   const completedEndings = [
     ...(snap.completedEndings ?? world.run?.completedEndings ?? []),
   ];
+  const restoredProgression = snap.progression
+    ? sanitizePersistedWeaponProgressionState(snap.progression)
+    : sanitizePersistedWeaponProgressionState(world.progression);
+
   let targetChapter: CampaignChapterId = snap.chapter;
   let targetStage: VerticalSliceStage =
     snap.stage === 'boss_intro' ? 'boss_fight' : snap.stage;
@@ -2911,7 +3496,7 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
     : null;
 
   if (targetChapter === 'prologue') {
-    startCampaignRun(world, true);
+    startCampaignRun(world, true, true);
   } else if (targetChapter === 'chapter_5_loom') {
     world.run.bossCheckpoint = savedCheckpoint;
     enterChronicleLoomChapter(world, false);
@@ -2919,6 +3504,15 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
     world.run.bossCheckpoint = savedCheckpoint;
     transitionCampaignToBoss(world, true, targetChapter);
   }
+
+  world.progression = {
+    ...clonePersistedWeaponProgressionState(restoredProgression),
+    lastPurchaseOutcome: null,
+    lastEquipOutcome: null,
+    lastActionMessage:
+      'CAMPAIGN PROGRESSION RESTORED · UPGRADE BENCH SYNCHRONIZED',
+  };
+  syncResonanceUpgradeParameters(world);
 
   world.run.mode = 'campaign';
   world.run.chapter = targetChapter;
@@ -3081,7 +3675,19 @@ export function resetWorldForPlaying(world: WorldState): void {
     return;
   }
   if (world.run?.mode === 'campaign') {
-    startCampaignRun(world, true);
+    const preservedUnlocked = [...(world.run.unlockedChapters ?? ['prologue'])];
+    const preservedCompleted = [...(world.run.completedChapters ?? [])];
+    const preservedLogs = [...(world.run.recoveredLogs ?? [])];
+    const preservedEndings = [...(world.run.completedEndings ?? [])];
+    const isReplay = Boolean(world.run.isChapterReplay);
+    const savedSnap = world.run.savedCampaignSnapshot;
+    startCampaignRun(world, true, true);
+    world.run.unlockedChapters = preservedUnlocked;
+    world.run.completedChapters = preservedCompleted;
+    world.run.recoveredLogs = preservedLogs;
+    world.run.completedEndings = preservedEndings;
+    world.run.isChapterReplay = isReplay;
+    world.run.savedCampaignSnapshot = savedSnap;
     return;
   }
   startPracticeStandardRun(world);
@@ -3196,7 +3802,11 @@ function resolveActorSeparation(player: PlayerState, enemies: EnemyState[]): voi
   }
 }
 
-function capturePlayerEchoSample(player: PlayerState, t: number): EchoSample {
+function capturePlayerEchoSample(
+  world: WorldState,
+  player: PlayerState,
+  t: number
+): EchoSample {
   const chargeThresh =
     player.equippedWeaponId === 'pulsecaster'
       ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
@@ -3212,6 +3822,7 @@ function capturePlayerEchoSample(player: PlayerState, t: number): EchoSample {
     chargeRatio: Math.min(1, player.chargeTime / chargeThresh),
     isEmpoweredHeavy: player.isEmpoweredHeavy,
     weaponId: player.equippedWeaponId,
+    equippedUpgradeId: getEquippedWeaponUpgrade(world, player.equippedWeaponId),
   };
 }
 
@@ -3245,6 +3856,7 @@ function recordEchoActionEvent(
     comboIndex: p.comboIndex,
     isEmpoweredHeavy: p.isEmpoweredHeavy,
     weaponId: p.equippedWeaponId,
+    equippedUpgradeId: getEquippedWeaponUpgrade(world, p.equippedWeaponId),
   });
 }
 
@@ -3269,7 +3881,7 @@ function startEchoRecording(world: WorldState): void {
   echo.recordingTime = 0;
   echo.playbackTime = 0;
   echo.nextEventIndex = 0;
-  echo.recordingSamples = [capturePlayerEchoSample(world.player, 0)];
+  echo.recordingSamples = [capturePlayerEchoSample(world, world.player, 0)];
   echo.recordingEvents = [];
 
   if (hadPrevious) {
@@ -3315,7 +3927,7 @@ function finalizeEchoRecording(world: WorldState, autoCapped = false): boolean {
   }
 
   const samples = echo.recordingSamples.slice();
-  const finalSample = capturePlayerEchoSample(world.player, duration);
+  const finalSample = capturePlayerEchoSample(world, world.player, duration);
   if (samples.length === 0 || samples[samples.length - 1].t < duration - 1e-5) {
     samples.push(finalSample);
   } else {
@@ -3432,6 +4044,8 @@ function evaluateEchoClipAtTime(clip: EchoClip, t: number): EchoSample {
     chargeRatio: s0.chargeRatio + (s1.chargeRatio - s0.chargeRatio) * alpha,
     isEmpoweredHeavy: alpha < 0.999 ? s0.isEmpoweredHeavy : s1.isEmpoweredHeavy,
     weaponId: (alpha < 0.999 ? s0.weaponId : s1.weaponId) ?? 'chrono_edge',
+    equippedUpgradeId:
+      (alpha < 0.999 ? s0.equippedUpgradeId : s1.equippedUpgradeId) ?? null,
   };
 }
 
@@ -3460,6 +4074,7 @@ function spawnEchoPulsecasterProjectile(
     id: projId,
     owner: 'echo',
     weaponId: 'pulsecaster',
+    equippedUpgradeId: ev.equippedUpgradeId ?? null,
     attackMode: isHeavy ? 'pulse_heavy' : 'pulse_light',
     x: startX,
     z: startZ,
@@ -3538,6 +4153,7 @@ function startEchoPlayback(world: WorldState): boolean {
     chargeRatio: pose0.chargeRatio,
     isEmpoweredHeavy: pose0.isEmpoweredHeavy,
     weaponId: pose0.weaponId ?? 'chrono_edge',
+    equippedUpgradeId: pose0.equippedUpgradeId ?? null,
     elapsed: 0,
     duration: clip.duration,
   };
@@ -3694,7 +4310,11 @@ function evaluateEchoActionOnPuzzle(world: WorldState, ev: EchoRecordedActionEve
       receiver.chargeTimer = receiver.chargeDuration;
       receiver.activationCount += 1;
       receiver.lastAttemptOutcome = 'charged';
+      const wasTestCompleted = world.puzzle.testCompleted;
       world.puzzle.testCompleted = true;
+      if (!wasTestCompleted) {
+        grantProgressionReward(world, 'prologue_calibration_test');
+      }
       world.echo.statusMessage =
         'KINETIC RECEIVER CHARGED · HOLD ANCHOR PAD WITH ECHO TO OPEN ARCHIVE BARRIER';
       world.events.push({
@@ -4007,7 +4627,15 @@ function evaluateDueEchoResonanceContacts(
     const target = query.target;
     res.markCounter += 1;
     res.primedCount += 1;
-    const syncWindow = GAME_CONFIG.resonance.syncWindow;
+    const hasHarmonicEdge =
+      ev.equippedUpgradeId === 'edge_harmonic_conductor' ||
+      getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor';
+    const syncWindow =
+      GAME_CONFIG.resonance.syncWindow +
+      (hasHarmonicEdge
+        ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.syncWindowBonus
+        : 0);
+    res.syncWindow = syncWindow;
     const mark: ResonanceMarkState = {
       markId: res.markCounter,
       enemyId: target.id,
@@ -4110,7 +4738,11 @@ function advanceEchoSystem(world: WorldState, dt: number): void {
       echo.recordingSamples.length < GAME_CONFIG.echo.maxSamples
     ) {
       echo.recordingSamples.push(
-        capturePlayerEchoSample(world.player, Math.min(echo.maxDuration, echo.recordingTime))
+        capturePlayerEchoSample(
+          world,
+          world.player,
+          Math.min(echo.maxDuration, echo.recordingTime)
+        )
       );
     }
 
@@ -4133,6 +4765,9 @@ function advanceEchoSystem(world: WorldState, dt: number): void {
       if (echo.activeActor && ev.weaponId) {
         echo.activeActor.weaponId = ev.weaponId;
       }
+      if (echo.activeActor && ev.equippedUpgradeId !== undefined) {
+        echo.activeActor.equippedUpgradeId = ev.equippedUpgradeId;
+      }
       world.events.push({
         type: 'echo_action_visual',
         x: ev.x,
@@ -4140,6 +4775,7 @@ function advanceEchoSystem(world: WorldState, dt: number): void {
         isHeavy: ev.action === 'heavy_swing' || ev.action === 'pulse_charged_shot',
         echoAction: ev.action,
         weaponId: ev.weaponId,
+        upgradeId: ev.equippedUpgradeId ?? null,
       });
       spawnEchoPulsecasterProjectile(world, clip.id, ev);
       evaluateEchoActionOnPuzzle(world, ev);
@@ -4171,6 +4807,8 @@ function advanceEchoSystem(world: WorldState, dt: number): void {
       echo.activeActor.chargeRatio = pose.chargeRatio;
       echo.activeActor.isEmpoweredHeavy = pose.isEmpoweredHeavy;
       echo.activeActor.weaponId = pose.weaponId ?? echo.activeActor.weaponId ?? 'chrono_edge';
+      echo.activeActor.equippedUpgradeId =
+        pose.equippedUpgradeId ?? echo.activeActor.equippedUpgradeId ?? null;
       echo.activeActor.elapsed = echo.playbackTime;
     }
   }
@@ -4323,6 +4961,7 @@ function updatePressurePlate(world: WorldState, dt = 0): void {
     Math.abs(p.z - plate.receiverZ) <= 2.4
   ) {
     puzzle.teachCompleted = true;
+    grantProgressionReward(world, 'prologue_calibration_teach');
   }
 
   // Track Stage 3 (COMBINE) completion when live Sera crosses West through the open Final Combine Barrier
@@ -4339,6 +4978,9 @@ function updatePressurePlate(world: WorldState, dt = 0): void {
     puzzle.combineCompleted = true;
     puzzle.completed = true;
     p.flux = p.maxFlux;
+    grantProgressionReward(world, 'prologue_calibration_teach');
+    grantProgressionReward(world, 'prologue_calibration_test');
+    grantProgressionReward(world, 'prologue_calibration_combine');
     world.echo.statusMessage =
       'CALIBRATION SEQUENCE COMPLETE · CHRONO RIG SYNCHRONIZED (+100 FLUX)';
     world.events.push({
@@ -4493,12 +5135,18 @@ function startHeavyWindup(
 
   p.rotationY = resolveCombatAimAngle(world, input, moveVec, 5.2);
 
-  // When a Resonance mark is active, reserve Flux for Convergence impact rather than spending 35 upfront
+  // When a Resonance mark is active, reserve Flux for Convergence impact rather than spending upfront
   const hasActiveResonanceMark =
     world.resonance.activeMark !== null && world.resonance.cooldownTimer <= 0;
-  p.isEmpoweredHeavy = !hasActiveResonanceMark && p.flux >= cfg.fluxCostForEmpower;
+  const edgeUpgrade = getEquippedWeaponUpgrade(world, 'chrono_edge');
+  const empowerFluxCost =
+    cfg.fluxCostForEmpower +
+    (edgeUpgrade === 'edge_harmonic_conductor'
+      ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.empoweredFluxCostDelta
+      : 0);
+  p.isEmpoweredHeavy = !hasActiveResonanceMark && p.flux >= empowerFluxCost;
   if (p.isEmpoweredHeavy) {
-    p.flux = Math.max(0, p.flux - cfg.fluxCostForEmpower);
+    p.flux = Math.max(0, p.flux - empowerFluxCost);
   }
 
   p.actionState = 'heavy_windup';
@@ -4785,10 +5433,20 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
   const p = world.player;
   const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
   const shotCfg = isHeavy ? pulseCfg.heavyShot : pulseCfg.lightShot;
+  const pulseUpgrade = getEquippedWeaponUpgrade(world, 'pulsecaster');
+
+  let heatCost: number = shotCfg.heatCost;
+  let cooldown: number = shotCfg.cooldown;
+  if (!isHeavy && pulseUpgrade === 'pulse_thermal_sink') {
+    heatCost = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightHeatCost;
+  } else if (isHeavy && pulseUpgrade === 'pulse_overcharge_condenser') {
+    heatCost = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyHeatCost;
+    cooldown = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyCooldown;
+  }
 
   // Apply heat cost & check overheat threshold
-  p.weaponHeat = Math.min(p.maxWeaponHeat, p.weaponHeat + shotCfg.heatCost);
-  p.weaponShotCooldownTimer = shotCfg.cooldown;
+  p.weaponHeat = Math.min(p.maxWeaponHeat, p.weaponHeat + heatCost);
+  p.weaponShotCooldownTimer = cooldown;
   p.lastWeaponShotOutcome = 'fired';
 
   if (p.weaponHeat >= p.maxWeaponHeat) {
@@ -4814,21 +5472,31 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
   const spawnZ = p.z + dirZ * muzzleOffset;
 
   const isEmpowered = isHeavy && p.isEmpoweredHeavy;
-  const damage = isHeavy
+  let damage: number = isHeavy
     ? isEmpowered
       ? pulseCfg.heavyShot.empoweredDamage
       : pulseCfg.heavyShot.damage
     : pulseCfg.lightShot.damage;
-  const staggerDamage = isHeavy
+  let staggerDamage: number = isHeavy
     ? isEmpowered
       ? pulseCfg.heavyShot.empoweredStaggerDamage
       : pulseCfg.heavyShot.staggerDamage
     : pulseCfg.lightShot.staggerDamage;
 
+  if (!isHeavy && pulseUpgrade === 'pulse_thermal_sink') {
+    damage = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightDamage;
+    staggerDamage = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightStagger;
+  } else if (isHeavy && pulseUpgrade === 'pulse_overcharge_condenser') {
+    const condCfg = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser;
+    damage = isEmpowered ? condCfg.heavyEmpoweredDamage : condCfg.heavyBaseDamage;
+    staggerDamage = isEmpowered ? condCfg.heavyEmpoweredStagger : condCfg.heavyStagger;
+  }
+
   world.projectiles.push({
     id: `proj-${world.nextProjectileId++}`,
     owner: 'player',
     weaponId: 'pulsecaster',
+    equippedUpgradeId: pulseUpgrade,
     attackMode: isHeavy ? 'pulse_heavy' : 'pulse_light',
     x: spawnX,
     z: spawnZ,
@@ -4858,6 +5526,7 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     z: spawnZ,
     isHeavy,
     weaponId: 'pulsecaster',
+    upgradeId: pulseUpgrade,
   });
 }
 
@@ -5702,12 +6371,16 @@ function handleEnemyZeroHpDefeat(
         let nextChap: CampaignChapterId | null = null;
         if (bossState.id === 'helix-04') {
           nextChap = 'chapter_2_choir';
+          grantProgressionReward(world, 'chapter_1_helix_defeated');
         } else if (bossState.id === 'the-choir') {
           nextChap = 'chapter_3_curator';
+          grantProgressionReward(world, 'chapter_2_choir_defeated');
         } else if (bossState.id === 'the-curator') {
           nextChap = 'chapter_4_matron';
+          grantProgressionReward(world, 'chapter_3_curator_defeated');
         } else if (bossState.id === 'matron-v') {
           nextChap = 'chapter_5_loom';
+          grantProgressionReward(world, 'chapter_4_matron_defeated');
         }
         if (nextChap) {
           world.run.pendingNextChapter = nextChap;
@@ -5776,17 +6449,34 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     ? GAME_CONFIG.player.heavyAttack.arcRadians
     : GAME_CONFIG.player.lightAttack.arcRadians;
 
-  const baseDamage = isHeavy
+  const edgeUpgrade = getEquippedWeaponUpgrade(world, 'chrono_edge');
+  let baseDamage = isHeavy
     ? p.isEmpoweredHeavy
       ? GAME_CONFIG.player.heavyAttack.empoweredDamage
       : GAME_CONFIG.player.heavyAttack.baseDamage
     : (GAME_CONFIG.player.lightAttack.damage[p.comboIndex] ?? 16);
 
-  const staggerAmount = isHeavy
+  let staggerAmount = isHeavy
     ? p.isEmpoweredHeavy
       ? GAME_CONFIG.player.heavyAttack.empoweredStagger
       : GAME_CONFIG.player.heavyAttack.stagger
     : (GAME_CONFIG.player.lightAttack.stagger[p.comboIndex] ?? 12);
+
+  if (edgeUpgrade === 'edge_breaker_cleave') {
+    const breakerCfg = GAME_CONFIG.weapons.upgrades.edge_breaker_cleave;
+    baseDamage = Math.max(1, Math.round(baseDamage * breakerCfg.damageMultiplier));
+    staggerAmount = Math.round(staggerAmount * breakerCfg.staggerMultiplier);
+  } else if (
+    edgeUpgrade === 'edge_harmonic_conductor' &&
+    isHeavy &&
+    !p.isEmpoweredHeavy
+  ) {
+    const condCfg = GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor;
+    baseDamage = Math.max(
+      1,
+      Math.round(baseDamage * condCfg.unempoweredHeavyDamageMultiplier)
+    );
+  }
 
   // Evaluate Chapter II Harmonic Node strikes first
   evaluateLivePlayerStrikeOnChoirNodes(world, isHeavy);
@@ -5828,6 +6518,8 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
 
     // Evaluate Temporal Resonance / Convergence eligibility on this hit
     const res = world.resonance;
+    const effectiveConvFluxCost = getEffectiveConvergenceFluxCost(world);
+    res.fluxCost = effectiveConvFluxCost;
     const activeMark = res.activeMark;
     let triggeredConvergence = false;
     let rejectedConvergenceReason: ResonanceOutcome | null = null;
@@ -5854,10 +6546,10 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
           rejectedConvergenceReason = 'on_cooldown';
           res.lastOutcome = 'on_cooldown';
           res.statusMessage = 'CONVERGENCE RECHARGING · WAIT FOR COOLDOWN';
-        } else if (p.flux < res.fluxCost) {
+        } else if (p.flux < effectiveConvFluxCost) {
           rejectedConvergenceReason = 'insufficient_flux';
           res.lastOutcome = 'insufficient_flux';
-          res.statusMessage = `INSUFFICIENT FLUX FOR CONVERGENCE (${res.fluxCost} REQUIRED)`;
+          res.statusMessage = `INSUFFICIENT FLUX FOR CONVERGENCE (${effectiveConvFluxCost} REQUIRED)`;
         } else {
           triggeredConvergence = true;
         }
@@ -5930,15 +6622,21 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
           ? GAME_CONFIG.choir.unharmonizedDamageMult
           : GAME_CONFIG.enemies.bastion.frontGuardLightDamageMult
       : 1.0;
-    const guardStaggerMult = isGuarded
+    let guardStaggerMult = isGuarded
       ? enemy.archetype === 'helix' || enemy.archetype === 'choir'
         ? GAME_CONFIG.boss.frontalArmorStaggerMult
         : GAME_CONFIG.enemies.bastion.frontGuardLightStaggerMult
       : 1.0;
+    if (isGuarded && edgeUpgrade === 'edge_breaker_cleave') {
+      guardStaggerMult +=
+        GAME_CONFIG.weapons.upgrades.edge_breaker_cleave.frontalGuardStaggerBonus;
+    }
 
-    const convergencePostureBonus = triggeredConvergence ? GAME_CONFIG.resonance.postureBonus : 0;
+    const effectiveConvPostureBonus = getEffectiveConvergencePostureBonus(world);
+    res.postureBonus = effectiveConvPostureBonus;
+    const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
 
-    // Qualifying hit applies its normal damage once; Convergence grants +22 posture bonus through existing rules
+    // Qualifying hit applies its normal damage once; Convergence grants posture bonus through existing rules
     const finalDamage = Math.max(
       1,
       Math.round(baseDamage * vulnMult * guardDmgMult)
@@ -5947,7 +6645,7 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
       Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult) + convergencePostureBonus;
 
     if (triggeredConvergence) {
-      p.flux = Math.max(0, p.flux - res.fluxCost);
+      p.flux = Math.max(0, p.flux - effectiveConvFluxCost);
       res.activeMark = null;
       res.cooldownTimer = res.maxCooldown;
       res.status = 'on_cooldown';
@@ -5970,13 +6668,21 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
 
     // Grant Flux on ordinary melee hits when not attempting or rejecting a Resonance Convergence
     if (!triggeredConvergence && rejectedConvergenceReason === null) {
+      const harmonicBonus =
+        edgeUpgrade === 'edge_harmonic_conductor' && !isGuarded
+          ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.fluxGainBonus
+          : 0;
       if (!isHeavy) {
-        const fluxGain = isGuarded
-          ? GAME_CONFIG.player.fluxGainOnGuardedHit
-          : GAME_CONFIG.player.fluxGainOnLightHit;
+        const fluxGain =
+          (isGuarded
+            ? GAME_CONFIG.player.fluxGainOnGuardedHit
+            : GAME_CONFIG.player.fluxGainOnLightHit) + harmonicBonus;
         p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
       } else if (!p.isEmpoweredHeavy) {
-        p.flux = Math.min(p.maxFlux, p.flux + GAME_CONFIG.player.fluxGainOnHeavyHit);
+        p.flux = Math.min(
+          p.maxFlux,
+          p.flux + GAME_CONFIG.player.fluxGainOnHeavyHit + harmonicBonus
+        );
       }
     }
 
@@ -6005,10 +6711,25 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
         }
       }
 
+      if (
+        enemy.archetype === 'scout' &&
+        enemy.aiState === 'telegraph' &&
+        isHeavy &&
+        enemy.stagger < enemy.maxStagger
+      ) {
+        enemy.aiState = 'recovery';
+        enemy.stateDuration = GAME_CONFIG.enemies.scout.recoveryDuration;
+        enemy.stateTimer = enemy.stateDuration;
+        enemy.telegraphLocked = false;
+        enemy.vx = 0;
+        enemy.vz = 0;
+      }
+
       if (enemy.stagger >= enemy.maxStagger) {
         enemy.aiState = 'staggered';
         enemy.stateDuration = GAME_CONFIG.enemies[enemy.archetype].staggeredDuration;
         enemy.stateTimer = enemy.stateDuration;
+        enemy.telegraphLocked = false;
         enemy.stagger = 0;
         enemy.vx = 0;
         enemy.vz = 0;
@@ -6195,6 +6916,8 @@ function applyPlayerProjectileHitToEnemy(
 
   // Evaluate Temporal Resonance / Convergence eligibility on this ranged hit
   const res = world.resonance;
+  const effectiveConvFluxCost = getEffectiveConvergenceFluxCost(world);
+  res.fluxCost = effectiveConvFluxCost;
   const activeMark = res.activeMark;
   let triggeredConvergence = false;
   let rejectedConvergenceReason: ResonanceOutcome | null = null;
@@ -6221,10 +6944,10 @@ function applyPlayerProjectileHitToEnemy(
         rejectedConvergenceReason = 'on_cooldown';
         res.lastOutcome = 'on_cooldown';
         res.statusMessage = 'CONVERGENCE RECHARGING · WAIT FOR COOLDOWN';
-      } else if (p.flux < res.fluxCost) {
+      } else if (p.flux < effectiveConvFluxCost) {
         rejectedConvergenceReason = 'insufficient_flux';
         res.lastOutcome = 'insufficient_flux';
-        res.statusMessage = `INSUFFICIENT FLUX FOR CONVERGENCE (${res.fluxCost} REQUIRED)`;
+        res.statusMessage = `INSUFFICIENT FLUX FOR CONVERGENCE (${effectiveConvFluxCost} REQUIRED)`;
       } else {
         triggeredConvergence = true;
       }
@@ -6303,7 +7026,9 @@ function applyPlayerProjectileHitToEnemy(
       : GAME_CONFIG.weapons.pulsecaster.guardedStaggerMultiplier
     : 1.0;
 
-  const convergencePostureBonus = triggeredConvergence ? GAME_CONFIG.resonance.postureBonus : 0;
+  const effectiveConvPostureBonus = getEffectiveConvergencePostureBonus(world);
+  res.postureBonus = effectiveConvPostureBonus;
+  const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
   const finalDamage = Math.max(
     1,
     Math.round(baseDamage * vulnMult * guardDmgMult)
@@ -6312,7 +7037,7 @@ function applyPlayerProjectileHitToEnemy(
     Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult) + convergencePostureBonus;
 
   if (triggeredConvergence) {
-    p.flux = Math.max(0, p.flux - res.fluxCost);
+    p.flux = Math.max(0, p.flux - effectiveConvFluxCost);
     res.activeMark = null;
     res.cooldownTimer = res.maxCooldown;
     res.status = 'on_cooldown';
@@ -6371,10 +7096,25 @@ function applyPlayerProjectileHitToEnemy(
       }
     }
 
+    if (
+      enemy.archetype === 'scout' &&
+      enemy.aiState === 'telegraph' &&
+      isHeavy &&
+      enemy.stagger < enemy.maxStagger
+    ) {
+      enemy.aiState = 'recovery';
+      enemy.stateDuration = GAME_CONFIG.enemies.scout.recoveryDuration;
+      enemy.stateTimer = enemy.stateDuration;
+      enemy.telegraphLocked = false;
+      enemy.vx = 0;
+      enemy.vz = 0;
+    }
+
     if (enemy.stagger >= enemy.maxStagger) {
       enemy.aiState = 'staggered';
       enemy.stateDuration = GAME_CONFIG.enemies[enemy.archetype].staggeredDuration;
       enemy.stateTimer = enemy.stateDuration;
+      enemy.telegraphLocked = false;
       enemy.stagger = 0;
       enemy.vx = 0;
       enemy.vz = 0;
@@ -6701,7 +7441,11 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       });
     }
   } else if (p.weaponHeat > 0) {
-    p.weaponHeat = Math.max(0, p.weaponHeat - pulseCfg.heatCoolRatePerSec * dt);
+    const coolRateMult =
+      getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_thermal_sink'
+        ? GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.coolRateMultiplier
+        : 1.0;
+    p.weaponHeat = Math.max(0, p.weaponHeat - pulseCfg.heatCoolRatePerSec * coolRateMult * dt);
   }
 
   // Passive Flux regeneration
@@ -7064,7 +7808,10 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         p.vz = -Math.cos(p.rotationY) * 1.35;
         if (p.stateTimer <= 0) {
           p.actionState = 'heavy_recovery';
-          p.stateTimer = pulseCfg.heavyShot.recovery;
+          p.stateTimer =
+            getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_overcharge_condenser'
+              ? GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyRecovery
+              : pulseCfg.heavyShot.recovery;
           p.isEmpoweredHeavy = false;
         }
       } else {
@@ -7073,7 +7820,11 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         performPlayerMeleeHitCheck(world, true);
         if (p.stateTimer <= 0) {
           p.actionState = 'heavy_recovery';
-          p.stateTimer = GAME_CONFIG.player.heavyAttack.recovery;
+          p.stateTimer =
+            GAME_CONFIG.player.heavyAttack.recovery +
+            (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_breaker_cleave'
+              ? GAME_CONFIG.weapons.upgrades.edge_breaker_cleave.heavyRecoveryDelta
+              : 0);
           p.isEmpoweredHeavy = false;
         }
       }
@@ -8320,7 +9071,40 @@ function updateEnemies(world: WorldState, dt: number): void {
     switch (enemy.aiState) {
       case 'idle':
       case 'pursue': {
-        enemy.rotationY = moveAngleTowards(enemy.rotationY, angleToPlayer, 7.2 * dt);
+        // Phase 16: Active Echo Tactical Decoy / Flanking Distraction
+        // If an Echo is actively replaying closer to the enemy than live Sera (and live Sera is not in immediate melee range),
+        // ordinary units orient toward the closer active Echo, enabling tactical flanking behind Bastion's Aegis shield.
+        let pursueTargetX = p.x;
+        let pursueTargetZ = p.z;
+        const activeEchoActor =
+          world.echo.state === 'playback' ? world.echo.activeActor : null;
+        if (activeEchoActor) {
+          const distEcho = Math.hypot(
+            activeEchoActor.x - enemy.x,
+            activeEchoActor.z - enemy.z
+          );
+          if (
+            enemy.archetype === 'eraser' ||
+            (distEcho <= 6.5 &&
+              distEcho + 0.8 < distToPlayer &&
+              distToPlayer > 2.1 &&
+              hasMeleeLineOfSight(
+                enemy.x,
+                enemy.z,
+                activeEchoActor.x,
+                activeEchoActor.z,
+                world.obstacles
+              ))
+          ) {
+            pursueTargetX = activeEchoActor.x;
+            pursueTargetZ = activeEchoActor.z;
+          }
+        }
+        const dxTarget = pursueTargetX - enemy.x;
+        const dzTarget = pursueTargetZ - enemy.z;
+        const distTarget = Math.hypot(dxTarget, dzTarget) || 0.001;
+        const angleTarget = Math.atan2(dxTarget, dzTarget);
+        enemy.rotationY = moveAngleTowards(enemy.rotationY, angleTarget, 7.2 * dt);
 
         if (holdPerimeterForCalibration) {
           // Hold patrol perimeter in the main combat bay (z <= 4.5) so the player can record/replay on Chrono Anchor Pad 01 unobstructed
@@ -8336,9 +9120,9 @@ function updateEnemies(world: WorldState, dt: number): void {
 
         // Distinct movement & spacing policies per archetype
         if (enemy.archetype === 'bastion') {
-          if (distToPlayer > cfg.preferredRange) {
-            enemy.vx = (dxToPlayer / distToPlayer) * cfg.moveSpeed;
-            enemy.vz = (dzToPlayer / distToPlayer) * cfg.moveSpeed;
+          if (distTarget > cfg.preferredRange) {
+            enemy.vx = (dxTarget / distTarget) * cfg.moveSpeed;
+            enemy.vz = (dzTarget / distTarget) * cfg.moveSpeed;
           } else {
             enemy.vx = 0;
             enemy.vz = 0;
@@ -8349,23 +9133,6 @@ function updateEnemies(world: WorldState, dt: number): void {
           enemy.archetype === 'siphon' ||
           enemy.archetype === 'eraser'
         ) {
-          // Eraser prioritizes moving toward an active Echo if one is playing
-          let targetX = p.x;
-          let targetZ = p.z;
-          if (
-            enemy.archetype === 'eraser' &&
-            world.echo.state === 'playback' &&
-            world.echo.activeActor
-          ) {
-            targetX = world.echo.activeActor.x;
-            targetZ = world.echo.activeActor.z;
-          }
-          const dxTarget = targetX - enemy.x;
-          const dzTarget = targetZ - enemy.z;
-          const distTarget = Math.hypot(dxTarget, dzTarget) || 0.001;
-          const angleTarget = Math.atan2(dxTarget, dzTarget);
-          enemy.rotationY = moveAngleTowards(enemy.rotationY, angleTarget, 7.2 * dt);
-
           const flankAngle =
             angleTarget + enemy.strafeDir * (distTarget > 4 ? 0.38 : 0.12);
           if (distTarget > cfg.preferredRange) {
@@ -8409,8 +9176,15 @@ function updateEnemies(world: WorldState, dt: number): void {
           }
         }
 
-        // Check attack initiation with token pool limit
-        let canStartAttack = distToPlayer <= cfg.attackRange;
+        // Check attack initiation with token pool limit & authoritative obstacle line-of-sight
+        const hasLosToPlayer = hasMeleeLineOfSight(
+          enemy.x,
+          enemy.z,
+          p.x,
+          p.z,
+          world.obstacles
+        );
+        let canStartAttack = distToPlayer <= cfg.attackRange && hasLosToPlayer;
         if (
           enemy.archetype === 'eraser' &&
           world.echo.state === 'playback' &&
@@ -8420,7 +9194,16 @@ function updateEnemies(world: WorldState, dt: number): void {
             world.echo.activeActor.x - enemy.x,
             world.echo.activeActor.z - enemy.z
           );
-          if (distEcho <= GAME_CONFIG.matron.eraserDisruptionRadius) {
+          if (
+            distEcho <= GAME_CONFIG.matron.eraserDisruptionRadius &&
+            hasMeleeLineOfSight(
+              enemy.x,
+              enemy.z,
+              world.echo.activeActor.x,
+              world.echo.activeActor.z,
+              world.obstacles
+            )
+          ) {
             canStartAttack = true;
           }
         }
@@ -8437,6 +9220,7 @@ function updateEnemies(world: WorldState, dt: number): void {
           enemy.stateDuration = cfg.telegraphDuration;
           enemy.stateTimer = cfg.telegraphDuration;
           enemy.hasDealtDamageThisAttack = false;
+          enemy.telegraphLocked = false;
           enemy.rotationY = angleToPlayer;
           enemy.targetX = p.x;
           enemy.targetZ = p.z;
@@ -8458,7 +9242,10 @@ function updateEnemies(world: WorldState, dt: number): void {
         enemy.vx = 0;
         enemy.vz = 0;
         const progress = 1 - enemy.stateTimer / (enemy.stateDuration || 1);
-        if (progress < 0.6) {
+        if (p.actionState === 'dodging' || progress >= 0.55) {
+          enemy.telegraphLocked = true;
+        }
+        if (!enemy.telegraphLocked) {
           enemy.rotationY = moveAngleTowards(enemy.rotationY, angleToPlayer, 5.0 * dt);
           enemy.targetX = p.x;
           enemy.targetZ = p.z;
@@ -8468,6 +9255,7 @@ function updateEnemies(world: WorldState, dt: number): void {
           enemy.aiState = 'attack';
           enemy.stateDuration = cfg.activeDuration;
           enemy.stateTimer = cfg.activeDuration;
+          enemy.telegraphLocked = true;
           world.events.push({
             type: 'enemy_attack_strike',
             x: enemy.x,
@@ -8571,10 +9359,30 @@ function updateEnemies(world: WorldState, dt: number): void {
           }
 
           if (hitPlayer) {
-            enemy.hasDealtDamageThisAttack = true;
-            const prevIntegrity = p.integrity;
-            const prevParries = world.stats.parriesLanded;
-            applyDamageToPlayer(world, cfg.damage, enemy);
+            const hasClearAttackLos = hasMeleeLineOfSight(
+              enemy.x,
+              enemy.z,
+              p.x,
+              p.z,
+              world.obstacles
+            );
+            if (!hasClearAttackLos) {
+              enemy.hasDealtDamageThisAttack = true;
+              if (enemy.archetype === 'scout') {
+                const dirX = Math.sin(enemy.rotationY);
+                const dirZ = Math.cos(enemy.rotationY);
+                world.events.push({
+                  type: 'pulse_impact_obstacle',
+                  x: enemy.x + dirX * Math.min(distToPlayer * 0.5, cfg.attackRange * 0.5),
+                  z: enemy.z + dirZ * Math.min(distToPlayer * 0.5, cfg.attackRange * 0.5),
+                  weaponId: 'pulsecaster',
+                });
+              }
+            } else {
+              enemy.hasDealtDamageThisAttack = true;
+              const prevIntegrity = p.integrity;
+              const prevParries = world.stats.parriesLanded;
+              applyDamageToPlayer(world, cfg.damage, enemy);
 
             // Siphon unit bounded single-event Flux drain (only when strike connects without being dodged/parried)
             if (
@@ -8597,6 +9405,7 @@ function updateEnemies(world: WorldState, dt: number): void {
                 amount: drain,
               });
             }
+            }
           }
         }
 
@@ -8604,6 +9413,7 @@ function updateEnemies(world: WorldState, dt: number): void {
           enemy.aiState = 'recovery';
           enemy.stateDuration = cfg.recoveryDuration;
           enemy.stateTimer = cfg.recoveryDuration;
+          enemy.telegraphLocked = false;
           enemy.vx = 0;
           enemy.vz = 0;
         }
@@ -8618,6 +9428,7 @@ function updateEnemies(world: WorldState, dt: number): void {
         if (enemy.stateTimer <= 0) {
           enemy.aiState = 'pursue';
           enemy.cooldownTimer = cfg.attackCooldown;
+          enemy.telegraphLocked = false;
           enemy.strafeDir *= -1;
         }
         break;
@@ -9015,6 +9826,17 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     world.encounterMode === 'standard' &&
     world.run.chapter === 'prologue' &&
     world.outcome === 'none' &&
+    world.enemies.length > 0 &&
+    !anyAlive
+  ) {
+    grantProgressionReward(world, 'prologue_bay_proxies_cleared');
+  }
+
+  if (
+    world.run.mode === 'campaign' &&
+    world.encounterMode === 'standard' &&
+    world.run.chapter === 'prologue' &&
+    world.outcome === 'none' &&
     (world.puzzle.completed || (world.enemies.length > 0 && !anyAlive))
   ) {
     world.puzzle.completed = true;
@@ -9105,6 +9927,115 @@ export function stepWorld(world: WorldState, input: PlayerInputFrame, rawDt: num
   }
 }
 
+export function getEnemyTacticalProfile(
+  enemy: EnemyState,
+  player?: { x: number; z: number }
+): {
+  roleId: 'bulwark' | 'skirmisher' | 'suppressor' | 'disruptor' | 'boss';
+  roleLabel: string;
+  statusLabel: string;
+  isFrontShieldActive: boolean;
+  isPlayerInFrontArc: boolean;
+  telegraphLocked: boolean;
+} {
+  let roleId: 'bulwark' | 'skirmisher' | 'suppressor' | 'disruptor' | 'boss' = 'skirmisher';
+  let roleLabel = 'FLANKING SKIRMISHER';
+
+  if (enemy.archetype === 'bastion') {
+    roleId = 'bulwark';
+    roleLabel = 'AEGIS BULWARK';
+  } else if (enemy.archetype === 'scrapper') {
+    roleId = 'skirmisher';
+    roleLabel = 'FLANKING SKIRMISHER';
+  } else if (enemy.archetype === 'curator_decoy') {
+    roleId = 'skirmisher';
+    roleLabel = 'PHANTOM SKIRMISHER';
+  } else if (enemy.archetype === 'scout') {
+    roleId = 'suppressor';
+    roleLabel = 'RANGED SUPPRESSOR';
+  } else if (enemy.archetype === 'siphon') {
+    roleId = 'disruptor';
+    roleLabel = 'FLUX EXTRACTOR';
+  } else if (enemy.archetype === 'eraser') {
+    roleId = 'disruptor';
+    roleLabel = 'ECHO NULLIFIER';
+  } else if (isBossArchetype(enemy.archetype)) {
+    roleId = 'boss';
+    roleLabel = 'BOSS ENCOUNTER';
+  }
+
+  const isFrontShieldActive =
+    enemy.archetype === 'bastion' &&
+    enemy.aiState !== 'recovery' &&
+    enemy.aiState !== 'staggered' &&
+    enemy.aiState !== 'ko';
+
+  let isPlayerInFrontArc = false;
+  if (player && enemy.archetype === 'bastion') {
+    const angleFromEnemyToPlayer = Math.atan2(player.x - enemy.x, player.z - enemy.z);
+    isPlayerInFrontArc =
+      Math.abs(angleDiff(angleFromEnemyToPlayer, enemy.rotationY)) <=
+      GAME_CONFIG.enemies.bastion.frontGuardArc * 0.5;
+  }
+
+  const telegraphLocked = Boolean(enemy.telegraphLocked);
+
+  let statusLabel = 'ENGAGED';
+  if ((enemy.pinnedTimer ?? 0) > 0) {
+    statusLabel = 'GRAVITY PINNED';
+  } else if (enemy.aiState === 'staggered') {
+    statusLabel = 'POSTURE BROKEN · 1.5x DMG';
+  } else if (enemy.aiState === 'recovery') {
+    statusLabel =
+      enemy.archetype === 'bastion'
+        ? 'SHIELD OPEN · 1.5x VULNERABLE'
+        : 'VULNERABLE RECOVERY · 1.5x DMG';
+  } else if (enemy.aiState === 'telegraph') {
+    if (enemy.archetype === 'scout') {
+      statusLabel = telegraphLocked
+        ? 'PULSE AIM LOCKED · DODGE OR BREAK'
+        : 'CALIBRATING PULSE · HEAVY BREAKS';
+    } else if (enemy.archetype === 'bastion') {
+      statusLabel = telegraphLocked
+        ? 'MAUL SLAM COMMITTED · PARRY/DODGE'
+        : 'MAUL WINDUP · PARRY OR FLANK';
+    } else if (enemy.archetype === 'scrapper') {
+      statusLabel = telegraphLocked
+        ? 'LUNGE COMMITTED · DODGE LATERAL'
+        : 'COILING LUNGE · PARRY/DODGE';
+    } else if (enemy.archetype === 'siphon') {
+      statusLabel = 'SIPHON STRIKE · DRAINS 22 FLUX';
+    } else if (enemy.archetype === 'eraser') {
+      statusLabel = 'ANTI-ECHO PULSE · SEVERS REPLAY';
+    } else {
+      statusLabel = 'ATTACK TELEGRAPH';
+    }
+  } else if (enemy.aiState === 'attack') {
+    statusLabel = 'ACTIVE STRIKE';
+  } else if (enemy.archetype === 'bastion') {
+    statusLabel = isPlayerInFrontArc
+      ? 'FRONTAL GUARD · 0.42x DMG (FLANK/HEAVY)'
+      : 'FLANK OPEN · 1.0x UNGUARDED DMG';
+  } else if (enemy.archetype === 'scout') {
+    statusLabel = 'STANDOFF ORBIT · USE COVER OR RANGED';
+  } else if (enemy.archetype === 'scrapper') {
+    statusLabel = 'FLANKING APPROACH · LOW POSTURE';
+  } else if (enemy.archetype === 'siphon') {
+    statusLabel = 'HUNTING FLUX · PRIORITIZE';
+  } else if (enemy.archetype === 'eraser') {
+    statusLabel = 'HUNTING ACTIVE ECHO';
+  }
+
+  return {
+    roleId,
+    roleLabel,
+    statusLabel,
+    isFrontShieldActive,
+    isPlayerInFrontArc,
+    telegraphLocked,
+  };
+}
+
 export function extractHudSnapshot(world: WorldState): HudSnapshot {
   const p = world.player;
   const totalEnemies = world.enemies.length;
@@ -9127,6 +10058,7 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
     const score = dist + statePriority;
     if (score < bestScore) {
       bestScore = score;
+      const tacticalProfile = getEnemyTacticalProfile(e, p);
       focusedEnemy = {
         id: e.id,
         name: e.name,
@@ -9145,6 +10077,10 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
         resonanceRemaining: isMarked && activeMark ? Number(activeMark.remainingTime.toFixed(2)) : 0,
         isDecoy: e.isDecoy,
         pinnedTimer: e.pinnedTimer ? Number(e.pinnedTimer.toFixed(2)) : 0,
+        roleLabel: tacticalProfile.roleLabel,
+        statusLabel: tacticalProfile.statusLabel,
+        isFrontShieldActive: tacticalProfile.isFrontShieldActive,
+        telegraphLocked: tacticalProfile.telegraphLocked,
       };
     }
   }
@@ -9359,6 +10295,11 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
     weapon: {
       equippedId: p.equippedWeaponId,
       equippedWeaponId: p.equippedWeaponId,
+      equippedUpgradeId: getEquippedWeaponUpgrade(world, p.equippedWeaponId),
+      equippedUpgradeLabel: (() => {
+        const upgId = getEquippedWeaponUpgrade(world, p.equippedWeaponId);
+        return upgId ? getWeaponUpgradeDefinition(upgId).shortLabel : null;
+      })(),
       name: getWeaponDefinition(p.equippedWeaponId).name,
       label: getWeaponDefinition(p.equippedWeaponId).label,
       shortLabel: getWeaponDefinition(p.equippedWeaponId).shortLabel,
@@ -9397,6 +10338,19 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
                 ? p.comboIndex + 1
                 : 0
             }/3`,
+    },
+    progression: {
+      memoryFragments: world.progression?.memoryFragments ?? 0,
+      claimedRewardIds: [...(world.progression?.claimedRewardIds ?? [])],
+      purchasedUpgrades: [...(world.progression?.purchasedUpgrades ?? [])],
+      equippedUpgrades: {
+        chrono_edge: getEquippedWeaponUpgrade(world, 'chrono_edge'),
+        pulsecaster: getEquippedWeaponUpgrade(world, 'pulsecaster'),
+      },
+      canModifyLoadout: canModifyWeaponUpgrades(world),
+      lastActionMessage:
+        world.progression?.lastActionMessage ??
+        'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
     },
     enemiesAlive,
     totalEnemies,

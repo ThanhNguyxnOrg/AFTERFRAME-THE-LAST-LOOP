@@ -15,9 +15,12 @@ import {
   createBossWorld,
   createInitialWorld,
   dismissActiveTransmission,
+  equipWeaponUpgrade,
   extractHudSnapshot,
   forceBossAttack,
+  grantProgressionReward,
   loadCampaignProgressFromStorage,
+  purchaseWeaponUpgrade,
   resetWorldForPlaying,
   resetWorldForStandardPlaying,
   restoreSavedCampaignProgress,
@@ -44,7 +47,12 @@ import type {
   ChronicleLoomEndingId,
   GameAppState,
   HudSnapshot,
+  UpgradeEquipOutcome,
+  UpgradePurchaseOutcome,
   WeaponId,
+  WeaponProgressionRewardId,
+  WeaponProgressionState,
+  WeaponUpgradeId,
   WorldState,
 } from './game/types.ts';
 
@@ -510,6 +518,34 @@ export default function App() {
     inputRef.current?.triggerSwitchWeapon();
   }, []);
 
+  const handlePurchaseUpgrade = useCallback(
+    (upgradeId: WeaponUpgradeId) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      purchaseWeaponUpgrade(w, upgradeId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleEquipUpgrade = useCallback(
+    (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      equipWeaponUpgrade(w, weaponId, upgradeId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
   const handleTouchMoveHold = useCallback(
     (dx: number, dz: number, pointerId?: number | null) => {
       inputRef.current?.setTouchMoveHold(dx, dz, pointerId);
@@ -627,6 +663,10 @@ export default function App() {
     let prevCommsId = world.comms.active?.id ?? null;
     let prevEquippedWeapon = world.player.equippedWeaponId;
     let prevWeaponOverheated = world.player.weaponOverheated;
+    let prevMemoryFragments = world.progression.memoryFragments;
+    let prevPurchasedCount = world.progression.purchasedUpgrades.length;
+    let prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
+    let prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
 
     const handleVisibilityResume = () => {
       if (!document.hidden) {
@@ -728,6 +768,10 @@ export default function App() {
         currCommsId !== prevCommsId ||
         world.player.equippedWeaponId !== prevEquippedWeapon ||
         world.player.weaponOverheated !== prevWeaponOverheated ||
+        world.progression.memoryFragments !== prevMemoryFragments ||
+        world.progression.purchasedUpgrades.length !== prevPurchasedCount ||
+        world.progression.equippedUpgrades.chrono_edge !== prevEquippedEdgeUpgrade ||
+        world.progression.equippedUpgrades.pulsecaster !== prevEquippedPulseUpgrade ||
         Math.ceil(world.player.integrity) !== Math.ceil(prevIntegrity);
 
       if (stateChanged || now - lastHudSyncTime >= 100) {
@@ -762,6 +806,10 @@ export default function App() {
         prevCommsId = currCommsId;
         prevEquippedWeapon = world.player.equippedWeaponId;
         prevWeaponOverheated = world.player.weaponOverheated;
+        prevMemoryFragments = world.progression.memoryFragments;
+        prevPurchasedCount = world.progression.purchasedUpgrades.length;
+        prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
+        prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
         document.body.dataset.state = world.appState;
         document.body.dataset.encounter = world.encounterMode;
         document.body.dataset.runMode = world.run.mode;
@@ -831,6 +879,23 @@ export default function App() {
         switchWeapon: (targetWeaponId?: WeaponId) => {
           switched: boolean;
           equippedWeaponId: WeaponId;
+        };
+        getProgressionState: () => WeaponProgressionState;
+        grantReward: (rewardId: WeaponProgressionRewardId) => {
+          granted: boolean;
+          amount: number;
+          memoryFragments: number;
+        };
+        purchaseUpgrade: (upgradeId: WeaponUpgradeId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        equipUpgrade: (
+          weaponId: WeaponId,
+          upgradeId: WeaponUpgradeId | null
+        ) => {
+          outcome: UpgradeEquipOutcome;
+          progression: WeaponProgressionState;
         };
         setCameraSettings: (s: Partial<CameraSettings>) => CameraSettings;
         togglePerfOverlay: () => boolean;
@@ -1055,6 +1120,35 @@ export default function App() {
           equippedWeaponId: world.player.equippedWeaponId,
         };
       },
+      getProgressionState: () => world.progression,
+      grantReward: (rewardId: WeaponProgressionRewardId) => {
+        const granted = grantProgressionReward(world, rewardId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          granted,
+          amount: granted ? 1 : 0,
+          memoryFragments: world.progression.memoryFragments,
+        };
+      },
+      purchaseUpgrade: (upgradeId: WeaponUpgradeId) => {
+        const res = purchaseWeaponUpgrade(world, upgradeId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      equipUpgrade: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => {
+        const res = equipWeaponUpgrade(world, weaponId, upgradeId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
       setCameraSettings: (s: Partial<CameraSettings>) => {
         const updated = input.setCameraSettings(s);
         setCameraSettings(updated);
@@ -1218,6 +1312,10 @@ export default function App() {
         elapsedTime={hud.elapsedTime}
         enemiesDefeated={hud.totalEnemies - hud.enemiesAlive}
         totalEnemies={hud.totalEnemies}
+        progression={hud.progression}
+        equippedWeaponId={hud.weapon.equippedWeaponId}
+        onPurchaseUpgrade={handlePurchaseUpgrade}
+        onEquipUpgrade={handleEquipUpgrade}
         cameraSettings={cameraSettings}
         onUpdateCameraSettings={handleUpdateCameraSettings}
         isMuted={isMuted}

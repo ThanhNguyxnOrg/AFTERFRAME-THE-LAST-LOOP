@@ -42,8 +42,16 @@ import {
   switchPlayerWeapon,
   toggleTutorialHints,
   transitionCampaignToBoss,
+  triggerBossDefeat,
   triggerNarrativeTransmission,
   getWeaponDefinition,
+  getAllWeaponUpgradeDefinitions,
+  getWeaponUpgradeDefinition,
+  getEquippedWeaponUpgrade,
+  grantProgressionReward,
+  purchaseWeaponUpgrade,
+  equipWeaponUpgrade,
+  canModifyWeaponUpgrades,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -7690,6 +7698,726 @@ test('Phase 14.3: Pulsecaster respects Boss frontal armor, Choir harmonic shield
     'Live Pulsecaster Charged Lance triggers Temporal Convergence on marked target'
   );
 });
+
+test('Phase 15: Weapon upgrade definitions, purchase/equip validation, and mid-combat action locks', () => {
+  const defs = getAllWeaponUpgradeDefinitions();
+  assert.equal(defs.length, 4, 'Phase 15 must define 4 focused weapon upgrades');
+  const edgeUpgrades = defs.filter((d) => d.weaponId === 'chrono_edge');
+  const pulseUpgrades = defs.filter((d) => d.weaponId === 'pulsecaster');
+  assert.equal(edgeUpgrades.length, 2, 'Chrono Edge must have 2 upgrades');
+  assert.equal(pulseUpgrades.length, 2, 'Pulsecaster must have 2 upgrades');
+
+  for (const d of defs) {
+    assert.ok(d.id.length > 0);
+    assert.ok(d.name.length > 0);
+    assert.ok(d.benefitText.length > 0);
+    assert.ok(d.tradeoffText.length > 0);
+    assert.ok(d.cost >= 2 && d.cost <= 3);
+    assert.equal(getWeaponUpgradeDefinition(d.id).id, d.id);
+  }
+
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  assert.equal(world.progression.memoryFragments, 0);
+  assert.deepEqual(world.progression.purchasedUpgrades, []);
+  assert.equal(world.progression.equippedUpgrades.chrono_edge, null);
+  assert.equal(world.progression.equippedUpgrades.pulsecaster, null);
+
+  // Insufficient fragments rejection
+  assert.equal(purchaseWeaponUpgrade(world, 'edge_breaker_cleave').outcome, 'insufficient_fragments');
+  assert.equal(world.progression.purchasedUpgrades.length, 0);
+
+  // Unowned equip rejection
+  assert.equal(
+    equipWeaponUpgrade(world, 'chrono_edge', 'edge_breaker_cleave').outcome,
+    'not_owned'
+  );
+
+  // Grant 5 Memory Fragments via campaign milestone rewards
+  assert.equal(grantProgressionReward(world, 'prologue_calibration_teach'), true); // +1
+  assert.equal(grantProgressionReward(world, 'prologue_calibration_test'), true); // +1
+  assert.equal(grantProgressionReward(world, 'chapter_1_helix_defeated'), true); // +3
+  assert.equal(world.progression.memoryFragments, 5);
+
+  // Mid-combat action lock prevents purchasing or equipping while in active swing/dodge/parry
+  world.player.actionState = 'light_active';
+  assert.equal(canModifyWeaponUpgrades(world), false);
+  assert.equal(purchaseWeaponUpgrade(world, 'edge_breaker_cleave').outcome, 'action_locked');
+  world.player.actionState = 'idle';
+  assert.equal(canModifyWeaponUpgrades(world), true);
+
+  // Purchase edge_breaker_cleave (cost 2) -> auto-equips on chrono_edge
+  assert.equal(purchaseWeaponUpgrade(world, 'edge_breaker_cleave').outcome, 'purchased');
+  assert.equal(world.progression.memoryFragments, 3);
+  assert.deepEqual(world.progression.purchasedUpgrades, ['edge_breaker_cleave']);
+  assert.equal(getEquippedWeaponUpgrade(world, 'chrono_edge'), 'edge_breaker_cleave');
+
+  // Duplicate purchase prevented
+  assert.equal(purchaseWeaponUpgrade(world, 'edge_breaker_cleave').outcome, 'already_owned');
+  assert.equal(world.progression.memoryFragments, 3);
+
+  // Purchase edge_harmonic_conductor (cost 3) -> replaces equipped chrono_edge upgrade (at most 1 active per weapon)
+  assert.equal(purchaseWeaponUpgrade(world, 'edge_harmonic_conductor').outcome, 'purchased');
+  assert.equal(world.progression.memoryFragments, 0);
+  assert.deepEqual(world.progression.purchasedUpgrades, [
+    'edge_breaker_cleave',
+    'edge_harmonic_conductor',
+  ]);
+  assert.equal(getEquippedWeaponUpgrade(world, 'chrono_edge'), 'edge_harmonic_conductor');
+
+  // Cannot equip a Chrono Edge upgrade onto Pulsecaster
+  assert.equal(
+    equipWeaponUpgrade(world, 'pulsecaster', 'edge_breaker_cleave').outcome,
+    'incompatible_weapon'
+  );
+  assert.equal(getEquippedWeaponUpgrade(world, 'pulsecaster'), null);
+
+  // Switch equipped Chrono Edge upgrade back to edge_breaker_cleave, then unequip (null)
+  assert.equal(
+    equipWeaponUpgrade(world, 'chrono_edge', 'edge_breaker_cleave').outcome,
+    'equipped'
+  );
+  assert.equal(getEquippedWeaponUpgrade(world, 'chrono_edge'), 'edge_breaker_cleave');
+  assert.equal(equipWeaponUpgrade(world, 'chrono_edge', null).outcome, 'unequipped');
+  assert.equal(getEquippedWeaponUpgrade(world, 'chrono_edge'), null);
+});
+
+test('Phase 15: Milestone rewards are deterministic and strictly idempotent across Echo replays, retries, Practice mode, and Chapter Replay', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // 1. Calibration Step 1 (Anchor Pad 01 held by Echo while Sera crosses West through Gate 01)
+  world.enemies.forEach((e) => {
+    e.x = 18;
+    e.z = -18;
+    e.cooldownTimer = 99;
+    e.aiState = 'idle';
+  });
+  const plate = world.pressurePlate;
+  world.player.x = plate.x;
+  world.player.z = plate.z;
+
+  const recStart = createEmptyInput(Math.PI);
+  recStart.echoRecordJustPressed = true;
+  stepWorld(world, recStart, 0.02);
+  for (let i = 0; i < 40; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  const recStop = createEmptyInput(Math.PI);
+  recStop.echoRecordJustPressed = true;
+  stepWorld(world, recStop, 0.02);
+
+  // Move live Sera West past Gate 01 and replay Echo on Pad 01
+  world.player.x = plate.receiverX - plate.receiverRadius - GAME_CONFIG.player.radius - 0.5;
+  world.player.z = plate.receiverZ;
+  const playInp = createEmptyInput(Math.PI);
+  playInp.echoPlayJustPressed = true;
+  stepWorld(world, playInp, 0.02);
+  for (let i = 0; i < 10; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+
+  assert.equal(world.puzzle.teachCompleted, true);
+  assert.equal(world.progression.memoryFragments, 1);
+  assert.deepEqual(world.progression.claimedRewardIds, ['prologue_calibration_teach']);
+
+  // Repeating the same reward ID or replaying Echo never duplicates Memory Fragments
+  const repeatGrant = grantProgressionReward(world, 'prologue_calibration_teach');
+  assert.equal(repeatGrant, false);
+  assert.equal(world.progression.memoryFragments, 1);
+
+  // 2. Boss defeat in Campaign grants 3 Memory Fragments once; retrying checkpoint and defeating again grants 0
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  triggerBossDefeat(world);
+  assert.equal(world.progression.memoryFragments, 4);
+  assert.ok(world.progression.claimedRewardIds.includes('chapter_1_helix_defeated'));
+
+  retryBossFromCheckpoint(world, true);
+  triggerBossDefeat(world);
+  assert.equal(
+    world.progression.memoryFragments,
+    4,
+    'Defeating HELIX-04 again after checkpoint retry must not farm additional Memory Fragments'
+  );
+
+  // 3. Practice mode runs never grant campaign progression rewards
+  startPracticeBossRun(world, true, 'the-choir');
+  const beforePracticeFragments = world.progression.memoryFragments;
+  triggerBossDefeat(world);
+  assert.equal(
+    world.progression.memoryFragments,
+    beforePracticeFragments,
+    'Practice boss encounters must not award campaign Memory Fragments'
+  );
+});
+
+test('Phase 15: Chrono Edge upgrades (Breaker Cleave & Harmonic Conductor) apply exact combat benefits and trade-offs', () => {
+  // Compare baseline Chrono Edge vs Breaker Cleave on guarded Bastion and unguarded Scrapper
+  const runMeleeStrike = (
+    upgradeId: 'edge_breaker_cleave' | 'edge_harmonic_conductor' | null,
+    isHeavy: boolean,
+    guardedBastion: boolean,
+    initialFlux = 0
+  ) => {
+    const w = createInitialWorld('playing');
+    startCampaignRun(w, true);
+    w.obstacles = [];
+    for (const e of w.enemies) {
+      e.cooldownTimer = 99;
+      e.aiState = 'idle';
+      e.x = 18;
+      e.z = -18;
+    }
+    if (upgradeId) {
+      w.progression.memoryFragments = 10;
+      assert.equal(purchaseWeaponUpgrade(w, upgradeId).outcome, 'purchased');
+    }
+    const target = w.enemies.find((e) =>
+      guardedBastion ? e.id === 'enemy-bastion-1' : e.id === 'enemy-scrapper-1'
+    )!;
+    w.player.x = 0;
+    w.player.z = 2.0;
+    w.player.rotationY = Math.PI;
+    w.player.flux = initialFlux;
+    target.x = 0;
+    target.z = 0.2;
+    target.rotationY = 0; // Facing South toward player so Bastion frontal shield is active
+    target.hp = target.maxHp;
+    target.stagger = 0;
+
+    const inp = createEmptyInput(Math.PI);
+    if (isHeavy) {
+      inp.heavyAttackJustPressed = true;
+    } else {
+      inp.lightAttackJustPressed = true;
+    }
+    stepWorld(w, inp, 0.02);
+    const wasEmpowered = w.player.isEmpoweredHeavy;
+    let recoveryObserved = 0;
+    for (let i = 0; i < 24; i++) {
+      stepWorld(w, createEmptyInput(Math.PI), 0.02);
+      if (w.player.actionState === 'heavy_recovery' && recoveryObserved === 0) {
+        recoveryObserved = w.player.stateTimer;
+      }
+    }
+    const postureBroken = target.aiState === 'staggered';
+    return {
+      damageDealt: target.maxHp - target.hp,
+      staggerDealt: postureBroken ? target.maxStagger : target.stagger,
+      postureBroken,
+      wasEmpowered,
+      flux: w.player.flux,
+      recoveryObserved,
+    };
+  };
+
+  const baseLightUnguarded = runMeleeStrike(null, false, false, 0);
+  const breakerLightUnguarded = runMeleeStrike('edge_breaker_cleave', false, false, 0);
+  assert.ok(
+    breakerLightUnguarded.staggerDealt > baseLightUnguarded.staggerDealt,
+    `Breaker Cleave must deal higher stagger (${breakerLightUnguarded.staggerDealt} > ${baseLightUnguarded.staggerDealt})`
+  );
+  assert.ok(
+    breakerLightUnguarded.damageDealt < baseLightUnguarded.damageDealt,
+    `Breaker Cleave trade-off must deal lower direct HP damage (${breakerLightUnguarded.damageDealt} < ${baseLightUnguarded.damageDealt})`
+  );
+
+  const baseHeavyGuarded = runMeleeStrike(null, true, true, 35);
+  const breakerHeavyGuarded = runMeleeStrike('edge_breaker_cleave', true, true, 35);
+  assert.equal(
+    baseHeavyGuarded.postureBroken,
+    false,
+    'Baseline Heavy Cleave leaves guarded Bastion below stagger break threshold'
+  );
+  assert.equal(
+    breakerHeavyGuarded.postureBroken,
+    true,
+    'Breaker Cleave Heavy Cleave shatters Bastion frontal guard posture in a single strike'
+  );
+  assert.ok(
+    breakerHeavyGuarded.staggerDealt > baseHeavyGuarded.staggerDealt,
+    `Breaker Cleave must deal substantially higher stagger through Bastion frontal guard (${breakerHeavyGuarded.staggerDealt} > ${baseHeavyGuarded.staggerDealt})`
+  );
+  assert.ok(
+    breakerHeavyGuarded.recoveryObserved > baseHeavyGuarded.recoveryObserved,
+    'Breaker Cleave Heavy Cleave trade-off has longer recovery commitment'
+  );
+
+  // Harmonic Conductor: +3 bonus Flux on clean un-empowered hit, -15% un-empowered Heavy Cleave direct damage,
+  // +5 Empowered Heavy Cleave Flux cost (30 vs 25), +1.1s Resonance prime window (4.5s vs 3.4s),
+  // -5 Convergence Flux cost (10 vs 15), +10 Convergence posture bonus (32 vs 22)
+  const harmonicLightUnguarded = runMeleeStrike('edge_harmonic_conductor', false, false, 0);
+  assert.equal(
+    harmonicLightUnguarded.flux - baseLightUnguarded.flux,
+    GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.fluxGainBonus,
+    'Harmonic Conductor grants +3 bonus Flux on clean melee hit'
+  );
+
+  const baseHeavyUnguarded = runMeleeStrike(null, true, false, 0);
+  const harmonicHeavyUnguarded = runMeleeStrike('edge_harmonic_conductor', true, false, 0);
+  assert.ok(
+    harmonicHeavyUnguarded.damageDealt < baseHeavyUnguarded.damageDealt,
+    'Harmonic Conductor trade-off reduces un-empowered solo Heavy Cleave direct damage by 15%'
+  );
+
+  const baseHeavyAt25Flux = runMeleeStrike(null, true, false, 25);
+  const harmonicHeavyAt25Flux = runMeleeStrike('edge_harmonic_conductor', true, false, 25);
+  const harmonicHeavyAt30Flux = runMeleeStrike('edge_harmonic_conductor', true, false, 30);
+  assert.equal(baseHeavyAt25Flux.wasEmpowered, true, 'Baseline Heavy Cleave empowers at 25 Flux');
+  assert.equal(
+    harmonicHeavyAt25Flux.wasEmpowered,
+    false,
+    'Harmonic Conductor requires 30 Flux to empower Heavy Cleave'
+  );
+  assert.equal(
+    harmonicHeavyAt30Flux.wasEmpowered,
+    true,
+    'Harmonic Conductor empowers Heavy Cleave at 30 Flux'
+  );
+
+  const resWorld = createInitialWorld('playing');
+  startCampaignRun(resWorld, true);
+  resWorld.progression.memoryFragments = 10;
+  purchaseWeaponUpgrade(resWorld, 'edge_harmonic_conductor');
+  assert.equal(
+    resWorld.resonance.fluxCost,
+    GAME_CONFIG.resonance.fluxCost +
+      GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.convergenceFluxCostDelta,
+    'Harmonic Conductor lowers Convergence Flux cost from 15 to 10'
+  );
+});
+
+test('Phase 15: Pulsecaster upgrades (Thermal Sink & Overcharge Condenser) and Echo upgrade replay fidelity', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  world.obstacles = [];
+  for (const e of world.enemies) {
+    e.cooldownTimer = 99;
+    e.aiState = 'idle';
+    e.x = 18;
+    e.z = -18;
+  }
+  switchPlayerWeapon(world, 'pulsecaster');
+  stepWorld(world, createEmptyInput(Math.PI), 0.2);
+
+  // 1. Thermal Sink: Light Bolt heat cost is 12 (vs 18), passive cooling is 1.3x faster, Light Bolt damage is 10 (vs 12)
+  world.progression.memoryFragments = 10;
+  assert.equal(purchaseWeaponUpgrade(world, 'pulse_thermal_sink').outcome, 'purchased');
+  assert.equal(getEquippedWeaponUpgrade(world, 'pulsecaster'), 'pulse_thermal_sink');
+
+  const lightShotInp = createEmptyInput(Math.PI);
+  lightShotInp.lightAttackJustPressed = true;
+  stepWorld(world, lightShotInp, 0.02);
+  for (let i = 0; i < 4; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  const bolt = world.projectiles[0]!;
+  assert.ok(bolt, 'Thermal Sink Light Bolt spawned');
+  assert.equal(bolt.equippedUpgradeId, 'pulse_thermal_sink');
+  assert.equal(
+    bolt.damage,
+    GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightDamage,
+    'Thermal Sink trade-off reduces Light Bolt damage from 12 to 10'
+  );
+  assert.equal(
+    bolt.staggerDamage,
+    GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightStagger,
+    'Thermal Sink trade-off reduces Light Bolt stagger from 9 to 7'
+  );
+  // Heat immediately after shot is <= 12
+  assert.ok(
+    world.player.weaponHeat <= GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightHeatCost,
+    `Thermal Sink Light Bolt heat cost must be <= 12 (got ${world.player.weaponHeat})`
+  );
+
+  // 2. Overcharge Condenser: Charged Lance damage is 35 base / 50 empowered (vs 28 / 40) and stagger is 42 / 58,
+  // with higher heat cost (48 vs 36) and longer recovery
+  world.projectiles = [];
+  world.player.weaponHeat = 0;
+  world.player.weaponShotCooldownTimer = 0;
+  world.player.actionState = 'idle';
+  world.player.flux = 0;
+  assert.equal(purchaseWeaponUpgrade(world, 'pulse_overcharge_condenser').outcome, 'purchased');
+  assert.equal(getEquippedWeaponUpgrade(world, 'pulsecaster'), 'pulse_overcharge_condenser');
+
+  // Record an Echo firing an Overcharge Condenser Charged Lance
+  const recStart = createEmptyInput(Math.PI);
+  recStart.echoRecordJustPressed = true;
+  stepWorld(world, recStart, 0.02);
+
+  const heavyShotInp = createEmptyInput(Math.PI);
+  heavyShotInp.heavyAttackJustPressed = true;
+  stepWorld(world, heavyShotInp, 0.02);
+  for (let i = 0; i < 16; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  const liveLance = world.projectiles.find((p) => p.owner === 'player' && p.isHeavy)!;
+  assert.ok(liveLance, 'Overcharge Condenser Charged Lance fired');
+  assert.equal(liveLance.equippedUpgradeId, 'pulse_overcharge_condenser');
+  assert.equal(
+    liveLance.damage,
+    GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyBaseDamage,
+    'Overcharge Condenser increases base Charged Lance damage from 28 to 35'
+  );
+  assert.equal(
+    liveLance.staggerDamage,
+    GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyStagger,
+    'Overcharge Condenser increases base Charged Lance stagger from 32 to 42'
+  );
+
+  const recStop = createEmptyInput(Math.PI);
+  recStop.echoRecordJustPressed = true;
+  stepWorld(world, recStop, 0.02);
+
+  // Unequip Pulsecaster upgrade on live Sera and verify that the recorded Echo still replays with pulse_overcharge_condenser!
+  world.projectiles = [];
+  world.player.actionState = 'idle';
+  assert.equal(equipWeaponUpgrade(world, 'pulsecaster', null).outcome, 'unequipped');
+  assert.equal(getEquippedWeaponUpgrade(world, 'pulsecaster'), null);
+
+  const playInp = createEmptyInput(Math.PI);
+  playInp.echoPlayJustPressed = true;
+  stepWorld(world, playInp, 0.02);
+  for (let i = 0; i < 12; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+
+  assert.equal(
+    world.echo.activeActor?.equippedUpgradeId,
+    'pulse_overcharge_condenser',
+    'Replaying Echo preserves the weapon upgrade that was equipped when recorded'
+  );
+  const echoLance = world.projectiles.find((p) => p.owner === 'echo' && p.isHeavy)!;
+  assert.ok(echoLance, 'Echo replayed Charged Lance projectile');
+  assert.equal(echoLance.equippedUpgradeId, 'pulse_overcharge_condenser');
+  assert.equal(
+    echoLance.damage,
+    0,
+    'Echo projectile never duplicates direct HP damage (primes Resonance instead)'
+  );
+});
+
+test('Phase 16.1: Enemy Archetype Tactical Profiles, HUD Role/Status Telemetry & Directional Shield State', () => {
+  const world = createInitialWorld('playing');
+  const bastion = world.enemies.find((e) => e.archetype === 'bastion')!;
+  const scrapper = world.enemies.find((e) => e.archetype === 'scrapper')!;
+  const scout = world.enemies.find((e) => e.archetype === 'scout')!;
+
+  assert.ok(bastion && scrapper && scout, 'Standard encounter spawns Bastion, Scrapper, and Scout');
+
+  // Position player in front of Bastion so Bastion is the focused enemy
+  bastion.x = 0;
+  bastion.z = 2.0;
+  bastion.rotationY = 0; // Facing +Z toward player at (0, 4.5)
+  world.player.x = 0;
+  world.player.z = 4.5;
+  world.player.rotationY = Math.PI;
+
+  const hudFront = extractHudSnapshot(world);
+  assert.equal(hudFront.focusedEnemy?.id, bastion.id);
+  assert.equal(hudFront.focusedEnemy?.roleLabel, 'AEGIS BULWARK');
+  assert.equal(hudFront.focusedEnemy?.isFrontShieldActive, true);
+  assert.ok(
+    hudFront.focusedEnemy?.statusLabel.includes('FRONTAL GUARD'),
+    `Expected FRONTAL GUARD status on Bastion when player is in front arc, got ${hudFront.focusedEnemy?.statusLabel}`
+  );
+
+  // Move player behind Bastion (-Z) -> frontal shield is bypassed (FLANK EXPOSED)
+  world.player.x = 0;
+  world.player.z = -0.5;
+  world.player.rotationY = 0;
+  const hudFlank = extractHudSnapshot(world);
+  assert.equal(hudFlank.focusedEnemy?.id, bastion.id);
+  assert.ok(
+    hudFlank.focusedEnemy?.statusLabel.includes('FLANK OPEN'),
+    `Expected FLANK OPEN status when behind Bastion, got ${hudFlank.focusedEnemy?.statusLabel}`
+  );
+
+  // Put Scout as closest focused enemy in telegraph -> roleLabel is RANGED SUPPRESSOR
+  bastion.x = 18;
+  bastion.z = 18;
+  scout.x = 0;
+  scout.z = 2.0;
+  scout.aiState = 'telegraph';
+  scout.stateDuration = 0.95;
+  scout.stateTimer = 0.2;
+  scout.telegraphLocked = true;
+  world.player.x = 0;
+  world.player.z = 5.0;
+  const hudScout = extractHudSnapshot(world);
+  assert.equal(hudScout.focusedEnemy?.id, scout.id);
+  assert.equal(hudScout.focusedEnemy?.roleLabel, 'RANGED SUPPRESSOR');
+  assert.equal(hudScout.focusedEnemy?.telegraphLocked, true);
+});
+
+test('Phase 16.2: Authoritative Obstacle Line-of-Sight Blocks Scout Ranged Pulse & Melee Attacks Through Pillars', () => {
+  const world = createInitialWorld('playing');
+  // Keep only Scout active and place a solid pillar directly between Scout and Sera
+  for (const e of world.enemies) {
+    if (e.archetype !== 'scout') {
+      e.hp = 0;
+      e.aiState = 'ko';
+    }
+  }
+  const scout = world.enemies.find((e) => e.archetype === 'scout')!;
+  world.obstacles = [
+    {
+      id: 'test-cover-pillar',
+      x: 0,
+      z: 0,
+      radius: 1.4,
+      height: 3.5,
+      label: 'Cover Pillar',
+      disabled: false,
+    },
+  ];
+
+  // Place Scout at (0, -3.2) facing +Z (0 rad) and Sera at (0, 3.2) directly behind the pillar at (0, 0)
+  scout.x = 0;
+  scout.z = -3.2;
+  scout.rotationY = 0;
+  scout.aiState = 'pursue';
+  scout.cooldownTimer = 0;
+  world.player.x = 0;
+  world.player.z = 3.2;
+  const initialIntegrity = world.player.integrity;
+
+  // 1. Stepping while pillar blocks line of sight must NOT start Scout's ranged telegraph
+  stepWorld(world, createEmptyInput(Math.PI), 0.05);
+  assert.notEqual(
+    scout.aiState,
+    'telegraph',
+    'Scout must not initiate ranged telegraph through a solid obstacle'
+  );
+
+  // 2. Even if Scout already started telegraph before Sera ducked behind the pillar, the attack discharge must be blocked by the pillar
+  scout.aiState = 'attack';
+  scout.stateDuration = 0.16;
+  scout.stateTimer = 0.14;
+  scout.rotationY = 0;
+  scout.hasDealtDamageThisAttack = false;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  assert.equal(
+    world.player.integrity,
+    initialIntegrity,
+    'Solid obstacle between Scout and Sera must block Scout ranged pulse attack damage'
+  );
+  assert.equal(
+    world.events.some((ev) => ev.type === 'pulse_impact_obstacle'),
+    true,
+    'Blocked Scout pulse attack emits pulse_impact_obstacle feedback event at obstacle impact'
+  );
+});
+
+test('Phase 16.3: Fair Dodge Tracking Cutoff & Scout Ranged Telegraph Interruption via Heavy Strike or Charged Lance', () => {
+  const world = createInitialWorld('playing');
+  world.obstacles = [];
+  for (const e of world.enemies) {
+    e.cooldownTimer = 99;
+    e.aiState = 'idle';
+    e.x = 18;
+    e.z = -18;
+  }
+
+  // 1. Scrapper telegraph immediately locks aim tracking when Sera initiates a dodge (no post-dodge aim tracking)
+  const scrapper = world.enemies.find((e) => e.archetype === 'scrapper')!;
+  scrapper.x = 0;
+  scrapper.z = 0;
+  scrapper.rotationY = 0; // Facing +Z toward Sera at (0, 2.2)
+  scrapper.aiState = 'telegraph';
+  scrapper.stateDuration = 0.42;
+  scrapper.stateTimer = 0.38; // Early in telegraph (progress < 0.2)
+  scrapper.telegraphLocked = false;
+
+  world.player.x = 0;
+  world.player.z = 2.2;
+  world.player.rotationY = Math.PI;
+
+  // Sera dodges laterally (+X)
+  const dodgeInp = createEmptyInput(Math.PI);
+  dodgeInp.moveX = 1;
+  dodgeInp.dodgeJustPressed = true;
+  stepWorld(world, dodgeInp, 0.02);
+
+  const lockedRotation = scrapper.rotationY;
+  assert.equal(
+    scrapper.telegraphLocked,
+    true,
+    'Enemy telegraph tracking must lock immediately when player initiates a dodge'
+  );
+
+  // Step further while Sera moves to +X during dodge; Scrapper rotation must remain locked
+  for (let i = 0; i < 6; i++) {
+    const moveRight = createEmptyInput(Math.PI);
+    moveRight.moveX = 1;
+    stepWorld(world, moveRight, 0.02);
+  }
+  assert.ok(
+    Math.abs(scrapper.rotationY - lockedRotation) < 1e-4,
+    `Locked telegraph rotation must not track player after dodge (expected ${lockedRotation}, got ${scrapper.rotationY})`
+  );
+
+  // 2. Ranged Suppressor (Scout) telegraph is interrupted into recovery when hit by a Charged Pulsecaster Lance
+  scrapper.x = 18;
+  scrapper.z = -18;
+  scrapper.aiState = 'idle';
+
+  const scout = world.enemies.find((e) => e.archetype === 'scout')!;
+  scout.x = 0;
+  scout.z = -3.0;
+  scout.rotationY = 0;
+  scout.hp = scout.maxHp;
+  scout.stagger = 0;
+  scout.aiState = 'telegraph';
+  scout.stateDuration = 0.95;
+  scout.stateTimer = 0.85;
+  scout.telegraphLocked = false;
+
+  world.player.x = 0;
+  world.player.z = 2.0;
+  world.player.rotationY = Math.PI;
+  world.player.actionState = 'idle';
+  world.player.dodgeCooldownTimer = 0;
+  switchPlayerWeapon(world, 'pulsecaster');
+  stepWorld(world, createEmptyInput(Math.PI), 0.2);
+
+  // Keep Scout in telegraph and fire a Charged Lance [E]
+  scout.aiState = 'telegraph';
+  scout.stateDuration = 0.95;
+  scout.stateTimer = 0.85;
+  const heavyLanceInp = createEmptyInput(Math.PI);
+  heavyLanceInp.heavyAttackJustPressed = true;
+  stepWorld(world, heavyLanceInp, 0.02);
+
+  for (let i = 0; i < 16; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+
+  const scoutAfterLanceState = scout.aiState as string;
+  assert.equal(
+    scoutAfterLanceState === 'recovery' || scoutAfterLanceState === 'staggered',
+    true,
+    `Charged Pulsecaster Lance hitting Scout during telegraph must interrupt Scout into recovery/staggered (got ${scoutAfterLanceState})`
+  );
+});
+
+test('Phase 16.4: Echo Tactical Flanking Distracts Bastion Shield & Phase 15 Upgrades Counter Distinct Archetypes', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  world.obstacles = [];
+  for (const e of world.enemies) {
+    e.cooldownTimer = 99;
+    e.aiState = 'idle';
+    e.x = 18;
+    e.z = -18;
+  }
+
+  // 1. Active Echo positioned in front of Bastion (+Z) draws Bastion's facing while live Sera flanks behind (-Z)
+  const bastion = world.enemies.find((e) => e.archetype === 'bastion')!;
+  bastion.x = 0;
+  bastion.z = 0;
+  bastion.rotationY = Math.PI; // Initially facing -Z
+  bastion.aiState = 'pursue';
+  bastion.cooldownTimer = 99;
+
+  // Record a stationary Echo at (0, 2.5) (+Z side of Bastion)
+  world.player.x = 0;
+  world.player.z = 2.5;
+  world.player.rotationY = Math.PI;
+  const recStart = createEmptyInput(Math.PI);
+  recStart.echoRecordJustPressed = true;
+  stepWorld(world, recStart, 0.02);
+  for (let i = 0; i < 30; i++) {
+    bastion.x = 0;
+    bastion.z = 0;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  const recStop = createEmptyInput(Math.PI);
+  recStop.echoRecordJustPressed = true;
+  stepWorld(world, recStop, 0.02);
+
+  // Move live Sera to (0, -4.5) (-Z side, farther than Echo at +2.5m) and replay the Echo
+  world.player.x = 0;
+  world.player.z = -4.5;
+  world.player.rotationY = 0;
+  bastion.x = 0;
+  bastion.z = 0;
+  bastion.rotationY = Math.PI;
+  bastion.aiState = 'pursue';
+
+  const playInp = createEmptyInput(0);
+  playInp.echoPlayJustPressed = true;
+  stepWorld(world, playInp, 0.02);
+  for (let i = 0; i < 22; i++) {
+    bastion.x = 0;
+    bastion.z = 0;
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+
+  // Bastion should now have turned toward the closer active Echo at +Z (rotationY near 0), exposing its back (-Z) to live Sera!
+  assert.ok(
+    Math.abs(bastion.rotationY) < 0.2,
+    `Bastion should orient toward closer active Echo decoy at +Z (expected rotationY near 0, got ${bastion.rotationY})`
+  );
+
+  // Move live Sera up behind Bastion at (0, -1.8) facing +Z (0 rad) and strike Bastion's unguarded back
+  world.player.x = 0;
+  world.player.z = -1.8;
+  world.player.rotationY = 0;
+  const hpBeforeBackstab = bastion.hp;
+  const lightHit = createEmptyInput(0);
+  lightHit.lightAttackJustPressed = true;
+  stepWorld(world, lightHit, 0.02);
+  for (let i = 0; i < 10; i++) {
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  const backstabDamage = hpBeforeBackstab - bastion.hp;
+  assert.equal(
+    backstabDamage,
+    GAME_CONFIG.player.lightAttack.damage[0],
+    `Flanking strike behind Echo-distracted Bastion deals full unmitigated damage (${backstabDamage})`
+  );
+
+  // 2. Pulsecaster Thermal Sink allows 7 consecutive Light Bolts to eliminate a Scout without overheating (baseline overheats on shot 6)
+  clearEchoState(world, 'user');
+  bastion.x = 18;
+  bastion.z = 18;
+  const scout = world.enemies.find((e) => e.archetype === 'scout')!;
+  scout.x = 0;
+  scout.z = -4.0;
+  scout.hp = scout.maxHp; // 65 HP
+  scout.aiState = 'idle';
+  scout.cooldownTimer = 99;
+
+  world.player.x = 0;
+  world.player.z = 2.0;
+  world.player.rotationY = Math.PI;
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.weaponHeat = 0;
+  world.player.weaponOverheated = false;
+  world.progression.memoryFragments = 10;
+  assert.equal(purchaseWeaponUpgrade(world, 'pulse_thermal_sink').outcome, 'purchased');
+  assert.equal(switchPlayerWeapon(world, 'pulsecaster'), true);
+  stepWorld(world, createEmptyInput(Math.PI), 0.2);
+
+  for (let shot = 0; shot < 8 && scout.hp > 0; shot++) {
+    const fireInp = createEmptyInput(Math.PI);
+    fireInp.lightAttackJustPressed = true;
+    stepWorld(world, fireInp, 0.02);
+    for (let f = 0; f < 16; f++) {
+      scout.x = 0;
+      scout.z = -4.0;
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    }
+  }
+  assert.equal(scout.hp, 0, 'Thermal Sink sustained volley eliminates Scout without overheating');
+  assert.equal(world.player.weaponOverheated, false, 'Thermal Sink never overheated during volley');
+});
+
+
 
 
 

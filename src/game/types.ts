@@ -20,6 +20,79 @@ export type WeaponShotOutcome =
   | 'cooldown'
   | 'expired';
 
+export type WeaponUpgradeId =
+  | 'edge_breaker_cleave'
+  | 'edge_harmonic_conductor'
+  | 'pulse_thermal_sink'
+  | 'pulse_overcharge_condenser';
+
+export type WeaponProgressionRewardId =
+  | 'prologue_calibration_teach'
+  | 'prologue_calibration_test'
+  | 'prologue_calibration_combine'
+  | 'prologue_bay_proxies_cleared'
+  | 'chapter_1_helix_defeated'
+  | 'chapter_2_choir_defeated'
+  | 'chapter_3_curator_defeated'
+  | 'chapter_4_matron_defeated';
+
+export type UpgradePurchaseOutcome =
+  | 'purchased'
+  | 'already_owned'
+  | 'insufficient_fragments'
+  | 'invalid_upgrade'
+  | 'action_locked';
+
+export type UpgradeEquipOutcome =
+  | 'equipped'
+  | 'unequipped'
+  | 'not_owned'
+  | 'incompatible_weapon'
+  | 'invalid_upgrade'
+  | 'action_locked';
+
+export interface WeaponUpgradeDefinition {
+  id: WeaponUpgradeId;
+  weaponId: WeaponId;
+  name: string;
+  shortLabel: string;
+  roleLabel: string;
+  cost: number;
+  summary: string;
+  benefitText: string;
+  tradeoffText: string;
+}
+
+export interface WeaponProgressionRewardDefinition {
+  id: WeaponProgressionRewardId;
+  label: string;
+  chapter: CampaignChapterId;
+  fragments: number;
+  description: string;
+}
+
+export interface PersistedWeaponProgressionState {
+  memoryFragments: number;
+  claimedRewardIds: WeaponProgressionRewardId[];
+  purchasedUpgrades: WeaponUpgradeId[];
+  equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
+}
+
+export interface WeaponProgressionState extends PersistedWeaponProgressionState {
+  lastPurchaseOutcome: UpgradePurchaseOutcome | null;
+  lastEquipOutcome: UpgradeEquipOutcome | null;
+  lastActionMessage: string;
+}
+
+export interface HudWeaponProgressionSnapshot {
+  memoryFragments: number;
+  claimedRewardIds: WeaponProgressionRewardId[];
+  purchasedUpgrades: WeaponUpgradeId[];
+  equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
+  canModifyLoadout: boolean;
+  lastActionMessage: string;
+}
+
 export interface WeaponDefinition {
   id: WeaponId;
   name: string;
@@ -39,6 +112,7 @@ export interface ProjectileState {
   id: string;
   owner: 'player' | 'echo';
   weaponId: WeaponId;
+  equippedUpgradeId?: WeaponUpgradeId | null;
   attackMode: 'pulse_light' | 'pulse_heavy';
   x: number;
   z: number;
@@ -200,6 +274,7 @@ export interface SavedCampaignProgressSnapshot {
   bossCheckpoint: BossCheckpointState | null;
   selectedEnding: ChronicleLoomEndingId | null;
   equippedWeaponId?: WeaponId;
+  progression?: PersistedWeaponProgressionState;
 }
 
 export interface PersistedActiveCampaignState {
@@ -209,6 +284,7 @@ export interface PersistedActiveCampaignState {
   bossCheckpoint: BossCheckpointState | null;
   selectedEnding: ChronicleLoomEndingId | null;
   equippedWeaponId?: WeaponId;
+  progression?: PersistedWeaponProgressionState;
 }
 
 export interface PersistedCampaignSaveV2 {
@@ -218,6 +294,7 @@ export interface PersistedCampaignSaveV2 {
   recoveredLogs: string[];
   completedEndings: ChronicleLoomEndingId[];
   activeCampaign: PersistedActiveCampaignState | null;
+  progression?: PersistedWeaponProgressionState;
 }
 
 export interface VerticalSliceRunState {
@@ -314,6 +391,7 @@ export interface EchoSample {
   chargeRatio: number;
   isEmpoweredHeavy: boolean;
   weaponId?: WeaponId;
+  equippedUpgradeId?: WeaponUpgradeId | null;
 }
 
 export interface EchoRecordedActionEvent {
@@ -327,6 +405,7 @@ export interface EchoRecordedActionEvent {
   comboIndex: number;
   isEmpoweredHeavy?: boolean;
   weaponId?: WeaponId;
+  equippedUpgradeId?: WeaponUpgradeId | null;
 }
 
 export interface EchoClip {
@@ -349,6 +428,7 @@ export interface EchoActorState {
   chargeRatio: number;
   isEmpoweredHeavy: boolean;
   weaponId: WeaponId;
+  equippedUpgradeId?: WeaponUpgradeId | null;
   elapsed: number;
   duration: number;
 }
@@ -798,6 +878,7 @@ export interface EnemyState {
   decoySignature?: 'phase_flicker' | 'inverted_harmonic';
   pinnedTimer?: number;
   strikeSeq?: number;
+  telegraphLocked?: boolean;
 }
 
 export interface BossState {
@@ -914,7 +995,11 @@ export interface CombatEvent {
     | 'player_pulse_heavy_shot'
     | 'pulse_overheated'
     | 'pulse_overheat_cleared'
-    | 'pulse_impact_obstacle';
+    | 'pulse_impact_obstacle'
+    | 'progression_reward_granted'
+    | 'weapon_upgrade_purchased'
+    | 'weapon_upgrade_equipped'
+    | 'weapon_upgrade_rejected';
   x: number;
   z: number;
   originX?: number;
@@ -926,6 +1011,8 @@ export interface CombatEvent {
   isGuarded?: boolean;
   enemyId?: string;
   weaponId?: WeaponId;
+  upgradeId?: WeaponUpgradeId | null;
+  rewardId?: WeaponProgressionRewardId;
   echoAction?: EchoRecordedActionType;
   relayStatus?: RelayEvaluationStatus;
   resonanceOutcome?: ResonanceOutcome;
@@ -978,6 +1065,7 @@ export interface WorldState {
   echoCollapse: EchoCollapseState;
   loom: ChronicleLoomState;
   comms: NarrativeCommsState;
+  progression: WeaponProgressionState;
   events: CombatEvent[];
   stats: {
     damageDealt: number;
@@ -1024,6 +1112,8 @@ export interface HudSnapshot {
   weapon: {
     equippedId: WeaponId;
     equippedWeaponId: WeaponId;
+    equippedUpgradeId: WeaponUpgradeId | null;
+    equippedUpgradeLabel: string | null;
     name: string;
     label: string;
     shortLabel: string;
@@ -1045,6 +1135,7 @@ export interface HudSnapshot {
     statusLabel: string;
     activeProjectiles: number;
   };
+  progression: HudWeaponProgressionSnapshot;
   enemiesAlive: number;
   totalEnemies: number;
   objectiveText: string;
@@ -1064,6 +1155,10 @@ export interface HudSnapshot {
     resonanceRemaining: number;
     isDecoy?: boolean;
     pinnedTimer?: number;
+    roleLabel: string;
+    statusLabel: string;
+    isFrontShieldActive: boolean;
+    telegraphLocked: boolean;
   } | null;
   boss: HudBossSnapshot | null;
   echo: {

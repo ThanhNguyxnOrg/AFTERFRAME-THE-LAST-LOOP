@@ -3977,8 +3977,10 @@ export class ArenaSceneRenderer {
           enemy.stateDuration > 0
             ? Math.max(0, Math.min(1, 1 - enemy.stateTimer / enemy.stateDuration))
             : 0;
+        const isLocked = Boolean(enemy.telegraphLocked) || progress >= 0.55;
         rig.telegraphDiscMaterial.opacity = 0.16 + progress * 0.28;
         rig.telegraphDisc.scale.setScalar(Math.max(0.1, progress));
+        rig.telegraphRingMaterial.color.setHex(isLocked ? 0xef4444 : 0xf59e0b);
         rig.telegraphRingMaterial.opacity = 0.58 + progress * 0.4;
 
         if (enemy.archetype === 'bastion') {
@@ -4008,7 +4010,7 @@ export class ArenaSceneRenderer {
 
         if (rig.laserSightMaterial) {
           rig.laserSightMaterial.opacity = 0.45 + progress * 0.5;
-          rig.laserSightMaterial.color.setHex(progress > 0.7 ? 0xef4444 : 0xf59e0b);
+          rig.laserSightMaterial.color.setHex(isLocked ? 0xef4444 : 0xf59e0b);
         }
       } else if (enemy.aiState === 'attack') {
         rig.telegraphDiscMaterial.opacity = 0.46;

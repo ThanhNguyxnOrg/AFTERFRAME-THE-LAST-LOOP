@@ -22,6 +22,9 @@ import {
   switchPlayerWeapon,
   transitionCampaignToBoss,
   triggerBossDefeat,
+  grantProgressionReward,
+  purchaseWeaponUpgrade,
+  equipWeaponUpgrade,
 } from './simulation.ts';
 
 test('completed chapters remain isolated replays after save reload without an in-memory snapshot', () => {
@@ -601,5 +604,101 @@ test('14. Equipped weapon (chrono_edge / pulsecaster) persists across v2 campaig
   assert.equal(restoreSavedCampaignProgress(fallbackWorld), true);
   assert.equal(fallbackWorld.player.equippedWeaponId, 'chrono_edge');
 });
+
+test('15. Phase 15 Weapon Progression (Memory Fragments, claimed rewards, purchased & equipped upgrades) persists across v2 saves, migrates legacy v1/v2 payloads, and isolates Practice / Chapter Replay', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // Earn 6 Memory Fragments across Prologue & Chapter I
+  assert.equal(grantProgressionReward(world, 'prologue_calibration_teach'), true); // +1
+  assert.equal(grantProgressionReward(world, 'prologue_bay_proxies_cleared'), true); // +2
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  triggerBossDefeat(world); // +3 -> total 6
+  assert.equal(world.progression.memoryFragments, 6);
+
+  // Purchase Breaker Cleave (cost 2) and Thermal Sink (cost 2) -> 2 fragments remaining
+  assert.equal(purchaseWeaponUpgrade(world, 'edge_breaker_cleave').outcome, 'purchased');
+  assert.equal(purchaseWeaponUpgrade(world, 'pulse_thermal_sink').outcome, 'purchased');
+  assert.equal(world.progression.memoryFragments, 2);
+  assert.equal(world.progression.equippedUpgrades.chrono_edge, 'edge_breaker_cleave');
+  assert.equal(world.progression.equippedUpgrades.pulsecaster, 'pulse_thermal_sink');
+
+  // Advance to Chapter II
+  assert.equal(advanceCampaignChapter(world, true), true);
+  const savedJson = serializeCampaignProgress(world);
+
+  // Reload into a fresh Title world
+  const reloaded = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloaded, savedJson), true);
+  assert.equal(reloaded.progression.memoryFragments, 2);
+  assert.deepEqual(reloaded.progression.purchasedUpgrades, [
+    'edge_breaker_cleave',
+    'pulse_thermal_sink',
+  ]);
+  assert.equal(reloaded.progression.equippedUpgrades.chrono_edge, 'edge_breaker_cleave');
+  assert.equal(reloaded.progression.equippedUpgrades.pulsecaster, 'pulse_thermal_sink');
+
+  // Continue Campaign from Title restores full progression state
+  assert.equal(restoreSavedCampaignProgress(reloaded), true);
+  assert.equal(reloaded.progression.memoryFragments, 2);
+  assert.equal(reloaded.progression.equippedUpgrades.chrono_edge, 'edge_breaker_cleave');
+  assert.equal(reloaded.progression.equippedUpgrades.pulsecaster, 'pulse_thermal_sink');
+
+  // Enter Practice Mode and modify progression in-memory -> serialized campaign save must remain untouched!
+  startPracticeStandardRun(reloaded);
+  reloaded.progression.memoryFragments = 99;
+  equipWeaponUpgrade(reloaded, 'chrono_edge', null);
+  const practiceJson = serializeCampaignProgress(reloaded);
+  assert.equal(
+    practiceJson,
+    savedJson,
+    'Practice Mode must never overwrite persisted campaign weapon progression'
+  );
+
+  // Restore saved campaign from Practice Mode -> restores original 2 fragments & equipped upgrades
+  assert.equal(restoreSavedCampaignProgress(reloaded), true);
+  assert.equal(reloaded.progression.memoryFragments, 2);
+  assert.equal(reloaded.progression.equippedUpgrades.chrono_edge, 'edge_breaker_cleave');
+
+  // Legacy v2 payload without progression field safely migrates to clean default progression
+  const legacyObj = JSON.parse(savedJson);
+  delete legacyObj.progression;
+  if (legacyObj.activeCampaign) {
+    delete legacyObj.activeCampaign.progression;
+  }
+  // Corrupt one upgrade ID to verify sanitization
+  const corruptedObj = JSON.parse(savedJson);
+  corruptedObj.progression = {
+    memoryFragments: 4,
+    claimedRewardIds: ['prologue_calibration_teach', 'not_a_real_reward'],
+    purchasedUpgrades: ['edge_breaker_cleave', 'fake_upgrade_id'],
+    equippedUpgrades: {
+      chrono_edge: 'pulse_thermal_sink', // wrong weapon slot!
+      pulsecaster: 'fake_upgrade_id', // invalid upgrade!
+    },
+  };
+
+  const migratedLegacy = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(migratedLegacy, JSON.stringify(legacyObj)), true);
+  assert.equal(migratedLegacy.progression.memoryFragments, 0);
+  assert.deepEqual(migratedLegacy.progression.purchasedUpgrades, []);
+
+  const sanitizedWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(sanitizedWorld, JSON.stringify(corruptedObj)), true);
+  assert.equal(sanitizedWorld.progression.memoryFragments, 4);
+  assert.deepEqual(sanitizedWorld.progression.claimedRewardIds, ['prologue_calibration_teach']);
+  assert.deepEqual(sanitizedWorld.progression.purchasedUpgrades, ['edge_breaker_cleave']);
+  assert.equal(
+    sanitizedWorld.progression.equippedUpgrades.chrono_edge,
+    null,
+    'Sanitizer rejects upgrade equipped in the wrong weapon slot'
+  );
+  assert.equal(
+    sanitizedWorld.progression.equippedUpgrades.pulsecaster,
+    null,
+    'Sanitizer rejects unknown upgrade ID'
+  );
+});
+
 
 

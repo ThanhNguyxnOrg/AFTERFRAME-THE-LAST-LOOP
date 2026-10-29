@@ -308,6 +308,147 @@ export const GAME_CONFIG = {
         fluxGainOnHit: 12,
       },
     },
+    upgrades: {
+      edge_breaker_cleave: {
+        id: 'edge_breaker_cleave' as const,
+        weaponId: 'chrono_edge' as const,
+        name: 'SEISMIC BREAKER CORE',
+        shortLabel: 'BREAKER CORE',
+        roleLabel: 'POSTURE & GUARD SHATTER',
+        cost: 2,
+        summary:
+          'Weighted tungsten-phase counterweight tuned to crack reinforced Bastion shields and boss posture bars.',
+        benefitText:
+          '+30% Chrono Edge posture stagger damage and +25% bonus stagger through frontal armor guards.',
+        tradeoffText:
+          '-12% direct HP damage on Chrono Edge swings and +0.06s slower Heavy Cleave recovery.',
+        staggerMultiplier: 1.3,
+        frontalGuardStaggerBonus: 0.25,
+        damageMultiplier: 0.88,
+        heavyRecoveryDelta: 0.06,
+      },
+      edge_harmonic_conductor: {
+        id: 'edge_harmonic_conductor' as const,
+        weaponId: 'chrono_edge' as const,
+        name: 'HARMONIC PHASE EDGE',
+        shortLabel: 'PHASE EDGE',
+        roleLabel: 'ECHO RESONANCE & FLUX CONDUCTION',
+        cost: 3,
+        summary:
+          'Phase-lattice blade edge that amplifies Echo Resonance windows, Convergence shockwaves, and Flux harvesting.',
+        benefitText:
+          '+1.1s Echo Resonance window, +10 Convergence posture damage, -5 Convergence Flux cost, and +3 Flux on clean un-empowered blade hits.',
+        tradeoffText:
+          '+5 Empowered Heavy Cleave Flux cost (30 vs 25) and -15% un-empowered Heavy Cleave direct damage.',
+        syncWindowBonus: 1.1,
+        convergencePostureBonus: 10,
+        convergenceFluxCostDelta: -5,
+        fluxGainBonus: 3,
+        empoweredFluxCostDelta: 5,
+        unempoweredHeavyDamageMultiplier: 0.85,
+      },
+      pulse_thermal_sink: {
+        id: 'pulse_thermal_sink' as const,
+        weaponId: 'pulsecaster' as const,
+        name: 'CRYO-VENT CAPACITOR',
+        shortLabel: 'CRYO-VENT',
+        roleLabel: 'SUSTAINED RAPID VOLLEY',
+        cost: 2,
+        summary:
+          'Cryogenic heat-manifold that vents thermal buildup between Pulse Bolts for sustained mobile suppression.',
+        benefitText:
+          '-33% Pulse Bolt heat generation (12 vs 18 heat) and +30% faster passive heat dissipation.',
+        tradeoffText:
+          'Reduces Pulse Bolt direct impact damage (10 vs 12) and stagger (7 vs 9).',
+        lightHeatCost: 12,
+        coolRateMultiplier: 1.3,
+        lightDamage: 10,
+        lightStagger: 7,
+      },
+      pulse_overcharge_condenser: {
+        id: 'pulse_overcharge_condenser' as const,
+        weaponId: 'pulsecaster' as const,
+        name: 'PHASE-LANCE CONDENSER',
+        shortLabel: 'LANCE CONDENSER',
+        roleLabel: 'HIGH-IMPACT CHARGED PRECISION',
+        cost: 3,
+        summary:
+          'High-density arc condenser that focuses Charged Lance shots into armor-piercing kinetic beams.',
+        benefitText:
+          '+25% Charged Lance direct damage (35 base / 50 empowered) and +31% posture stagger (42 base / 58 empowered).',
+        tradeoffText:
+          '+33% Charged Lance heat generation (48 vs 36 heat) and +0.12s longer post-shot cooldown.',
+        heavyBaseDamage: 35,
+        heavyEmpoweredDamage: 50,
+        heavyStagger: 42,
+        heavyEmpoweredStagger: 58,
+        heavyHeatCost: 48,
+        heavyCooldown: 0.48,
+        heavyRecovery: 0.32,
+      },
+    },
+    progression: {
+      currencyName: 'MEMORY FRAGMENTS',
+      currencyShortLabel: 'FRAGMENTS',
+      rewards: {
+        prologue_calibration_teach: {
+          id: 'prologue_calibration_teach' as const,
+          label: 'CALIBRATION STEP 1: ANCHOR GATE',
+          chapter: 'prologue' as const,
+          fragments: 1,
+          description: 'Hold Anchor Pad 01 with a recorded Echo and cross Gate 01.',
+        },
+        prologue_calibration_test: {
+          id: 'prologue_calibration_test' as const,
+          label: 'CALIBRATION STEP 2: KINETIC RECEIVER',
+          chapter: 'prologue' as const,
+          fragments: 1,
+          description: 'Charge the North Kinetic Receiver using a recorded Echo Heavy strike.',
+        },
+        prologue_calibration_combine: {
+          id: 'prologue_calibration_combine' as const,
+          label: 'CALIBRATION STEP 3: CONTAINMENT BREACH',
+          chapter: 'prologue' as const,
+          fragments: 2,
+          description: 'Complete the full Chrono Rig calibration sequence in Test Bay 04.',
+        },
+        prologue_bay_proxies_cleared: {
+          id: 'prologue_bay_proxies_cleared' as const,
+          label: 'TEST BAY 04 PROXIES NEUTRALIZED',
+          chapter: 'prologue' as const,
+          fragments: 2,
+          description: 'Defeat all three security proxies in Calibration Bay 04.',
+        },
+        chapter_1_helix_defeated: {
+          id: 'chapter_1_helix_defeated' as const,
+          label: 'CHAPTER I: HELIX-04 NEUTRALIZED',
+          chapter: 'chapter_1_helix' as const,
+          fragments: 3,
+          description: 'Defeat HELIX-04, Security Marshal in the Containment Core.',
+        },
+        chapter_2_choir_defeated: {
+          id: 'chapter_2_choir_defeated' as const,
+          label: 'CHAPTER II: THE CHOIR SILENCED',
+          chapter: 'chapter_2_choir' as const,
+          fragments: 3,
+          description: 'Defeat THE CHOIR in the Hydroponic Memory Ring.',
+        },
+        chapter_3_curator_defeated: {
+          id: 'chapter_3_curator_defeated' as const,
+          label: 'CHAPTER III: THE CURATOR ARCHIVED',
+          chapter: 'chapter_3_curator' as const,
+          fragments: 3,
+          description: 'Defeat THE CURATOR in the Deep Memory Vaults.',
+        },
+        chapter_4_matron_defeated: {
+          id: 'chapter_4_matron_defeated' as const,
+          label: 'CHAPTER IV: MATRON-V EXCISED',
+          chapter: 'chapter_4_matron' as const,
+          fragments: 3,
+          description: 'Defeat MATRON-V, The Surgeon in Surgical Quarantine.',
+        },
+      },
+    },
   },
   enemies: {
     maxConcurrentAttackers: 2,

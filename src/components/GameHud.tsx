@@ -565,10 +565,11 @@ export const GameHud: React.FC<GameHudProps> = ({
             <div
               data-testid="weapon-hud-module"
               data-equipped-weapon={hud.weapon.equippedWeaponId}
+              data-equipped-upgrade={hud.weapon.equippedUpgradeId ?? 'none'}
               data-overheated={hud.weapon.overheated ? 'true' : 'false'}
               className="mb-1"
             >
-              <div className="flex items-center justify-between gap-1.5 mb-0.5 pointer-events-auto">
+              <div className="flex items-center justify-between gap-1 mb-0.5 pointer-events-auto">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span
                     aria-hidden="true"
@@ -594,25 +595,73 @@ export const GameHud: React.FC<GameHudProps> = ({
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="weapon-switch-btn"
-                  aria-label={`Switch Weapon [Tab / Z] (Currently ${hud.weapon.label})`}
-                  title="Switch Weapon [Tab / Z / 1-2]"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onSwitchWeapon?.();
-                  }}
-                  className={`px-1.5 py-0.5 text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                    hud.weapon.equippedWeaponId === 'pulsecaster'
-                      ? 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-400 text-sky-200'
-                      : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="weapon-switch-btn"
+                    aria-label={`Switch Weapon [Tab / Z] (Currently ${hud.weapon.label})`}
+                    title="Switch Weapon [Tab / Z / 1-2]"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onSwitchWeapon?.();
+                    }}
+                    className={`px-1.5 py-0.5 text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      hud.weapon.equippedWeaponId === 'pulsecaster'
+                        ? 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-400 text-sky-200'
+                        : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
+                    }`}
+                  >
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
+                    {hud.weapon.equippedWeaponId === 'chrono_edge' ? '→ PULSE' : '→ EDGE'}
+                  </button>
+
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-btn-upgrade-bench"
+                    aria-label={`Open Chrono Rig Upgrade Bench [U] (${hud.progression.memoryFragments} Memory Fragments)`}
+                    title="Open Chrono Rig Upgrade Bench [U / P]"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onTogglePause();
+                    }}
+                    className={`px-1.5 py-0.5 text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      hud.progression.memoryFragments >= 2
+                        ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400 text-amber-200'
+                        : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-300'
+                    }`}
+                  >
+                    <span
+                      data-testid="hud-memory-fragments"
+                      data-fragments={hud.progression.memoryFragments}
+                    >
+                      {hud.progression.memoryFragments} FRAG
+                    </span>
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">
+                      {' '}
+                      [U]
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Weapon Upgrade Modification Readout */}
+              <div className="flex items-center justify-between gap-1 text-[8px] sm:text-[9px] font-mono-tabular uppercase mb-0.5">
+                <span className="text-slate-500 whitespace-nowrap shrink-0">MOD CORE</span>
+                <span
+                  data-testid="weapon-active-upgrade"
+                  data-upgrade-id={hud.weapon.equippedUpgradeId ?? 'none'}
+                  className={`truncate font-semibold ${
+                    hud.weapon.equippedUpgradeId
+                      ? hud.weapon.equippedWeaponId === 'pulsecaster'
+                        ? 'text-sky-300'
+                        : 'text-cyan-300'
+                      : 'text-slate-500'
                   }`}
                 >
-                  <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
-                  {hud.weapon.equippedWeaponId === 'chrono_edge' ? '→ PULSE' : '→ EDGE'}
-                </button>
+                  {hud.weapon.equippedUpgradeLabel ?? 'STANDARD · NO MOD'}
+                </span>
               </div>
 
               {/* Pulsecaster Heat & Status Bar (Always mounted in DOM for deterministic telemetry) */}
@@ -672,14 +721,16 @@ export const GameHud: React.FC<GameHudProps> = ({
                 }`}
               >
                 {resonance.primed && resonance.canConverge
-                  ? 'CONVERGE [E] 15 FLUX'
+                  ? `CONVERGE [E] ${resonance.fluxCost} FLUX`
                   : isEmpoweredReady
                     ? hud.weapon.equippedWeaponId === 'pulsecaster'
                       ? 'LANCE [E] EMPOWERED'
                       : 'HEAVY [E] EMPOWERED'
                     : hud.weapon.equippedWeaponId === 'pulsecaster'
                       ? 'LANCE [E] 20 FLUX'
-                      : 'HEAVY [E] 25 FLUX'}
+                      : `HEAVY [E] ${
+                          hud.weapon.equippedUpgradeId === 'edge_harmonic_conductor' ? 30 : 25
+                        } FLUX`}
               </span>
             </div>
 
@@ -1126,13 +1177,25 @@ export const GameHud: React.FC<GameHudProps> = ({
                         ? 'border-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.28)]'
                         : isEnemyTelegraphing
                           ? 'border-amber-400'
-                          : 'border-slate-800'
+                  : 'border-slate-800'
                 }`}
+                data-testid="focused-enemy-hud"
+                data-enemy-archetype={focused.archetype}
+                data-enemy-role={focused.roleLabel}
+                data-enemy-status={focused.statusLabel}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-[10px] sm:text-xs font-display font-bold tracking-wider text-slate-100 uppercase whitespace-nowrap">
-                    {focused.name}
-                  </span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-[10px] sm:text-xs font-display font-bold tracking-wider text-slate-100 uppercase truncate">
+                      {focused.name}
+                    </span>
+                    <span
+                      data-testid="enemy-role-badge"
+                      className="hidden sm:inline text-[9px] font-mono-tabular font-semibold tracking-wider text-cyan-300/90 uppercase whitespace-nowrap"
+                    >
+                      [{focused.roleLabel}]
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1.5 font-mono-tabular text-[9px] sm:text-[11px] whitespace-nowrap shrink-0">
                     {focused.isDecoy && (
                       <span
@@ -1158,14 +1221,28 @@ export const GameHud: React.FC<GameHudProps> = ({
                         RESONANCE · {focused.resonanceRemaining.toFixed(1)}s
                       </span>
                     )}
-                    {isEnemyVulnerable && (
-                      <span className="text-white font-bold tracking-wider uppercase">
-                        EXPOSED · 1.5x
+                    {isEnemyVulnerable ? (
+                      <span
+                        data-testid="enemy-status-badge"
+                        className="text-white font-bold tracking-wider uppercase"
+                      >
+                        {focused.statusLabel}
                       </span>
-                    )}
-                    {isEnemyTelegraphing && (
-                      <span className="text-amber-400 font-bold tracking-wider uppercase">
-                        WARNING
+                    ) : isEnemyTelegraphing ? (
+                      <span
+                        data-testid="enemy-status-badge"
+                        className={`${
+                          focused.telegraphLocked ? 'text-red-400' : 'text-amber-400'
+                        } font-bold tracking-wider uppercase`}
+                      >
+                        {focused.statusLabel}
+                      </span>
+                    ) : (
+                      <span
+                        data-testid="enemy-status-badge"
+                        className="hidden md:inline text-slate-400 font-semibold tracking-wider uppercase"
+                      >
+                        {focused.statusLabel}
                       </span>
                     )}
                     <span className="text-slate-300 font-semibold">

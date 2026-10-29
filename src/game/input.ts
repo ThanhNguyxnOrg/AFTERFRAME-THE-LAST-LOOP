@@ -337,8 +337,8 @@ export class InputController {
       return;
     }
 
-    // Global Pause shortcut (Escape or P)
-    if (code === 'Escape' || code === 'KeyP') {
+    // Global Pause / Upgrade Bench shortcut (Escape, P, or U)
+    if (code === 'Escape' || code === 'KeyP' || code === 'KeyU') {
       if (state === 'playing' || state === 'paused') {
         e.preventDefault();
         this.onPauseToggleCallback?.();

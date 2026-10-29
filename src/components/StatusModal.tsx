@@ -1,5 +1,6 @@
 import React from 'react';
 import { GAME_CONFIG } from '../game/config.ts';
+import { getAllWeaponUpgradeDefinitions } from '../game/simulation.ts';
 import type {
   BossCheckpointState,
   CameraSettings,
@@ -8,8 +9,11 @@ import type {
   EncounterMode,
   GameAppState,
   GameOutcome,
+  HudWeaponProgressionSnapshot,
   RunMode,
   RunSummary,
+  WeaponId,
+  WeaponUpgradeId,
 } from '../game/types.ts';
 
 interface StatusModalProps {
@@ -29,6 +33,10 @@ interface StatusModalProps {
   elapsedTime: number;
   enemiesDefeated: number;
   totalEnemies: number;
+  progression?: HudWeaponProgressionSnapshot;
+  equippedWeaponId?: WeaponId;
+  onPurchaseUpgrade?: (upgradeId: WeaponUpgradeId) => void;
+  onEquipUpgrade?: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => void;
   cameraSettings: CameraSettings;
   onUpdateCameraSettings: (next: Partial<CameraSettings>) => void;
   isMuted?: boolean;
@@ -54,6 +62,8 @@ const NEXT_CHAPTER_LABELS: Record<CampaignChapterId, string> = {
   chapter_5_loom: 'Chapter V · Chronicle Loom',
 };
 
+const ALL_UPGRADE_DEFINITIONS = getAllWeaponUpgradeDefinitions();
+
 export const StatusModal: React.FC<StatusModalProps> = ({
   appState,
   encounterMode = 'standard',
@@ -71,6 +81,10 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   elapsedTime,
   enemiesDefeated,
   totalEnemies,
+  progression,
+  equippedWeaponId = 'chrono_edge',
+  onPurchaseUpgrade,
+  onEquipUpgrade,
   cameraSettings,
   onUpdateCameraSettings,
   isMuted = false,
@@ -104,6 +118,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
     ? GAME_CONFIG.chronicleLoom.endings[selectedEnding]
     : null;
   const chapterConfig = GAME_CONFIG.campaignChapters[chapter];
+  const showUpgradeBench = Boolean((isPaused || (isVictory && !endingDetails)) && progression);
 
   const displayTime = summary ? summary.elapsedTime : elapsedTime;
   const displayDefeated = summary ? summary.enemiesDefeated : enemiesDefeated;
@@ -131,7 +146,11 @@ export const StatusModal: React.FC<StatusModalProps> = ({
         backgroundColor: 'rgba(7, 9, 13, 0.86)',
       }}
     >
-      <div className="w-full max-w-[560px] bg-[#0b1018] border border-slate-700/90 p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.88)] my-auto">
+      <div
+        className={`w-full ${
+          showUpgradeBench ? 'max-w-[660px]' : 'max-w-[560px]'
+        } bg-[#0b1018] border border-slate-700/90 p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.88)] my-auto`}
+      >
         {/* Status Kicker */}
         <div className="flex items-center justify-between gap-2 text-xs font-mono-tabular uppercase tracking-widest mb-1">
           {isPaused ? (
@@ -182,7 +201,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
           className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-3"
         >
           {isPaused
-            ? 'Temporal telemetry suspended. Resume your active loop, adjust audio/camera preferences, or reset from your checkpoint.'
+            ? 'Temporal telemetry suspended. Resume your active loop, configure weapon modifications at the Upgrade Bench, or adjust system preferences.'
             : isVictory
               ? endingDetails
                 ? endingDetails.epilogueBody
@@ -277,7 +296,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
 
         {/* Secondary Tactical Breakdown (Shown on Victory/Defeat Result Screen) */}
         {!isPaused && (
-          <div className="grid grid-cols-3 gap-2.5 mb-5">
+          <div className="grid grid-cols-3 gap-2.5 mb-4">
             <div className="bg-[#070a0f] border border-slate-800/80 p-2">
               <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
                 PARRIES LANDED
@@ -301,6 +320,164 @@ export const StatusModal: React.FC<StatusModalProps> = ({
               <div className="text-sm sm:text-base font-mono-tabular font-bold text-slate-200">
                 {displayDamageTaken} / {displayRelays}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Phase 15: Chrono Rig Weapon Upgrade Bench (Shown on Pause & Chapter Intermission) */}
+        {showUpgradeBench && progression && (
+          <div
+            data-testid="upgrade-bench-panel"
+            className="bg-[#070a0f] border border-cyan-500/45 p-3.5 mb-4 space-y-2.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/90">
+              <div>
+                <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-cyan-300 font-bold">
+                  CHRONO RIG UPGRADE BENCH [U]
+                </div>
+                <div className="text-[10px] font-mono-tabular text-slate-400">
+                  1 ACTIVE CORE PER WEAPON · EARNED FROM CALIBRATION & WARDEN CORES
+                </div>
+              </div>
+              <div
+                data-testid="upgrade-fragments-balance"
+                data-fragments={progression.memoryFragments}
+                className="px-2.5 py-1 bg-amber-500/15 border border-amber-400/60 text-amber-300 font-mono-tabular text-xs font-bold tracking-wider uppercase whitespace-nowrap"
+              >
+                MEMORY FRAGMENTS: {progression.memoryFragments}
+              </div>
+            </div>
+
+            {progression.lastActionMessage && (
+              <div
+                data-testid="upgrade-status-message"
+                className="px-2.5 py-1.5 bg-[#0b1422] border-l-2 border-cyan-400 text-[11px] font-mono-tabular text-cyan-200"
+              >
+                {progression.lastActionMessage}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {(['chrono_edge', 'pulsecaster'] as const).map((weaponId) => {
+                const weaponUpgrades = ALL_UPGRADE_DEFINITIONS.filter(
+                  (u) => u.weaponId === weaponId
+                );
+                const activeUpgradeId = progression.equippedUpgrades[weaponId];
+                const isCurrentWeapon = equippedWeaponId === weaponId;
+                return (
+                  <div
+                    key={weaponId}
+                    data-testid={`upgrade-column-${weaponId}`}
+                    className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-slate-800/80">
+                      <span
+                        className={`text-[10px] font-mono-tabular font-bold uppercase tracking-wider ${
+                          weaponId === 'pulsecaster' ? 'text-sky-300' : 'text-cyan-300'
+                        }`}
+                      >
+                        {weaponId === 'chrono_edge' ? 'CHRONO EDGE (MELEE)' : 'PULSECASTER (RANGED)'}
+                      </span>
+                      <span className="text-[9px] font-mono-tabular uppercase text-slate-400">
+                        {activeUpgradeId
+                          ? weaponUpgrades.find((u) => u.id === activeUpgradeId)?.shortLabel
+                          : isCurrentWeapon
+                            ? 'EQUIPPED WEAPON'
+                            : 'STANDBY'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {weaponUpgrades.map((upg) => {
+                        const isOwned = progression.purchasedUpgrades.includes(upg.id);
+                        const isEquipped = activeUpgradeId === upg.id;
+                        const canAfford = progression.memoryFragments >= upg.cost;
+
+                        return (
+                          <div
+                            key={upg.id}
+                            data-testid={`upgrade-card-${upg.id}`}
+                            data-owned={isOwned ? 'true' : 'false'}
+                            data-equipped={isEquipped ? 'true' : 'false'}
+                            className={`p-2 border transition-colors ${
+                              isEquipped
+                                ? 'bg-[#0e1b2c] border-cyan-400/90'
+                                : isOwned
+                                  ? 'bg-[#0b131e] border-slate-700'
+                                  : 'bg-[#080d14] border-slate-800/90'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                              <span className="text-[11px] font-display font-bold uppercase tracking-wide text-slate-100">
+                                {upg.name}
+                              </span>
+                              <span
+                                className={`text-[9px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border whitespace-nowrap ${
+                                  isEquipped
+                                    ? 'bg-cyan-400/20 border-cyan-400 text-cyan-200'
+                                    : isOwned
+                                      ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                                      : canAfford
+                                        ? 'bg-amber-500/15 border-amber-400/60 text-amber-300'
+                                        : 'bg-slate-900 border-slate-700 text-slate-400'
+                                }`}
+                              >
+                                {isEquipped
+                                  ? 'EQUIPPED'
+                                  : isOwned
+                                    ? 'OWNED'
+                                    : `${upg.cost} FRAG`}
+                              </span>
+                            </div>
+
+                            <div className="text-[9px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-1">
+                              {upg.roleLabel}
+                            </div>
+
+                            <div className="text-[10px] text-emerald-300 leading-snug mb-0.5">
+                              <span className="font-mono-tabular font-bold">+ </span>
+                              {upg.benefitText}
+                            </div>
+                            <div className="text-[10px] text-amber-300/90 leading-snug mb-2">
+                              <span className="font-mono-tabular font-bold">- </span>
+                              {upg.tradeoffText}
+                            </div>
+
+                            <button
+                              type="button"
+                              data-testid={`upgrade-action-${upg.id}`}
+                              onClick={() => {
+                                if (isEquipped) {
+                                  onEquipUpgrade?.(upg.weaponId, null);
+                                } else if (isOwned) {
+                                  onEquipUpgrade?.(upg.weaponId, upg.id);
+                                } else {
+                                  onPurchaseUpgrade?.(upg.id);
+                                }
+                              }}
+                              className={`w-full px-2.5 py-1.5 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer whitespace-nowrap text-center ${
+                                isEquipped
+                                  ? 'bg-cyan-400/20 hover:bg-cyan-400/30 border-cyan-300 text-white'
+                                  : isOwned
+                                    ? 'bg-[#122236] hover:bg-[#19304b] border-cyan-500/60 text-cyan-200'
+                                    : canAfford
+                                      ? 'bg-amber-400 hover:bg-amber-300 border-amber-300 text-slate-950'
+                                      : 'bg-[#0d121a] hover:bg-[#141c28] border-slate-700 text-slate-400'
+                              }`}
+                            >
+                              {isEquipped
+                                ? 'EQUIPPED · UNEQUIP'
+                                : isOwned
+                                  ? 'EQUIP MODIFICATION'
+                                  : `UNLOCK & EQUIP (${upg.cost} FRAG)`}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
