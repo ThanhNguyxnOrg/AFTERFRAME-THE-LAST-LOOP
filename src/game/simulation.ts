@@ -4617,13 +4617,19 @@ export function switchPlayerWeapon(world: WorldState, targetWeaponId?: WeaponId)
   if (world.appState !== 'playing' || world.outcome !== 'none') {
     return false;
   }
+  if (world.run.chapter === 'chapter_5_loom' && world.run.stage === 'chronicle_loom') {
+    return false;
+  }
   const p = world.player;
   if (p.actionState === 'dead') {
     return false;
   }
+  if (targetWeaponId !== undefined && !isValidWeaponId(targetWeaponId)) {
+    return false;
+  }
 
   const nextWeaponId: WeaponId =
-    targetWeaponId && isValidWeaponId(targetWeaponId)
+    targetWeaponId !== undefined
       ? targetWeaponId
       : p.equippedWeaponId === 'chrono_edge'
         ? 'pulsecaster'

@@ -7397,6 +7397,43 @@ test('Phase 14.1: Weapon definitions, switching, charge cancellation safety, and
   assert.equal(world.player.equippedWeaponId, 'pulsecaster');
   assert.equal(world.player.actionState, 'light_recovery', 'Switching during recovery must not cancel recovery state');
   assert.equal(world.player.stateTimer, remRecovery, 'Recovery timer must remain intact');
+
+  stepWorld(world, createEmptyInput(0), 0.25);
+
+  // 4. Invalid weapon IDs, paused/gameover states, and Chapter V Chronicle Loom stage reject weapon switching
+  assert.equal(
+    switchPlayerWeapon(world, 'invalid_weapon' as unknown as 'chrono_edge'),
+    false,
+    'Invalid targetWeaponId must be rejected without toggling active weapon'
+  );
+  assert.equal(world.player.equippedWeaponId, 'pulsecaster');
+
+  world.appState = 'paused';
+  assert.equal(switchPlayerWeapon(world, 'chrono_edge'), false, 'Cannot switch weapon while paused');
+  world.appState = 'gameover';
+  assert.equal(switchPlayerWeapon(world, 'chrono_edge'), false, 'Cannot switch weapon during gameover');
+  world.appState = 'playing';
+  world.outcome = 'victory';
+  assert.equal(switchPlayerWeapon(world, 'chrono_edge'), false, 'Cannot switch weapon after run outcome is decided');
+  world.outcome = 'none';
+
+  // Chapter V Chronicle Loom stage blocks weapon switching and [1]/[2] weapon slot selection
+  world.run.chapter = 'chapter_5_loom';
+  world.run.stage = 'chronicle_loom';
+  assert.equal(
+    switchPlayerWeapon(world, 'chrono_edge'),
+    false,
+    'Weapon switching must be disabled during Chapter V Chronicle Loom ending choice'
+  );
+  const loomInput = createEmptyInput(0);
+  loomInput.selectWeaponId = 'chrono_edge';
+  loomInput.switchWeaponJustPressed = true;
+  stepWorld(world, loomInput, 0.02);
+  assert.equal(
+    world.player.equippedWeaponId,
+    'pulsecaster',
+    'Digit1/Digit2/Tab inputs during Chronicle Loom stage must not switch weapons'
+  );
 });
 
 test('Phase 14.2: Pulsecaster projectile hit, obstacle blocking, range expiry, and heat/overheat economy', () => {

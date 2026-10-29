@@ -55,12 +55,21 @@ Phase 14 upgrades **AFTERFRAME: THE LAST LOOP** from a single-weapon close-quart
 
 ## 3. Automated Test & Browser Verification Summary
 
-### Unit & Release Test Suites (`136 / 136` Passing)
+### Unit & Release Test Suites (`169 / 169` Passing)
+> **Phase 14.1 Audit Correction Note:** The initial Phase 14 report listed `src/game/accessibility.test.ts` in the CLI command and reported `136 / 136` tests. In the actual repository, the reduced-motion and accessibility preference unit suite is `src/game/reduced-motion.test.ts` (33 tests), while `scripts/phase13_1_accessibility.py` is the Python browser runner. Passing the non-existent `src/game/accessibility.test.ts` path caused `tsx --test` to omit `src/game/reduced-motion.test.ts` and count only `simulation.test.ts` (113) + `campaign-release.test.ts` (15) + `asset-lifecycle.test.ts` (8) = `136` tests. A canonical `"test"` script has been added to `package.json` in Phase 14.1 so `npm test` runs all four real test files (`113 + 15 + 33 + 8 = 169` passing tests).
+
 Command:
 ```bash
-npx tsx --test src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/accessibility.test.ts src/game/asset-lifecycle.test.ts
+npm test
+# Equivalent explicit command:
+npx tsx --test src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts
 ```
-- **Phase 14.1 (`simulation.test.ts`)**: Verifies weapon definitions, neutral switching, switch cooldown guard, heavy-charge cancellation safety (`charging_heavy` -> `idle` with `0` projectiles fired), mid-windup rejection, and recovery timer preservation (`light_recovery` timer intact across weapon switch).
+- **Suite Breakdown (`169 / 169` Passing)**:
+  - `src/game/simulation.test.ts`: **113 / 113 PASSED**
+  - `src/game/campaign-release.test.ts`: **15 / 15 PASSED**
+  - `src/game/reduced-motion.test.ts`: **33 / 33 PASSED**
+  - `src/game/asset-lifecycle.test.ts`: **8 / 8 PASSED**
+- **Phase 14.1 (`simulation.test.ts`)**: Verifies weapon definitions, neutral switching, switch cooldown guard, heavy-charge cancellation safety (`charging_heavy` -> `idle` with `0` projectiles fired), mid-windup rejection, recovery timer preservation (`light_recovery` timer intact across weapon switch), invalid `targetWeaponId` rejection, `paused`/`gameover` rejection, and Chapter V Chronicle Loom (`chronicle_loom`) weapon-switch isolation.
 - **Phase 14.2 (`simulation.test.ts`)**: Verifies Pulsecaster primary bolt damage, zero Flux drain on primary fire, solid obstacle line-of-sight blocking (`pulse_impact_obstacle`), heat accumulation to `100`, overheat lockout rejection (`lastWeaponShotOutcome === 'overheated'`), and cooldown recovery.
 - **Phase 14.3 (`simulation.test.ts`)**: Verifies HELIX-04 frontal armor mitigation vs. exposed Chrono Core amplification (`1.45x`), Echo recording of `pulse_charged_shot` with `weaponId: 'pulsecaster'`, independent Echo weapon playback after live Sera switches back to `chrono_edge`, Echo ranged Resonance priming, and live Pulsecaster Charged Lance Convergence.
 - **Test 14 (`campaign-release.test.ts`)**: Verifies `equippedWeaponId` persistence across v2 campaign checkpoints, full page reload (`serializeCampaignProgress` -> `parseAndApplyCampaignProgress` -> `restoreSavedCampaignProgress`), `retryBossFromCheckpoint`, and legacy v2 fallback to `'chrono_edge'`.
@@ -73,3 +82,4 @@ npx tsx --test src/game/simulation.test.ts src/game/campaign-release.test.ts src
   - Verified full page reload + `Continue Campaign` restores `equippedWeaponId === 'pulsecaster'`.
 - **Mobile (`390×844`)**:
   - Verified `player-hud`, `weapon-hud-module`, `weapon-switch-btn`, `pulsecaster-heat-bar`, `touch-move-pad`, and `touch-camera-look` render within the viewport with zero overlap.
+

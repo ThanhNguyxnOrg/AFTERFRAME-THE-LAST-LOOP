@@ -368,6 +368,7 @@ export class InputController {
     }
 
     if (state !== 'playing') return;
+    if ((e.target as HTMLElement | null)?.closest?.('input, select, textarea')) return;
 
     if ((code === 'Space' || code === 'Enter') && this.onSkipSequenceCallback?.()) {
       e.preventDefault();
