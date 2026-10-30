@@ -57,6 +57,19 @@ import {
   startAuthoredEncounter,
   advanceEncounterWaveIfReady,
   validateEncounterSpawnPoint,
+  shouldExposeTestHooks,
+  getMissionDefinitionForChapter,
+  getMissionObjectiveDefinition,
+  getInteractableDefinition,
+  getAllInteractableDefinitionsForChapter,
+  getCodexEntryDefinition,
+  getAllCodexEntryDefinitions,
+  getHudCodexEntries,
+  discoverCodexEntry,
+  completeMissionObjective,
+  evaluateInteractionTarget,
+  evaluateNearestInteractablePrompt,
+  attemptEnvironmentalInteraction,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -8831,3 +8844,292 @@ test('Phase 17.1-A: Two-Wave Mastery Gauntlet (tactical_mastery_gauntlet) End-to
   assert.equal(world.appState, 'gameover');
   assert.equal(world.outcome, 'victory');
 });
+
+test('Phase 18.1 Mission & Objective State Machine: prerequisites, main vs optional progression, duplicate completion guard, and unknown ID rejection', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // Prologue mission starts with first main objective active and optional objectives available
+  assert.equal(world.exploration.mission.id, 'mission_prologue_calibration');
+  assert.equal(world.exploration.mission.chapter, 'prologue');
+  assert.equal(
+    world.exploration.mission.activeMainObjectiveId,
+    'obj_prologue_puzzle_calibration'
+  );
+
+  const calObj = world.exploration.mission.objectives.find(
+    (o) => o.id === 'obj_prologue_puzzle_calibration'
+  )!;
+  const bayObj = world.exploration.mission.objectives.find(
+    (o) => o.id === 'obj_prologue_clear_bay'
+  )!;
+  const optTermObj = world.exploration.mission.objectives.find(
+    (o) => o.id === 'obj_prologue_optional_terminal'
+  )!;
+  const optGateObj = world.exploration.mission.objectives.find(
+    (o) => o.id === 'obj_prologue_optional_power_node'
+  )!;
+  assert.equal(calObj.status, 'active');
+  assert.equal(bayObj.status, 'available');
+  assert.equal(optTermObj.status, 'available');
+  assert.equal(optTermObj.category, 'optional');
+  assert.equal(optGateObj.status, 'available');
+  assert.equal(optGateObj.category, 'optional');
+
+  // Unknown objective IDs are safely rejected
+  assert.equal(getMissionObjectiveDefinition('obj_nonexistent'), null);
+  assert.equal(completeMissionObjective(world, 'obj_nonexistent'), false);
+
+  // Completing Step 1 advances activeMainObjectiveId to Step 2 and is idempotent on duplicate calls
+  assert.equal(
+    completeMissionObjective(world, 'obj_prologue_puzzle_calibration'),
+    true
+  );
+  assert.equal(
+    completeMissionObjective(world, 'obj_prologue_puzzle_calibration'),
+    false,
+    'Duplicate objective completion must be a no-op'
+  );
+  assert.equal(
+    world.exploration.mission.activeMainObjectiveId,
+    'obj_prologue_clear_bay'
+  );
+  assert.equal(
+    world.exploration.completedObjectiveIds.filter(
+      (id) => id === 'obj_prologue_puzzle_calibration'
+    ).length,
+    1
+  );
+
+  // Verify Chapter I HELIX-04 prerequisite gating: obj_ch1_defeat_helix requires obj_ch1_break_helix_shield
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  assert.equal(world.exploration.mission.id, 'mission_ch1_helix');
+  assert.equal(
+    world.exploration.mission.activeMainObjectiveId,
+    'obj_ch1_break_helix_shield'
+  );
+  const defeatHelixBefore = world.exploration.mission.objectives.find(
+    (o) => o.id === 'obj_ch1_defeat_helix'
+  )!;
+  assert.equal(defeatHelixBefore.status, 'locked');
+  assert.equal(
+    completeMissionObjective(world, 'obj_ch1_defeat_helix'),
+    false,
+    'Cannot complete defeat_helix before break_helix_shield prerequisite'
+  );
+
+  // Driving HELIX-04 into Phase 2 automatically completes obj_ch1_break_helix_shield during simulation step
+  world.boss!.phase = 2;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.ok(
+    world.exploration.completedObjectiveIds.includes('obj_ch1_break_helix_shield')
+  );
+  assert.equal(
+    world.exploration.mission.activeMainObjectiveId,
+    'obj_ch1_defeat_helix'
+  );
+});
+
+test('Phase 18.2 Environmental Interaction System: range, facing, obstacle LOS, action-lock, prerequisite node, route unlock, Echo conduit, and idempotency', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // Unknown interactable ID is safely rejected
+  assert.equal(getInteractableDefinition('int_unknown_node'), null);
+  assert.equal(evaluateInteractionTarget(world, 'int_unknown_node').status, 'invalid_target');
+
+  const termDef = getInteractableDefinition('int_prologue_diagnostic_terminal')!;
+  const auxDef = getInteractableDefinition('int_prologue_aux_power_node')!;
+  const gateDef = getInteractableDefinition('int_prologue_shortcut_gate')!;
+
+  // 1. Out-of-range check on Prologue Diagnostic Terminal (2.4, 9.8)
+  world.player.x = 0;
+  world.player.z = 0;
+  world.player.rotationY = 0;
+  const farEval = evaluateInteractionTarget(world, 'int_prologue_diagnostic_terminal');
+  assert.equal(farEval.status, 'out_of_range');
+  assert.equal(farEval.canInteract, false);
+
+  // 2. Move within range of terminal (2.4, 9.8), but face directly away (North = Math.PI)
+  world.player.x = termDef.x;
+  world.player.z = termDef.z - 1.5;
+  world.player.rotationY = Math.PI; // Facing away from z=9.8
+  const facingEval = evaluateInteractionTarget(world, 'int_prologue_diagnostic_terminal');
+  assert.equal(facingEval.status, 'not_facing');
+  assert.equal(facingEval.canInteract, false);
+
+  // 3. Face the terminal (South = 0), verify action-lock rejection while dodging
+  world.player.rotationY = 0;
+  world.player.actionState = 'dodging';
+  const busyEval = evaluateInteractionTarget(world, 'int_prologue_diagnostic_terminal');
+  assert.equal(busyEval.status, 'action_locked');
+  assert.equal(busyEval.canInteract, false);
+
+  // 4. Return to idle -> ready to interact! Activate via KeyI input frame and verify CODEX-01 + optional objective unlock
+  world.player.actionState = 'idle';
+  const readyEval = evaluateInteractionTarget(world, 'int_prologue_diagnostic_terminal');
+  assert.equal(readyEval.status, 'ready');
+  assert.equal(readyEval.canInteract, true);
+
+  const interactInput = createEmptyInput(0);
+  interactInput.interactJustPressed = true;
+  stepWorld(world, interactInput, 0.02);
+
+  assert.ok(world.exploration.activatedNodeIds.includes('int_prologue_diagnostic_terminal'));
+  assert.ok(world.exploration.discoveredCodexIds.includes('CODEX-01'));
+  assert.ok(
+    world.exploration.completedObjectiveIds.includes('obj_prologue_optional_terminal')
+  );
+
+  // 5. One-shot idempotency: second interaction attempt is rejected as already_activated
+  const dupRes = attemptEnvironmentalInteraction(world, 'int_prologue_diagnostic_terminal');
+  assert.equal(dupRes.status, 'already_activated');
+  assert.equal(dupRes.canInteract, false);
+  assert.equal(
+    world.exploration.discoveredCodexIds.filter((id) => id === 'CODEX-01').length,
+    1
+  );
+
+  // 6. Prerequisite Node & Route Unlock: int_prologue_shortcut_gate requires int_prologue_aux_power_node
+  const shortcutPillar = world.obstacles.find((o) => o.id === 'pillar-ne')!;
+  assert.equal(shortcutPillar.disabled, false, 'Northeast bulkhead is initially solid');
+
+  world.player.x = gateDef.x;
+  world.player.z = gateDef.z + 1.5;
+  world.player.rotationY = Math.PI; // Face gate at (gateDef.x, gateDef.z)
+  const lockedGateEval = evaluateInteractionTarget(world, 'int_prologue_shortcut_gate');
+  assert.equal(lockedGateEval.status, 'prerequisite_locked');
+  assert.equal(lockedGateEval.canInteract, false);
+
+  // Now move to Auxiliary Power Node, face it, and energize it
+  world.player.x = auxDef.x;
+  world.player.z = auxDef.z - 1.5;
+  world.player.rotationY = 0; // Face South toward auxDef.z
+  const powerRes = attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node');
+  assert.equal(powerRes.status, 'ready');
+  assert.ok(world.exploration.activatedNodeIds.includes('int_prologue_aux_power_node'));
+
+  // Now return to Maintenance Bypass Gate Control -> status is available and unlocks pillar-ne!
+  world.player.x = gateDef.x;
+  world.player.z = gateDef.z + 1.5;
+  world.player.rotationY = Math.PI;
+  const gateRes = attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate');
+  assert.equal(gateRes.status, 'ready');
+  assert.ok(world.exploration.unlockedRouteIds.includes('pillar-ne'));
+  assert.equal(shortcutPillar.disabled, true, 'Activating gate control retracts pillar-ne obstacle');
+  assert.ok(
+    world.exploration.completedObjectiveIds.includes('obj_prologue_optional_power_node')
+  );
+
+  // 7. Echo-Resonant Conduit in Chapter II: requires active Echo within range OR Pulsecaster shot
+  transitionCampaignToBoss(world, true, 'chapter_2_choir');
+  const conduitDef = getInteractableDefinition('int_ch2_garden_echo_conduit')!;
+  world.player.x = conduitDef.x;
+  world.player.z = conduitDef.z + 1.5;
+  world.player.rotationY = Math.PI;
+  const noEchoEval = evaluateInteractionTarget(world, 'int_ch2_garden_echo_conduit');
+  assert.equal(noEchoEval.status, 'requires_echo');
+  assert.equal(noEchoEval.canInteract, false);
+
+  // Switch to Pulsecaster and fire a shot into the Echo Conduit to activate it remotely
+  switchPlayerWeapon(world, 'pulsecaster');
+  world.player.x = conduitDef.x;
+  world.player.z = conduitDef.z + 3.0;
+  world.player.rotationY = Math.PI;
+  const fireInput = createEmptyInput(Math.PI);
+  fireInput.lightAttackJustPressed = true;
+  for (let i = 0; i < 20; i++) {
+    stepWorld(world, i === 0 ? fireInput : createEmptyInput(Math.PI), 0.02);
+  }
+  assert.ok(
+    world.exploration.activatedNodeIds.includes('int_ch2_garden_echo_conduit'),
+    'Pulsecaster bolt activates Echo-Resonant Conduit'
+  );
+  assert.ok(world.exploration.discoveredCodexIds.includes('CODEX-04'));
+});
+
+test('Phase 18.3 Lore Codex Discovery, Undiscovered Entry Masking, Save Persistence & Production Test-Hook Gating', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  assert.equal(getAllCodexEntryDefinitions().length, 8);
+  assert.equal(getCodexEntryDefinition('CODEX-99'), null);
+  assert.equal(discoverCodexEntry(world, 'CODEX-99'), false);
+
+  // Initially 0 codex entries discovered; HUD view masks all 8 entries
+  const initialHudCodex = getHudCodexEntries(world);
+  assert.equal(initialHudCodex.length, 8);
+  assert.equal(initialHudCodex[0].discovered, false);
+  assert.match(initialHudCodex[0].title, /ENCRYPTED RECORD/);
+
+  // Discover CODEX-01 and verify HUD view decrypts CODEX-01 while keeping CODEX-02 masked
+  assert.equal(discoverCodexEntry(world, 'CODEX-01'), true);
+  assert.equal(discoverCodexEntry(world, 'CODEX-01'), false, 'Duplicate codex discovery returns false');
+  const updatedHudCodex = getHudCodexEntries(world);
+  assert.equal(updatedHudCodex[0].discovered, true);
+  assert.equal(updatedHudCodex[0].title, 'Chrono-Rig Mk.IV Field Calibration');
+  assert.equal(updatedHudCodex[1].discovered, false);
+
+  // Verify exploration state persists across serializeCampaignProgress -> parseAndApplyCampaignProgress -> restoreSavedCampaignProgress
+  const auxDef = getInteractableDefinition('int_prologue_aux_power_node')!;
+  const gateDef = getInteractableDefinition('int_prologue_shortcut_gate')!;
+  world.player.x = auxDef.x;
+  world.player.z = auxDef.z - 1.5;
+  world.player.rotationY = 0;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node').status,
+    'ready'
+  );
+  world.player.x = gateDef.x;
+  world.player.z = gateDef.z + 1.5;
+  world.player.rotationY = Math.PI;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate').status,
+    'ready'
+  );
+
+  const rawSave = serializeCampaignProgress(world);
+  const reloadedWorld = createInitialWorld('title');
+  parseAndApplyCampaignProgress(reloadedWorld, rawSave);
+  assert.equal(restoreSavedCampaignProgress(reloadedWorld), true);
+  assert.ok(reloadedWorld.exploration.discoveredCodexIds.includes('CODEX-01'));
+  assert.ok(reloadedWorld.exploration.discoveredCodexIds.includes('CODEX-02'));
+  assert.ok(reloadedWorld.exploration.unlockedRouteIds.includes('pillar-ne'));
+  assert.equal(
+    reloadedWorld.obstacles.find((o) => o.id === 'pillar-ne')?.disabled,
+    true,
+    'Unlocked route pillar-ne remains retracted after campaign reload'
+  );
+
+  // Verify Practice and Chapter Replay do not pollute saved campaign exploration state
+  startPracticeStandardRun(reloadedWorld);
+  discoverCodexEntry(reloadedWorld, 'CODEX-08');
+  assert.equal(restoreSavedCampaignProgress(reloadedWorld), true);
+  assert.equal(
+    reloadedWorld.exploration.discoveredCodexIds.includes('CODEX-08'),
+    false,
+    'Practice run codex discoveries do not leak into saved campaign progress'
+  );
+
+  // Verify production test-hook gating contract
+  assert.equal(
+    shouldExposeTestHooks({ DEV: false, PROD: true }),
+    false,
+    'Production builds must NOT expose window.__afterframeTest or window.__advanceSimulation by default'
+  );
+  assert.equal(
+    shouldExposeTestHooks({ DEV: false, PROD: true, VITE_ENABLE_TEST_HOOKS: 'false' }),
+    false
+  );
+  assert.equal(
+    shouldExposeTestHooks({ DEV: false, PROD: true, VITE_ENABLE_TEST_HOOKS: 'true' }),
+    true,
+    'Explicit VITE_ENABLE_TEST_HOOKS=true flag enables test hooks when needed'
+  );
+  assert.equal(
+    shouldExposeTestHooks({ DEV: true, PROD: false }),
+    true,
+    'Dev environment exposes test hooks'
+  );
+});
+

@@ -1,0 +1,840 @@
+# AFTERFRAME: THE LAST LOOP — PHASE 19
+## World Traversal, Environmental Challenges & Exploration Depth
+
+You are continuing the existing AFTERFRAME: THE LAST LOOP project as a senior 3D gameplay engineer, level designer, traversal systems engineer, environmental puzzle designer, and technical QA engineer.
+
+Repository:
+https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP
+
+---
+
+# PROJECT CONTEXT
+
+AFTERFRAME is an existing browser-based 3D sci-fi Action RPG built with React, TypeScript, Vite and Three.js.
+
+The project already has:
+
+- A deterministic combat simulation.
+- Chrono Edge and Pulsecaster weapon systems.
+- Four weapon modifications and Memory Fragment progression.
+- Five tactical enemy archetypes and authored encounter compositions.
+- Echo, Relay and Resonance mechanics.
+- A campaign mission/objective system.
+- Thirteen reported environmental interactables.
+- Eight discoverable lore records and a Mission Journal / Codex.
+- Persistent campaign progression and checkpoint restoration.
+- Four Blender-authored chapter environment assets.
+- Desktop/mobile controls and reduced-motion support.
+
+### Previous phase reports
+
+- Phase 14: Core Action RPG Weapon System.
+- Phase 15: Weapon Progression and Upgrade Bench.
+- Phase 16: Enemy Archetypes and Tactical AI.
+- Phase 17: Encounter Composition and Campaign Pacing.
+- Phase 17.1: End-to-End Campaign and Encounter Acceptance.
+- Phase 18: World Exploration, Environmental Interaction and Mission Systems.
+
+Phase 18 reportedly introduced:
+- Six chapter missions.
+- Thirteen environmental interactables.
+- Eight codex records.
+- Mission Journal and objective HUD.
+- Exploration persistence using `discoveredCodexIds`, `completedObjectiveIds`, `activatedNodeIds` and `unlockedRouteIds`.
+- Production test-hook protection.
+
+Historical Phase 18 verification reported 188/188 tests passing, successful TypeScript/build checks and desktop/mobile browser acceptance.
+
+These reports are context, not proof of the current workspace state. Inspect the actual implementation.
+
+The AI Studio environment may not contain `.git/`. Never fabricate Git metadata, commit hashes, branch names or diffs.
+
+---
+
+# MISSION
+
+Implement Phase 19: **World Traversal, Environmental Challenges & Exploration Depth.**
+
+Make the existing world more interesting to navigate.
+
+The player should feel that each location is a real place with spatial structure, alternative routes, elevation or connected spaces where supported, environmental hazards, hidden areas and discoverable paths.
+
+The world should no longer feel like a flat arena with a few terminals added around it.
+
+The core objectives are:
+
+1. Improve spatial traversal and route connectivity.
+2. Create meaningful environmental traversal challenges.
+3. Add a small number of hidden exploration areas.
+4. Introduce readable local navigation.
+5. Improve environmental level design and world continuity.
+6. Preserve all existing campaign, mission, combat, puzzle and save systems.
+
+**This is not a full open-world rewrite. Build a focused, polished traversal and exploration foundation inside the existing campaign environments.**
+
+---
+
+# 1. INSPECT THE REAL MOVEMENT AND WORLD ARCHITECTURE FIRST
+
+Before implementing anything, inspect the actual movement and rendering system.
+
+Relevant files may include:
+
+- `src/game/types.ts`
+- `src/game/config.ts`
+- `src/game/simulation.ts`
+- `src/game/renderer.ts`
+- `src/game/models.ts`
+- `src/game/input.ts`
+- `src/game/audio.ts`
+- `src/components/GameHud.tsx`
+- `src/components/StatusModal.tsx`
+- `src/components/TitleScreen.tsx`
+- Current mission/objective, interaction and save modules.
+- Current simulation, campaign, reduced-motion and asset-lifecycle tests.
+
+Use the actual paths if the project structure differs.
+
+Read:
+- `docs/AFTERFRAME_PHASE18_EXPLORATION_AND_MISSIONS.md`, if present.
+- `docs/AFTERFRAME_PHASE17_ENCOUNTERS_AND_PACING.md`, if present.
+- Current story bible and environment documentation.
+
+### Critical movement audit
+
+Determine the actual implementation of:
+
+- Player movement axes.
+- Arena/world coordinate system.
+- Ground-plane assumptions.
+- Gravity and vertical movement, if any.
+- Jumping, falling, climbing or ledge handling, if any.
+- Collision geometry and obstacle resolution.
+- Camera orientation and follow behavior.
+- Enemy navigation and path assumptions.
+- Interactable range and line-of-sight.
+- GLB environment coordinate systems.
+- Existing scene transitions and checkpoint spawn positions.
+
+Do not assume this game already supports platforming, jumping, gravity, climbing or multiple physical floors.
+
+**Choose the traversal design that the current movement architecture can support correctly.**
+
+If the current movement is fundamentally planar, do not fake vertical platforming by rendering decorative stairs or platforms that the simulation cannot traverse. Either implement a small, justified extension to the existing movement/collision model, or build richer connected routes, ramps, lanes and environmental transitions compatible with the actual architecture.
+
+Prepare a concise implementation plan from the actual source. Then implement the phase.
+
+Do not stop after writing a design proposal.
+
+---
+
+# 2. BUILD A RELIABLE WORLD TRAVERSAL FOUNDATION
+
+Create or refine the smallest traversal model that can support meaningful exploration.
+
+Potential capabilities, depending on the real movement system:
+
+- Walkable paths and alternate routes.
+- Ramps and elevated walkways.
+- Bridges and retractable bridges.
+- Service elevators or moving lifts.
+- Ladders or climbable access points.
+- Narrow passages.
+- Traversable platforms.
+- Drop-down routes where safe and supported.
+- Access-controlled doors and route shortcuts.
+- Connected rooms and multi-level areas.
+
+These are possible techniques, not a requirement to implement every one.
+
+## Traversal requirements
+
+Every traversable object or route must have consistent:
+
+1. Visible geometry.
+2. Authoritative simulation collision or movement support.
+3. Valid entry and exit positions.
+4. Player-facing feedback.
+5. Correct interaction/activation rules if controlled by a device.
+6. Proper state persistence where the route is permanent.
+7. Correct reset behavior for temporary mechanisms.
+
+The player must never appear to walk through a wall, float over a gap, collide with invisible stairs or become stuck at a visual platform boundary.
+
+### If the project needs vertical traversal
+
+Only implement it when the current movement architecture and camera can support it without destabilizing combat.
+
+Keep it limited:
+- Prefer a small reusable solution for elevation, ramps or lifts.
+- Ensure grounded movement and collision resolution are deterministic.
+- Keep enemy navigation compatible.
+- Avoid introducing a full rigid-body physics engine.
+- Test player grounding, edge cases, collision and checkpoint restoration.
+- Avoid adding vertical traversal during a critical boss fight unless the encounter is explicitly designed around it.
+
+Do not add a jump button simply because other Action RPGs have one. The mechanic must fit Sera's existing movement identity and the actual game design.
+
+### Route graph
+
+If the current game benefits from explicit route connectivity, represent only the information actually required, such as:
+- Stable route ID.
+- Source/destination region or node.
+- Activation condition.
+- Permanent or temporary state.
+- Traversal or interaction requirements.
+- Optional shortcut designation.
+
+Reuse the Phase 18 `unlockedRouteIds` persistence where appropriate.
+
+Do not create a parallel route system when Phase 18 already provides the required functionality.
+
+---
+
+# 3. ENVIRONMENTAL TRAVERSAL CHALLENGES
+
+Implement a small number of intentional environmental challenges that require the player to understand the world rather than simply press one button.
+
+Target **two or three meaningful traversal challenges** distributed across suitable existing locations.
+
+Possible challenge patterns:
+
+### A. Power-Rerouted Access Route
+
+The player restores or redirects power through existing Phase 18 interactions.
+
+Possible outcome:
+- An elevator becomes available.
+- A previously inactive bridge extends.
+- A locked service route opens.
+- An optional room becomes accessible.
+
+Requirements:
+- Power state must be authoritative.
+- The visible mechanism must match the actual route state.
+- Prerequisites must be respected.
+- The player must be able to understand why the route is unavailable.
+- The route must remain available after reload if intended to be permanent.
+
+### B. Timed Energy Passage
+
+A corridor or industrial route contains a repeating energy hazard.
+
+The player observes a readable cycle and times movement through a safe interval.
+
+Requirements:
+- Hazard phase is simulation-owned.
+- Warning and active phases are clearly communicated.
+- Damage or failure is resolved through authoritative simulation rules.
+- The player has a reasonable reaction window.
+- Pause, restart and checkpoint restoration behave predictably.
+- Reduced-motion mode preserves essential warnings without excessive visual flashing.
+
+Do not create an unavoidable damage corridor.
+
+### C. Echo-Controlled Traversal Mechanism
+
+An Echo-sensitive receiver or conduit controls a bridge, lift, access gate or other supported world mechanism.
+
+Requirements:
+- Uses existing recording/replay timing and action fidelity.
+- Correct weapon identity and recorded upgrade identity are preserved.
+- Interaction is validated in the simulation.
+- Duplicate Echo events cannot repeatedly activate or reward the same mechanism.
+- The player can understand the relationship between the Echo and the route.
+
+Do not introduce a new puzzle engine or make every traversal route require Echo.
+
+### Quality bar
+
+Each challenge must have:
+- A recognizable purpose.
+- A readable state or hazard cycle.
+- A clear solution or discovery process.
+- A visible result.
+- A valid failure/retry path where applicable.
+- Automated regression coverage.
+
+Avoid repeating the same power-node puzzle with different colors.
+
+---
+
+# 4. SECRET AREAS AND OPTIONAL DISCOVERIES
+
+Introduce **three to five carefully authored secret exploration areas or hidden routes** across suitable existing chapters.
+
+Do not make every chapter contain the same kind of secret.
+
+Each secret must have a meaningful discovery method, such as:
+- Noticing environmental clues.
+- Inspecting an optional data terminal.
+- Discovering a powered side route.
+- Using an existing Echo or Resonance interaction.
+- Recognizing a hidden passage in the geometry.
+- Returning to a previously visited location after an access system becomes active.
+
+### Secret-area requirements
+
+Each area must:
+- Be reachable through real player movement and validated route logic.
+- Have valid collision and spawn geometry.
+- Have a clear discovery condition.
+- Connect to a real existing chapter/region.
+- Be optional unless the story explicitly requires it.
+- Have a distinct environmental identity.
+- Contain a meaningful discovery, lore item, shortcut or environmental interaction.
+
+Possible rewards:
+- A new codex record.
+- An optional mission completion.
+- Environmental story evidence.
+- A permanent shortcut.
+- A visual discovery or hidden memory.
+- A carefully justified one-time reward, only if the existing currency economy supports it.
+
+Do not add a second currency.
+
+Do not inflate the 18-Memory-Fragment campaign budget merely to reward secrets. Prefer lore, access and world-state rewards.
+
+### Avoid fake secrets
+
+A hidden area must not be:
+- A visual decal with no collision or interaction.
+- A room that cannot actually be reached.
+- A terminal that gives no meaningful result.
+- A reward that can be repeatedly collected through reload, retry, Chapter Replay, Practice or Echo.
+- An invisible trigger that completes an objective without a real discovery.
+
+The player should be able to understand that a secret has been found.
+
+Use restrained discovery feedback rather than a full-screen interruption.
+
+---
+
+# 5. LOCAL NAVIGATION AND WORLD MAP
+
+Phase 18 added missions, objectives and the journal. Phase 19 should improve navigation through actual spaces.
+
+Do not build a huge open-world map application.
+
+Create a practical **local area map / navigation system** appropriate to the existing world structure.
+
+The player should be able to understand:
+- The current area or region.
+- Explored and unexplored sections where supported.
+- Known routes between connected areas.
+- Locked routes and their requirements.
+- The current main objective.
+- Relevant discovered optional points.
+- Previously visited locations or checkpoints, if the campaign supports them.
+
+### Navigation presentation
+
+Consider a restrained map or schematic view integrated into the existing Journal/Pause/Archive interface.
+
+The presentation may use:
+- A clean 2D top-down schematic of the current region.
+- Connected room/route nodes.
+- A simple player-position marker.
+- Main-objective marker.
+- Discovered optional points.
+- Locked or powered route state.
+- Floor/elevation labels if the actual world supports multiple levels.
+
+Use data derived from the real world/route model rather than hard-coded unrelated illustrations.
+
+### Fog of discovery
+
+Do not reveal every secret or hidden passage in advance.
+
+A sensible default:
+- Show the current region and known major routes.
+- Reveal rooms or route segments after the player explores or discovers them, when this fits the level design.
+- Keep undiscovered secrets hidden.
+- Show locked access conditions only when the player has a legitimate clue or has encountered the lock.
+
+### Input and UX
+
+Inspect existing keybindings before selecting a map key.
+
+Do not collide with:
+- Weapon switching.
+- Chrono Edge/Pulsecaster actions.
+- Dodge or Parry.
+- Echo recording/replay.
+- Relay.
+- Upgrade Bench.
+- Ending selection.
+- Existing interaction key `[I]`.
+
+Provide a mobile-accessible map/journal entry point that does not overlap essential combat controls.
+
+Keep the map optional and dismissible. Never force the player to navigate a map during a boss telegraph or committed combat state.
+
+---
+
+# 6. IMPROVE ENVIRONMENTAL LEVEL DESIGN
+
+Use the current environments as the foundation.
+
+The project has reported four Blender-authored chapter GLBs:
+- `helix_containment_gate.glb`
+- `choir_acoustic_organ.glb`
+- `curator_archive_monolith.glb`
+- `matron_surgical_pod.glb`
+
+Inspect their actual paths and usage.
+
+Do not replace or break these assets.
+
+Improve suitable spaces through:
+- Additional connected routes.
+- Readable spatial landmarks.
+- More deliberate room transitions.
+- Side areas.
+- Elevated paths where supported.
+- Environmental silhouettes and lighting.
+- Clear separation between main route and optional exploration.
+- Better use of existing pillars, gates, machinery and structures.
+
+### Chapter-specific direction
+
+Adapt to the actual chapters and story, using the following as design inspiration.
+
+**Prologue — Nadir-9 / Calibration**
+- Introduce basic navigation and a readable optional side path.
+- Connect the existing calibration area to environmental story evidence.
+- Preserve the Echo/Anchor Plate and barrier tutorial.
+
+**Chapter I — HELIX / Containment**
+- Use containment corridors, security rooms, powered access and side routes.
+- A restored power system may unlock an alternate route or service lift.
+- Preserve gates, boss access and HELIX-04 mechanics.
+
+**Chapter II — The Choir**
+- Use acoustic architecture and harmonic devices as environmental navigation landmarks.
+- Include an optional route tied to a legitimate Echo/Resonance interaction.
+- Preserve mandatory Harmonic Pylon mechanics.
+
+**Curator / Archive**
+- Use archive stacks, sealed data rooms and spatial landmarks.
+- Make secret records discoverable through environment navigation.
+- Preserve decoys, traces, Gravity Pin and boss mechanics.
+
+**Matron / Surgical facility**
+- Use service corridors, treatment chambers and controlled access routes.
+- Integrate an optional discovery related to existing story canon.
+- Preserve established boss counterplay.
+
+**Chronicle Loom**
+- Preserve the current ending-selection area.
+- Do not create an additional mandatory traversal puzzle before ending selection.
+- Do not change the three ending choices or archive records.
+
+Do not add a new chapter or large new environment in this phase.
+
+---
+
+# 7. WORLD LANDMARKS AND ENVIRONMENTAL STORYTELLING
+
+Improve spatial readability with deliberate landmarks.
+
+Examples:
+- Large recognizable machinery silhouettes.
+- Distinctive lighting at major route junctions.
+- Color and geometry differences between powered and unpowered systems.
+- Environmental damage or temporal distortion that reveals story context.
+- Signage or readable world labels that fit the setting.
+
+A player should be able to recognize important locations without relying entirely on map markers.
+
+### Requirements
+
+- Keep visual hierarchy readable.
+- Do not use color as the only way to communicate lock/unlock or hazard states.
+- Use suitable contrast for critical route feedback.
+- Avoid excessive bloom, flashing and screen effects.
+- Keep the existing dark industrial sci-fi identity.
+- Preserve performance and readability across desktop and mobile viewports.
+
+Do not redesign the entire visual theme.
+
+---
+
+# 8. COMBAT AND TRAVERSAL INTEROPERABILITY
+
+Exploration must remain compatible with existing combat systems.
+
+Inspect how traversal interacts with:
+- Chrono Edge.
+- Pulsecaster.
+- Weapon switching.
+- Enemy AI and pathing.
+- Enemy line-of-sight.
+- Telegraphs.
+- Dodge and Parry.
+- Echo recording/replay.
+- Relay and Resonance.
+- Boss arenas.
+- Authored encounters.
+
+Requirements:
+- Enemies must not navigate through newly blocked routes.
+- The player must not fire projectiles through a closed gate.
+- Traversal interactions must not accidentally cancel or duplicate an attack.
+- Hazards must not obscure critical boss attacks.
+- Checkpoints and encounter spawn points must remain reachable.
+- Combat arenas must not become unwinnable because a route or bridge changes state.
+- Echo actors must respect valid traversable geometry where the existing replay model requires it.
+
+Do not force vertical traversal into existing boss fights unless the encounter is intentionally designed around it.
+
+If AI pathing cannot safely use a new traversable route, keep that route player-only or provide a documented compatible behavior. Do not allow enemies to become trapped or teleport through obstacles.
+
+---
+
+# 9. CAMPAIGN SAVE, ROUTE STATE AND MIGRATION
+
+Inspect the actual current campaign save version.
+
+Phase 18 reportedly persisted:
+- `discoveredCodexIds`
+- `completedObjectiveIds`
+- `activatedNodeIds`
+- `unlockedRouteIds`
+
+Do not assume the schema is actually V2-compatible merely because a report says so.
+
+Audit the real migration chain.
+
+Persist only state necessary for traversal continuity, such as:
+- Permanently unlocked routes.
+- Permanently activated traversal mechanisms.
+- Discovered map/region IDs.
+- Valid secret-area discovery IDs.
+- Checkpoint or region-restoration state if required.
+
+Temporary platform positions, active hazard timers, transient VFX and renderer objects should not be persisted unless a concrete gameplay requirement justifies a small validated runtime snapshot.
+
+### Migration requirements
+
+If additional persistent state is needed:
+- Extend the existing save architecture.
+- Introduce an explicitly versioned schema when the actual structure requires it.
+- Migrate all currently supported legacy formats.
+- Preserve weapon upgrades and equipped modifications.
+- Preserve Memory Fragment balance and `claimedRewardIds`.
+- Preserve mission and codex progress.
+- Validate every incoming route, region and discovery ID.
+- Reject malformed and unknown data safely.
+- Avoid duplicate rewards on load or Continue Campaign.
+
+Do not blindly bump the save version if the new data can be added safely using the current schema's established rules. Document the reason for the chosen approach.
+
+Preserve:
+- Continue Campaign.
+- Boss checkpoint retry.
+- Chapter Replay.
+- Practice isolation.
+- Campaign completion.
+- All three Chronicle Loom endings and archive records.
+
+---
+
+# 10. MOBILE AND ACCESSIBILITY
+
+Exploration often requires more navigation and interaction than arena combat.
+
+Ensure that mobile controls remain practical.
+
+Test:
+- Existing movement controls.
+- Dedicated touch camera-look surface.
+- `[I]` interaction button.
+- Weapon switching.
+- Upgrade Bench access.
+- Mission Journal and Codex.
+- Local map access.
+- Traversal-specific controls, if introduced.
+
+Requirements:
+- Do not add too many persistent buttons to the HUD.
+- Use contextual controls where possible.
+- Keep controls reachable at 390×844.
+- Support a landscape viewport if the game already supports it.
+- Avoid overlapping camera-look, movement, combat and map controls.
+- Ensure pause, visibility loss and touch cancellation clear inputs correctly.
+- Preserve reduced-motion behavior.
+- Maintain keyboard focus and accessible labels.
+
+Do not make precise traversal impossible on mobile. If a mechanic requires a more complex input, provide a deliberate, accessible touch equivalent.
+
+---
+
+# 11. PERFORMANCE, GEOMETRY AND RESOURCE LIFECYCLE
+
+Exploration increases active world objects. Keep it bounded.
+
+Inspect:
+- Interactable proximity updates.
+- Route-state evaluation.
+- Local map rendering.
+- Collision geometry.
+- GLB loading.
+- Temporary traversal mechanisms.
+- Hazard updates.
+- Secret discovery triggers.
+- Event listeners and cleanup.
+
+Requirements:
+- Do not scan every world object on every rendered frame when a more efficient simulation update is possible.
+- Avoid per-frame geometry/material/vector/array allocations.
+- Reuse or pool transient effects where appropriate.
+- Avoid unnecessary renderer resources for map/journal UI.
+- Clean up resources when a chapter changes, a scene is disposed or a route is reset.
+- Prevent stale asynchronous callbacks from restoring an old route state.
+- Keep active interactables and discovery checks bounded.
+- Avoid adding new runtime dependencies.
+
+All four existing GLB chapter assets must remain valid and load correctly.
+
+Do not require a new Blender installation or large external model pack to complete this phase.
+
+Measure before/after behavior where practical. Do not claim a performance improvement without comparable evidence.
+
+---
+
+# 12. PRODUCTION TEST-HOOK SAFETY
+
+Phase 18 reportedly gated `window.__afterframeTest` and `window.__advanceSimulation` through `shouldExposeTestHooks(env)`.
+
+Inspect the actual current implementation.
+
+Ensure:
+- Production builds do not expose mutable test hooks by default.
+- Setting a test environment flag only exposes hooks in the intended environment.
+- The production game does not provide arbitrary APIs to unlock routes, grant rewards or bypass exploration conditions.
+- Automated test and browser tooling remain usable in their intended environment.
+
+Add or preserve a production-build regression check.
+
+Do not remove test infrastructure blindly.
+
+---
+
+# 13. TEST-DRIVEN DEVELOPMENT AND REGRESSION COVERAGE
+
+Use the available Superpowers workflow where present.
+
+Use TDD for new behavior and confirmed bug fixes:
+
+1. Write one focused failing test.
+2. Run it and verify the intended failure.
+3. Implement the smallest correct behavior.
+4. Run the test again.
+5. Run related and full regression suites.
+
+### Traversal tests
+- Valid route definitions.
+- Connected route graph integrity.
+- Player movement across supported walkable geometry.
+- Elevation, ramps or lift behavior if implemented.
+- Collision and world boundaries.
+- Invalid route activation.
+- Locked/unlocked state.
+- No player spawn inside geometry.
+- No invisible collision obstruction.
+- Route state after reload.
+
+### Environmental challenge tests
+- Power rerouting activates the correct route.
+- Timed hazards follow deterministic phases.
+- Safe intervals and damage rules are correct.
+- Echo-controlled mechanisms validate recorded actions.
+- Pause/retry/reload behavior is safe.
+- Interactable prerequisites remain enforced.
+
+### Secret-area tests
+- Valid discovery conditions.
+- Invalid or out-of-range discovery rejected.
+- One-time discovery idempotency.
+- Codex and objective integration.
+- No duplicate Memory Fragment rewards.
+- Discovery persistence and Practice/Replay isolation.
+
+### Navigation tests
+- Correct current region.
+- Known route representation.
+- Locked route representation.
+- Secret routes remain hidden until legitimately discovered.
+- Map state restores across reload.
+- Main objectives remain readable.
+
+### Campaign regression
+- Prologue → `chapter_1_helix` progression remains intact.
+- Mastery Gauntlet multi-wave transition remains intact.
+- Existing Chapter II puzzle progression remains intact.
+- Boss mechanics and all three endings remain intact.
+- Checkpoint restoration does not place the player inside a newly changed route or hazard.
+- Continue Campaign preserves exploration progress.
+- Practice and Chapter Replay remain isolated.
+
+### Full existing test suite
+
+Inspect actual test discovery and run all existing suites, including current equivalents of:
+
+- `src/game/simulation.test.ts`
+- `src/game/campaign-release.test.ts`
+- `src/game/reduced-motion.test.ts`
+- `src/game/asset-lifecycle.test.ts`
+
+Do not assume old test counts remain correct. Do not omit or weaken existing tests.
+
+### Production security tests
+
+Verify that mutable test hooks are absent from the production build unless the explicitly supported test configuration requires them.
+
+---
+
+# 14. REAL BROWSER ACCEPTANCE
+
+When the browser environment is available, use the actual Playwright/browser setup.
+
+Test desktop:
+- 1280×800.
+
+Test mobile:
+- 390×844.
+
+Demonstrate the following real gameplay journeys:
+
+1. Start or continue a campaign.
+2. Navigate through an existing area using its real traversable geometry.
+3. Reach an environmental traversal challenge.
+4. Activate its legitimate prerequisite.
+5. Observe the actual route or mechanism change.
+6. Traverse the newly available route.
+7. Discover one optional secret area through its actual discovery method.
+8. Inspect the resulting lore/objective/codex update.
+9. Open the local map and verify known route information.
+10. Verify a hidden route remains undisclosed before discovery, where applicable.
+11. Reload and Continue Campaign.
+12. Confirm permanent route/discovery progress persists.
+13. Enter Practice or Chapter Replay and confirm campaign progression remains isolated.
+14. Verify mobile traversal, interaction and navigation controls.
+15. Confirm no console or page errors.
+
+Use real player inputs wherever practical.
+
+Deterministic fixtures may be used for controlled starting conditions or difficult-to-reach edge cases, but clearly distinguish those results from genuine gameplay discovery.
+
+A screenshot of a bridge or map does not prove that the player can traverse it.
+
+If the AI Studio applet control plane or browser server is unavailable:
+- Do not repeatedly restart it.
+- Preserve current work.
+- Report the exact blocker.
+- Do not claim browser acceptance passed.
+
+Capture actual screenshots/evidence when supported and record their exact paths.
+
+---
+
+# 15. IMPLEMENTATION PROCESS
+
+Proceed in this order:
+
+1. Inspect the real movement, collision, environment and campaign systems.
+2. Establish the current baseline.
+3. Identify existing Phase 18 systems to reuse.
+4. Decide the smallest technically correct traversal approach supported by the current movement model.
+5. Define a concise implementation plan based on actual files.
+6. Add focused failing tests.
+7. Implement traversal and route connectivity.
+8. Implement two or three environmental traversal challenges.
+9. Implement three to five secret exploration areas.
+10. Add local navigation/map presentation.
+11. Integrate the existing missions, codex and save system.
+12. Add desktop/mobile interaction support.
+13. Run regression tests and browser acceptance.
+14. Run the complete test suite, TypeScript check and production build.
+15. Inspect the final diff and write the report.
+
+Do not stop after a design proposal. Implement working systems.
+
+If a real architectural limitation prevents safe implementation, document the evidence and complete the remaining compatible work rather than faking unsupported physics.
+
+---
+
+# 16. STRICT SCOPE BOUNDARIES
+
+Do not:
+- Add a third weapon.
+- Add new enemy archetypes.
+- Add a new campaign chapter.
+- Add another progression currency.
+- Add randomized loot or rarity.
+- Build a giant seamless open world.
+- Replace the simulation or combat engine.
+- Add a full physics/navigation dependency.
+- Replace existing GLB chapter assets.
+- Rewrite established story canon.
+- Redesign unrelated screens.
+- Upgrade dependencies without a demonstrated requirement.
+
+Keep the world focused, interconnected and technically reliable.
+
+---
+
+# 17. REQUIRED DOCUMENTATION
+
+Create:
+
+`docs/AFTERFRAME_PHASE19_WORLD_TRAVERSAL.md`
+
+Include:
+- Actual starting workspace state.
+- Movement/collision architecture audit.
+- Traversal design and technical constraints.
+- Routes and environmental challenges added.
+- Secret areas and discovery rules.
+- Local navigation and map behavior.
+- Chapter-by-chapter world changes.
+- Interaction with Phase 18 objectives and codex.
+- Save schema and migration behavior.
+- Desktop/mobile UX changes.
+- Production test-hook safety result.
+- Files changed.
+- Exact verification commands, test totals and exit codes.
+- Browser acceptance journeys and screenshots, if captured.
+- Performance and asset-lifecycle observations.
+- Known limitations and unverified behavior.
+- Recommended next phase.
+
+Do not fabricate Git metadata, test results, screenshots or performance measurements.
+
+Do not commit or push.
+
+---
+
+# EXIT CRITERIA
+
+Phase 19 is complete only when:
+
+- The player can traverse meaningful connected spaces using actual supported movement and collision.
+- At least two meaningful environmental traversal challenges are functional.
+- Three to five genuine optional exploration discoveries are implemented.
+- Local navigation accurately reflects discovered/known routes without spoiling secrets.
+- World geometry and collision behavior agree.
+- Route/secret state persists correctly through the supported campaign save path.
+- Existing missions, codex, Echo/Relay/Resonance, weapons, enemies, bosses, encounters and campaign transitions remain intact.
+- Practice and Chapter Replay remain isolated.
+- Production test hooks remain safely gated.
+- All existing and new automated tests pass.
+- TypeScript checking and production build succeed.
+- Desktop/mobile browser acceptance is completed where the environment permits.
+- The Phase 19 report accurately records verified work and limitations.
+
+Finish with a concise, evidence-based summary.
+
+Do not begin Phase 20.

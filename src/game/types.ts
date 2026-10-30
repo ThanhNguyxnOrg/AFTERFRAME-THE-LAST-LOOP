@@ -275,6 +275,7 @@ export interface SavedCampaignProgressSnapshot {
   selectedEnding: ChronicleLoomEndingId | null;
   equippedWeaponId?: WeaponId;
   progression?: PersistedWeaponProgressionState;
+  exploration?: PersistedExplorationState;
 }
 
 export interface PersistedActiveCampaignState {
@@ -285,6 +286,7 @@ export interface PersistedActiveCampaignState {
   selectedEnding: ChronicleLoomEndingId | null;
   equippedWeaponId?: WeaponId;
   progression?: PersistedWeaponProgressionState;
+  exploration?: PersistedExplorationState;
 }
 
 export interface PersistedCampaignSaveV2 {
@@ -295,6 +297,7 @@ export interface PersistedCampaignSaveV2 {
   completedEndings: ChronicleLoomEndingId[];
   activeCampaign: PersistedActiveCampaignState | null;
   progression?: PersistedWeaponProgressionState;
+  exploration?: PersistedExplorationState;
 }
 
 export interface VerticalSliceRunState {
@@ -805,6 +808,7 @@ export interface PlayerInputFrame {
   echoRelayJustPressed?: boolean; // [V] Teleport live Sera to safe landing position adjacent to active Echo
   gravityPinJustPressed?: boolean; // [G] Chapter III+ Gravity Pin crowd-control field
   echoCollapseJustPressed?: boolean; // [X] Chapter IV+ Echo Collapse tactical detonation
+  interactJustPressed?: boolean; // [I] Contextual environmental interaction
 }
 
 export interface PlayerState {
@@ -1000,7 +1004,11 @@ export interface CombatEvent {
     | 'weapon_upgrade_purchased'
     | 'weapon_upgrade_equipped'
     | 'weapon_upgrade_rejected'
-    | 'encounter_wave_started';
+    | 'encounter_wave_started'
+    | 'environmental_interaction_completed'
+    | 'environmental_interaction_rejected'
+    | 'mission_objective_completed'
+    | 'codex_entry_discovered';
   x: number;
   z: number;
   originX?: number;
@@ -1014,6 +1022,9 @@ export interface CombatEvent {
   weaponId?: WeaponId;
   upgradeId?: WeaponUpgradeId | null;
   rewardId?: WeaponProgressionRewardId;
+  interactableId?: InteractableId;
+  objectiveId?: MissionObjectiveId;
+  codexId?: CodexEntryId;
   echoAction?: EchoRecordedActionType;
   relayStatus?: RelayEvaluationStatus;
   resonanceOutcome?: ResonanceOutcome;
@@ -1094,6 +1105,258 @@ export interface EncounterSpawnValidationResult {
   reason: string;
 }
 
+// ============================================================================
+// PHASE 18 — WORLD EXPLORATION, ENVIRONMENTAL INTERACTION & MISSION SYSTEMS
+// ============================================================================
+
+export type MissionId =
+  | 'mission_prologue_calibration'
+  | 'mission_ch1_helix'
+  | 'mission_ch2_choir'
+  | 'mission_ch3_curator'
+  | 'mission_ch4_matron'
+  | 'mission_ch5_loom';
+
+export type MissionObjectiveId =
+  | 'obj_prologue_puzzle_calibration'
+  | 'obj_prologue_clear_bay'
+  | 'obj_prologue_optional_terminal'
+  | 'obj_prologue_optional_power_node'
+  | 'obj_ch1_break_helix_shield'
+  | 'obj_ch1_defeat_helix'
+  | 'obj_ch1_optional_marshal_log'
+  | 'obj_ch2_sync_harmonic_cycle'
+  | 'obj_ch2_defeat_choir'
+  | 'obj_ch2_optional_garden_conduit'
+  | 'obj_ch3_purge_archive_decoy'
+  | 'obj_ch3_defeat_curator'
+  | 'obj_ch3_optional_lysa_terminal'
+  | 'obj_ch4_survive_excision'
+  | 'obj_ch4_defeat_matron'
+  | 'obj_ch4_optional_quarantine_override'
+  | 'obj_ch5_defeat_warden_prime'
+  | 'obj_ch5_select_loom_directive'
+  | 'obj_ch5_optional_loom_manifest';
+
+export type ObjectiveStatus = 'locked' | 'available' | 'active' | 'completed';
+
+export type ObjectiveCategory = 'main' | 'optional';
+
+export type ObjectiveTriggerType =
+  | 'puzzle_completed'
+  | 'encounter_completed'
+  | 'interactable_activated'
+  | 'boss_phase_reached'
+  | 'boss_defeated'
+  | 'choir_cycle_completed'
+  | 'curator_decoy_eliminated'
+  | 'loom_ending_selected';
+
+export interface MissionObjectiveDefinition {
+  id: MissionObjectiveId;
+  missionId: MissionId;
+  chapter: CampaignChapterId;
+  category: ObjectiveCategory;
+  title: string;
+  description: string;
+  triggerType: ObjectiveTriggerType;
+  prerequisiteObjectiveIds: readonly MissionObjectiveId[];
+  targetInteractableId?: InteractableId;
+  rewardCodexId?: CodexEntryId;
+}
+
+export interface MissionDefinition {
+  id: MissionId;
+  chapter: CampaignChapterId;
+  code: string;
+  title: string;
+  sectorLabel: string;
+  summary: string;
+  objectiveIds: readonly MissionObjectiveId[];
+}
+
+export interface MissionObjectiveState {
+  id: MissionObjectiveId;
+  category: ObjectiveCategory;
+  title: string;
+  description: string;
+  status: ObjectiveStatus;
+  prerequisiteObjectiveIds: MissionObjectiveId[];
+  completedAtTime: number | null;
+}
+
+export interface MissionRuntimeState {
+  id: MissionId;
+  missionId: MissionId;
+  chapter: CampaignChapterId;
+  code: string;
+  title: string;
+  sectorLabel: string;
+  summary: string;
+  completed: boolean;
+  activeMainObjectiveId: MissionObjectiveId | null;
+  activeMainObjectiveTitle: string;
+  activeMainObjectiveDescription: string;
+  optionalObjectiveSummary: string;
+  completedMainCount: number;
+  totalMainCount: number;
+  completedOptionalCount: number;
+  totalOptionalCount: number;
+  objectives: MissionObjectiveState[];
+}
+
+export type InteractableId =
+  | 'int_prologue_diagnostic_terminal'
+  | 'int_prologue_aux_power_node'
+  | 'int_prologue_shortcut_gate'
+  | 'int_ch1_marshal_terminal'
+  | 'int_ch1_ballistic_capacitor'
+  | 'int_ch2_garden_echo_conduit'
+  | 'int_ch2_chorus_log_terminal'
+  | 'int_ch3_lysa_archive_terminal'
+  | 'int_ch3_vault_power_relay'
+  | 'int_ch4_quarantine_override_node'
+  | 'int_ch4_surgical_log_terminal'
+  | 'int_ch5_loom_manifest_terminal'
+  | 'int_ch5_temporal_anchor_conduit';
+
+export type InteractableKind = 'terminal' | 'power_node' | 'gate_control' | 'echo_conduit';
+
+export type InteractableStatus = 'locked' | 'available' | 'activated';
+
+export type InteractionEvaluationStatus =
+  | 'ready'
+  | 'out_of_range'
+  | 'not_facing'
+  | 'blocked_by_obstacle'
+  | 'prerequisite_locked'
+  | 'requires_echo'
+  | 'already_activated'
+  | 'action_locked'
+  | 'invalid_target';
+
+export interface EnvironmentalInteractableDefinition {
+  id: InteractableId;
+  chapter: CampaignChapterId;
+  kind: InteractableKind;
+  label: string;
+  promptVerb: string;
+  x: number;
+  z: number;
+  interactRadius: number;
+  requiresFacing: boolean;
+  facingCosineThreshold: number;
+  requiresLineOfSight: boolean;
+  requiresActiveEcho?: boolean;
+  acceptsEchoOrPulseStrike?: boolean;
+  prerequisiteInteractableId?: InteractableId;
+  unlocksObstacleId?: string;
+  unlocksInteractableId?: InteractableId;
+  fluxRestoreAmount?: number;
+  integrityRestoreAmount?: number;
+  grantsCodexId?: CodexEntryId;
+  completesObjectiveId?: MissionObjectiveId;
+  activationMessage: string;
+  lockedReasonText?: string;
+}
+
+export interface EnvironmentalInteractableState {
+  id: InteractableId;
+  chapter: CampaignChapterId;
+  kind: InteractableKind;
+  label: string;
+  promptVerb: string;
+  x: number;
+  z: number;
+  interactRadius: number;
+  status: InteractableStatus;
+  activationCount: number;
+  activatedAtTime: number | null;
+  prerequisiteInteractableId: InteractableId | null;
+  unlocksObstacleId: string | null;
+  grantsCodexId: CodexEntryId | null;
+  completesObjectiveId: MissionObjectiveId | null;
+  requiresActiveEcho: boolean;
+  statusMessage: string;
+}
+
+export interface InteractionTargetEvaluation {
+  interactableId: InteractableId | null;
+  label: string;
+  kind: InteractableKind | null;
+  status: InteractionEvaluationStatus;
+  canInteract: boolean;
+  distance: number;
+  promptText: string;
+  detailText: string;
+}
+
+export type CodexEntryId =
+  | 'CODEX-01'
+  | 'CODEX-02'
+  | 'CODEX-03'
+  | 'CODEX-04'
+  | 'CODEX-05'
+  | 'CODEX-06'
+  | 'CODEX-07'
+  | 'CODEX-08';
+
+export type CodexCategory =
+  | 'system_diagnostic'
+  | 'incident_report'
+  | 'research_note'
+  | 'personnel_log'
+  | 'memory_trace';
+
+export interface CodexEntryDefinition {
+  id: CodexEntryId;
+  chapter: CampaignChapterId;
+  category: CodexCategory;
+  categoryLabel: string;
+  title: string;
+  author: string;
+  timestampCode: string;
+  summary: string;
+  body: readonly string[];
+  tacticalNote: string;
+}
+
+export interface HudCodexEntryView {
+  id: CodexEntryId;
+  chapter: CampaignChapterId;
+  category: CodexCategory;
+  categoryLabel: string;
+  locationTag: string;
+  title: string;
+  subtitle: string;
+  author: string;
+  timestampCode: string;
+  discovered: boolean;
+  summary: string;
+  body: string[];
+  tacticalNote: string;
+}
+
+export interface PersistedExplorationState {
+  discoveredCodexIds: CodexEntryId[];
+  completedObjectiveIds: MissionObjectiveId[];
+  activatedNodeIds: InteractableId[];
+  unlockedRouteIds: string[];
+}
+
+export interface WorldExplorationState {
+  mission: MissionRuntimeState;
+  interactables: EnvironmentalInteractableState[];
+  prompt: InteractionTargetEvaluation;
+  discoveredCodexIds: CodexEntryId[];
+  completedObjectiveIds: MissionObjectiveId[];
+  activatedNodeIds: InteractableId[];
+  unlockedRouteIds: string[];
+  codexEntries: HudCodexEntryView[];
+  newlyDiscoveredCodexId: CodexEntryId | null;
+  statusBannerText: string;
+}
+
 export interface WorldState {
   appState: GameAppState;
   encounterMode: EncounterMode;
@@ -1124,6 +1387,7 @@ export interface WorldState {
   comms: NarrativeCommsState;
   progression: WeaponProgressionState;
   encounter: EncounterRuntimeState;
+  exploration: WorldExplorationState;
   events: CombatEvent[];
   stats: {
     damageDealt: number;
@@ -1195,6 +1459,7 @@ export interface HudSnapshot {
   };
   progression: HudWeaponProgressionSnapshot;
   encounter: EncounterRuntimeState;
+  exploration: WorldExplorationState;
   enemiesAlive: number;
   totalEnemies: number;
   objectiveText: string;

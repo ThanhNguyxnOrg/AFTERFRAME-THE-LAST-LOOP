@@ -580,6 +580,7 @@ export class InputController {
     const echoRelayJustPressed = this.justPressedKeys.has('KeyV');
     const gravityPinJustPressed = this.justPressedKeys.has('KeyG');
     const echoCollapseJustPressed = this.justPressedKeys.has('KeyX');
+    const interactJustPressed = this.justPressedKeys.has('KeyI');
     const cameraDragJustStarted = this.cameraDragJustStarted;
 
     // Clear one-shot edge triggers
@@ -610,7 +611,12 @@ export class InputController {
       echoRelayJustPressed,
       gravityPinJustPressed,
       echoCollapseJustPressed,
+      interactJustPressed,
     };
+  }
+
+  public triggerInteract(): void {
+    this.justPressedKeys.add('KeyI');
   }
 
   public triggerSwitchWeapon(): void {

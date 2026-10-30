@@ -26,6 +26,7 @@ interface GameHudProps {
   onGravityPin?: () => void;
   onEchoCollapse?: () => void;
   onSwitchWeapon?: () => void;
+  onInteract?: () => void;
   onSelectLoomEnding?: (ending: ChronicleLoomEndingId) => void;
   onRestoreCampaign?: () => void;
   onTouchMoveHold?: (dx: number, dz: number, pointerId?: number | null) => void;
@@ -152,6 +153,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   onGravityPin,
   onEchoCollapse,
   onSwitchWeapon,
+  onInteract,
   onSelectLoomEnding,
   onRestoreCampaign,
   onTouchMoveHold,
@@ -847,6 +849,32 @@ export const GameHud: React.FC<GameHudProps> = ({
                 )}
               </div>
             )}
+
+            {/* Phase 18: Dedicated Environmental Interaction Action [I] */}
+            <div className="mt-1 pointer-events-auto">
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="hud-btn-interact"
+                data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
+                data-interactable-id={hud.exploration.prompt.interactableId ?? 'none'}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onInteract?.();
+                }}
+                className={`w-full px-1.5 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
+                  hud.exploration.prompt.canInteract
+                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-400 text-emerald-200'
+                    : hud.exploration.prompt.interactableId
+                      ? 'bg-amber-500/15 border-amber-400/70 text-amber-200'
+                      : 'bg-[#0d131d] hover:bg-[#162032] border-slate-800 text-slate-400'
+                }`}
+              >
+                {hud.exploration.prompt.canInteract && hud.exploration.prompt.label
+                  ? `[I] INTERACT · ${hud.exploration.prompt.label}`
+                  : '[I] INTERACT · SCAN NODE'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -967,6 +995,22 @@ export const GameHud: React.FC<GameHudProps> = ({
                   3. GATE: {puzzle.finalBarrierOpen ? 'OPEN' : 'LOCKED'}
                 </span>
               </div>
+            </div>
+
+            {/* Phase 18: Mission Tracker & Optional Exploration Objective Readout */}
+            <div
+              data-testid="hud-optional-objective"
+              data-mission-id={hud.exploration.mission.id}
+              data-active-objective-id={hud.exploration.mission.activeMainObjectiveId ?? 'none'}
+              className="mt-1 pt-1 border-t border-slate-800/70 flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-300"
+            >
+              <span className="truncate text-cyan-300/90">
+                {hud.exploration.mission.optionalObjectiveSummary ??
+                  `${hud.exploration.mission.code} · ALL OPTIONAL OBJECTIVES COMPLETE`}
+              </span>
+              <span className="text-slate-400 whitespace-nowrap shrink-0">
+                CODEX {hud.exploration.discoveredCodexIds.length}/{hud.exploration.codexEntries.length}
+              </span>
             </div>
           </div>
 
@@ -1290,6 +1334,45 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </div>
               </div>
             )
+          )}
+
+          {/* Phase 18: Contextual Environmental Interaction Prompt Banner */}
+          {hud.exploration.prompt.interactableId && (
+            <div
+              data-testid="hud-interaction-prompt"
+              data-interactable-id={hud.exploration.prompt.interactableId}
+              data-interaction-status={hud.exploration.prompt.status}
+              data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
+              className={`mt-1 w-full bg-[#090d14]/94 border px-2.5 sm:px-3.5 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)] pointer-events-auto ${
+                hud.exploration.prompt.canInteract
+                  ? 'border-emerald-400/90 text-emerald-200'
+                  : hud.exploration.prompt.status === 'already_activated'
+                    ? 'border-cyan-500/60 text-cyan-200'
+                    : 'border-amber-400/80 text-amber-200'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold">
+                <span className="truncate">{hud.exploration.prompt.promptText}</span>
+                {hud.exploration.prompt.canInteract && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onInteract?.();
+                    }}
+                    className="px-2 py-0.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[9px] font-bold uppercase tracking-wider cursor-pointer shrink-0"
+                  >
+                    ACTIVATE [I]
+                  </button>
+                )}
+              </div>
+              {hud.exploration.prompt.detailText && (
+                <div className="text-[9px] sm:text-[10px] font-mono-tabular text-slate-300 truncate mt-0.5">
+                  {hud.exploration.prompt.detailText}
+                </div>
+              )}
+            </div>
           )}
         </div>
 

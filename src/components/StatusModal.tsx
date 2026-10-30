@@ -6,6 +6,7 @@ import type {
   CameraSettings,
   CampaignChapterId,
   ChronicleLoomEndingId,
+  CodexEntryId,
   EncounterMode,
   GameAppState,
   GameOutcome,
@@ -14,6 +15,7 @@ import type {
   RunSummary,
   WeaponId,
   WeaponUpgradeId,
+  WorldExplorationState,
 } from '../game/types.ts';
 
 interface StatusModalProps {
@@ -34,6 +36,7 @@ interface StatusModalProps {
   enemiesDefeated: number;
   totalEnemies: number;
   progression?: HudWeaponProgressionSnapshot;
+  exploration?: WorldExplorationState;
   equippedWeaponId?: WeaponId;
   onPurchaseUpgrade?: (upgradeId: WeaponUpgradeId) => void;
   onEquipUpgrade?: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => void;
@@ -82,6 +85,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   enemiesDefeated,
   totalEnemies,
   progression,
+  exploration,
   equippedWeaponId = 'chrono_edge',
   onPurchaseUpgrade,
   onEquipUpgrade,
@@ -100,6 +104,9 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   onStartBoss,
   onReturnToTitle,
 }) => {
+  const [activeExplorationTab, setActiveExplorationTab] = React.useState<'missions' | 'codex'>('missions');
+  const [selectedCodexId, setSelectedCodexId] = React.useState<CodexEntryId>('CODEX-01');
+
   if (appState !== 'paused' && appState !== 'gameover') {
     return null;
   }
@@ -479,6 +486,209 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Phase 18: Mission Journal & Station Lore Codex (Visible on Pause & Chapter Intermission) */}
+        {(isPaused || isVictory) && exploration && (
+          <div
+            data-testid="modal-exploration-panel"
+            className="bg-[#070a0f] border border-slate-800/90 p-3.5 mb-4 space-y-2.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/90">
+              <div>
+                <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-cyan-300 font-bold">
+                  NADIR-9 FIELD JOURNAL & ARCHIVE CODEX
+                </div>
+                <div className="text-[10px] font-mono-tabular text-slate-400">
+                  {exploration.mission.code} · NODES ACTIVATED: {exploration.activatedNodeIds.length} · ROUTES UNLOCKED: {exploration.unlockedRouteIds.length}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  data-testid="modal-tab-missions"
+                  aria-pressed={activeExplorationTab === 'missions'}
+                  onClick={() => setActiveExplorationTab('missions')}
+                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase border transition-colors cursor-pointer ${
+                    activeExplorationTab === 'missions'
+                      ? 'bg-cyan-400/20 border-cyan-400 text-cyan-200'
+                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  MISSIONS ({exploration.mission.objectives.filter((o) => o.status === 'completed').length}/{exploration.mission.objectives.length})
+                </button>
+                <button
+                  type="button"
+                  data-testid="modal-tab-codex"
+                  aria-pressed={activeExplorationTab === 'codex'}
+                  onClick={() => setActiveExplorationTab('codex')}
+                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase border transition-colors cursor-pointer ${
+                    activeExplorationTab === 'codex'
+                      ? 'bg-amber-400/20 border-amber-400 text-amber-200'
+                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  CODEX ({exploration.discoveredCodexIds.length}/{exploration.codexEntries.length})
+                </button>
+              </div>
+            </div>
+
+            {activeExplorationTab === 'missions' ? (
+              <div data-testid="mission-journal-view" className="space-y-2">
+                <div className="bg-[#0a1019] border border-slate-800/90 p-2.5">
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className="text-xs font-display font-bold uppercase tracking-wide text-slate-100">
+                      {exploration.mission.title}
+                    </span>
+                    <span className="text-[9px] font-mono-tabular uppercase px-1.5 py-0.5 border border-cyan-500/50 text-cyan-300">
+                      {exploration.mission.completed ? 'MISSION COMPLETE' : 'IN PROGRESS'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-snug">
+                    {exploration.mission.summary}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  {exploration.mission.objectives.map((obj) => (
+                    <div
+                      key={obj.id}
+                      data-testid={`mission-objective-${obj.id}`}
+                      data-objective-status={obj.status}
+                      data-objective-category={obj.category}
+                      className={`p-2 border flex flex-col gap-0.5 ${
+                        obj.status === 'completed'
+                          ? 'bg-[#091518] border-emerald-500/50'
+                          : obj.status === 'active'
+                            ? 'bg-[#0c1624] border-cyan-400/80'
+                            : obj.status === 'available'
+                              ? 'bg-[#0b111b] border-amber-400/50'
+                              : 'bg-[#080c12] border-slate-800/80 opacity-75'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-mono-tabular font-bold text-slate-100">
+                          <span
+                            className={`mr-1.5 text-[9px] px-1 py-0.5 border ${
+                              obj.category === 'optional'
+                                ? 'border-amber-400/60 text-amber-300'
+                                : 'border-cyan-400/60 text-cyan-300'
+                            }`}
+                          >
+                            {obj.category === 'optional' ? 'OPTIONAL' : 'MAIN'}
+                          </span>
+                          {obj.title}
+                        </span>
+                        <span
+                          className={`text-[9px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border whitespace-nowrap ${
+                            obj.status === 'completed'
+                              ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                              : obj.status === 'active'
+                                ? 'bg-cyan-400/20 border-cyan-300 text-cyan-200'
+                                : obj.status === 'available'
+                                  ? 'bg-amber-500/15 border-amber-400/60 text-amber-300'
+                                  : 'bg-slate-900 border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          {obj.status.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-300 leading-snug">
+                        {obj.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div
+                  data-testid="codex-entry-list"
+                  className="sm:col-span-5 space-y-1 max-h-52 overflow-y-auto pr-1"
+                >
+                  {exploration.codexEntries.map((entry) => {
+                    const isSelected = selectedCodexId === entry.id;
+                    return (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        data-testid={`codex-entry-btn-${entry.id}`}
+                        data-discovered={entry.discovered ? 'true' : 'false'}
+                        onClick={() => setSelectedCodexId(entry.id)}
+                        className={`w-full text-left px-2.5 py-1.5 border transition-colors cursor-pointer flex items-center justify-between gap-1.5 ${
+                          isSelected
+                            ? 'bg-[#102033] border-cyan-400 text-white'
+                            : entry.discovered
+                              ? 'bg-[#0b121c] hover:bg-[#111c2b] border-slate-700 text-slate-200'
+                              : 'bg-[#080c12] hover:bg-[#0d131d] border-slate-800/80 text-slate-500'
+                        }`}
+                      >
+                        <div className="truncate">
+                          <div className="text-[9px] font-mono-tabular uppercase text-cyan-400">
+                            {entry.id}
+                          </div>
+                          <div className="text-[10px] font-mono-tabular font-semibold truncate">
+                            {entry.discovered ? entry.title : 'ENCRYPTED RECORD'}
+                          </div>
+                        </div>
+                        <span
+                          className={`text-[8px] font-mono-tabular uppercase px-1 py-0.5 border shrink-0 ${
+                            entry.discovered
+                              ? 'border-emerald-400/60 text-emerald-300'
+                              : 'border-slate-700 text-slate-500'
+                          }`}
+                        >
+                          {entry.discovered ? 'DECRYPTED' : 'LOCKED'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {(() => {
+                  const activeEntry =
+                    exploration.codexEntries.find((e) => e.id === selectedCodexId) ??
+                    exploration.codexEntries[0];
+                  if (!activeEntry) return null;
+                  return (
+                    <div
+                      data-testid="codex-entry-reader"
+                      data-entry-id={activeEntry.id}
+                      data-entry-discovered={activeEntry.discovered ? 'true' : 'false'}
+                      className="sm:col-span-7 bg-[#0a1019] border border-slate-800/90 p-3 flex flex-col justify-between gap-2.5"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 text-[9px] font-mono-tabular uppercase text-amber-300 mb-1">
+                          <span>{activeEntry.id} · {activeEntry.categoryLabel || activeEntry.category}</span>
+                          <span className="text-slate-400 truncate">{activeEntry.locationTag}</span>
+                        </div>
+                        <h3 className="text-xs sm:text-sm font-display font-bold uppercase tracking-wide text-slate-100 mb-0.5">
+                          {activeEntry.title}
+                        </h3>
+                        <div className="text-[10px] font-mono-tabular text-cyan-300 mb-2">
+                          {activeEntry.subtitle}
+                        </div>
+                        <div className="space-y-1.5 text-[11px] text-slate-200 leading-relaxed">
+                          {(Array.isArray(activeEntry.body)
+                            ? activeEntry.body
+                            : [String(activeEntry.body)]
+                          ).map((para, pIdx) => (
+                            <p key={pIdx}>{para}</p>
+                          ))}
+                        </div>
+                      </div>
+                      {activeEntry.tacticalNote && (
+                        <div className="pt-2 border-t border-slate-800/80 text-[10px] font-mono-tabular text-emerald-300/95">
+                          <span className="font-bold uppercase tracking-wider">TACTICAL NOTE: </span>
+                          <span>{activeEntry.tacticalNote}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         )}
 

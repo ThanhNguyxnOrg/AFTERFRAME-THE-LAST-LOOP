@@ -374,6 +374,14 @@ export class ArenaSceneRenderer {
   private loomSealMats: THREE.MeshBasicMaterial[] = [];
   private loomSealTetherMats: THREE.MeshBasicMaterial[] = [];
   private chapterEnvironments = new Map<CampaignChapterId, ChapterEnvironmentRig>();
+  private interactablesGroup: THREE.Group;
+  private interactableRigs: Array<{
+    group: THREE.Group;
+    coreMesh: THREE.Mesh;
+    coreMat: THREE.MeshBasicMaterial;
+    ringMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+  }> = [];
   private disposed = false;
 
   private camAnchor = new THREE.Vector3();
@@ -737,6 +745,51 @@ export class ArenaSceneRenderer {
       this.loomSealsGroup.add(sGroup);
     }
     this.scene.add(this.loomSealsGroup);
+
+    // Phase 18: Pre-allocate Pooled Environmental Interactable Rigs (Terminals, Power Nodes, Gate Controls, Echo Conduits)
+    this.interactablesGroup = new THREE.Group();
+    this.interactablesGroup.name = 'EnvironmentalInteractablesPool';
+    const intPedestalGeo = new THREE.CylinderGeometry(0.28, 0.38, 1.05, 8);
+    const intCoreGeo = new THREE.OctahedronGeometry(0.26, 0);
+    const intRingGeo = new THREE.RingGeometry(0.55, 0.72, 24);
+    intRingGeo.rotateX(-Math.PI * 0.5);
+    for (let i = 0; i < 6; i++) {
+      const iGroup = new THREE.Group();
+      iGroup.visible = false;
+      const ped = new THREE.Mesh(intPedestalGeo, pillarStructMat);
+      ped.position.y = 0.525;
+      iGroup.add(ped);
+
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.9,
+      });
+      const coreMesh = new THREE.Mesh(intCoreGeo, coreMat);
+      coreMesh.position.y = 1.42;
+      iGroup.add(coreMesh);
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ringMesh = new THREE.Mesh(intRingGeo, ringMat);
+      ringMesh.position.y = 0.04;
+      iGroup.add(ringMesh);
+
+      this.interactableRigs.push({
+        group: iGroup,
+        coreMesh,
+        coreMat,
+        ringMesh,
+        ringMat,
+      });
+      this.interactablesGroup.add(iGroup);
+    }
+    this.scene.add(this.interactablesGroup);
 
     // Player Rig
     this.playerRig = createSeraPlayerRig(this.shadowTex, !this.isHeadless);
@@ -1637,6 +1690,14 @@ export class ArenaSceneRenderer {
             ev.isHeavy ? 5.6 : 4.2
           );
           break;
+        case 'environmental_interaction_completed':
+          this.spawnBurst(ev.x, 1.25, ev.z, 20, 0x34d399, 6.4);
+          this.spawnBurst(ev.x, 1.35, ev.z, 12, 0x22d3ee, 5.2);
+          this.triggerImpactRing(ev.x, 0.14, ev.z, 0x34d399, 0.34);
+          break;
+        case 'environmental_interaction_rejected':
+          this.spawnBurst(ev.x, 1.0, ev.z, 6, 0xf59e0b, 3.2);
+          break;
       }
     }
   }
@@ -1926,6 +1987,43 @@ export class ArenaSceneRenderer {
       }
     }
 
+    // Phase 18: Update Pooled 3D Environmental Interactable Props (Guarded for mock prototype fixtures)
+    if (this.interactablesGroup && world.exploration?.interactables) {
+      const interactables = world.exploration.interactables;
+      const focusedId = world.exploration.prompt?.interactableId ?? null;
+      for (let i = 0; i < this.interactableRigs.length; i++) {
+        const rig = this.interactableRigs[i];
+        const item = interactables[i];
+        if (!item) {
+          rig.group.visible = false;
+          continue;
+        }
+        rig.group.visible = true;
+        rig.group.position.set(item.x, 0, item.z);
+        const isPrompted = item.id === focusedId;
+        const hexColor =
+          item.status === 'activated'
+            ? 0x34d399
+            : item.status === 'locked'
+              ? 0xf59e0b
+              : isPrompted
+                ? 0xffffff
+                : item.kind === 'echo_conduit'
+                  ? 0x38bdf8
+                  : 0x22d3ee;
+        rig.coreMat.color.setHex(hexColor);
+        rig.ringMat.color.setHex(hexColor);
+        rig.coreMesh.rotation.y += ambientDt * (isPrompted ? 2.4 : 1.1);
+        rig.coreMesh.position.y =
+          1.42 + Math.sin(ambientTime * 2.8 + i) * 0.08 * ambientScale;
+        rig.ringMat.opacity =
+          item.status === 'activated'
+            ? 0.32
+            : isPrompted
+              ? 0.82
+              : 0.48 + Math.sin(ambientTime * 3.2 + i) * 0.14 * ambientScale;
+      }
+    }
   }
 
   public updateAndRender(

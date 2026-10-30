@@ -282,6 +282,16 @@ export class SoundEngine {
         case 'weapon_upgrade_rejected':
           this.playEchoInvalidBeep();
           break;
+        case 'environmental_interaction_completed':
+          this.playPressurePlateActivated();
+          break;
+        case 'environmental_interaction_rejected':
+          this.playEchoInvalidBeep();
+          break;
+        case 'mission_objective_completed':
+        case 'codex_entry_discovered':
+          this.playProgressionReward();
+          break;
       }
     }
   }

@@ -27,6 +27,9 @@ import {
   grantProgressionReward,
   purchaseWeaponUpgrade,
   equipWeaponUpgrade,
+  attemptEnvironmentalInteraction,
+  completeMissionObjective,
+  discoverCodexEntry,
 } from './simulation.ts';
 
 test('completed chapters remain isolated replays after save reload without an in-memory snapshot', () => {
@@ -862,3 +865,106 @@ test('16. Phase 17.1 Full Real-Simulation Prologue Calibration + Bay 04 Victory 
   assert.equal(reloaded.encounter.encounterId, 'tactical_mastery_gauntlet');
   assert.equal(serializeCampaignProgress(reloaded), savedChapter1);
 });
+
+test('10. Phase 18 Exploration Save V2 Persistence, Legacy Migration, Practice Isolation & 18-Fragment Economy Invariance', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // Activate Prologue Diagnostic Terminal, Auxiliary Power Node, and Shortcut Gate
+  world.player.x = 2.4;
+  world.player.z = 8.3;
+  world.player.rotationY = 0;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_diagnostic_terminal').status,
+    'ready'
+  );
+
+  world.player.x = 5.2;
+  world.player.z = 6.7;
+  world.player.rotationY = 0;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node').status,
+    'ready'
+  );
+
+  world.player.x = 6.2;
+  world.player.z = -4.3;
+  world.player.rotationY = Math.PI;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate').status,
+    'ready'
+  );
+
+  // Verify exploration never grants extra Memory Fragments outside the 8 canonical campaign milestones
+  assert.equal(
+    world.progression.memoryFragments,
+    0,
+    'Environmental interactions and codex discoveries must never inflate the 18 Memory Fragment economy'
+  );
+  assert.ok(world.exploration.discoveredCodexIds.includes('CODEX-01'));
+  assert.ok(world.exploration.discoveredCodexIds.includes('CODEX-02'));
+  assert.ok(world.exploration.unlockedRouteIds.includes('pillar-ne'));
+  assert.equal(world.obstacles.find((o) => o.id === 'pillar-ne')?.disabled, true);
+
+  // Serialize and reload into a fresh world -> verify codex, objectives, activated nodes, and unlocked routes persist
+  const savedJson = serializeCampaignProgress(world);
+  const reloaded = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloaded, savedJson), true);
+  assert.equal(restoreSavedCampaignProgress(reloaded), true);
+
+  assert.deepEqual(reloaded.exploration.discoveredCodexIds, ['CODEX-01', 'CODEX-02']);
+  assert.ok(
+    reloaded.exploration.activatedNodeIds.includes('int_prologue_diagnostic_terminal')
+  );
+  assert.ok(reloaded.exploration.activatedNodeIds.includes('int_prologue_aux_power_node'));
+  assert.ok(reloaded.exploration.activatedNodeIds.includes('int_prologue_shortcut_gate'));
+  assert.deepEqual(reloaded.exploration.unlockedRouteIds, ['pillar-ne']);
+  assert.equal(
+    reloaded.obstacles.find((o) => o.id === 'pillar-ne')?.disabled,
+    true,
+    'Unlocked route obstacle state must be restored on campaign reload'
+  );
+
+  // Practice mode and Chapter Replay must not overwrite or corrupt saved campaign exploration state
+  startPracticeStandardRun(reloaded, 'tactical_guard_and_flank');
+  discoverCodexEntry(reloaded, 'CODEX-08');
+  assert.equal(
+    serializeCampaignProgress(reloaded),
+    savedJson,
+    'Practice mode exploration mutations must never overwrite saved campaign progress'
+  );
+
+  // Backward compatibility: loading a pre-Phase-18 v2 save without `exploration` or with unknown IDs sanitizes cleanly
+  const legacyV2Save = JSON.stringify({
+    version: 2,
+    unlockedChapters: ['prologue', 'chapter_1_helix'],
+    completedChapters: ['prologue'],
+    recoveredLogs: ['LOG-00'],
+    completedEndings: [],
+    activeCampaign: {
+      chapter: 'chapter_1_helix',
+      stage: 'boss_fight',
+      pendingNextChapter: null,
+      bossCheckpoint: null,
+      selectedEnding: null,
+      exploration: {
+        discoveredCodexIds: ['CODEX-01', 'INVALID-CODEX', 'CODEX-01'],
+        completedObjectiveIds: ['obj_prologue_puzzle_calibration', 'obj_fake'],
+        activatedNodeIds: ['int_prologue_diagnostic_terminal', 'int_fake'],
+        unlockedRouteIds: ['pillar-ne', 'pillar-invalid'],
+      },
+    },
+  });
+  const migratedWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(migratedWorld, legacyV2Save), true);
+  assert.deepEqual(migratedWorld.exploration.discoveredCodexIds, ['CODEX-01']);
+  assert.deepEqual(migratedWorld.exploration.completedObjectiveIds, [
+    'obj_prologue_puzzle_calibration',
+  ]);
+  assert.deepEqual(migratedWorld.exploration.activatedNodeIds, [
+    'int_prologue_diagnostic_terminal',
+  ]);
+  assert.deepEqual(migratedWorld.exploration.unlockedRouteIds, ['pillar-ne']);
+});
+
+

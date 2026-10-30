@@ -12,10 +12,14 @@ import { InputController } from './game/input.ts';
 import { ArenaSceneRenderer } from './game/renderer.ts';
 import {
   advanceCampaignChapter,
+  attemptEnvironmentalInteraction,
+  completeMissionObjective,
   createBossWorld,
   createInitialWorld,
+  discoverCodexEntry,
   dismissActiveTransmission,
   equipWeaponUpgrade,
+  evaluateInteractionTarget,
   extractHudSnapshot,
   forceBossAttack,
   grantProgressionReward,
@@ -27,6 +31,7 @@ import {
   retryBossFromCheckpoint,
   saveCampaignProgressToStorage,
   selectChronicleLoomEnding,
+  shouldExposeTestHooks,
   skipBossIntroBanner,
   skipCampaignIntro,
   skipContainmentTransition,
@@ -46,15 +51,20 @@ import type {
   CameraSettings,
   CampaignChapterId,
   ChronicleLoomEndingId,
+  CodexEntryId,
   EncounterCompositionId,
   GameAppState,
   HudSnapshot,
+  InteractableId,
+  InteractionTargetEvaluation,
+  MissionObjectiveId,
   UpgradeEquipOutcome,
   UpgradePurchaseOutcome,
   WeaponId,
   WeaponProgressionRewardId,
   WeaponProgressionState,
   WeaponUpgradeId,
+  WorldExplorationState,
   WorldState,
 } from './game/types.ts';
 
@@ -523,6 +533,10 @@ export default function App() {
     inputRef.current?.triggerSwitchWeapon();
   }, []);
 
+  const handleInteract = useCallback(() => {
+    inputRef.current?.triggerInteract();
+  }, []);
+
   const handlePurchaseUpgrade = useCallback(
     (upgradeId: WeaponUpgradeId) => {
       const w = worldRef.current;
@@ -676,6 +690,11 @@ export default function App() {
     let prevWaveIndex = world.encounter.currentWaveIndex;
     let prevWaveClearedCount = world.encounter.waveClearedCount;
     let prevEncounterCompleted = world.encounter.completed;
+    let prevActivatedNodesCount = world.exploration.activatedNodeIds.length;
+    let prevCompletedObjectivesCount = world.exploration.completedObjectiveIds.length;
+    let prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
+    let prevPromptId = world.exploration.prompt.interactableId;
+    let prevPromptStatus = world.exploration.prompt.status;
 
     const handleVisibilityResume = () => {
       if (!document.hidden) {
@@ -792,6 +811,11 @@ export default function App() {
         world.encounter.currentWaveIndex !== prevWaveIndex ||
         world.encounter.waveClearedCount !== prevWaveClearedCount ||
         world.encounter.completed !== prevEncounterCompleted ||
+        world.exploration.activatedNodeIds.length !== prevActivatedNodesCount ||
+        world.exploration.completedObjectiveIds.length !== prevCompletedObjectivesCount ||
+        world.exploration.discoveredCodexIds.length !== prevDiscoveredCodexCount ||
+        world.exploration.prompt.interactableId !== prevPromptId ||
+        world.exploration.prompt.status !== prevPromptStatus ||
         Math.ceil(world.player.integrity) !== Math.ceil(prevIntegrity);
 
       if (stateChanged || now - lastHudSyncTime >= 100) {
@@ -834,6 +858,11 @@ export default function App() {
         prevWaveIndex = world.encounter.currentWaveIndex;
         prevWaveClearedCount = world.encounter.waveClearedCount;
         prevEncounterCompleted = world.encounter.completed;
+        prevActivatedNodesCount = world.exploration.activatedNodeIds.length;
+        prevCompletedObjectivesCount = world.exploration.completedObjectiveIds.length;
+        prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
+        prevPromptId = world.exploration.prompt.interactableId;
+        prevPromptStatus = world.exploration.prompt.status;
         document.body.dataset.state = world.appState;
         document.body.dataset.encounter = world.encounterMode;
         document.body.dataset.runMode = world.run.mode;
@@ -924,10 +953,16 @@ export default function App() {
         };
         setCameraSettings: (s: Partial<CameraSettings>) => CameraSettings;
         togglePerfOverlay: () => boolean;
+        interact: (targetId?: InteractableId) => InteractionTargetEvaluation;
+        evaluateInteraction: (targetId: InteractableId) => InteractionTargetEvaluation;
+        completeObjective: (objectiveId: MissionObjectiveId) => boolean;
+        discoverCodex: (codexId: CodexEntryId) => boolean;
+        getExplorationState: () => WorldExplorationState;
       };
     };
 
-    win.__advanceSimulation = (seconds: number, renderAtEnd = true) => {
+    if (shouldExposeTestHooks()) {
+      win.__advanceSimulation = (seconds: number, renderAtEnd = true) => {
       const steps = Math.max(1, Math.ceil(seconds / 0.02));
       const stepDt = seconds / steps;
       for (let i = 0; i < steps; i++) {
@@ -1205,7 +1240,34 @@ export default function App() {
         handleTogglePerfOverlay();
         return perfVisibleRef.current;
       },
+      interact: (targetId?: InteractableId) => {
+        const res = attemptEnvironmentalInteraction(world, targetId);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return res;
+      },
+      evaluateInteraction: (targetId: InteractableId) =>
+        evaluateInteractionTarget(world, targetId),
+      completeObjective: (objectiveId: MissionObjectiveId) => {
+        const res = completeMissionObjective(world, objectiveId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return res;
+      },
+      discoverCodex: (codexId: CodexEntryId) => {
+        const res = discoverCodexEntry(world, codexId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return res;
+      },
+      getExplorationState: () => world.exploration,
     };
+    }
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -1321,6 +1383,7 @@ export default function App() {
           onGravityPin={handleGravityPin}
           onEchoCollapse={handleEchoCollapse}
           onSwitchWeapon={handleSwitchWeapon}
+          onInteract={handleInteract}
           onSelectLoomEnding={handleSelectLoomEnding}
           onRestoreCampaign={handleRestoreSavedCampaign}
           onTouchMoveHold={handleTouchMoveHold}
@@ -1360,6 +1423,7 @@ export default function App() {
         enemiesDefeated={hud.totalEnemies - hud.enemiesAlive}
         totalEnemies={hud.totalEnemies}
         progression={hud.progression}
+        exploration={hud.exploration}
         equippedWeaponId={hud.weapon.equippedWeaponId}
         onPurchaseUpgrade={handlePurchaseUpgrade}
         onEquipUpgrade={handleEquipUpgrade}
