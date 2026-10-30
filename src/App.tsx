@@ -30,6 +30,7 @@ import {
   skipBossIntroBanner,
   skipCampaignIntro,
   skipContainmentTransition,
+  startAuthoredEncounter,
   startBossEncounter,
   startCampaignChapterSelect,
   startCampaignRun,
@@ -45,6 +46,7 @@ import type {
   CameraSettings,
   CampaignChapterId,
   ChronicleLoomEndingId,
+  EncounterCompositionId,
   GameAppState,
   HudSnapshot,
   UpgradeEquipOutcome,
@@ -189,19 +191,22 @@ export default function App() {
     syncDomAndReactHud();
   }, [syncDomAndReactHud, syncRendererAndCamera]);
 
-  const handleStartPracticeStandard = useCallback(() => {
-    const w = worldRef.current;
-    const renderer = rendererRef.current;
-    if (!w) return;
+  const handleStartPracticeStandard = useCallback(
+    (encounterId?: EncounterCompositionId) => {
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
 
-    startPracticeStandardRun(w);
-    if (w.events.length > 0) {
-      soundRef.current?.playEvents(w.events);
-      renderer?.handleCombatEvents(w.events);
-    }
-    syncRendererAndCamera();
-    syncDomAndReactHud();
-  }, [syncDomAndReactHud, syncRendererAndCamera]);
+      startPracticeStandardRun(w, encounterId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud, syncRendererAndCamera]
+  );
 
   const handleStartOrRestart = useCallback(() => {
     const w = worldRef.current;
@@ -667,6 +672,10 @@ export default function App() {
     let prevPurchasedCount = world.progression.purchasedUpgrades.length;
     let prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
     let prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
+    let prevEncounterId = world.encounter.encounterId;
+    let prevWaveIndex = world.encounter.currentWaveIndex;
+    let prevWaveClearedCount = world.encounter.waveClearedCount;
+    let prevEncounterCompleted = world.encounter.completed;
 
     const handleVisibilityResume = () => {
       if (!document.hidden) {
@@ -684,6 +693,8 @@ export default function App() {
 
       const beforeEncounterMode = world.encounterMode;
       const beforeBossId = world.boss?.id ?? null;
+      const beforeEncounterId = world.encounter.encounterId;
+      const beforeWaveIndex = world.encounter.currentWaveIndex;
       const frameInput = input.consumeFrameInput(dt);
       stepWorld(world, frameInput, dt);
 
@@ -693,6 +704,11 @@ export default function App() {
         sceneRenderer.syncEnemyRigs(world);
         input.resetCameraAngles();
         sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+      } else if (
+        world.encounter.encounterId !== beforeEncounterId ||
+        world.encounter.currentWaveIndex !== beforeWaveIndex
+      ) {
+        sceneRenderer.syncEnemyRigs(world);
       }
 
       // Release pointer lock automatically when transitioning into gameover modal
@@ -772,6 +788,10 @@ export default function App() {
         world.progression.purchasedUpgrades.length !== prevPurchasedCount ||
         world.progression.equippedUpgrades.chrono_edge !== prevEquippedEdgeUpgrade ||
         world.progression.equippedUpgrades.pulsecaster !== prevEquippedPulseUpgrade ||
+        world.encounter.encounterId !== prevEncounterId ||
+        world.encounter.currentWaveIndex !== prevWaveIndex ||
+        world.encounter.waveClearedCount !== prevWaveClearedCount ||
+        world.encounter.completed !== prevEncounterCompleted ||
         Math.ceil(world.player.integrity) !== Math.ceil(prevIntegrity);
 
       if (stateChanged || now - lastHudSyncTime >= 100) {
@@ -810,6 +830,10 @@ export default function App() {
         prevPurchasedCount = world.progression.purchasedUpgrades.length;
         prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
         prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
+        prevEncounterId = world.encounter.encounterId;
+        prevWaveIndex = world.encounter.currentWaveIndex;
+        prevWaveClearedCount = world.encounter.waveClearedCount;
+        prevEncounterCompleted = world.encounter.completed;
         document.body.dataset.state = world.appState;
         document.body.dataset.encounter = world.encounterMode;
         document.body.dataset.runMode = world.run.mode;
@@ -839,7 +863,8 @@ export default function App() {
         getWorld: () => WorldState;
         getInput: () => InputController;
         startCampaignRun: (skipIntro?: boolean) => WorldState;
-        startPracticeStandardRun: () => WorldState;
+        startPracticeStandardRun: (encounterId?: EncounterCompositionId) => WorldState;
+        startAuthoredEncounter: (encounterId: EncounterCompositionId) => WorldState;
         startBossEncounter: (skipIntro?: boolean, bossId?: BossEncounterId) => WorldState;
         advanceCampaignChapter: (skipBossIntro?: boolean) => WorldState;
         startCampaignChapterSelect: (
@@ -907,12 +932,19 @@ export default function App() {
       const stepDt = seconds / steps;
       for (let i = 0; i < steps; i++) {
         const beforeMode = world.encounterMode;
+        const beforeEncId = world.encounter.encounterId;
+        const beforeWave = world.encounter.currentWaveIndex;
         const frameInput = input.consumeFrameInput(stepDt);
         stepWorld(world, frameInput, stepDt);
         if (world.encounterMode !== beforeMode) {
           sceneRenderer.syncEnemyRigs(world);
           input.resetCameraAngles();
           sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        } else if (
+          world.encounter.encounterId !== beforeEncId ||
+          world.encounter.currentWaveIndex !== beforeWave
+        ) {
+          sceneRenderer.syncEnemyRigs(world);
         }
         if (world.events.length > 0) {
           soundRef.current?.playEvents(world.events);
@@ -930,6 +962,7 @@ export default function App() {
       document.body.dataset.state = world.appState;
       document.body.dataset.encounter = world.encounterMode;
       document.body.dataset.runMode = world.run.mode;
+      savePersistedCampaignProgress(world);
       if (renderAtEnd) {
         setHud(extractHudSnapshot(world));
       }
@@ -952,9 +985,23 @@ export default function App() {
         setHud(extractHudSnapshot(world));
         return world;
       },
-      startPracticeStandardRun: () => {
+      startPracticeStandardRun: (encounterId?: EncounterCompositionId) => {
         input.exitPointerLock();
-        startPracticeStandardRun(world);
+        startPracticeStandardRun(world, encounterId);
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        document.body.dataset.state = world.appState;
+        document.body.dataset.encounter = world.encounterMode;
+        document.body.dataset.runMode = world.run.mode;
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return world;
+      },
+      startAuthoredEncounter: (encounterId: EncounterCompositionId) => {
+        input.exitPointerLock();
+        startAuthoredEncounter(world, encounterId);
         sceneRenderer.syncEnemyRigs(world);
         input.resetCameraAngles();
         sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);

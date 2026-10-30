@@ -6,6 +6,7 @@ import {
   CAMPAIGN_SAVE_VERSION,
   CAMPAIGN_STORAGE_KEY,
   advanceCampaignChapter,
+  createEmptyInput,
   createInitialWorld,
   hasResumableCampaign,
   loadCampaignProgressFromStorage,
@@ -19,6 +20,7 @@ import {
   startCampaignChapterSelect,
   startCampaignRun,
   startPracticeStandardRun,
+  stepWorld,
   switchPlayerWeapon,
   transitionCampaignToBoss,
   triggerBossDefeat,
@@ -700,5 +702,163 @@ test('15. Phase 15 Weapon Progression (Memory Fragments, claimed rewards, purcha
   );
 });
 
+test('16. Phase 17.1 Full Real-Simulation Prologue Calibration + Bay 04 Victory -> transition_to_boss -> chapter_1_helix Journey, Duplicate-Advance Protection & Save/Reload Isolation', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
 
+  assert.equal(world.run.mode, 'campaign');
+  assert.equal(world.run.chapter, 'prologue');
+  assert.equal(world.run.stage, 'calibration');
+  assert.equal(world.encounter.encounterId, 'prologue_calibration_bay');
+  assert.equal(world.progression.memoryFragments, 0);
 
+  // Move Bay 04 enemies temporarily out of aggro range while executing the 3 calibration steps
+  for (const e of world.enemies) {
+    e.x = 12.0;
+    e.z = -12.0;
+    e.aiState = 'idle';
+  }
+
+  // --- STEP 1 (TEACH): Record Echo on Anchor Pad 01, Replay to hold gate open, Cross West ---
+  const pad1 = world.pressurePlate;
+  world.player.x = pad1.x;
+  world.player.z = pad1.z;
+  const rec1Start = createEmptyInput(Math.PI);
+  rec1Start.echoRecordJustPressed = true;
+  stepWorld(world, rec1Start, 0.02);
+  for (let i = 0; i < 30; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  const rec1Stop = createEmptyInput(Math.PI);
+  rec1Stop.echoRecordJustPressed = true;
+  stepWorld(world, rec1Stop, 0.02);
+
+  const play1 = createEmptyInput(Math.PI);
+  play1.echoPlayJustPressed = true;
+  stepWorld(world, play1, 0.02);
+  assert.equal(world.pressurePlate.active, true, 'Echo replay activates Anchor Pad 01');
+  assert.equal(world.pressurePlate.barrierOpen, true, 'Anchor Pad 01 opens Gate 01');
+
+  // Move live Sera West across Gate 01 while Echo holds Pad 01
+  world.player.x = pad1.receiverX - pad1.receiverRadius - GAME_CONFIG.player.radius - 0.1;
+  world.player.z = pad1.receiverZ;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.puzzle.teachCompleted, true, 'Crossing Gate 01 completes Step 1 (TEACH)');
+  assert.equal(world.progression.memoryFragments, 1);
+  assert.ok(world.progression.claimedRewardIds.includes('prologue_calibration_teach'));
+
+  // --- STEP 2 (TEST): Record Echo Heavy Cleave at North Kinetic Receiver & Replay ---
+  const recPad = world.puzzle.heavyReceiver;
+  world.player.x = recPad.x;
+  world.player.z = recPad.z;
+  world.player.rotationY = recPad.targetYaw;
+  const rec2Start = createEmptyInput(recPad.targetYaw);
+  rec2Start.echoRecordJustPressed = true;
+  stepWorld(world, rec2Start, 0.02);
+
+  const heavyInput = createEmptyInput(recPad.targetYaw);
+  heavyInput.heavyAttackJustPressed = true;
+  stepWorld(world, heavyInput, 0.02);
+  for (let i = 0; i < 30; i++) {
+    stepWorld(world, createEmptyInput(recPad.targetYaw), 0.02);
+  }
+  const rec2Stop = createEmptyInput(recPad.targetYaw);
+  rec2Stop.echoRecordJustPressed = true;
+  stepWorld(world, rec2Stop, 0.02);
+
+  const play2 = createEmptyInput(recPad.targetYaw);
+  play2.echoPlayJustPressed = true;
+  stepWorld(world, play2, 0.02);
+  for (let i = 0; i < 25; i++) {
+    stepWorld(world, createEmptyInput(recPad.targetYaw), 0.02);
+  }
+  assert.equal(world.puzzle.heavyReceiver.charged, true, 'Echo Heavy strike charges North Receiver');
+  assert.equal(world.puzzle.testCompleted, true, 'Charging North Receiver completes Step 2 (TEST)');
+  assert.equal(world.progression.memoryFragments, 2);
+  assert.ok(world.progression.claimedRewardIds.includes('prologue_calibration_test'));
+
+  // --- STEP 3 (COMBINE): Record Echo holding Combine Pad 02 while Receiver is charged & Cross Final Barrier ---
+  const pad2 = world.puzzle.combinePlate;
+  world.player.x = pad2.x;
+  world.player.z = pad2.z;
+  const rec3Start = createEmptyInput(Math.PI);
+  rec3Start.echoRecordJustPressed = true;
+  stepWorld(world, rec3Start, 0.02);
+  for (let i = 0; i < 30; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  const rec3Stop = createEmptyInput(Math.PI);
+  rec3Stop.echoRecordJustPressed = true;
+  stepWorld(world, rec3Stop, 0.02);
+
+  const play3 = createEmptyInput(Math.PI);
+  play3.echoPlayJustPressed = true;
+  stepWorld(world, play3, 0.02);
+  assert.equal(world.puzzle.combinePlate.active, true, 'Echo holds Combine Pad 02');
+  assert.equal(world.puzzle.finalBarrier.open, true, 'Dual condition opens Final Calibration Barrier');
+
+  // While only 2 of 3 Bay 04 proxies are defeated and Final Barrier has not yet been crossed, Prologue remains in calibration
+  world.enemies[0].hp = 0;
+  world.enemies[0].aiState = 'ko';
+  world.enemies[1].hp = 0;
+  world.enemies[1].aiState = 'ko';
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.run.stage, 'calibration', 'Must remain in calibration while 3rd proxy is alive and barrier uncrossed');
+
+  // Defeat the 3rd Bay 04 proxy and move live Sera into the completion zone West of the Final Barrier
+  world.enemies[2].hp = 0;
+  world.enemies[2].aiState = 'ko';
+  world.player.x = world.puzzle.finalBarrier.completionX;
+  world.player.z = world.puzzle.finalBarrier.completionZ;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  assert.equal(world.puzzle.combineCompleted, true);
+  assert.equal(world.puzzle.completed, true);
+  assert.ok(world.progression.claimedRewardIds.includes('prologue_calibration_combine'));
+  assert.ok(world.progression.claimedRewardIds.includes('prologue_bay_proxies_cleared'));
+
+  assert.equal(world.run.stage, 'transition_to_boss');
+  assert.equal(world.run.pendingNextChapter, 'chapter_1_helix');
+  assert.equal(world.encounter.completed, true);
+  assert.equal(world.echo.state, 'idle', 'Echo actor is cleaned up on transition_to_boss');
+  assert.equal(world.projectiles.length, 0);
+  assert.equal(world.progression.memoryFragments, 6, 'All 4 Prologue rewards total 6 Memory Fragments');
+  assert.ok(world.run.recoveredLogs.includes('LOG-00'));
+
+  // Step through the containment transition timer to enter Chapter I: HELIX-04
+  for (let i = 0; i < 160; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    if ((world.run.chapter as string) === 'chapter_1_helix') break;
+  }
+  assert.equal(world.run.chapter, 'chapter_1_helix');
+  assert.equal(world.run.stage, 'boss_intro');
+  // Step through the boss intro arrival banner (or skip) to reach active boss_fight
+  for (let i = 0; i < 160; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    if ((world.run.stage as string) === 'boss_fight') break;
+  }
+  assert.equal(world.run.stage, 'boss_fight');
+  assert.equal(world.encounterMode, 'boss');
+  assert.equal(world.boss?.id, 'helix-04');
+  assert.equal(world.enemies.length, 1);
+  assert.equal(world.enemies[0].id, 'helix-04');
+
+  // Duplicate advanceCampaignChapter call must be rejected
+  assert.equal(advanceCampaignChapter(world, true), false);
+  assert.equal(world.run.chapter, 'chapter_1_helix');
+
+  // Save/Reload round-trip and Practice Mode isolation
+  const savedChapter1 = serializeCampaignProgress(world);
+  const reloaded = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloaded, savedChapter1), true);
+  assert.equal(restoreSavedCampaignProgress(reloaded), true);
+  assert.equal(reloaded.run.chapter, 'chapter_1_helix');
+  assert.equal(reloaded.boss?.id, 'helix-04');
+  assert.equal(reloaded.progression.memoryFragments, 6);
+
+  // Enter Practice Mastery Gauntlet from Chapter I and verify campaign snapshot is never mutated
+  startPracticeStandardRun(reloaded, 'tactical_mastery_gauntlet');
+  assert.equal(reloaded.run.mode, 'practice_standard');
+  assert.equal(reloaded.encounter.encounterId, 'tactical_mastery_gauntlet');
+  assert.equal(serializeCampaignProgress(reloaded), savedChapter1);
+});

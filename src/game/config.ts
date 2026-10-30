@@ -1239,6 +1239,153 @@ export const GAME_CONFIG = {
     bossCheckpointMinFluxFloor: 40, // Minimum Chrono Flux floor on boss entry (puzzle completion already grants 100)
     stuckHintDelay: 12.0, // Seconds dwelling on a puzzle step before surfacing extra guidance
   },
+  encounters: {
+    defaultEncounterId: 'prologue_calibration_bay' as const,
+    definitions: {
+      prologue_calibration_bay: {
+        id: 'prologue_calibration_bay' as const,
+        label: 'CALIBRATION BAY 04 · VANGUARD',
+        shortLabel: 'BAY 04 VANGUARD',
+        chapterContext: 'prologue' as const,
+        pacingTier: 'teach' as const,
+        tacticalFocus:
+          'TEACH · Introduce directional Aegis frontal shields, fast Scrapper lunges, and Scout ranged line-of-sight suppression alongside Chrono Rig calibration.',
+        recommendedWeaponId: 'chrono_edge' as const,
+        recommendedUpgradeIds: ['edge_breaker_cleave', 'pulse_thermal_sink'] as const,
+        maxConcurrentAttackers: 2,
+        waves: [
+          {
+            waveIndex: 1,
+            label: 'WAVE 1 · BAY 04 SECURITY PROXIES',
+            tacticalDirective:
+              'Flank or Heavy-cleave [E] the Aegis Bastion, Parry [Q] the Scrapper lunge, and use pillar cover against the Scout.',
+            units: [
+              { id: 'enemy-bastion-1', archetype: 'bastion' as const, name: 'Aegis Bastion', x: 0, z: 4.5 },
+              { id: 'enemy-scrapper-1', archetype: 'scrapper' as const, name: 'Vanguard Scrapper', x: -6.5, z: -4.5 },
+              { id: 'enemy-scout-1', archetype: 'scout' as const, name: 'Pulse Scout', x: 6.5, z: -5.0 },
+            ],
+          },
+        ],
+      },
+      tactical_guard_and_flank: {
+        id: 'tactical_guard_and_flank' as const,
+        label: 'SECTOR 01 DRILL · GUARD & FLANK',
+        shortLabel: 'GUARD & FLANK',
+        chapterContext: 'chapter_1_helix' as const,
+        pacingTier: 'practice' as const,
+        tacticalFocus:
+          'PRACTICE · Pair an Aegis Bastion bulwark with dual aggressive Scrapper flankers to test target priority, Parry [Q] counters, and Seismic Breaker Core guard shatter.',
+        recommendedWeaponId: 'chrono_edge' as const,
+        recommendedUpgradeIds: ['edge_breaker_cleave', 'edge_harmonic_conductor'] as const,
+        maxConcurrentAttackers: 2,
+        waves: [
+          {
+            waveIndex: 1,
+            label: 'WAVE 1 · BULWARK & SKIRMISHER PACK',
+            tacticalDirective:
+              'Eliminate or Parry [Q] the fast Scrapper flankers before committing to Heavy [E] or Echo Resonance against the Aegis Bastion.',
+            units: [
+              { id: 'enemy-bastion-1', archetype: 'bastion' as const, name: 'Aegis Bastion', x: 0, z: 3.8 },
+              { id: 'enemy-scrapper-1', archetype: 'scrapper' as const, name: 'Vanguard Scrapper Alpha', x: -4.8, z: 1.5 },
+              { id: 'enemy-scrapper-2', archetype: 'scrapper' as const, name: 'Vanguard Scrapper Beta', x: 4.8, z: 1.5 },
+            ],
+          },
+        ],
+      },
+      tactical_crossfire_suppression: {
+        id: 'tactical_crossfire_suppression' as const,
+        label: 'SECTOR 02 DRILL · CROSSFIRE SUPPRESSION',
+        shortLabel: 'CROSSFIRE SUPPRESSION',
+        chapterContext: 'chapter_2_choir' as const,
+        pacingTier: 'combine' as const,
+        tacticalFocus:
+          'COMBINE · Dual Ranged Suppressor Scouts establish crossfire lanes behind an Aegis Bastion, testing pillar line-of-sight cover and Pulsecaster counter-sniping.',
+        recommendedWeaponId: 'pulsecaster' as const,
+        recommendedUpgradeIds: ['pulse_thermal_sink', 'pulse_overcharge_condenser'] as const,
+        maxConcurrentAttackers: 2,
+        waves: [
+          {
+            waveIndex: 1,
+            label: 'WAVE 1 · CROSSFIRE OVERWATCH',
+            tacticalDirective:
+              'Use conduit pillars to block Scout laser sightlines and switch to Pulsecaster [Tab / 2] to interrupt ranged telegraphs.',
+            units: [
+              { id: 'enemy-bastion-1', archetype: 'bastion' as const, name: 'Aegis Bastion', x: 0, z: 3.5 },
+              { id: 'enemy-scout-1', archetype: 'scout' as const, name: 'Pulse Scout West', x: -6.5, z: -5.0 },
+              { id: 'enemy-scout-2', archetype: 'scout' as const, name: 'Pulse Scout East', x: 6.5, z: -5.0 },
+            ],
+          },
+        ],
+      },
+      tactical_temporal_disruption: {
+        id: 'tactical_temporal_disruption' as const,
+        label: 'SECTOR 04 DRILL · TEMPORAL DISRUPTION',
+        shortLabel: 'TEMPORAL DISRUPTION',
+        chapterContext: 'chapter_4_matron' as const,
+        pacingTier: 'combine' as const,
+        tacticalFocus:
+          'COMBINE · Flux Siphon and Trace Eraser pressure Chrono Flux economy and active Echo tracks simultaneously alongside an Aegis Bastion.',
+        recommendedWeaponId: 'chrono_edge' as const,
+        recommendedUpgradeIds: ['edge_harmonic_conductor', 'pulse_overcharge_condenser'] as const,
+        maxConcurrentAttackers: 2,
+        waves: [
+          {
+            waveIndex: 1,
+            label: 'WAVE 1 · QUARANTINE EXCISION SQUAD',
+            tacticalDirective:
+              'Protect your active Echo from the Trace Eraser or trigger Echo Collapse [X] before severing, and counter the Flux Siphon.',
+            units: [
+              { id: 'enemy-siphon-1', archetype: 'siphon' as const, name: 'Flux Siphon', x: -5.2, z: 2.2 },
+              { id: 'enemy-eraser-1', archetype: 'eraser' as const, name: 'Trace Eraser', x: 5.2, z: 2.2 },
+              { id: 'enemy-bastion-1', archetype: 'bastion' as const, name: 'Quarantine Bastion', x: 0, z: -6.2 },
+            ],
+          },
+        ],
+      },
+      tactical_mastery_gauntlet: {
+        id: 'tactical_mastery_gauntlet' as const,
+        label: 'NADIR-9 · TACTICAL MASTERY GAUNTLET',
+        shortLabel: 'MASTERY GAUNTLET',
+        chapterContext: 'chapter_4_matron' as const,
+        pacingTier: 'master' as const,
+        tacticalFocus:
+          'MASTER · Two-wave coordinated gauntlet combining all 5 tactical enemy roles, testing weapon switching, Phase 15 upgrades, Echo flanking, and Resonance Convergence.',
+        recommendedWeaponId: 'chrono_edge' as const,
+        recommendedUpgradeIds: [
+          'edge_breaker_cleave',
+          'edge_harmonic_conductor',
+          'pulse_thermal_sink',
+          'pulse_overcharge_condenser',
+        ] as const,
+        maxConcurrentAttackers: 2,
+        waves: [
+          {
+            waveIndex: 1,
+            label: 'WAVE 1/2 · PERIMETER BREACH VANGUARD',
+            tacticalDirective:
+              'Break the Bastion front line, parry the Scrapper flanker, and suppress the Scout overwatch to trigger Wave 2.',
+            units: [
+              { id: 'enemy-bastion-1', archetype: 'bastion' as const, name: 'Aegis Bastion', x: 0, z: 4.0 },
+              { id: 'enemy-scrapper-1', archetype: 'scrapper' as const, name: 'Vanguard Scrapper', x: -5.5, z: 1.2 },
+              { id: 'enemy-scout-1', archetype: 'scout' as const, name: 'Pulse Scout', x: 6.5, z: -5.0 },
+            ],
+          },
+          {
+            waveIndex: 2,
+            label: 'WAVE 2/2 · CHRONICLE EXCISION REINFORCEMENTS',
+            tacticalDirective:
+              'Neutralize the Flux Siphon and Trace Eraser before they sever your Echo, then shatter the Heavy Bastion.',
+            units: [
+              { id: 'enemy-bastion-2', archetype: 'bastion' as const, name: 'Excision Bastion', x: 0, z: -6.2 },
+              { id: 'enemy-siphon-1', archetype: 'siphon' as const, name: 'Flux Siphon', x: -6.0, z: -2.5 },
+              { id: 'enemy-eraser-1', archetype: 'eraser' as const, name: 'Trace Eraser', x: 6.0, z: -2.5 },
+            ],
+          },
+        ],
+      },
+    },
+  },
 } as const;
+
 
 

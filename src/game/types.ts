@@ -999,7 +999,8 @@ export interface CombatEvent {
     | 'progression_reward_granted'
     | 'weapon_upgrade_purchased'
     | 'weapon_upgrade_equipped'
-    | 'weapon_upgrade_rejected';
+    | 'weapon_upgrade_rejected'
+    | 'encounter_wave_started';
   x: number;
   z: number;
   originX?: number;
@@ -1037,6 +1038,62 @@ export interface RunSummary {
   remainingTargetHp: number;
 }
 
+export type EncounterPacingTier = 'teach' | 'practice' | 'combine' | 'master';
+
+export type EncounterCompositionId =
+  | 'prologue_calibration_bay'
+  | 'tactical_guard_and_flank'
+  | 'tactical_crossfire_suppression'
+  | 'tactical_temporal_disruption'
+  | 'tactical_mastery_gauntlet';
+
+export interface EncounterWaveUnitSpec {
+  id: string;
+  archetype: EnemyArchetype;
+  name: string;
+  x: number;
+  z: number;
+}
+
+export interface EncounterWaveSpec {
+  waveIndex: number;
+  label: string;
+  tacticalDirective: string;
+  units: readonly EncounterWaveUnitSpec[];
+}
+
+export interface EncounterDefinition {
+  id: EncounterCompositionId;
+  label: string;
+  shortLabel: string;
+  chapterContext: CampaignChapterId;
+  pacingTier: EncounterPacingTier;
+  tacticalFocus: string;
+  recommendedWeaponId: WeaponId;
+  recommendedUpgradeIds: readonly WeaponUpgradeId[];
+  maxConcurrentAttackers: number;
+  waves: readonly EncounterWaveSpec[];
+}
+
+export interface EncounterRuntimeState {
+  encounterId: EncounterCompositionId;
+  label: string;
+  pacingTier: EncounterPacingTier;
+  tacticalFocus: string;
+  currentWaveIndex: number;
+  totalWaves: number;
+  waveClearedCount: number;
+  completed: boolean;
+  activeWaveLabel: string;
+  tacticalDirective: string;
+  spawnedWaveIndices: number[];
+}
+
+export interface EncounterSpawnValidationResult {
+  valid: boolean;
+  reason: string;
+}
+
 export interface WorldState {
   appState: GameAppState;
   encounterMode: EncounterMode;
@@ -1066,6 +1123,7 @@ export interface WorldState {
   loom: ChronicleLoomState;
   comms: NarrativeCommsState;
   progression: WeaponProgressionState;
+  encounter: EncounterRuntimeState;
   events: CombatEvent[];
   stats: {
     damageDealt: number;
@@ -1136,6 +1194,7 @@ export interface HudSnapshot {
     activeProjectiles: number;
   };
   progression: HudWeaponProgressionSnapshot;
+  encounter: EncounterRuntimeState;
   enemiesAlive: number;
   totalEnemies: number;
   objectiveText: string;

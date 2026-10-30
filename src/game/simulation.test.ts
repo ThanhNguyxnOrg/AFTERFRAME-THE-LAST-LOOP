@@ -52,6 +52,11 @@ import {
   purchaseWeaponUpgrade,
   equipWeaponUpgrade,
   canModifyWeaponUpgrades,
+  getAllEncounterDefinitions,
+  getEncounterDefinition,
+  startAuthoredEncounter,
+  advanceEncounterWaveIfReady,
+  validateEncounterSpawnPoint,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -8417,7 +8422,412 @@ test('Phase 16.4: Echo Tactical Flanking Distracts Bastion Shield & Phase 15 Upg
   assert.equal(world.player.weaponOverheated, false, 'Thermal Sink never overheated during volley');
 });
 
+test('Phase 17.1: Authored Encounter Registry, Teach-Practice-Combine-Master Pacing Curve & Spawn Coordinate Validation', () => {
+  const definitions = getAllEncounterDefinitions();
+  assert.equal(definitions.length, 5, 'Should expose 5 authored tactical encounter compositions');
 
+  const ids = definitions.map((d) => d.id);
+  assert.deepEqual(ids, [
+    'prologue_calibration_bay',
+    'tactical_guard_and_flank',
+    'tactical_crossfire_suppression',
+    'tactical_temporal_disruption',
+    'tactical_mastery_gauntlet',
+  ]);
 
+  // Verify Teach -> Practice -> Combine -> Master pacing curve
+  assert.equal(getEncounterDefinition('prologue_calibration_bay').pacingTier, 'teach');
+  assert.equal(getEncounterDefinition('tactical_guard_and_flank').pacingTier, 'practice');
+  assert.equal(getEncounterDefinition('tactical_crossfire_suppression').pacingTier, 'combine');
+  assert.equal(getEncounterDefinition('tactical_temporal_disruption').pacingTier, 'combine');
+  assert.equal(getEncounterDefinition('tactical_mastery_gauntlet').pacingTier, 'master');
 
+  const world = createInitialWorld('playing');
+  // Every authored wave unit across all 5 encounter definitions must spawn strictly inside the arena,
+  // outside all active solid obstacles, and clear of the player's spawn position
+  for (const def of definitions) {
+    assert.ok(def.waves.length >= 1, `Encounter ${def.id} must have at least 1 wave`);
+    for (const wave of def.waves) {
+      assert.ok(wave.units.length >= 2, `Encounter ${def.id} wave ${wave.waveIndex} must have >= 2 units`);
+      for (const unit of wave.units) {
+        const validation = validateEncounterSpawnPoint(
+          unit.x,
+          unit.z,
+          0.95,
+          world.obstacles,
+          GAME_CONFIG.arena.radius,
+          GAME_CONFIG.player.spawnX,
+          GAME_CONFIG.player.spawnZ,
+          GAME_CONFIG.player.radius
+        );
+        assert.equal(
+          validation.valid,
+          true,
+          `Unit ${unit.id} in ${def.id} wave ${wave.waveIndex} at (${unit.x}, ${unit.z}) failed spawn validation: ${validation.reason}`
+        );
+      }
+    }
+  }
+});
 
+test('Phase 17.2: Multi-Wave Encounter Sequencing, Wave Idempotency, Reset Isolation & HUD Encounter Telemetry', () => {
+  const world = createInitialWorld('playing');
+  assert.equal(startAuthoredEncounter(world, 'tactical_mastery_gauntlet'), true);
+
+  assert.equal(world.encounter.encounterId, 'tactical_mastery_gauntlet');
+  assert.equal(world.encounter.pacingTier, 'master');
+  assert.equal(world.encounter.currentWaveIndex, 1);
+  assert.equal(world.encounter.totalWaves, 2);
+  assert.equal(world.encounter.completed, false);
+  assert.equal(world.enemies.length, 3, 'Wave 1 of Mastery Gauntlet spawns 3 vanguard units');
+
+  const hudWave1 = extractHudSnapshot(world);
+  assert.equal(hudWave1.encounter.encounterId, 'tactical_mastery_gauntlet');
+  assert.equal(hudWave1.encounter.currentWaveIndex, 1);
+  assert.equal(hudWave1.encounter.totalWaves, 2);
+  assert.ok(
+    hudWave1.objectiveText.includes('WAVE 1/2'),
+    `Expected HUD objectiveText to display WAVE 1/2, got "${hudWave1.objectiveText}"`
+  );
+
+  // Defeat Wave 1 enemies -> must NOT trigger premature victory; must deterministically spawn Wave 2
+  for (const e of world.enemies) {
+    e.hp = 0;
+    e.aiState = 'ko';
+  }
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  assert.equal(world.outcome, 'none', 'Clearing Wave 1 of 2 must not end the encounter prematurely');
+  assert.equal(world.encounter.currentWaveIndex, 2, 'Clearing Wave 1 advances currentWaveIndex to 2');
+  assert.equal(world.encounter.waveClearedCount, 1);
+  assert.deepEqual(world.encounter.spawnedWaveIndices, [1, 2]);
+  assert.ok(
+    world.events.some((ev) => ev.type === 'encounter_wave_started'),
+    'Advancing to Wave 2 emits encounter_wave_started event'
+  );
+
+  const wave2Alive = world.enemies.filter((e) => e.hp > 0 && e.aiState !== 'ko');
+  assert.equal(wave2Alive.length, 3, 'Wave 2 spawns 3 fresh units (Bastion, Siphon, Eraser)');
+  assert.ok(wave2Alive.some((e) => e.archetype === 'siphon'));
+  assert.ok(wave2Alive.some((e) => e.archetype === 'eraser'));
+
+  // Stepping again while Wave 2 is alive must not duplicate Wave 2 spawns
+  stepWorld(world, createEmptyInput(Math.PI), 0.05);
+  assert.equal(world.encounter.currentWaveIndex, 2);
+  assert.equal(world.enemies.filter((e) => e.hp > 0 && e.aiState !== 'ko').length, 3);
+
+  // Now defeat Wave 2 -> encounter completes and triggers victory
+  for (const e of world.enemies) {
+    e.hp = 0;
+    e.aiState = 'ko';
+  }
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.encounter.completed, true);
+  assert.equal(world.encounter.waveClearedCount, 2);
+  assert.equal(world.outcome, 'victory');
+
+  // Restarting via resetWorldForPlaying preserves the selected authored encounter and resets cleanly to Wave 1
+  world.projectiles.push({
+    id: 'stale-proj',
+    owner: 'player',
+    weaponId: 'pulsecaster',
+    attackMode: 'pulse_light',
+    x: 0,
+    z: 0,
+    prevX: 0,
+    prevZ: 0,
+    vx: 0,
+    vz: -20,
+    rotationY: Math.PI,
+    radius: 0.28,
+    damage: 12,
+    staggerDamage: 9,
+    isHeavy: false,
+    isEmpowered: false,
+    maxRange: 14,
+    distanceTraveled: 0,
+    elapsed: 0,
+    maxLifetime: 0.5,
+    active: true,
+    attackStartedAt: 0,
+    attackMarkId: null,
+    hitTargetIds: [],
+  });
+  resetWorldForPlaying(world);
+  assert.equal(world.encounter.encounterId, 'tactical_mastery_gauntlet');
+  assert.equal(world.encounter.currentWaveIndex, 1);
+  assert.equal(world.encounter.completed, false);
+  assert.equal(world.projectiles.length, 0, 'Resetting encounter clears all stale projectiles');
+  assert.equal(world.outcome, 'none');
+});
+
+test('Phase 17.3: Tactical Composition & Phase 15 Upgrade Synergy Across Guard/Flank, Crossfire & Temporal Disruption', () => {
+  const world = createInitialWorld('playing');
+
+  // 1. Practice Composition: Guard & Flank (Bastion + 2 Scrappers) with Seismic Breaker Core
+  assert.equal(startAuthoredEncounter(world, 'tactical_guard_and_flank'), true);
+  world.progression.memoryFragments = 10;
+  assert.equal(purchaseWeaponUpgrade(world, 'edge_breaker_cleave').outcome, 'purchased');
+
+  const bastion = world.enemies.find((e) => e.archetype === 'bastion')!;
+  const scrappers = world.enemies.filter((e) => e.archetype === 'scrapper');
+  assert.ok(bastion && scrappers.length === 2, 'Guard & Flank spawns 1 Bastion and 2 Scrappers');
+
+  // Verify maxConcurrentAttackers cap (2) prevents all 3 enemies from telegraphing simultaneously
+  for (const e of world.enemies) {
+    e.x = 0;
+    e.z = 1.6;
+    e.aiState = 'pursue';
+    e.cooldownTimer = 0;
+  }
+  world.player.x = 0;
+  world.player.z = 3.4;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  const concurrentAttackers = world.enemies.filter(
+    (e) => e.aiState === 'telegraph' || e.aiState === 'attack'
+  ).length;
+  assert.ok(
+    concurrentAttackers <= 2,
+    `Guard & Flank must enforce maxConcurrentAttackers <= 2 (got ${concurrentAttackers})`
+  );
+
+  // 2. Combine Composition: Crossfire Suppression (Bastion + 2 Scouts) with Phase-Arc Condenser
+  assert.equal(startAuthoredEncounter(world, 'tactical_crossfire_suppression'), true);
+  assert.equal(purchaseWeaponUpgrade(world, 'pulse_overcharge_condenser').outcome, 'purchased');
+  assert.equal(switchPlayerWeapon(world, 'pulsecaster'), true);
+  const scouts = world.enemies.filter((e) => e.archetype === 'scout');
+  assert.equal(scouts.length, 2, 'Crossfire Suppression spawns 2 Ranged Suppressor Scouts');
+
+  // 3. Combine Composition: Temporal & Flux Disruption (Siphon + Eraser + Bastion)
+  assert.equal(startAuthoredEncounter(world, 'tactical_temporal_disruption'), true);
+  const siphon = world.enemies.find((e) => e.archetype === 'siphon')!;
+  const eraser = world.enemies.find((e) => e.archetype === 'eraser')!;
+  assert.ok(siphon && eraser, 'Temporal Disruption spawns Siphon and Eraser alongside Bastion');
+});
+
+test('Phase 17.4: First-Arena Victory-to-Progression Data Flow, Projectile Cleanup, Duplicate Advance Guard & Save/Load Integrity', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  assert.equal(world.run.mode, 'campaign');
+  assert.equal(world.run.chapter, 'prologue');
+  assert.equal(world.run.stage, 'calibration');
+  assert.equal(world.encounter.encounterId, 'prologue_calibration_bay');
+
+  // Spawn an in-flight projectile right before clearing the 3 Prologue proxies
+  world.projectiles.push({
+    id: 'in-flight-prologue-bolt',
+    owner: 'player',
+    weaponId: 'pulsecaster',
+    attackMode: 'pulse_light',
+    x: 0,
+    z: 2,
+    prevX: 0,
+    prevZ: 2,
+    vx: 0,
+    vz: -25,
+    rotationY: Math.PI,
+    radius: 0.28,
+    damage: 12,
+    staggerDamage: 9,
+    isHeavy: false,
+    isEmpowered: false,
+    maxRange: 14,
+    distanceTraveled: 0,
+    elapsed: 0,
+    maxLifetime: 0.5,
+    active: true,
+    attackStartedAt: 0,
+    attackMarkId: null,
+    hitTargetIds: [],
+  });
+
+  // Defeat all 3 Calibration Bay proxies while completing the puzzle
+  world.puzzle.teachCompleted = true;
+  world.puzzle.testCompleted = true;
+  world.puzzle.combineCompleted = true;
+  world.puzzle.completed = true;
+  for (const e of world.enemies) {
+    e.hp = 0;
+    e.aiState = 'ko';
+  }
+
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  // Verify transition_to_boss state, projectile cleanup, reward idempotency, and chapter unlock
+  assert.equal(world.run.stage, 'transition_to_boss');
+  assert.equal(world.run.pendingNextChapter, 'chapter_1_helix');
+  assert.equal(world.encounter.completed, true);
+  assert.equal(
+    world.projectiles.length,
+    0,
+    'Entering transition_to_boss must immediately clear in-flight projectiles from Prologue'
+  );
+  assert.ok(world.run.completedChapters.includes('prologue'));
+  assert.ok(world.run.unlockedChapters.includes('chapter_1_helix'));
+  assert.ok(world.run.recoveredLogs.includes('LOG-00'));
+  assert.ok(world.progression.claimedRewardIds.includes('prologue_calibration_combine'));
+  assert.ok(world.progression.claimedRewardIds.includes('prologue_bay_proxies_cleared'));
+
+  const fragmentsAfterPrologue = world.progression.memoryFragments;
+  // Calling beginCampaignBossTransition again during transition_to_boss is a safe no-op
+  beginCampaignBossTransition(world);
+  assert.equal(world.progression.memoryFragments, fragmentsAfterPrologue, 'No duplicate Prologue rewards');
+
+  // Advance into Chapter I (HELIX-04) via advanceCampaignChapter and verify repeated advance calls are rejected
+  assert.equal(advanceCampaignChapter(world, true), true);
+  assert.equal(
+    advanceCampaignChapter(world, true),
+    false,
+    'Second advanceCampaignChapter call must be rejected so chapter progression cannot double-advance'
+  );
+  assert.equal(world.run.chapter, 'chapter_1_helix');
+  assert.equal(world.run.stage, 'boss_fight');
+  assert.equal(world.encounterMode, 'boss');
+  assert.equal(world.boss?.id, 'helix-04');
+  assert.equal(world.enemies.length, 1);
+  assert.equal(world.enemies[0].id, 'helix-04');
+  assert.equal(world.projectiles.length, 0);
+
+  // Verify save/reload round-trip from Chapter I preserves exact progression & loadout state
+  const savedPayload = serializeCampaignProgress(world);
+  const reloadedWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloadedWorld, savedPayload), true);
+  assert.equal(restoreSavedCampaignProgress(reloadedWorld), true);
+  assert.equal(reloadedWorld.run.chapter, 'chapter_1_helix');
+  assert.equal(reloadedWorld.encounterMode, 'boss');
+  assert.equal(reloadedWorld.boss?.id, 'helix-04');
+  assert.equal(reloadedWorld.progression.memoryFragments, fragmentsAfterPrologue);
+});
+
+test('Phase 17.1-A: Two-Wave Mastery Gauntlet (tactical_mastery_gauntlet) End-to-End Wave 1 -> Wave 2 Transition, Projectile/Mark Cleanup, Single-Activation Guard & Final Victory', () => {
+  const world = createInitialWorld('playing');
+  startPracticeStandardRun(world, 'tactical_mastery_gauntlet');
+
+  assert.equal(world.run.mode, 'practice_standard');
+  assert.equal(world.encounterMode, 'standard');
+  assert.equal(world.encounter.encounterId, 'tactical_mastery_gauntlet');
+  assert.equal(world.encounter.currentWaveIndex, 1);
+  assert.equal(world.encounter.waveClearedCount, 0);
+  assert.equal(world.encounter.completed, false);
+  assert.deepEqual(world.encounter.spawnedWaveIndices, [1]);
+  assert.equal(world.enemies.length, 3);
+  assert.deepEqual(
+    world.enemies.map((e) => e.id),
+    ['enemy-bastion-1', 'enemy-scrapper-1', 'enemy-scout-1']
+  );
+
+  // Defeating only 2 of the 3 Wave 1 enemies must NOT trigger Wave 2 or victory
+  world.enemies[0].hp = 0;
+  world.enemies[0].aiState = 'ko';
+  world.enemies[1].hp = 0;
+  world.enemies[1].aiState = 'ko';
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.encounter.currentWaveIndex, 1);
+  assert.equal(world.encounter.waveClearedCount, 0);
+  assert.equal(world.outcome, 'none');
+  assert.equal(world.enemies.length, 3);
+
+  // Create an in-flight Wave 1 projectile in open space and an active Resonance mark on the final Wave 1 enemy
+  world.projectiles.push({
+    id: 'wave1-stale-projectile',
+    owner: 'player',
+    weaponId: 'pulsecaster',
+    attackMode: 'pulse_light',
+    x: 5.0,
+    z: 2.0,
+    prevX: 5.0,
+    prevZ: 2.0,
+    vx: 0,
+    vz: -5,
+    rotationY: Math.PI,
+    radius: 0.28,
+    damage: 12,
+    staggerDamage: 9,
+    isHeavy: false,
+    isEmpowered: false,
+    maxRange: 14,
+    distanceTraveled: 0,
+    elapsed: 0,
+    maxLifetime: 0.5,
+    active: true,
+    attackStartedAt: 0,
+    attackMarkId: null,
+    hitTargetIds: [],
+  });
+  world.resonance.activeMark = {
+    markId: 99,
+    enemyId: 'enemy-scout-1',
+    enemyName: 'SCOUT-D4',
+    clipId: 1,
+    eventId: 'evt-99',
+    echoAction: 'heavy_swing',
+    createdAt: world.elapsedTime,
+    expiresAt: world.elapsedTime + 1.1,
+    duration: 1.1,
+    remainingTime: 1.1,
+    x: world.enemies[2].x,
+    z: world.enemies[2].z,
+  };
+  world.resonance.status = 'primed';
+
+  // Defeat the final Wave 1 enemy -> triggers Wave 2 deployment
+  world.enemies[2].hp = 0;
+  world.enemies[2].aiState = 'ko';
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  assert.equal(world.encounter.currentWaveIndex, 2);
+  assert.equal(world.encounter.waveClearedCount, 1);
+  assert.equal(world.encounter.completed, false);
+  assert.deepEqual(world.encounter.spawnedWaveIndices, [1, 2]);
+  assert.equal(world.outcome, 'none', 'Clearing Wave 1 of 2 must not end the encounter prematurely');
+  assert.equal(
+    world.projectiles.length,
+    0,
+    'Transitioning from Wave 1 to Wave 2 must purge stale Wave 1 projectiles'
+  );
+  assert.equal(
+    world.resonance.activeMark,
+    null,
+    'Transitioning from Wave 1 to Wave 2 must clear stale Wave 1 Resonance marks'
+  );
+  assert.equal(world.enemies.length, 6);
+  const wave2Units = world.enemies.slice(3);
+  assert.deepEqual(
+    wave2Units.map((e) => e.id),
+    ['enemy-bastion-2', 'enemy-siphon-1', 'enemy-eraser-1']
+  );
+
+  // Calling advanceEncounterWaveIfReady or stepping repeatedly while Wave 2 is active must never duplicate Wave 2
+  assert.equal(advanceEncounterWaveIfReady(world), false);
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.enemies.length, 6);
+  assert.deepEqual(world.encounter.spawnedWaveIndices, [1, 2]);
+
+  // Pausing and resuming during Wave 2 preserves Wave 2 state
+  world.appState = 'paused';
+  stepWorld(world, createEmptyInput(Math.PI), 0.25);
+  world.appState = 'playing';
+  assert.equal(world.encounter.currentWaveIndex, 2);
+  assert.equal(world.enemies.filter((e) => e.hp > 0 && e.aiState !== 'ko').length, 3);
+
+  // Defeat all 3 Wave 2 enemies -> encounter completes and enters victory -> gameover
+  for (const w2 of wave2Units) {
+    w2.hp = 0;
+    w2.aiState = 'ko';
+  }
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.encounter.completed, true);
+  assert.equal(world.encounter.waveClearedCount, 2);
+  assert.equal(world.outcome, 'victory');
+  assert.ok(world.frozenSummary, 'Victory must immediately populate frozenSummary');
+  assert.equal(world.frozenSummary?.enemiesDefeated, 6);
+  assert.equal(world.frozenSummary?.totalEnemies, 6);
+
+  // Step past outcomeDelayTimer (0.5s) to reach gameover modal state
+  for (let i = 0; i < 30; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(world.appState, 'gameover');
+  assert.equal(world.outcome, 'victory');
+});

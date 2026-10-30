@@ -6,13 +6,14 @@ import type {
   CameraSettings,
   CampaignChapterId,
   ChronicleLoomEndingId,
+  EncounterCompositionId,
 } from '../game/types.ts';
 
 type ActiveTitleDrawer = 'none' | 'chapters' | 'practice' | 'controls';
 
 interface TitleScreenProps {
   onStartCampaign: () => void;
-  onStartPracticeStandard?: () => void;
+  onStartPracticeStandard?: (encounterId?: EncounterCompositionId) => void;
   onStartBoss?: (bossId?: BossEncounterId) => void;
   unlockedChapters?: CampaignChapterId[];
   completedChapters?: CampaignChapterId[];
@@ -106,6 +107,7 @@ const CHAPTER_METADATA: Array<{
 const PRACTICE_ENCOUNTERS: Array<{
   testId: string;
   bossId?: BossEncounterId;
+  encounterId?: EncounterCompositionId;
   code: string;
   title: string;
   focus: string;
@@ -113,10 +115,43 @@ const PRACTICE_ENCOUNTERS: Array<{
 }> = [
   {
     testId: 'title-btn-practice-standard',
-    code: 'SANDBOX BAY',
+    encounterId: 'prologue_calibration_bay',
+    code: 'TEACH · 1 WAVE',
     title: 'Practice · Calibration Bay',
     focus: 'Echo recording [T], replay [Y], Relay warp [V], and the 3-step Calibration puzzle.',
     accentClass: 'border-slate-700 hover:border-cyan-400/70 text-slate-200',
+  },
+  {
+    testId: 'title-btn-practice-mastery',
+    encounterId: 'tactical_mastery_gauntlet',
+    code: 'MASTER · 2 WAVES',
+    title: 'Practice · Tactical Mastery Gauntlet',
+    focus: 'Two-wave mastery trial: Wave 1 Shield + Flank + Ranged -> Wave 2 Siphon + Eraser + Bastion.',
+    accentClass: 'border-rose-500/60 hover:border-rose-400 text-rose-200',
+  },
+  {
+    testId: 'title-btn-practice-guard-flank',
+    encounterId: 'tactical_guard_and_flank',
+    code: 'PRACTICE · 1 WAVE',
+    title: 'Practice · Guard & Flank Drill',
+    focus: '1 Bastion Shield + 2 Scrapper Flankers. Practice Echo distraction or Breaker Cleave.',
+    accentClass: 'border-sky-500/50 hover:border-sky-400 text-sky-200',
+  },
+  {
+    testId: 'title-btn-practice-crossfire',
+    encounterId: 'tactical_crossfire_suppression',
+    code: 'COMBINE · 1 WAVE',
+    title: 'Practice · Crossfire Suppression',
+    focus: '1 Bastion + 2 Ranged Scouts. Use pillar LOS cover and Pulsecaster Lance interrupts.',
+    accentClass: 'border-indigo-500/50 hover:border-indigo-400 text-indigo-200',
+  },
+  {
+    testId: 'title-btn-practice-disruption',
+    encounterId: 'tactical_temporal_disruption',
+    code: 'COMBINE · 1 WAVE',
+    title: 'Practice · Temporal Disruption',
+    focus: 'Siphon + Eraser + Bastion with Gravity Pin [G] and Echo Collapse [X] unlocked.',
+    accentClass: 'border-purple-500/50 hover:border-purple-400 text-purple-200',
   },
   {
     testId: 'title-btn-boss',
@@ -695,7 +730,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               {PRACTICE_ENCOUNTERS.map((item) => {
                 const handleClick = () => {
                   if (!item.bossId) {
-                    onStartPracticeStandard?.();
+                    onStartPracticeStandard?.(item.encounterId);
                   } else {
                     onStartBoss?.(item.bossId);
                   }

@@ -863,10 +863,24 @@ export const GameHud: React.FC<GameHudProps> = ({
             {/* Primary Objective Row */}
             <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular text-cyan-400 tracking-wider uppercase">
               <span className="font-bold truncate">
-                {!boss && !hud.loom.active ? calGuidance.headline : hud.objectiveText}
+                {!boss && !hud.loom.active
+                  ? hud.encounter.encounterId !== 'prologue_calibration_bay'
+                    ? hud.objectiveText
+                    : calGuidance.headline
+                  : hud.objectiveText}
               </span>
               {!hud.loom.active && (
-                <span className="text-slate-300 font-semibold whitespace-nowrap shrink-0">
+                <span
+                  data-testid="hud-encounter-status"
+                  data-encounter-id={hud.encounter.encounterId}
+                  data-pacing-tier={hud.encounter.pacingTier}
+                  data-wave-index={hud.encounter.currentWaveIndex}
+                  data-total-waves={hud.encounter.totalWaves}
+                  className="text-slate-300 font-semibold whitespace-nowrap shrink-0"
+                >
+                  {hud.encounter.totalWaves > 1
+                    ? `WAVE ${hud.encounter.currentWaveIndex}/${hud.encounter.totalWaves} · `
+                    : ''}
                   PROXIES {hud.totalEnemies - hud.enemiesAlive}/{hud.totalEnemies}
                 </span>
               )}

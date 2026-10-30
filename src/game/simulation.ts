@@ -20,7 +20,13 @@ import type {
   EchoRecordedActionType,
   EchoSample,
   EchoSystemState,
+  EncounterCompositionId,
+  EncounterDefinition,
   EncounterMode,
+  EncounterPacingTier,
+  EncounterRuntimeState,
+  EncounterSpawnValidationResult,
+  EncounterWaveSpec,
   EnemyArchetype,
   EnemyState,
   GameAppState,
@@ -98,6 +104,144 @@ export function isValidWeaponId(value: unknown): value is WeaponId {
     typeof value === 'string' &&
     (VALID_WEAPON_IDS as readonly string[]).includes(value)
   );
+}
+
+export const VALID_ENCOUNTER_COMPOSITION_IDS: readonly EncounterCompositionId[] = [
+  'prologue_calibration_bay',
+  'tactical_guard_and_flank',
+  'tactical_crossfire_suppression',
+  'tactical_temporal_disruption',
+  'tactical_mastery_gauntlet',
+];
+
+export function isValidEncounterCompositionId(
+  value: unknown
+): value is EncounterCompositionId {
+  return (
+    typeof value === 'string' &&
+    (VALID_ENCOUNTER_COMPOSITION_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function getEncounterDefinition(
+  encounterId: EncounterCompositionId = GAME_CONFIG.encounters.defaultEncounterId
+): EncounterDefinition {
+  const safeId: EncounterCompositionId = isValidEncounterCompositionId(encounterId)
+    ? encounterId
+    : GAME_CONFIG.encounters.defaultEncounterId;
+  return GAME_CONFIG.encounters.definitions[safeId];
+}
+
+export function getAllEncounterDefinitions(): EncounterDefinition[] {
+  return VALID_ENCOUNTER_COMPOSITION_IDS.map((id) => getEncounterDefinition(id));
+}
+
+export function validateEncounterSpawnPoint(
+  x: number,
+  z: number,
+  unitRadius: number,
+  obstacles: readonly ObstacleCollider[],
+  arenaRadius: number = GAME_CONFIG.arena.radius,
+  playerX: number = GAME_CONFIG.player.spawnX,
+  playerZ: number = GAME_CONFIG.player.spawnZ,
+  playerRadius: number = GAME_CONFIG.player.radius
+): EncounterSpawnValidationResult {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) {
+    return { valid: false, reason: 'non_finite_coordinates' };
+  }
+  const distFromCenter = Math.hypot(x, z);
+  if (distFromCenter + unitRadius > arenaRadius - 0.5) {
+    return { valid: false, reason: 'outside_arena_bounds' };
+  }
+  const distToPlayer = Math.hypot(x - playerX, z - playerZ);
+  if (distToPlayer < unitRadius + playerRadius + 1.0) {
+    return { valid: false, reason: 'overlaps_player_spawn' };
+  }
+  for (let i = 0; i < obstacles.length; i++) {
+    const obs = obstacles[i];
+    if (obs.disabled) continue;
+    const distToObs = Math.hypot(x - obs.x, z - obs.z);
+    if (distToObs < unitRadius + obs.radius + 0.15) {
+      return { valid: false, reason: `overlaps_obstacle_${obs.id}` };
+    }
+  }
+  return { valid: true, reason: 'ok' };
+}
+
+function createInitialEncounterRuntimeState(
+  encounterId: EncounterCompositionId = GAME_CONFIG.encounters.defaultEncounterId
+): EncounterRuntimeState {
+  const def = getEncounterDefinition(encounterId);
+  const firstWave: EncounterWaveSpec = def.waves[0];
+  return {
+    encounterId: def.id,
+    label: def.label,
+    pacingTier: def.pacingTier,
+    tacticalFocus: def.tacticalFocus,
+    currentWaveIndex: 1,
+    totalWaves: def.waves.length,
+    waveClearedCount: 0,
+    completed: false,
+    activeWaveLabel: firstWave.label,
+    tacticalDirective: firstWave.tacticalDirective,
+    spawnedWaveIndices: [1],
+  };
+}
+
+function cloneEncounterRuntimeState(
+  state?: EncounterRuntimeState | null
+): EncounterRuntimeState {
+  if (!state || !isValidEncounterCompositionId(state.encounterId)) {
+    return createInitialEncounterRuntimeState();
+  }
+  return {
+    ...state,
+    spawnedWaveIndices: [...(state.spawnedWaveIndices ?? [1])],
+  };
+}
+
+function spawnWaveUnitsForEncounter(
+  encounterId: EncounterCompositionId,
+  waveIndex: number,
+  obstacles: readonly ObstacleCollider[],
+  playerX: number,
+  playerZ: number,
+  isReinforcementWave = false
+): EnemyState[] {
+  const def = getEncounterDefinition(encounterId);
+  const wave =
+    def.waves.find((w) => w.waveIndex === waveIndex) ?? def.waves[0];
+  const spawned: EnemyState[] = [];
+  for (let i = 0; i < wave.units.length; i++) {
+    const spec = wave.units[i];
+    const enemy = createEnemy(
+      spec.id,
+      spec.archetype,
+      spec.x,
+      spec.z,
+      isReinforcementWave ? 0.45 + i * 0.25 : i === 0 ? 0 : i === 1 ? 0.3 : -0.3
+    );
+    enemy.name = spec.name;
+    const validation = validateEncounterSpawnPoint(
+      enemy.x,
+      enemy.z,
+      enemy.radius,
+      obstacles,
+      GAME_CONFIG.arena.radius,
+      playerX,
+      playerZ,
+      GAME_CONFIG.player.radius
+    );
+    if (!validation.valid) {
+      resolveCircleObstacleCollisions(
+        enemy,
+        obstacles as ObstacleCollider[],
+        GAME_CONFIG.arena.radius - 0.6
+      );
+    }
+    spawned.push(enemy);
+  }
+  return spawned;
 }
 
 export function getWeaponDefinition(weaponId: WeaponId): WeaponDefinition {
@@ -1785,6 +1929,7 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
     loom: createInitialChronicleLoomState(false),
     comms: createInitialNarrativeCommsState(),
     progression: createInitialWeaponProgressionState(),
+    encounter: createInitialEncounterRuntimeState('prologue_calibration_bay'),
     events: [],
     stats: {
       damageDealt: 0,
@@ -2158,6 +2303,7 @@ export function startBossEncounter(
   world.loom = loomState;
   world.comms = createInitialNarrativeCommsState();
   world.progression = cloneWeaponProgressionState(world.progression);
+  world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
   syncResonanceUpgradeParameters(world);
   world.events = [
     {
@@ -2250,6 +2396,7 @@ export function startCampaignRun(
   world.loom = fresh.loom;
   world.comms = createInitialNarrativeCommsState();
   world.progression = preservedProgression;
+  world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
   syncResonanceUpgradeParameters(world);
   world.events = [];
   triggerNarrativeTransmission(world, 'prologue_wake', true);
@@ -2257,7 +2404,13 @@ export function startCampaignRun(
   world.frozenSummary = null;
 }
 
-export function startPracticeStandardRun(world: WorldState): void {
+export function startAuthoredEncounter(
+  world: WorldState,
+  encounterId: EncounterCompositionId = GAME_CONFIG.encounters.defaultEncounterId
+): boolean {
+  if (!isValidEncounterCompositionId(encounterId)) {
+    return false;
+  }
   const preserveTutorialEnabled = world.tutorial ? world.tutorial.enabled : true;
   const savedSnap = captureSavedCampaignSnapshotIfNeeded(world);
   const preservedUnlocked = world.run?.unlockedChapters
@@ -2274,6 +2427,7 @@ export function startPracticeStandardRun(world: WorldState): void {
     : [];
 
   const fresh = createInitialWorld('playing');
+  const def = getEncounterDefinition(encounterId);
   world.appState = 'playing';
   world.encounterMode = 'standard';
   world.run = {
@@ -2301,9 +2455,16 @@ export function startPracticeStandardRun(world: WorldState): void {
   world.player.equippedWeaponId = preservedEquippedWeapon;
   world.projectiles = [];
   world.nextProjectileId = 1;
-  world.enemies = fresh.enemies;
-  world.boss = null;
   world.obstacles = fresh.obstacles;
+  world.enemies = spawnWaveUnitsForEncounter(
+    def.id,
+    1,
+    world.obstacles,
+    world.player.x,
+    world.player.z,
+    false
+  );
+  world.boss = null;
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -2312,16 +2473,92 @@ export function startPracticeStandardRun(world: WorldState): void {
   world.choir = fresh.choir;
   world.curator = fresh.curator;
   world.matron = fresh.matron;
-  world.gravityPin = fresh.gravityPin;
-  world.echoCollapse = fresh.echoCollapse;
+  const unlockAdvancedModules =
+    encounterId === 'tactical_temporal_disruption' ||
+    encounterId === 'tactical_mastery_gauntlet';
+  world.gravityPin = createInitialGravityPinState(unlockAdvancedModules);
+  world.echoCollapse = createInitialEchoCollapseState(unlockAdvancedModules);
   world.loom = fresh.loom;
   world.comms = createInitialNarrativeCommsState();
   world.progression = cloneWeaponProgressionState(world.progression);
+  world.encounter = createInitialEncounterRuntimeState(def.id);
   syncResonanceUpgradeParameters(world);
   world.events = [];
   triggerNarrativeTransmission(world, 'prologue_wake', true);
   world.stats = fresh.stats;
   world.frozenSummary = null;
+  return true;
+}
+
+export function advanceEncounterWaveIfReady(world: WorldState): boolean {
+  if (
+    world.encounterMode !== 'standard' ||
+    !world.encounter ||
+    world.encounter.completed ||
+    world.outcome !== 'none'
+  ) {
+    return false;
+  }
+  const anyAlive = world.enemies.some((e) => e.hp > 0 && e.aiState !== 'ko');
+  if (anyAlive || world.enemies.length === 0) {
+    return false;
+  }
+
+  const def = getEncounterDefinition(world.encounter.encounterId);
+  const nextWaveIndex = world.encounter.currentWaveIndex + 1;
+  if (
+    nextWaveIndex <= def.waves.length &&
+    !world.encounter.spawnedWaveIndices.includes(nextWaveIndex)
+  ) {
+    const nextWave =
+      def.waves.find((w) => w.waveIndex === nextWaveIndex) ??
+      def.waves[nextWaveIndex - 1];
+    world.encounter.waveClearedCount = Math.max(
+      world.encounter.waveClearedCount,
+      world.encounter.currentWaveIndex
+    );
+    world.encounter.currentWaveIndex = nextWaveIndex;
+    world.encounter.spawnedWaveIndices = [
+      ...world.encounter.spawnedWaveIndices,
+      nextWaveIndex,
+    ];
+    world.encounter.activeWaveLabel = nextWave.label;
+    world.encounter.tacticalDirective = nextWave.tacticalDirective;
+    world.projectiles = [];
+    world.resonance.activeMark = null;
+    if (world.resonance.status === 'primed') {
+      world.resonance.status = 'idle';
+    }
+
+    const reinforcementUnits = spawnWaveUnitsForEncounter(
+      def.id,
+      nextWaveIndex,
+      world.obstacles,
+      world.player.x,
+      world.player.z,
+      true
+    );
+    world.enemies.push(...reinforcementUnits);
+    world.run.checkpointNotice = `${nextWave.label} DEPLOYED · ${nextWave.tacticalDirective}`;
+    world.run.checkpointNoticeTimer = 4.2;
+    world.events.push({
+      type: 'encounter_wave_started',
+      x: world.player.x,
+      z: world.player.z,
+    });
+    return true;
+  }
+
+  world.encounter.waveClearedCount = def.waves.length;
+  world.encounter.completed = true;
+  return false;
+}
+
+export function startPracticeStandardRun(
+  world: WorldState,
+  encounterId: EncounterCompositionId = GAME_CONFIG.encounters.defaultEncounterId
+): void {
+  startAuthoredEncounter(world, encounterId);
 }
 
 export function startPracticeBossRun(
@@ -2397,12 +2634,17 @@ export function beginCampaignBossTransition(world: WorldState): void {
   if (world.run.mode !== 'campaign' || world.run.stage === 'transition_to_boss') {
     return;
   }
-  // Cleanly terminate any active Echo recording/playback or pending marks before transitioning
+  // Cleanly terminate any active Echo recording/playback, projectiles, or pending marks before transitioning
   clearEchoState(world, 'outcome');
+  world.projectiles = [];
   world.resonance.activeMark = null;
   world.resonance.status = 'idle';
   world.resonance.cooldownTimer = 0;
   world.resonance.flashTimer = 0;
+  if (world.encounter) {
+    world.encounter.completed = true;
+    world.encounter.waveClearedCount = world.encounter.totalWaves;
+  }
 
   // Halt any remaining standard security proxies so no stray hit occurs during transition
   for (let i = 0; i < world.enemies.length; i++) {
@@ -2412,6 +2654,8 @@ export function beginCampaignBossTransition(world: WorldState): void {
       e.vx = 0;
       e.vz = 0;
       e.cooldownTimer = 10;
+      e.telegraphLocked = false;
+      e.hasDealtDamageThisAttack = false;
     }
   }
 
@@ -2503,6 +2747,15 @@ export function transitionCampaignToBoss(
 
   if (!isReplay) {
     if (targetChapter === 'chapter_1_helix') {
+      if (world.run?.chapter === 'prologue') {
+        if (world.puzzle?.completed) {
+          grantProgressionReward(world, 'prologue_calibration_combine');
+        }
+        const anyProxyAlive = world.enemies.some((e) => e.hp > 0 && e.aiState !== 'ko');
+        if (world.enemies.length > 0 && !anyProxyAlive) {
+          grantProgressionReward(world, 'prologue_bay_proxies_cleared');
+        }
+      }
       completedChapters = addUniqueChapter(completedChapters, 'prologue');
       recoveredLogs = addUniqueString(recoveredLogs, 'LOG-00');
     }
@@ -2618,6 +2871,7 @@ export function enterChronicleLoomChapter(
   world.loom = createInitialChronicleLoomState(true);
   world.comms = createInitialNarrativeCommsState();
   world.progression = cloneWeaponProgressionState(world.progression);
+  world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
   syncResonanceUpgradeParameters(world);
   world.frozenSummary = null;
 
@@ -3690,11 +3944,19 @@ export function resetWorldForPlaying(world: WorldState): void {
     world.run.savedCampaignSnapshot = savedSnap;
     return;
   }
-  startPracticeStandardRun(world);
+  const activeEncounterId: EncounterCompositionId =
+    world.encounter && isValidEncounterCompositionId(world.encounter.encounterId)
+      ? world.encounter.encounterId
+      : GAME_CONFIG.encounters.defaultEncounterId;
+  startPracticeStandardRun(world, activeEncounterId);
 }
 
 export function resetWorldForStandardPlaying(world: WorldState): void {
-  startPracticeStandardRun(world);
+  const activeEncounterId: EncounterCompositionId =
+    world.encounter && isValidEncounterCompositionId(world.encounter.encounterId)
+      ? world.encounter.encounterId
+      : GAME_CONFIG.encounters.defaultEncounterId;
+  startPracticeStandardRun(world, activeEncounterId);
 }
 
 export function createEmptyInput(aimYaw = Math.PI): PlayerInputFrame {
@@ -9208,13 +9470,16 @@ function updateEnemies(world: WorldState, dt: number): void {
           }
         }
 
+        const maxAttackers = world.encounter
+          ? getEncounterDefinition(world.encounter.encounterId).maxConcurrentAttackers
+          : GAME_CONFIG.enemies.maxConcurrentAttackers;
         if (
           p.actionState !== 'dead' &&
           !holdPerimeterForCalibration &&
           enemy.evadeTimer <= 0 &&
           enemy.cooldownTimer <= 0 &&
           canStartAttack &&
-          activeAttackers < GAME_CONFIG.enemies.maxConcurrentAttackers
+          activeAttackers < maxAttackers
         ) {
           enemy.aiState = 'telegraph';
           enemy.stateDuration = cfg.telegraphDuration;
@@ -9822,6 +10087,17 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
   }
 
   if (
+    world.encounterMode === 'standard' &&
+    world.outcome === 'none' &&
+    world.enemies.length > 0 &&
+    !anyAlive
+  ) {
+    if (advanceEncounterWaveIfReady(world)) {
+      return;
+    }
+  }
+
+  if (
     world.run.mode === 'campaign' &&
     world.encounterMode === 'standard' &&
     world.run.chapter === 'prologue' &&
@@ -9841,7 +10117,12 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
   ) {
     world.puzzle.completed = true;
     world.puzzle.stage = 'completed';
+    if (world.encounter) {
+      world.encounter.completed = true;
+      world.encounter.waveClearedCount = world.encounter.totalWaves;
+    }
     if (world.run.isChapterReplay) {
+      world.projectiles = [];
       world.outcome = 'victory';
       world.run.stage = 'completed';
       world.run.pendingNextChapter = null;
@@ -9869,10 +10150,16 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     world.outcome === 'none' &&
     canTriggerEncounterVictory
   ) {
+    if (world.encounter) {
+      world.encounter.completed = true;
+      world.encounter.waveClearedCount = world.encounter.totalWaves;
+    }
+    world.projectiles = [];
     world.outcome = 'victory';
     world.run.stage = 'completed';
     world.outcomeDelayTimer = 0.5;
     clearEchoState(world, 'outcome');
+    world.frozenSummary = buildRunSummary(world);
     world.events.push({
       type: 'encounter_victory',
       x: world.player.x,
@@ -10118,13 +10405,19 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
       ? 'CHAPTER V · THE LAST LOOP — CHRONICLE LOOM'
       : world.encounterMode === 'boss' && world.boss
         ? `NEUTRALIZE ${world.boss.name} · ${world.boss.subtitle}`
-        : 'NEUTRALIZE WARDEN SECURITY UNITS';
+        : world.encounter && world.encounter.totalWaves > 1
+          ? `${world.encounter.label} · WAVE ${world.encounter.currentWaveIndex}/${world.encounter.totalWaves}`
+          : world.encounter && world.encounter.encounterId !== 'prologue_calibration_bay'
+            ? `${world.encounter.label}`
+            : 'NEUTRALIZE WARDEN SECURITY UNITS';
   let objectiveSubtext =
     world.run.chapter === 'chapter_5_loom'
       ? 'Approach the Chronicle Loom Console and select Nadir-9’s final protocol: SILENCE, WITNESS, or CONTINUITY'
       : world.encounterMode === 'boss'
         ? 'Evade telegraphed attacks and strike the exposed Chrono Core (1.5x)'
-        : 'Strike White Recovery Windows after telegraphs for 1.5x damage';
+        : world.encounter && world.encounter.encounterId !== 'prologue_calibration_bay'
+          ? world.encounter.tacticalDirective
+          : 'Strike White Recovery Windows after telegraphs for 1.5x damage';
 
   const plate = world.pressurePlate;
   const puzzle = world.puzzle;
@@ -10352,6 +10645,7 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
         world.progression?.lastActionMessage ??
         'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
     },
+    encounter: cloneEncounterRuntimeState(world.encounter),
     enemiesAlive,
     totalEnemies,
     objectiveText,
