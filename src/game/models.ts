@@ -1216,6 +1216,16 @@ export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvi
       const marker = box(group, i % 2 === 0 ? glowMat : accentMat, -5.4 + i * 1.2, 0.022, 7.2, 0.58, 0.035, 0.12, 0.01);
       marker.rotation.y = 0.12;
     }
+    // Phase 20: Prologue Echo Memory Resonance Halo at Anchor Pad 01 & NE Diagnostic Monolith
+    const echoHalo = mesh(group, new THREE.TorusGeometry(2.15, 0.035, 8, 36), glowMat, -4.8, 0.06, 1.5);
+    echoHalo.rotation.x = Math.PI / 2;
+    rotors.push(echoHalo);
+    const diagPylon = new THREE.Group();
+    diagPylon.position.set(-10.2, 0, -11.4);
+    group.add(diagPylon);
+    box(diagPylon, structureMat, 0, 1.35, 0, 0.65, 2.7, 0.65, 0.05);
+    const diagCrystal = mesh(diagPylon, crystalGeo, glowMat, 0, 3.05, 0);
+    rotors.push(diagCrystal);
   } else if (chapter === 'chapter_1_helix') {
     const ribGeo = new RoundedBoxGeometry(0.54, 7.2, 0.72, 3, 0.08);
     const boltGeo = new THREE.CylinderGeometry(0.32, 0.32, 2.1, 12);
@@ -1250,6 +1260,14 @@ export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvi
         chevron.rotation.y = side * 0.58;
       }
     }
+    // Phase 20: Marshal Containment Lockdown Evidence Beacon (NW Junction)
+    const lockdownBeacon = new THREE.Group();
+    lockdownBeacon.position.set(-10.8, 0, -10.8);
+    group.add(lockdownBeacon);
+    box(lockdownBeacon, structureMat, 0, 1.4, 0, 0.72, 2.8, 0.72, 0.05);
+    const lockRing = mesh(lockdownBeacon, new THREE.TorusGeometry(0.68, 0.05, 8, 24), accentMat, 0, 2.95, 0);
+    lockRing.rotation.x = Math.PI * 0.35;
+    rotors.push(lockRing);
   } else if (chapter === 'chapter_2_choir') {
     for (let tier = 0; tier < 3; tier++) {
       const radius = 10.5 + tier * 1.8;
@@ -1286,6 +1304,13 @@ export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvi
       halo.rotation.x = Math.PI * 0.42;
       rotors.push(halo);
     }
+    // Phase 20: SW Echo Memory Harmonic Duet Ring & SE Sanctuary Acoustic Chime
+    const duetRing = mesh(group, new THREE.TorusGeometry(2.05, 0.04, 8, 36), glowMat, -7.8, 0.06, 5.2);
+    duetRing.rotation.x = Math.PI / 2;
+    rotors.push(duetRing);
+    const sanctumChime = mesh(group, crystalGeo, accentMat, 12.6, 2.4, 9.2);
+    sanctumChime.scale.set(0.85, 1.65, 0.85);
+    rotors.push(sanctumChime);
   } else if (chapter === 'chapter_3_curator') {
     const slabGeo = new RoundedBoxGeometry(0.82, 0.42, 0.72, 2, 0.045);
     for (const side of [-1, 1]) {
@@ -1309,6 +1334,14 @@ export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvi
       const rail = box(group, glowMat, side * 6.2, 0.04, -5.5, 0.12, 0.08, 11.5, 0.015);
       rail.rotation.y = side * 0.08;
     }
+    // Phase 20: SW Unindexed Memory Vault Holo-Monolith
+    const vaultMonolith = new THREE.Group();
+    vaultMonolith.position.set(-12.2, 0, 8.8);
+    group.add(vaultMonolith);
+    box(vaultMonolith, structureMat, 0, 1.5, 0, 0.85, 3.0, 0.85, 0.06);
+    const unindexedOrb = mesh(vaultMonolith, crystalGeo, glowMat, 0, 3.45, 0);
+    unindexedOrb.scale.set(0.95, 1.85, 0.95);
+    rotors.push(unindexedOrb);
   } else if (chapter === 'chapter_4_matron') {
     for (const side of [-1, 1]) {
       for (const z of [-9, -1.5]) {
@@ -1333,6 +1366,10 @@ export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvi
         box(group, i % 2 === 0 ? shellMat : accentMat, side * 4.8, 0.024, -8 + i * 2.2, 0.16, 0.035, 1.2, 0.01);
       }
     }
+    // Phase 20: SE Cradle 04 Surgical Neural Isolation Ring
+    const cradleBeacon = mesh(group, new THREE.TorusGeometry(1.9, 0.045, 8, 32), glowMat, 11.8, 0.07, 8.4);
+    cradleBeacon.rotation.x = Math.PI / 2;
+    rotors.push(cradleBeacon);
   } else {
     for (const side of [-1, 1]) {
       for (const z of [-10.5, 3.5]) {
@@ -1357,6 +1394,10 @@ export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvi
       const rune = box(group, i % 3 === 0 ? accentMat : glowMat, Math.sin(angle) * 7.1, 0.026, Math.cos(angle) * 7.1 - 2, 0.58, 0.04, 0.12, 0.01);
       rune.rotation.y = angle;
     }
+    // Phase 20: NW Temporal Anchor Echo Memory Ring & Witness Convergence Halo
+    const anchorRing = mesh(group, new THREE.TorusGeometry(2.05, 0.045, 8, 36), glowMat, -7.4, 0.06, 4.8);
+    anchorRing.rotation.x = Math.PI / 2;
+    rotors.push(anchorRing);
   }
 
   return { group, rotors, pulseMaterials };

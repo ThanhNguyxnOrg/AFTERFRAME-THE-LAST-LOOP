@@ -102,6 +102,12 @@ import type {
   SecretAreaState,
   LocalMapRegionCell,
   LocalMapSnapshot,
+  NarrativeEventId,
+  NarrativeEventDefinition,
+  NarrativeEventState,
+  ChapterWorldIdentityDefinition,
+  CampaignSynthesisTier,
+  CampaignEndingDiscoverySummary,
   WorldExplorationState,
   WorldState,
 } from './types.ts';
@@ -369,6 +375,33 @@ export const VALID_SECRET_AREA_IDS: readonly SecretAreaId[] = [
   'secret_ch3_lysa_unedited_vault',
 ];
 
+export const VALID_NARRATIVE_EVENT_IDS: readonly NarrativeEventId[] = [
+  'nev_prologue_awakening',
+  'nev_prologue_calibration_revelation',
+  'nev_prologue_bay_diagnostic_evidence',
+  'nev_prologue_echo_memory_trace',
+  'nev_ch1_containment_arrival',
+  'nev_ch1_lockdown_evidence',
+  'nev_ch1_aegis_escalation',
+  'nev_ch1_seal_recovered',
+  'nev_ch2_garden_arrival',
+  'nev_ch2_echo_memory_duet',
+  'nev_ch2_acoustic_sanctum_discovery',
+  'nev_ch2_choir_silenced',
+  'nev_ch3_vault_arrival',
+  'nev_ch3_lysa_audit_revelation',
+  'nev_ch3_unindexed_alcove_memory',
+  'nev_ch3_vault_purged',
+  'nev_ch4_quarantine_arrival',
+  'nev_ch4_excision_evidence',
+  'nev_ch4_echo_collapse_protocol',
+  'nev_ch4_quarantine_breached',
+  'nev_ch5_loom_arrival',
+  'nev_ch5_anchor_echo_memory',
+  'nev_ch5_archive_convergence',
+  'nev_ch5_final_resolution',
+];
+
 export function isValidMissionId(value: unknown): value is MissionId {
   return (
     typeof value === 'string' &&
@@ -436,6 +469,15 @@ export function isValidSecretAreaId(value: unknown): value is SecretAreaId {
   return (
     typeof value === 'string' &&
     (VALID_SECRET_AREA_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function isValidNarrativeEventId(
+  value: unknown
+): value is NarrativeEventId {
+  return (
+    typeof value === 'string' &&
+    (VALID_NARRATIVE_EVENT_IDS as readonly string[]).includes(value)
   );
 }
 
@@ -525,6 +567,211 @@ export function getAllSecretAreaDefinitionsForChapter(
 
 export function getAllSecretAreaDefinitions(): SecretAreaDefinition[] {
   return VALID_SECRET_AREA_IDS.map((id) => getSecretAreaDefinition(id));
+}
+
+export function getNarrativeEventDefinition(
+  eventId: NarrativeEventId
+): NarrativeEventDefinition;
+export function getNarrativeEventDefinition(
+  eventId: unknown
+): NarrativeEventDefinition | null;
+export function getNarrativeEventDefinition(
+  eventId: unknown
+): NarrativeEventDefinition | null {
+  if (!isValidNarrativeEventId(eventId)) return null;
+  return GAME_CONFIG.exploration.narrativeEvents[eventId] ?? null;
+}
+
+export function getAllNarrativeEventDefinitionsForChapter(
+  chapter: CampaignChapterId
+): NarrativeEventDefinition[] {
+  return VALID_NARRATIVE_EVENT_IDS.map((id) =>
+    getNarrativeEventDefinition(id)
+  ).filter((def) => def.chapter === chapter);
+}
+
+export function getAllNarrativeEventDefinitions(): NarrativeEventDefinition[] {
+  return VALID_NARRATIVE_EVENT_IDS.map((id) => getNarrativeEventDefinition(id));
+}
+
+export function getChapterWorldIdentity(
+  chapter: CampaignChapterId = 'prologue'
+): ChapterWorldIdentityDefinition {
+  const safeChapter = isValidCampaignChapterId(chapter) ? chapter : 'prologue';
+  return GAME_CONFIG.exploration.chapterIdentities[safeChapter];
+}
+
+export function buildNarrativeEventsForChapter(
+  chapter: CampaignChapterId,
+  completedNarrativeEventIds: readonly NarrativeEventId[],
+  existingEvents?: readonly NarrativeEventState[] | null
+): NarrativeEventState[] {
+  const defs = getAllNarrativeEventDefinitionsForChapter(chapter);
+  return defs.map((def) => {
+    const completed = completedNarrativeEventIds.includes(def.id);
+    const prev = existingEvents?.find((e) => e.id === def.id);
+    return {
+      id: def.id,
+      chapter: def.chapter,
+      category: def.category,
+      triggerKind: def.triggerKind,
+      title: def.title,
+      subtitle: def.subtitle,
+      summary: def.summary,
+      completed,
+      completedAtTime: completed ? (prev?.completedAtTime ?? 0) : null,
+      linkedCodexId: def.linkedCodexId ?? null,
+    };
+  });
+}
+
+export function buildCampaignEndingDiscoverySummary(
+  paramsOrWorld:
+    | WorldState
+    | {
+        completedChapters?: readonly CampaignChapterId[];
+        recoveredLogs?: readonly string[];
+        discoveredCodexIds?: readonly CodexEntryId[];
+        discoveredSecretIds?: readonly SecretAreaId[];
+        activatedNodeIds?: readonly InteractableId[];
+        unlockedRouteIds?: readonly string[];
+        completedNarrativeEventIds?: readonly NarrativeEventId[];
+        prologueBarrierOpen?: boolean;
+      }
+): CampaignEndingDiscoverySummary {
+  const isWorld =
+    paramsOrWorld &&
+    typeof paramsOrWorld === 'object' &&
+    'exploration' in paramsOrWorld &&
+    'run' in paramsOrWorld;
+  const params = isWorld
+    ? {
+        completedChapters: (paramsOrWorld as WorldState).run?.completedChapters,
+        recoveredLogs: (paramsOrWorld as WorldState).run?.recoveredLogs,
+        discoveredCodexIds: (paramsOrWorld as WorldState).exploration
+          ?.discoveredCodexIds,
+        discoveredSecretIds: (paramsOrWorld as WorldState).exploration
+          ?.discoveredSecretIds,
+        activatedNodeIds: (paramsOrWorld as WorldState).exploration
+          ?.activatedNodeIds,
+        unlockedRouteIds: (paramsOrWorld as WorldState).exploration
+          ?.unlockedRouteIds,
+        completedNarrativeEventIds: (paramsOrWorld as WorldState).exploration
+          ?.completedNarrativeEventIds,
+        prologueBarrierOpen: Boolean(
+          (paramsOrWorld as WorldState).puzzle?.finalBarrier?.open ||
+            (paramsOrWorld as WorldState).puzzle?.completed
+        ),
+      }
+    : (paramsOrWorld as {
+        completedChapters?: readonly CampaignChapterId[];
+        recoveredLogs?: readonly string[];
+        discoveredCodexIds?: readonly CodexEntryId[];
+        discoveredSecretIds?: readonly SecretAreaId[];
+        activatedNodeIds?: readonly InteractableId[];
+        unlockedRouteIds?: readonly string[];
+        completedNarrativeEventIds?: readonly NarrativeEventId[];
+        prologueBarrierOpen?: boolean;
+      });
+
+  const completedChaptersCount = params.completedChapters
+    ? params.completedChapters.filter(isValidCampaignChapterId).length
+    : 0;
+  const recoveredLogsCount = params.recoveredLogs
+    ? params.recoveredLogs.filter(isValidArchiveLogId).length
+    : 0;
+  const discoveredCodexIds = params.discoveredCodexIds ?? [];
+  const discoveredSecretIds = params.discoveredSecretIds ?? [];
+  const activatedNodeIds = params.activatedNodeIds ?? [];
+  const unlockedRouteIds = params.unlockedRouteIds ?? [];
+  const completedNarrativeEventIds = params.completedNarrativeEventIds ?? [];
+  const prologueBarrierOpen = Boolean(params.prologueBarrierOpen);
+
+  // Count how many of the 7 authored traversal routes have been unlocked across the campaign
+  let unlockedRoutesCount = 0;
+  for (let i = 0; i < VALID_TRAVERSAL_ROUTE_IDS.length; i++) {
+    const rDef = getTraversalRouteDefinition(VALID_TRAVERSAL_ROUTE_IDS[i]);
+    if (rDef.requiresPrologueBarrierOpen) {
+      if (
+        prologueBarrierOpen ||
+        (params.completedChapters &&
+          params.completedChapters.includes('prologue'))
+      ) {
+        unlockedRoutesCount += 1;
+      }
+    } else if (
+      rDef.controlInteractableId &&
+      activatedNodeIds.includes(rDef.controlInteractableId)
+    ) {
+      unlockedRoutesCount += 1;
+    } else if (rDef.obstacleId && unlockedRouteIds.includes(rDef.obstacleId)) {
+      unlockedRoutesCount += 1;
+    }
+  }
+
+  const allDefs = getAllNarrativeEventDefinitions();
+  const echoMemoryDefs = allDefs.filter((d) => d.category === 'echo_memory');
+  const discoveredEchoMemoriesCount = echoMemoryDefs.filter((d) =>
+    completedNarrativeEventIds.includes(d.id)
+  ).length;
+
+  const lysaTruthUncovered =
+    discoveredCodexIds.includes('CODEX-05') ||
+    discoveredSecretIds.includes('secret_ch3_lysa_unedited_vault') ||
+    completedNarrativeEventIds.includes('nev_ch3_lysa_audit_revelation');
+
+  const discoveredCodexCount = discoveredCodexIds.length;
+  const discoveredSecretsCount = discoveredSecretIds.length;
+
+  let synthesisTier: CampaignSynthesisTier = 'fragmented';
+  let synthesisHeadline = 'PARTIAL ARCHIVE TELEMETRY · CORE DIRECTIVES VERIFIED';
+  let synthesisSummary =
+    'Sera reached the Chronicle Loom Core with essential Override Seals intact, though portions of Nadir-9’s unindexed sector records remain sealed in the dark.';
+
+  if (
+    discoveredCodexCount >= 6 &&
+    discoveredSecretsCount >= 3 &&
+    lysaTruthUncovered
+  ) {
+    synthesisTier = 'complete_chronicle';
+    synthesisHeadline =
+      'COMPLETE CHRONICLE RECONSTRUCTION · ALL UNINDEXED TRUTHS RECOVERED';
+    synthesisSummary =
+      'Having uncovered Lysa’s unedited Loop 412 audit, hidden sanctuaries, and the full Codex dossier, Sera approaches the Loom knowing the complete truth of Sector 07’s rupture and WARDEN’s forced preservation mandate.';
+  } else if (
+    discoveredCodexCount >= 3 ||
+    discoveredSecretsCount >= 1 ||
+    discoveredEchoMemoriesCount >= 2 ||
+    completedNarrativeEventIds.length >= 8 ||
+    lysaTruthUncovered
+  ) {
+    synthesisTier = 'reconstructed';
+    synthesisHeadline =
+      'RECONSTRUCTED ARCHIVE · LYSA’S UNINDEXED EVIDENCE INTEGRATED';
+    synthesisSummary =
+      'Sera recovered key unindexed records and sector evidence along her ascent, exposing how WARDEN edited crew grief and quarantined Lysa’s neural trace inside the Loom.';
+  }
+
+  return {
+    completedChaptersCount,
+    totalChaptersCount: 6,
+    recoveredLogsCount,
+    totalLogsCount: 6,
+    discoveredCodexCount,
+    totalCodexCount: VALID_CODEX_ENTRY_IDS.length,
+    discoveredSecretsCount,
+    totalSecretsCount: VALID_SECRET_AREA_IDS.length,
+    unlockedRoutesCount,
+    totalRoutesCount: VALID_TRAVERSAL_ROUTE_IDS.length,
+    completedNarrativeEventsCount: completedNarrativeEventIds.length,
+    totalNarrativeEventsCount: VALID_NARRATIVE_EVENT_IDS.length,
+    discoveredEchoMemoriesCount,
+    totalEchoMemoriesCount: echoMemoryDefs.length,
+    lysaTruthUncovered,
+    synthesisTier,
+    synthesisHeadline,
+    synthesisSummary,
+  };
 }
 
 export function getMissionIdForChapter(chapter: CampaignChapterId): MissionId {
@@ -1123,6 +1370,19 @@ export function createInitialExplorationState(
     }
   }
 
+  const completedNarrativeEventIds: NarrativeEventId[] = [];
+  if (persisted?.completedNarrativeEventIds) {
+    for (let i = 0; i < persisted.completedNarrativeEventIds.length; i++) {
+      const id = persisted.completedNarrativeEventIds[i];
+      if (
+        isValidNarrativeEventId(id) &&
+        !completedNarrativeEventIds.includes(id)
+      ) {
+        completedNarrativeEventIds.push(id);
+      }
+    }
+  }
+
   const mission = buildMissionRuntimeState(chapter, completedObjectiveIds, null);
   const interactables = buildInteractablesForChapter(chapter, activatedNodeIds);
   const routes = buildRoutesForChapter(
@@ -1138,6 +1398,20 @@ export function createInitialExplorationState(
     routes,
     null
   );
+  const narrativeEvents = buildNarrativeEventsForChapter(
+    chapter,
+    completedNarrativeEventIds,
+    null
+  );
+  const chapterIdentity = getChapterWorldIdentity(chapter);
+  const convergenceSummary = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds,
+    discoveredSecretIds,
+    activatedNodeIds,
+    unlockedRouteIds,
+    completedNarrativeEventIds,
+    prologueBarrierOpen: false,
+  });
   const localMap = buildLocalMapSnapshot(
     chapter,
     {
@@ -1163,6 +1437,11 @@ export function createInitialExplorationState(
     unlockedRouteIds,
     discoveredRegionIds,
     discoveredSecretIds,
+    completedNarrativeEventIds,
+    narrativeEvents,
+    lastTriggeredNarrativeEventId: null,
+    chapterIdentity,
+    convergenceSummary,
     routes,
     hazards,
     secrets,
@@ -1196,6 +1475,9 @@ export function clonePersistedExplorationState(
       : [],
     discoveredSecretIds: exp?.discoveredSecretIds
       ? exp.discoveredSecretIds.filter(isValidSecretAreaId)
+      : [],
+    completedNarrativeEventIds: exp?.completedNarrativeEventIds
+      ? exp.completedNarrativeEventIds.filter(isValidNarrativeEventId)
       : [],
   };
 }
@@ -1261,6 +1543,18 @@ export function sanitizePersistedExplorationState(
       }
     }
   }
+  const completedNarrativeEventIds: NarrativeEventId[] = [];
+  if (Array.isArray(obj.completedNarrativeEventIds)) {
+    for (let i = 0; i < obj.completedNarrativeEventIds.length; i++) {
+      const id = obj.completedNarrativeEventIds[i];
+      if (
+        isValidNarrativeEventId(id) &&
+        !completedNarrativeEventIds.includes(id)
+      ) {
+        completedNarrativeEventIds.push(id);
+      }
+    }
+  }
   return {
     discoveredCodexIds,
     completedObjectiveIds,
@@ -1268,12 +1562,18 @@ export function sanitizePersistedExplorationState(
     unlockedRouteIds,
     discoveredRegionIds,
     discoveredSecretIds,
+    completedNarrativeEventIds,
   };
 }
 
 export function cloneWorldExplorationState(
   exp: WorldExplorationState | undefined | null,
-  chapter: CampaignChapterId = 'prologue'
+  chapter: CampaignChapterId = 'prologue',
+  runContext?: {
+    completedChapters?: readonly CampaignChapterId[];
+    recoveredLogs?: readonly string[];
+    prologueBarrierOpen?: boolean;
+  }
 ): WorldExplorationState {
   if (!exp) {
     return createInitialExplorationState(chapter, null);
@@ -1283,6 +1583,9 @@ export function cloneWorldExplorationState(
     : [];
   const discoveredSecretIds = exp.discoveredSecretIds
     ? [...exp.discoveredSecretIds]
+    : [];
+  const completedNarrativeEventIds = exp.completedNarrativeEventIds
+    ? [...exp.completedNarrativeEventIds]
     : [];
   const mission = buildMissionRuntimeState(
     chapter,
@@ -1303,6 +1606,22 @@ export function cloneWorldExplorationState(
   const secrets = exp.secrets
     ? exp.secrets.map((s) => ({ ...s }))
     : buildSecretsForChapter(chapter, discoveredSecretIds, routes, null);
+  const narrativeEvents = buildNarrativeEventsForChapter(
+    chapter,
+    completedNarrativeEventIds,
+    exp.narrativeEvents
+  );
+  const chapterIdentity = getChapterWorldIdentity(chapter);
+  const convergenceSummary = buildCampaignEndingDiscoverySummary({
+    completedChapters: runContext?.completedChapters,
+    recoveredLogs: runContext?.recoveredLogs,
+    discoveredCodexIds: exp.discoveredCodexIds,
+    discoveredSecretIds,
+    activatedNodeIds: exp.activatedNodeIds,
+    unlockedRouteIds: exp.unlockedRouteIds,
+    completedNarrativeEventIds,
+    prologueBarrierOpen: runContext?.prologueBarrierOpen,
+  });
   const localMap = exp.localMap
     ? {
         ...exp.localMap,
@@ -1339,6 +1658,11 @@ export function cloneWorldExplorationState(
     unlockedRouteIds: [...exp.unlockedRouteIds],
     discoveredRegionIds,
     discoveredSecretIds,
+    completedNarrativeEventIds,
+    narrativeEvents,
+    lastTriggeredNarrativeEventId: exp.lastTriggeredNarrativeEventId ?? null,
+    chapterIdentity,
+    convergenceSummary,
     routes,
     hazards,
     secrets,
@@ -1794,6 +2118,31 @@ function executeInteractableActivation(
     world.exploration.discoveredSecretIds
   );
 
+  const chapterEventDefs = getAllNarrativeEventDefinitionsForChapter(chapter);
+  for (let i = 0; i < chapterEventDefs.length; i++) {
+    const evDef = chapterEventDefs[i];
+    if (!world.exploration.completedNarrativeEventIds.includes(evDef.id)) {
+      if (canTriggerNarrativeEventNow(world, evDef)) {
+        triggerNarrativeEvent(world, evDef.id);
+      }
+    }
+  }
+  world.exploration.narrativeEvents = buildNarrativeEventsForChapter(
+    chapter,
+    world.exploration.completedNarrativeEventIds,
+    world.exploration.narrativeEvents
+  );
+  world.exploration.convergenceSummary = buildCampaignEndingDiscoverySummary({
+    completedChapters: world.run?.completedChapters,
+    recoveredLogs: world.run?.recoveredLogs,
+    discoveredCodexIds: world.exploration.discoveredCodexIds,
+    discoveredSecretIds: world.exploration.discoveredSecretIds,
+    activatedNodeIds: world.exploration.activatedNodeIds,
+    unlockedRouteIds: world.exploration.unlockedRouteIds,
+    completedNarrativeEventIds: world.exploration.completedNarrativeEventIds,
+    prologueBarrierOpen,
+  });
+
   world.exploration.prompt = evaluateNearestInteractablePrompt(world);
 }
 
@@ -1995,6 +2344,31 @@ export function discoverSecretArea(
     codexId: def.linkedCodexId,
   });
 
+  const chapterEventDefs = getAllNarrativeEventDefinitionsForChapter(chapter);
+  for (let i = 0; i < chapterEventDefs.length; i++) {
+    const evDef = chapterEventDefs[i];
+    if (!exp.completedNarrativeEventIds.includes(evDef.id)) {
+      if (canTriggerNarrativeEventNow(world, evDef)) {
+        triggerNarrativeEvent(world, evDef.id);
+      }
+    }
+  }
+  exp.narrativeEvents = buildNarrativeEventsForChapter(
+    chapter,
+    exp.completedNarrativeEventIds,
+    exp.narrativeEvents
+  );
+  exp.convergenceSummary = buildCampaignEndingDiscoverySummary({
+    completedChapters: world.run?.completedChapters,
+    recoveredLogs: world.run?.recoveredLogs,
+    discoveredCodexIds: exp.discoveredCodexIds,
+    discoveredSecretIds: exp.discoveredSecretIds,
+    activatedNodeIds: exp.activatedNodeIds,
+    unlockedRouteIds: exp.unlockedRouteIds,
+    completedNarrativeEventIds: exp.completedNarrativeEventIds,
+    prologueBarrierOpen,
+  });
+
   return true;
 }
 
@@ -2140,6 +2514,205 @@ export function advanceTimedEnergyHazards(
   }
 }
 
+export function canTriggerNarrativeEventNow(
+  world: WorldState,
+  def: NarrativeEventDefinition
+): boolean {
+  if (world.appState === 'paused' || world.appState === 'title') {
+    return false;
+  }
+  if (
+    world.run &&
+    (world.run.mode !== 'campaign' || world.run.isChapterReplay)
+  ) {
+    return false;
+  }
+  if (
+    world.player &&
+    (world.player.actionState === 'dead' || world.player.integrity <= 0)
+  ) {
+    return false;
+  }
+  const chapter = world.run?.chapter ?? 'prologue';
+  if (def.chapter !== chapter) {
+    return false;
+  }
+  const exp = world.exploration;
+  if (!exp || exp.completedNarrativeEventIds.includes(def.id)) {
+    return false;
+  }
+
+  // Evaluate dual OR prerequisites when both an interactable/route and a secret are specified
+  if (def.requiredInteractableId && def.requiredSecretId) {
+    const hasInt = exp.activatedNodeIds.includes(def.requiredInteractableId);
+    const hasSec = exp.discoveredSecretIds.includes(def.requiredSecretId);
+    if (!hasInt && !hasSec) return false;
+  } else if (def.requiredRouteId && def.requiredSecretId) {
+    const hasRoute = exp.routes.some(
+      (r) => r.id === def.requiredRouteId && r.unlocked
+    );
+    const hasSec = exp.discoveredSecretIds.includes(def.requiredSecretId);
+    if (!hasRoute && !hasSec) return false;
+  } else if (def.requiredInteractableId && def.requiredRouteId) {
+    const hasInt = exp.activatedNodeIds.includes(def.requiredInteractableId);
+    const hasRoute = exp.routes.some(
+      (r) => r.id === def.requiredRouteId && r.unlocked
+    );
+    if (!hasInt && !hasRoute) return false;
+  } else {
+    if (
+      def.requiredInteractableId &&
+      !exp.activatedNodeIds.includes(def.requiredInteractableId)
+    ) {
+      return false;
+    }
+    if (
+      def.requiredSecretId &&
+      !exp.discoveredSecretIds.includes(def.requiredSecretId)
+    ) {
+      return false;
+    }
+    if (
+      def.requiredRouteId &&
+      !exp.routes.some((r) => r.id === def.requiredRouteId && r.unlocked)
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    def.requiredObjectiveId &&
+    !exp.completedObjectiveIds.includes(def.requiredObjectiveId)
+  ) {
+    return false;
+  }
+
+  switch (def.triggerKind) {
+    case 'chapter_arrival':
+      return true;
+    case 'calibration_revelation':
+      return Boolean(
+        world.puzzle?.testCompleted ||
+          world.puzzle?.heavyReceiver?.charged ||
+          world.puzzle?.finalBarrier?.open ||
+          world.puzzle?.completed
+      );
+    case 'environmental_discovery':
+    case 'secret_discovered':
+    case 'campaign_convergence':
+      return true;
+    case 'echo_memory_activated': {
+      if (def.id === 'nev_prologue_echo_memory_trace') {
+        return Boolean(
+          world.puzzle?.teachCompleted ||
+            world.pressurePlate?.active ||
+            (world.pressurePlate?.activationCount ?? 0) > 0 ||
+            exp.discoveredSecretIds.includes('secret_prologue_calibration_alcove')
+        );
+      }
+      return true;
+    }
+    case 'boss_phase_transition':
+      return Boolean(world.boss && world.boss.phase >= 2);
+    case 'boss_defeat':
+      return Boolean(
+        world.boss && (world.boss.hp <= 0 || world.boss.defeatTriggered)
+      );
+    case 'campaign_resolution':
+      return Boolean(
+        world.loom?.selectedEnding !== null || world.run?.selectedEnding !== null
+      );
+    default:
+      return false;
+  }
+}
+
+export function triggerNarrativeEvent(
+  world: WorldState,
+  eventId: unknown
+): boolean {
+  if (!isValidNarrativeEventId(eventId)) {
+    return false;
+  }
+  const chapter = world.run?.chapter ?? 'prologue';
+  if (!world.exploration) {
+    world.exploration = createInitialExplorationState(chapter, null);
+  }
+  const def = getNarrativeEventDefinition(eventId);
+  if (!canTriggerNarrativeEventNow(world, def)) {
+    return false;
+  }
+
+  const exp = world.exploration;
+  exp.completedNarrativeEventIds.push(def.id);
+  exp.lastTriggeredNarrativeEventId = def.id;
+
+  // Trigger linked narrative transmission without disrupting active combat or boss telegraphs
+  if (def.commKey && def.commKey in GAME_CONFIG.narrativeComms) {
+    const isBossTelegraphing = Boolean(
+      world.boss && world.boss.aiState === 'telegraph'
+    );
+    const shouldInterrupt =
+      def.category === 'main' &&
+      (def.triggerKind === 'boss_defeat' ||
+        def.triggerKind === 'boss_phase_transition' ||
+        def.triggerKind === 'calibration_revelation') &&
+      !isBossTelegraphing;
+    triggerNarrativeTransmission(
+      world,
+      def.commKey as NarrativeCommKey,
+      shouldInterrupt
+    );
+  }
+
+  exp.narrativeEvents = buildNarrativeEventsForChapter(
+    chapter,
+    exp.completedNarrativeEventIds,
+    exp.narrativeEvents
+  );
+  const evState = exp.narrativeEvents.find((e) => e.id === def.id);
+  if (evState) {
+    evState.completedAtTime = world.elapsedTime;
+  }
+
+  const prologueBarrierOpen = Boolean(
+    world.puzzle?.finalBarrier?.open || world.puzzle?.completed
+  );
+  exp.convergenceSummary = buildCampaignEndingDiscoverySummary({
+    completedChapters: world.run?.completedChapters,
+    recoveredLogs: world.run?.recoveredLogs,
+    discoveredCodexIds: exp.discoveredCodexIds,
+    discoveredSecretIds: exp.discoveredSecretIds,
+    activatedNodeIds: exp.activatedNodeIds,
+    unlockedRouteIds: exp.unlockedRouteIds,
+    completedNarrativeEventIds: exp.completedNarrativeEventIds,
+    prologueBarrierOpen,
+  });
+
+  if (def.category === 'echo_memory') {
+    exp.statusBannerText = `ECHO MEMORY SYNCHRONIZED · ${def.title.toUpperCase()}`;
+    world.events.push({
+      type: 'echo_memory_discovered',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      narrativeEventId: def.id,
+      codexId: def.linkedCodexId,
+    });
+  } else if (def.category === 'optional') {
+    exp.statusBannerText = `NARRATIVE EVIDENCE RECORDED · ${def.title.toUpperCase()}`;
+  }
+
+  world.events.push({
+    type: 'narrative_event_triggered',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    narrativeEventId: def.id,
+    codexId: def.linkedCodexId,
+  });
+
+  return true;
+}
+
 export function advanceMissionAndExplorationSystem(world: WorldState): void {
   const chapter = world.run?.chapter ?? 'prologue';
   if (!world.exploration) {
@@ -2151,6 +2724,9 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
   }
   if (!exp.discoveredSecretIds) {
     exp.discoveredSecretIds = [];
+  }
+  if (!exp.completedNarrativeEventIds) {
+    exp.completedNarrativeEventIds = [];
   }
 
   if (exp.mission.chapter !== chapter) {
@@ -2164,8 +2740,17 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
       exp.activatedNodeIds
     );
     exp.hazards = buildHazardsForChapter(chapter, null);
-  } else if (!exp.hazards || exp.hazards.length === 0) {
-    exp.hazards = buildHazardsForChapter(chapter, exp.hazards);
+    exp.narrativeEvents = buildNarrativeEventsForChapter(
+      chapter,
+      exp.completedNarrativeEventIds,
+      null
+    );
+    exp.chapterIdentity = getChapterWorldIdentity(chapter);
+  } else {
+    if (!exp.hazards || exp.hazards.length === 0) {
+      exp.hazards = buildHazardsForChapter(chapter, exp.hazards);
+    }
+    exp.chapterIdentity = getChapterWorldIdentity(chapter);
   }
 
   syncUnlockedRoutesToObstacles(world);
@@ -2356,6 +2941,33 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
       }
     }
   }
+
+  // Evaluate authored chapter narrative events deterministically & idempotently
+  const chapterEventDefs = getAllNarrativeEventDefinitionsForChapter(chapter);
+  for (let i = 0; i < chapterEventDefs.length; i++) {
+    const evDef = chapterEventDefs[i];
+    if (!exp.completedNarrativeEventIds.includes(evDef.id)) {
+      if (canTriggerNarrativeEventNow(world, evDef)) {
+        triggerNarrativeEvent(world, evDef.id);
+      }
+    }
+  }
+
+  exp.narrativeEvents = buildNarrativeEventsForChapter(
+    chapter,
+    exp.completedNarrativeEventIds,
+    exp.narrativeEvents
+  );
+  exp.convergenceSummary = buildCampaignEndingDiscoverySummary({
+    completedChapters: world.run?.completedChapters,
+    recoveredLogs: world.run?.recoveredLogs,
+    discoveredCodexIds: exp.discoveredCodexIds,
+    discoveredSecretIds: exp.discoveredSecretIds,
+    activatedNodeIds: exp.activatedNodeIds,
+    unlockedRouteIds: exp.unlockedRouteIds,
+    completedNarrativeEventIds: exp.completedNarrativeEventIds,
+    prologueBarrierOpen,
+  });
 
   exp.secrets = buildSecretsForChapter(
     chapter,
@@ -8952,6 +9564,7 @@ function handleEnemyZeroHpDefeat(
     world.outcome = 'victory';
     world.run.stage = 'completed';
     world.outcomeDelayTimer = 0.5;
+    advanceMissionAndExplorationSystem(world);
     world.frozenSummary = buildRunSummary(world);
     clearEchoState(world, 'outcome');
 
@@ -12943,7 +13556,13 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
         'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
     },
     encounter: cloneEncounterRuntimeState(world.encounter),
-    exploration: cloneWorldExplorationState(world.exploration, world.run.chapter),
+    exploration: cloneWorldExplorationState(world.exploration, world.run.chapter, {
+      completedChapters: world.run.completedChapters,
+      recoveredLogs: world.run.recoveredLogs,
+      prologueBarrierOpen: Boolean(
+        world.puzzle?.finalBarrier?.open || world.puzzle?.completed
+      ),
+    }),
     enemiesAlive,
     totalEnemies,
     objectiveText,

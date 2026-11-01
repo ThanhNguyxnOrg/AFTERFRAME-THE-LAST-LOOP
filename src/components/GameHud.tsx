@@ -999,12 +999,16 @@ export const GameHud: React.FC<GameHudProps> = ({
               </div>
             </div>
 
-            {/* Phase 18 & 19: Mission Tracker, Timed Hazard Telemetry & Secret/Codex Readout */}
+            {/* Phase 18, 19 & 20: Mission Tracker, Timed Hazard Telemetry & Secret/Codex/Narrative Readout */}
             <div
               data-testid="hud-optional-objective"
               data-mission-id={hud.exploration.mission.id}
               data-active-objective-id={hud.exploration.mission.activeMainObjectiveId ?? 'none'}
               data-secrets-discovered={hud.exploration.discoveredSecretIds?.length ?? 0}
+              data-chapter-theme={hud.exploration.chapterIdentity?.themeLabel ?? ''}
+              data-narrative-events-triggered={
+                hud.exploration.narrativeEvents?.filter((e) => e.completed).length ?? 0
+              }
               className="mt-1 pt-1 border-t border-slate-800/70 flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-300"
             >
               <span className="truncate text-cyan-300/90">
@@ -1028,11 +1032,20 @@ export const GameHud: React.FC<GameHudProps> = ({
                     VENT: {hud.exploration.hazards[0].phase.toUpperCase()}
                   </span>
                 )}
-                <span className="text-slate-400 whitespace-nowrap">
+                <span
+                  data-testid="hud-narrative-event-badge"
+                  data-triggered-count={
+                    hud.exploration.narrativeEvents?.filter((e) => e.completed).length ?? 0
+                  }
+                  data-total-count={hud.exploration.narrativeEvents?.length ?? 4}
+                  className="text-slate-400 whitespace-nowrap"
+                >
                   SECRETS {hud.exploration.localMap?.discoveredSecretsInChapter ?? 0}/
                   {hud.exploration.localMap?.totalSecretsInChapter ?? 0} · CODEX{' '}
                   {hud.exploration.discoveredCodexIds.length}/
-                  {hud.exploration.codexEntries.length}
+                  {hud.exploration.codexEntries.length} · EVENTS{' '}
+                  {hud.exploration.narrativeEvents?.filter((e) => e.completed).length ?? 0}/
+                  {hud.exploration.narrativeEvents?.length ?? 4}
                 </span>
               </div>
             </div>
@@ -1941,6 +1954,32 @@ export const GameHud: React.FC<GameHudProps> = ({
                 );
               })}
             </div>
+
+            {/* Phase 20: Campaign Convergence Discovery Synthesis */}
+            {hud.exploration.convergenceSummary && (
+              <div
+                data-testid="loom-convergence-summary"
+                data-synthesis-tier={hud.exploration.convergenceSummary.synthesisTier}
+                className="bg-[#07101c] border border-cyan-500/45 p-2.5 mb-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 font-bold mb-1">
+                  <span>{hud.exploration.convergenceSummary.synthesisHeadline}</span>
+                  <span className="text-emerald-300">
+                    LOGS {hud.exploration.convergenceSummary.recoveredLogsCount}/
+                    {hud.exploration.convergenceSummary.totalLogsCount} · CODEX{' '}
+                    {hud.exploration.convergenceSummary.discoveredCodexCount}/
+                    {hud.exploration.convergenceSummary.totalCodexCount} · SECRETS{' '}
+                    {hud.exploration.convergenceSummary.discoveredSecretsCount}/
+                    {hud.exploration.convergenceSummary.totalSecretsCount} · ECHO MEMORIES{' '}
+                    {hud.exploration.convergenceSummary.discoveredEchoMemoriesCount}/
+                    {hud.exploration.convergenceSummary.totalEchoMemoriesCount}
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-[11px] text-slate-300 leading-snug">
+                  {hud.exploration.convergenceSummary.synthesisSummary}
+                </p>
+              </div>
+            )}
 
             <div
               data-testid="loom-lysa-transmission"

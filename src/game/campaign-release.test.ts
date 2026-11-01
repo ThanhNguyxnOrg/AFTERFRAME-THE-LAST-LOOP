@@ -31,6 +31,9 @@ import {
   completeMissionObjective,
   discoverCodexEntry,
   discoverSecretArea,
+  triggerNarrativeEvent,
+  buildCampaignEndingDiscoverySummary,
+  getAllNarrativeEventDefinitions,
 } from './simulation.ts';
 
 test('completed chapters remain isolated replays after save reload without an in-memory snapshot', () => {
@@ -1069,6 +1072,237 @@ test('17. Phase 19 World Traversal & Secret Exploration Save V2 Persistence, San
     'region_prologue_secret_alcove',
   ]);
 });
+
+test('18. Phase 20 Full Campaign Narrative Progression (Prologue -> Chapter V), Convergence Synthesis Tiers, Save v2 Persistence, Practice Isolation & Chapter Replay Safety', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // 1. Initial synthesis tier is fragmented
+  const initialSummary = buildCampaignEndingDiscoverySummary(world);
+  assert.equal(initialSummary.synthesisTier, 'fragmented');
+  assert.equal(initialSummary.totalChaptersCount, 6);
+  assert.equal(initialSummary.totalLogsCount, 6);
+  assert.equal(initialSummary.totalCodexCount, 8);
+  assert.equal(initialSummary.totalSecretsCount, 4);
+  assert.equal(initialSummary.totalRoutesCount, 7);
+  assert.equal(initialSummary.totalNarrativeEventsCount, 24);
+  assert.equal(initialSummary.totalEchoMemoriesCount, 4);
+
+  // 2. Complete Prologue calibration & optional discoveries
+  world.player.x = 2.4;
+  world.player.z = 9.8;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_diagnostic_terminal').status,
+    'ready'
+  );
+  world.pressurePlate.activationCount = 1;
+  world.puzzle.teachCompleted = true;
+  world.puzzle.testCompleted = true;
+  world.puzzle.heavyReceiver.charged = true;
+  world.puzzle.combinePlate.active = true;
+  world.puzzle.finalBarrier.open = true;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_prologue_echo_memory_trace'),
+    true
+  );
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_prologue_calibration_revelation'),
+    true
+  );
+
+  // 3. Progress through Chapters I -> V and verify each chapter's arrival, Phase II, and defeat narrative events
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  world.boss!.phase = 2;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  triggerBossDefeat(world);
+  assert.equal(advanceCampaignChapter(world, true), true); // -> chapter_2_choir
+
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  world.boss!.phase = 2;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  triggerBossDefeat(world);
+  assert.equal(advanceCampaignChapter(world, true), true); // -> chapter_3_curator
+
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  world.boss!.phase = 2;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  triggerBossDefeat(world);
+  assert.equal(advanceCampaignChapter(world, true), true); // -> chapter_4_matron
+
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  // Chapter IV Quarantine Override Node at (-3.2, 4.4) triggers nev_ch4_excision_evidence
+  world.player.x = -3.2;
+  world.player.z = 4.4;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_ch4_quarantine_override_node').status,
+    'ready'
+  );
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch4_excision_evidence'),
+    true
+  );
+  world.boss!.phase = 2;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  triggerBossDefeat(world);
+  assert.equal(advanceCampaignChapter(world, true), true); // -> chapter_5_loom
+
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.run.chapter, 'chapter_5_loom');
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch5_loom_arrival'),
+    true
+  );
+
+  // Activate NW Temporal Anchor in Chapter V at (-3.2, 3.4) with active Echo -> triggers nev_ch5_anchor_echo_memory
+  world.player.x = -3.2;
+  world.player.z = 3.4;
+  world.echo.state = 'playback';
+  world.echo.activeActor = {
+    id: 'echo-ch5',
+    clipId: 1,
+    x: -3.2,
+    z: 3.4,
+    rotationY: 0,
+    radius: 0.45,
+    actionState: 'idle',
+    gaitPhase: 0,
+    comboIndex: 0,
+    chargeRatio: 0,
+    isEmpoweredHeavy: false,
+    weaponId: 'chrono_edge',
+    equippedUpgradeId: null,
+    elapsed: 0.5,
+    duration: 3.0,
+  };
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_ch5_temporal_anchor_conduit').status,
+    'ready'
+  );
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch5_anchor_echo_memory'),
+    true
+  );
+
+  // Access Loom Manifest Terminal at (2.8, 3.4) in Chapter V -> triggers nev_ch5_archive_convergence
+  assert.equal(world.run.stage, 'chronicle_loom');
+  world.player.x = 2.8;
+  world.player.z = 3.4;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_ch5_loom_manifest_terminal').status,
+    'ready'
+  );
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch5_archive_convergence'),
+    true
+  );
+  assert.equal(
+    world.exploration.convergenceSummary.synthesisTier,
+    'reconstructed',
+    'With all 6 logs and multiple Echo memories/events recovered, synthesisTier is reconstructed'
+  );
+
+  // Select Witness ending -> triggers nev_ch5_final_resolution
+  assert.equal(selectChronicleLoomEnding(world, 'witness'), true);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch5_final_resolution'),
+    true
+  );
+
+  // Unlock all 8 Codex entries, all 4 secrets, and all 4 Echo memories -> synthesisTier becomes complete_chronicle
+  for (const codexId of [
+    'CODEX-01',
+    'CODEX-02',
+    'CODEX-03',
+    'CODEX-04',
+    'CODEX-05',
+    'CODEX-06',
+    'CODEX-07',
+    'CODEX-08',
+  ] as const) {
+    discoverCodexEntry(world, codexId);
+  }
+  world.exploration.discoveredSecretIds = [
+    'secret_prologue_calibration_alcove',
+    'secret_ch1_marshal_armory_cache',
+    'secret_ch2_hydroponic_echo_sanctum',
+    'secret_ch3_lysa_unedited_vault',
+  ];
+  for (const ev of getAllNarrativeEventDefinitions()) {
+    if (!world.exploration.completedNarrativeEventIds.includes(ev.id)) {
+      world.exploration.completedNarrativeEventIds.push(ev.id);
+    }
+  }
+  const completeSummary = buildCampaignEndingDiscoverySummary(world);
+  assert.equal(completeSummary.synthesisTier, 'complete_chronicle');
+  assert.equal(completeSummary.discoveredEchoMemoriesCount, 4);
+  assert.equal(completeSummary.completedNarrativeEventsCount, 24);
+
+  // 4. Save v2 round-trip persistence & backward-compatibility when completedNarrativeEventIds is missing
+  const savedV2 = serializeCampaignProgress(world);
+  const reloadedWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloadedWorld, savedV2), true);
+  assert.equal(reloadedWorld.exploration.completedNarrativeEventIds.length, 24);
+
+  // Backward compatibility: v2 payload without completedNarrativeEventIds defaults to []
+  const prePhase20Save = JSON.stringify({
+    version: 2,
+    unlockedChapters: ['prologue', 'chapter_1_helix'],
+    completedChapters: ['prologue'],
+    recoveredLogs: ['LOG-00'],
+    completedEndings: [],
+    exploration: {
+      discoveredCodexIds: ['CODEX-01'],
+      completedObjectiveIds: ['obj_prologue_clear_bay'],
+      activatedNodeIds: ['int_prologue_diagnostic_terminal'],
+      unlockedRouteIds: [],
+      discoveredRegionIds: ['region_prologue_staging_deck'],
+      discoveredSecretIds: [],
+    },
+    activeCampaign: null,
+  });
+  const compatWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(compatWorld, prePhase20Save), true);
+  assert.deepEqual(compatWorld.exploration.completedNarrativeEventIds, []);
+
+  // 5. Practice Mode & Chapter Replay Isolation: must not overwrite saved campaign completedNarrativeEventIds
+  const campaignWorld = createInitialWorld('playing');
+  startCampaignRun(campaignWorld, true);
+  campaignWorld.player.x = 2.4;
+  campaignWorld.player.z = 9.8;
+  attemptEnvironmentalInteraction(campaignWorld, 'int_prologue_diagnostic_terminal');
+  campaignWorld.run.unlockedChapters = ['prologue', 'chapter_1_helix', 'chapter_2_choir'];
+  transitionCampaignToBoss(campaignWorld, true, 'chapter_1_helix');
+  stepWorld(campaignWorld, createEmptyInput(Math.PI), 0.02);
+  const savedEventsBeforePractice = [...campaignWorld.exploration.completedNarrativeEventIds];
+
+  // Enter Practice mode -> isolated exploration state, campaign snapshot preserved
+  startPracticeStandardRun(campaignWorld, 'tactical_guard_and_flank');
+  assert.equal(campaignWorld.run.mode, 'practice_standard');
+  assert.deepEqual(campaignWorld.exploration.completedNarrativeEventIds, []);
+  assert.equal(restoreSavedCampaignProgress(campaignWorld), true);
+  assert.deepEqual(
+    campaignWorld.exploration.completedNarrativeEventIds,
+    savedEventsBeforePractice,
+    'Restoring campaign after Practice mode preserves exact completedNarrativeEventIds'
+  );
+
+  // Enter Chapter Replay of earlier chapter ('prologue') -> isolated exploration state, Restore Campaign restores original campaign events
+  assert.equal(startCampaignChapterSelect(campaignWorld, 'prologue', true), true);
+  assert.equal(campaignWorld.run.isChapterReplay, true);
+  stepWorld(campaignWorld, createEmptyInput(Math.PI), 0.02);
+  assert.equal(restoreSavedCampaignProgress(campaignWorld), true);
+  assert.equal(campaignWorld.run.isChapterReplay, false);
+  assert.equal(campaignWorld.run.chapter, 'chapter_1_helix');
+  assert.deepEqual(
+    campaignWorld.exploration.completedNarrativeEventIds,
+    savedEventsBeforePractice,
+    'Restoring campaign after Chapter Replay preserves exact completedNarrativeEventIds'
+  );
+});
+
+
 
 
 

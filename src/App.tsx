@@ -45,6 +45,7 @@ import {
   switchPlayerWeapon,
   toggleTutorialHints,
   transitionCampaignToBoss,
+  triggerNarrativeEvent,
 } from './game/simulation.ts';
 import type {
   BossAttackType,
@@ -59,6 +60,7 @@ import type {
   InteractableId,
   InteractionTargetEvaluation,
   MissionObjectiveId,
+  NarrativeEventId,
   SecretAreaId,
   UpgradeEquipOutcome,
   UpgradePurchaseOutcome,
@@ -727,6 +729,8 @@ export default function App() {
     let prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
     let prevDiscoveredSecretsCount = world.exploration.discoveredSecretIds.length;
     let prevUnlockedRoutesCount = world.exploration.unlockedRouteIds.length;
+    let prevCompletedNarrativeCount = world.exploration.completedNarrativeEventIds.length;
+    let prevLastNarrativeId = world.exploration.lastTriggeredNarrativeEventId;
     let prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
     let prevPromptId = world.exploration.prompt.interactableId;
     let prevPromptStatus = world.exploration.prompt.status;
@@ -851,6 +855,8 @@ export default function App() {
         world.exploration.discoveredCodexIds.length !== prevDiscoveredCodexCount ||
         world.exploration.discoveredSecretIds.length !== prevDiscoveredSecretsCount ||
         world.exploration.unlockedRouteIds.length !== prevUnlockedRoutesCount ||
+        world.exploration.completedNarrativeEventIds.length !== prevCompletedNarrativeCount ||
+        world.exploration.lastTriggeredNarrativeEventId !== prevLastNarrativeId ||
         (world.exploration.lastDiscoveryBanner?.secretId ?? null) !== prevDiscoveryBannerId ||
         world.exploration.prompt.interactableId !== prevPromptId ||
         world.exploration.prompt.status !== prevPromptStatus ||
@@ -901,6 +907,8 @@ export default function App() {
         prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
         prevDiscoveredSecretsCount = world.exploration.discoveredSecretIds.length;
         prevUnlockedRoutesCount = world.exploration.unlockedRouteIds.length;
+        prevCompletedNarrativeCount = world.exploration.completedNarrativeEventIds.length;
+        prevLastNarrativeId = world.exploration.lastTriggeredNarrativeEventId;
         prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
         prevPromptId = world.exploration.prompt.interactableId;
         prevPromptStatus = world.exploration.prompt.status;
@@ -999,6 +1007,7 @@ export default function App() {
         completeObjective: (objectiveId: MissionObjectiveId) => boolean;
         discoverCodex: (codexId: CodexEntryId) => boolean;
         discoverSecret: (secretId: SecretAreaId) => boolean;
+        triggerNarrativeEvent: (eventId: NarrativeEventId) => boolean;
         getExplorationState: () => WorldExplorationState;
       };
     };
@@ -1309,6 +1318,17 @@ export default function App() {
       },
       discoverSecret: (secretId: SecretAreaId) => {
         const res = discoverSecretArea(world, secretId);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return res;
+      },
+      triggerNarrativeEvent: (eventId: NarrativeEventId) => {
+        const res = triggerNarrativeEvent(world, eventId);
         if (world.events.length > 0) {
           soundRef.current?.playEvents(world.events);
           sceneRenderer.handleCombatEvents(world.events);

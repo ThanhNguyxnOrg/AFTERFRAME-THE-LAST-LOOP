@@ -287,6 +287,81 @@ export const StatusModal: React.FC<StatusModalProps> = ({
           </div>
         )}
 
+        {/* Phase 20: Campaign Finale Discovery & Synthesis Summary */}
+        {!isPaused && isVictory && endingDetails && exploration?.convergenceSummary && (
+          <div
+            data-testid="modal-campaign-discovery-summary"
+            data-synthesis-tier={exploration.convergenceSummary.synthesisTier}
+            className="bg-[#07111c] border border-cyan-500/50 p-3 mb-3.5 space-y-2"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300">
+                {exploration.convergenceSummary.synthesisHeadline}
+              </span>
+              <span
+                className={`text-[9px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border ${
+                  exploration.convergenceSummary.synthesisTier === 'complete_chronicle'
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                    : exploration.convergenceSummary.synthesisTier === 'reconstructed'
+                      ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                      : 'bg-amber-500/20 border-amber-400 text-amber-300'
+                }`}
+              >
+                {exploration.convergenceSummary.synthesisTier.replace('_', ' ').toUpperCase()}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-snug">
+              {exploration.convergenceSummary.synthesisSummary}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 font-mono-tabular text-[9px] uppercase">
+              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                <span className="text-slate-400">CHAPTERS</span>
+                <span className="text-cyan-300 font-bold">
+                  {exploration.convergenceSummary.completedChaptersCount}/
+                  {exploration.convergenceSummary.totalChaptersCount}
+                </span>
+              </div>
+              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                <span className="text-slate-400">ARCHIVE LOGS</span>
+                <span className="text-cyan-300 font-bold">
+                  {exploration.convergenceSummary.recoveredLogsCount}/
+                  {exploration.convergenceSummary.totalLogsCount}
+                </span>
+              </div>
+              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                <span className="text-slate-400">CODEX RECORDS</span>
+                <span className="text-amber-300 font-bold">
+                  {exploration.convergenceSummary.discoveredCodexCount}/
+                  {exploration.convergenceSummary.totalCodexCount}
+                </span>
+              </div>
+              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                <span className="text-slate-400">SECRETS</span>
+                <span className="text-emerald-300 font-bold">
+                  {exploration.convergenceSummary.discoveredSecretsCount}/
+                  {exploration.convergenceSummary.totalSecretsCount}
+                </span>
+              </div>
+              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                <span className="text-slate-400">ROUTES OPEN</span>
+                <span className="text-emerald-300 font-bold">
+                  {exploration.convergenceSummary.unlockedRoutesCount}/
+                  {exploration.convergenceSummary.totalRoutesCount}
+                </span>
+              </div>
+              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                <span className="text-slate-400">EVENTS / ECHOES</span>
+                <span className="text-cyan-300 font-bold">
+                  {exploration.convergenceSummary.completedNarrativeEventsCount}/
+                  {exploration.convergenceSummary.totalNarrativeEventsCount} (
+                  {exploration.convergenceSummary.discoveredEchoMemoriesCount}/
+                  {exploration.convergenceSummary.totalEchoMemoriesCount})
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Primary Telemetry Grid */}
         <div className="grid grid-cols-3 gap-2.5 mb-3">
           <div className="bg-[#070a0f] border border-slate-800 p-2.5">
@@ -567,6 +642,25 @@ export const StatusModal: React.FC<StatusModalProps> = ({
 
             {activeExplorationTab === 'missions' ? (
               <div data-testid="mission-journal-view" className="space-y-2">
+                {exploration.chapterIdentity && (
+                  <div
+                    data-testid="journal-chapter-identity"
+                    data-theme-label={exploration.chapterIdentity.themeLabel}
+                    className="bg-[#08111c] border border-cyan-500/40 p-2.5 space-y-1"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 font-bold">
+                      <span>SECTOR IDENTITY · {exploration.chapterIdentity.themeLabel}</span>
+                      <span className="text-amber-300">{exploration.chapterIdentity.arrivalHeadline}</span>
+                    </div>
+                    <div className="text-[11px] font-semibold text-slate-100 italic">
+                      “{exploration.chapterIdentity.coreFeeling}”
+                    </div>
+                    <p className="text-[10px] text-slate-300 leading-snug">
+                      {exploration.chapterIdentity.atmosphereSummary}
+                    </p>
+                  </div>
+                )}
+
                 <div className="bg-[#0a1019] border border-slate-800/90 p-2.5">
                   <div className="flex items-center justify-between gap-2 mb-0.5">
                     <span className="text-xs font-display font-bold uppercase tracking-wide text-slate-100">
@@ -631,6 +725,80 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                     </div>
                   ))}
                 </div>
+
+                {/* Phase 20: Authored Narrative Events & Echo Memories */}
+                {exploration.narrativeEvents && exploration.narrativeEvents.length > 0 && (
+                  <div
+                    data-testid="journal-narrative-events-section"
+                    data-triggered-count={
+                      exploration.narrativeEvents.filter((e) => e.completed).length
+                    }
+                    className="bg-[#080d15] border border-slate-800/90 p-2.5 space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 font-bold">
+                      <span>SECTOR NARRATIVE EVENTS & ECHO MEMORIES</span>
+                      <span className="text-slate-400">
+                        RECORDED: {exploration.narrativeEvents.filter((e) => e.completed).length}/
+                        {exploration.narrativeEvents.length} · CAMPAIGN:{' '}
+                        {exploration.completedNarrativeEventIds?.length ?? 0}/24
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {exploration.narrativeEvents.map((ev) => (
+                        <div
+                          key={ev.id}
+                          data-testid={`narrative-event-${ev.id}`}
+                          data-triggered={ev.completed ? 'true' : 'false'}
+                          data-category={ev.category}
+                          className={`p-2 border flex flex-col justify-between gap-1 ${
+                            ev.completed
+                              ? ev.category === 'echo_memory'
+                                ? 'bg-[#091822] border-cyan-400/80'
+                                : 'bg-[#091518] border-emerald-500/50'
+                              : 'bg-[#070b11] border-slate-800/85 opacity-80'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span
+                              className={`text-[8px] font-mono-tabular font-bold uppercase px-1 py-0.5 border ${
+                                ev.category === 'echo_memory'
+                                  ? 'border-cyan-400/70 text-cyan-300'
+                                  : ev.category === 'optional'
+                                    ? 'border-amber-400/70 text-amber-300'
+                                    : 'border-slate-600 text-slate-300'
+                              }`}
+                            >
+                              {ev.category === 'echo_memory'
+                                ? 'ECHO MEMORY'
+                                : ev.category === 'optional'
+                                  ? 'EVIDENCE'
+                                  : 'STORY BEAT'}
+                            </span>
+                            <span
+                              className={`text-[8px] font-mono-tabular font-bold uppercase ${
+                                ev.completed ? 'text-emerald-300' : 'text-slate-500'
+                              }`}
+                            >
+                              {ev.completed ? 'RECORDED' : 'UNINDEXED'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] font-mono-tabular font-bold text-slate-100">
+                            {ev.completed || ev.category === 'main'
+                              ? ev.title
+                              : 'UNINDEXED TEMPORAL TRACE'}
+                          </div>
+                          <div className="text-[9px] text-slate-300 leading-snug">
+                            {ev.completed
+                              ? ev.summary
+                              : ev.category === 'echo_memory'
+                                ? 'Replay or synchronize a Chrono Rig Echo at this sector’s temporal anchor to reconstruct Lysa’s residual memory.'
+                                : 'Explore sector terminals, bypass routes, or secret sanctuaries to uncover this record.'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : activeExplorationTab === 'map' && exploration.localMap ? (
               <div

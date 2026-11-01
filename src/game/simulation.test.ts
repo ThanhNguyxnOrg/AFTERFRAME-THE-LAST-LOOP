@@ -80,6 +80,13 @@ import {
   getSecretAreaDefinition,
   getAllSecretAreaDefinitions,
   getAllSecretAreaDefinitionsForChapter,
+  getNarrativeEventDefinition,
+  getAllNarrativeEventDefinitions,
+  getAllNarrativeEventDefinitionsForChapter,
+  getChapterWorldIdentity,
+  buildCampaignEndingDiscoverySummary,
+  canTriggerNarrativeEventNow,
+  triggerNarrativeEvent,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -10398,6 +10405,255 @@ test('Phase 19.1-D Save v2 Backward Compatibility: Scenario A (Legacy v1), Scena
     'secret_prologue_calibration_alcove',
   ]);
 });
+
+// ============================================================================
+// PHASE 20: CAMPAIGN CONTENT, NARRATIVE PROGRESSION & WORLD EXPERIENCE TESTS
+// ============================================================================
+
+test('Phase 20.1: Six-Chapter World Identities & 24 Authored Narrative Event Definitions are complete, unique, and chapter-aligned', () => {
+  const chapters = [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+    'chapter_3_curator',
+    'chapter_4_matron',
+    'chapter_5_loom',
+  ] as const;
+
+  const expectedThemes: Record<(typeof chapters)[number], string> = {
+    prologue: 'Calibration and Awakening',
+    chapter_1_helix: 'Containment and Control',
+    chapter_2_choir: 'Echoes and Collective Memory',
+    chapter_3_curator: 'Archives and Unindexed Memories',
+    chapter_4_matron: 'Quarantine and Consequences',
+    chapter_5_loom: 'Convergence and Resolution',
+  };
+
+  for (const ch of chapters) {
+    const identity = getChapterWorldIdentity(ch);
+    assert.equal(identity.chapter, ch);
+    assert.equal(identity.themeLabel, expectedThemes[ch]);
+    assert.ok(identity.coreFeeling.length > 10);
+    assert.ok(identity.atmosphereSummary.length > 20);
+    assert.ok(identity.architecturalMotif.length > 15);
+    assert.ok(identity.environmentalStorytellingSummary.length > 15);
+    assert.ok(identity.echoMemoryTitle.length > 5);
+    assert.ok(identity.echoMemoryExcerpt.length > 20);
+
+    const chapterEvents = getAllNarrativeEventDefinitionsForChapter(ch);
+    assert.equal(
+      chapterEvents.length,
+      4,
+      `Chapter ${ch} must define 4 authored narrative events`
+    );
+  }
+
+  const allEvents = getAllNarrativeEventDefinitions();
+  assert.equal(allEvents.length, 24, 'Campaign must define 24 authored narrative events');
+  const uniqueIds = new Set(allEvents.map((e) => e.id));
+  assert.equal(uniqueIds.size, 24, 'All 24 narrative event IDs must be unique');
+
+  const echoMemoryEvents = allEvents.filter((e) => e.category === 'echo_memory');
+  assert.equal(
+    echoMemoryEvents.length,
+    4,
+    'Campaign must define 4 Echo Memory narrative events across the chapters'
+  );
+});
+
+test('Phase 20.2: Narrative Event Trigger Conditions, Prerequisite Enforcement, Idempotency, and Pause/Dead Rejection', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // 1. Prologue arrival event triggers automatically when entering calibration stage
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_prologue_awakening'),
+    true,
+    'Prologue arrival narrative event must trigger on campaign calibration entry'
+  );
+  // Attempting to trigger it again returns false (idempotent)
+  assert.equal(triggerNarrativeEvent(world, 'nev_prologue_awakening'), false);
+
+  // 2. Wrong-chapter narrative event is rejected
+  assert.equal(
+    canTriggerNarrativeEventNow(world, getNarrativeEventDefinition('nev_ch1_containment_arrival')),
+    false
+  );
+  assert.equal(triggerNarrativeEvent(world, 'nev_ch1_containment_arrival'), false);
+
+  // 3. Prerequisite-gated Prologue evidence event cannot trigger before terminal activation
+  assert.equal(triggerNarrativeEvent(world, 'nev_prologue_bay_diagnostic_evidence'), false);
+
+  // Move Sera to Diagnostic Terminal (2.4, 9.8) and interact
+  world.player.x = 2.4;
+  world.player.z = 9.8;
+  const evalTerm = attemptEnvironmentalInteraction(world, 'int_prologue_diagnostic_terminal');
+  assert.equal(evalTerm.status, 'ready');
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_prologue_bay_diagnostic_evidence'),
+    true,
+    'Activating Diagnostic Terminal must trigger nev_prologue_bay_diagnostic_evidence'
+  );
+  assert.equal(
+    world.exploration.discoveredCodexIds.includes('CODEX-01'),
+    true,
+    'Diagnostic Terminal also decrypts CODEX-01'
+  );
+
+  // 4. Prologue Echo Memory triggers when an Echo holds Anchor Pad 01 during calibration
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_prologue_echo_memory_trace'),
+    false
+  );
+  world.pressurePlate.activationCount = 1;
+  world.puzzle.teachCompleted = true;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_prologue_echo_memory_trace'),
+    true,
+    'Holding Anchor Pad 01 with an Echo must trigger nev_prologue_echo_memory_trace'
+  );
+  assert.equal(
+    world.events.some(
+      (e) =>
+        e.type === 'echo_memory_discovered' &&
+        e.narrativeEventId === 'nev_prologue_echo_memory_trace'
+    ),
+    true,
+    'Echo Memory trigger emits echo_memory_discovered event once'
+  );
+  assert.equal(
+    world.progression.memoryFragments,
+    0,
+    'Echo Memory narrative event must never grant Memory Fragments'
+  );
+
+  // 5. Paused or defeated state rejects narrative event triggers
+  world.puzzle.finalBarrier.open = true;
+  world.appState = 'paused';
+  assert.equal(triggerNarrativeEvent(world, 'nev_prologue_calibration_revelation'), false);
+  world.appState = 'playing';
+  world.player.integrity = 0;
+  assert.equal(triggerNarrativeEvent(world, 'nev_prologue_calibration_revelation'), false);
+  world.player.integrity = 100;
+  assert.equal(triggerNarrativeEvent(world, 'nev_prologue_calibration_revelation'), true);
+  assert.equal(triggerNarrativeEvent(world, 'nev_prologue_calibration_revelation'), false);
+});
+
+test('Phase 20.3: Boss Phase II Transition, Boss Defeat, and Echo Memory Triggers across Chapters I–V without disrupting Echo combat or traversal', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // Advance to Chapter I: HELIX-04
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch1_containment_arrival'),
+    true,
+    'Chapter I arrival event triggers automatically'
+  );
+
+  // Trigger HELIX-04 Phase II
+  assert.ok(world.boss);
+  world.boss.phase = 2;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch1_aegis_escalation'),
+    true,
+    'HELIX-04 Phase II triggers nev_ch1_aegis_escalation once'
+  );
+
+  // Defeat HELIX-04
+  triggerBossDefeat(world);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch1_seal_recovered'),
+    true,
+    'Defeating HELIX-04 triggers nev_ch1_seal_recovered'
+  );
+
+  // Advance to Chapter II: THE CHOIR
+  assert.equal(advanceCampaignChapter(world, true), true);
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch2_garden_arrival'),
+    true
+  );
+
+  // Activate SW Echo Conduit while an Echo is active near (-3.4, 4.5) -> unlocks route AND triggers Echo Memory without breaking Echo playback
+  world.player.x = -3.4;
+  world.player.z = 4.5;
+  world.echo.state = 'playback';
+  world.echo.playbackTime = 0.5;
+  world.echo.activeActor = {
+    id: 'echo-ch2',
+    clipId: 1,
+    x: -3.4,
+    z: 4.5,
+    rotationY: 0,
+    radius: 0.45,
+    actionState: 'idle',
+    gaitPhase: 0,
+    comboIndex: 0,
+    chargeRatio: 0,
+    isEmpoweredHeavy: false,
+    weaponId: 'chrono_edge',
+    equippedUpgradeId: null,
+    elapsed: 0.5,
+    duration: 3.5,
+  };
+  const ch2Conduit = attemptEnvironmentalInteraction(world, 'int_ch2_garden_echo_conduit');
+  assert.equal(ch2Conduit.status, 'ready');
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch2_echo_memory_duet'),
+    true,
+    'Activating SW Echo Conduit triggers Chapter II Echo Memory duet'
+  );
+  assert.equal(
+    world.echo.state,
+    'playback',
+    'Echo Memory trigger must not cancel or corrupt active Echo playback'
+  );
+  assert.equal(
+    world.obstacles.find((o) => o.id === 'pillar-sw')?.disabled,
+    true,
+    'SW Echo Conduit still unlocks pillar-sw traversal route normally'
+  );
+
+  // Discover Chapter II Secret Sanctuary -> triggers nev_ch2_acoustic_sanctum_discovery
+  assert.equal(discoverSecretArea(world, 'secret_ch2_hydroponic_echo_sanctum'), true);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch2_acoustic_sanctum_discovery'),
+    true
+  );
+
+  // Defeat THE CHOIR and advance to Chapter III: THE CURATOR
+  triggerBossDefeat(world);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch2_choir_silenced'),
+    true
+  );
+  assert.equal(advanceCampaignChapter(world, true), true);
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch3_vault_arrival'),
+    true
+  );
+
+  // Unlock SW Vault Relay at (-4.6, 4.2) and discover Secret Unedited Vault -> triggers both secret discovery and Chapter III Echo Memory
+  world.player.x = -4.6;
+  world.player.z = 4.2;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_ch3_vault_power_relay').status,
+    'ready'
+  );
+  assert.equal(discoverSecretArea(world, 'secret_ch3_lysa_unedited_vault'), true);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch3_unindexed_alcove_memory'),
+    true,
+    'Discovering Lysa Unedited Vault triggers Chapter III Echo Memory'
+  );
+});
+
 
 
 

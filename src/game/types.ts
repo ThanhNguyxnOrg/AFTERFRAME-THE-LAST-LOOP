@@ -1013,7 +1013,9 @@ export interface CombatEvent {
     | 'timed_hazard_warning'
     | 'timed_hazard_active'
     | 'timed_hazard_damaged_player'
-    | 'secret_area_discovered';
+    | 'secret_area_discovered'
+    | 'narrative_event_triggered'
+    | 'echo_memory_discovered';
   x: number;
   z: number;
   originX?: number;
@@ -1033,6 +1035,7 @@ export interface CombatEvent {
   routeId?: TraversalRouteId;
   hazardId?: TimedEnergyHazardId;
   secretId?: SecretAreaId;
+  narrativeEventId?: NarrativeEventId;
   echoAction?: EchoRecordedActionType;
   relayStatus?: RelayEvaluationStatus;
   resonanceOutcome?: ResonanceOutcome;
@@ -1570,6 +1573,123 @@ export interface LocalMapSnapshot {
   totalSecretsCampaign: number;
 }
 
+// ============================================================================
+// PHASE 20 — CAMPAIGN CONTENT, NARRATIVE PROGRESSION & WORLD EXPERIENCE
+// ============================================================================
+
+export type NarrativeEventId =
+  | 'nev_prologue_awakening'
+  | 'nev_prologue_calibration_revelation'
+  | 'nev_prologue_bay_diagnostic_evidence'
+  | 'nev_prologue_echo_memory_trace'
+  | 'nev_ch1_containment_arrival'
+  | 'nev_ch1_lockdown_evidence'
+  | 'nev_ch1_aegis_escalation'
+  | 'nev_ch1_seal_recovered'
+  | 'nev_ch2_garden_arrival'
+  | 'nev_ch2_echo_memory_duet'
+  | 'nev_ch2_acoustic_sanctum_discovery'
+  | 'nev_ch2_choir_silenced'
+  | 'nev_ch3_vault_arrival'
+  | 'nev_ch3_lysa_audit_revelation'
+  | 'nev_ch3_unindexed_alcove_memory'
+  | 'nev_ch3_vault_purged'
+  | 'nev_ch4_quarantine_arrival'
+  | 'nev_ch4_excision_evidence'
+  | 'nev_ch4_echo_collapse_protocol'
+  | 'nev_ch4_quarantine_breached'
+  | 'nev_ch5_loom_arrival'
+  | 'nev_ch5_anchor_echo_memory'
+  | 'nev_ch5_archive_convergence'
+  | 'nev_ch5_final_resolution';
+
+export type NarrativeEventTriggerKind =
+  | 'chapter_arrival'
+  | 'calibration_revelation'
+  | 'environmental_discovery'
+  | 'echo_memory_activated'
+  | 'secret_discovered'
+  | 'boss_phase_transition'
+  | 'boss_defeat'
+  | 'campaign_convergence'
+  | 'campaign_resolution';
+
+export type NarrativeEventCategory = 'main' | 'optional' | 'echo_memory';
+
+export interface NarrativeEventDefinition {
+  id: NarrativeEventId;
+  chapter: CampaignChapterId;
+  category: NarrativeEventCategory;
+  triggerKind: NarrativeEventTriggerKind;
+  title: string;
+  subtitle: string;
+  summary: string;
+  commKey?: string;
+  requiredRegionId?: SectorRegionId;
+  requiredInteractableId?: InteractableId;
+  requiredObjectiveId?: MissionObjectiveId;
+  requiredSecretId?: SecretAreaId;
+  requiredRouteId?: TraversalRouteId;
+  requiresActiveEcho?: boolean;
+  linkedCodexId?: CodexEntryId;
+}
+
+export interface NarrativeEventState {
+  id: NarrativeEventId;
+  chapter: CampaignChapterId;
+  category: NarrativeEventCategory;
+  triggerKind: NarrativeEventTriggerKind;
+  title: string;
+  subtitle: string;
+  summary: string;
+  completed: boolean;
+  completedAtTime: number | null;
+  linkedCodexId: CodexEntryId | null;
+}
+
+export interface ChapterWorldIdentityDefinition {
+  chapter: CampaignChapterId;
+  code: string;
+  title: string;
+  subtitle: string;
+  locationLabel: string;
+  themeLabel: string;
+  coreFeeling: string;
+  atmosphereSummary: string;
+  architecturalMotif: string;
+  environmentalStorytellingSummary: string;
+  arrivalHeadline: string;
+  arrivalSubtext: string;
+  echoMemoryTitle: string;
+  echoMemoryExcerpt: string;
+}
+
+export type CampaignSynthesisTier =
+  | 'fragmented'
+  | 'reconstructed'
+  | 'complete_chronicle';
+
+export interface CampaignEndingDiscoverySummary {
+  completedChaptersCount: number;
+  totalChaptersCount: number;
+  recoveredLogsCount: number;
+  totalLogsCount: number;
+  discoveredCodexCount: number;
+  totalCodexCount: number;
+  discoveredSecretsCount: number;
+  totalSecretsCount: number;
+  unlockedRoutesCount: number;
+  totalRoutesCount: number;
+  completedNarrativeEventsCount: number;
+  totalNarrativeEventsCount: number;
+  discoveredEchoMemoriesCount: number;
+  totalEchoMemoriesCount: number;
+  lysaTruthUncovered: boolean;
+  synthesisTier: CampaignSynthesisTier;
+  synthesisHeadline: string;
+  synthesisSummary: string;
+}
+
 export interface PersistedExplorationState {
   discoveredCodexIds: CodexEntryId[];
   completedObjectiveIds: MissionObjectiveId[];
@@ -1577,6 +1697,7 @@ export interface PersistedExplorationState {
   unlockedRouteIds: string[];
   discoveredRegionIds?: SectorRegionId[];
   discoveredSecretIds?: SecretAreaId[];
+  completedNarrativeEventIds?: NarrativeEventId[];
 }
 
 export interface WorldExplorationState {
@@ -1589,6 +1710,11 @@ export interface WorldExplorationState {
   unlockedRouteIds: string[];
   discoveredRegionIds: SectorRegionId[];
   discoveredSecretIds: SecretAreaId[];
+  completedNarrativeEventIds: NarrativeEventId[];
+  narrativeEvents: NarrativeEventState[];
+  lastTriggeredNarrativeEventId: NarrativeEventId | null;
+  chapterIdentity: ChapterWorldIdentityDefinition;
+  convergenceSummary: CampaignEndingDiscoverySummary;
   routes: TraversalRouteState[];
   hazards: TimedEnergyHazardState[];
   secrets: SecretAreaState[];
