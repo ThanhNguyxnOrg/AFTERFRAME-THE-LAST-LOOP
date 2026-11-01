@@ -374,8 +374,25 @@ export class ArenaSceneRenderer {
   private loomSealMats: THREE.MeshBasicMaterial[] = [];
   private loomSealTetherMats: THREE.MeshBasicMaterial[] = [];
   private chapterEnvironments = new Map<CampaignChapterId, ChapterEnvironmentRig>();
+  private obstacleMeshes: THREE.Object3D[] = [];
   private interactablesGroup: THREE.Group;
   private interactableRigs: Array<{
+    group: THREE.Group;
+    coreMesh: THREE.Mesh;
+    coreMat: THREE.MeshBasicMaterial;
+    ringMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+  }> = [];
+  private hazardsGroup: THREE.Group;
+  private hazardRigs: Array<{
+    group: THREE.Group;
+    ringMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+    columnMesh: THREE.Mesh;
+    columnMat: THREE.MeshBasicMaterial;
+  }> = [];
+  private secretsGroup: THREE.Group;
+  private secretRigs: Array<{
     group: THREE.Group;
     coreMesh: THREE.Mesh;
     coreMat: THREE.MeshBasicMaterial;
@@ -516,6 +533,7 @@ export class ArenaSceneRenderer {
     this.loomOuterRingMesh = env.loomOuterRingMesh;
     this.ventFanMeshes = env.ventFanMeshes;
     this.conduitGlowMat = env.conduitGlowMat;
+    this.obstacleMeshes = env.obstacleMeshes;
 
     for (let i = 0; i < CHAPTER_IDS.length; i++) {
       const chapter = CHAPTER_IDS[i];
@@ -790,6 +808,87 @@ export class ArenaSceneRenderer {
       this.interactablesGroup.add(iGroup);
     }
     this.scene.add(this.interactablesGroup);
+
+    // Phase 19: Pre-allocate Pooled 3D Timed Energy Passages & Secret Area Beacons
+    this.hazardsGroup = new THREE.Group();
+    this.hazardsGroup.name = 'TimedEnergyHazardsGroup';
+    const hazRingGeo = new THREE.RingGeometry(0.75, 1.0, 28);
+    hazRingGeo.rotateX(-Math.PI * 0.5);
+    const hazColGeo = new THREE.CylinderGeometry(0.85, 0.95, 2.2, 20, 1, true);
+    for (let i = 0; i < 2; i++) {
+      const hGroup = new THREE.Group();
+      hGroup.visible = false;
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ringMesh = new THREE.Mesh(hazRingGeo, ringMat);
+      ringMesh.position.y = 0.045;
+      hGroup.add(ringMesh);
+
+      const columnMat = new THREE.MeshBasicMaterial({
+        color: 0xef4444,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const columnMesh = new THREE.Mesh(hazColGeo, columnMat);
+      columnMesh.position.y = 1.1;
+      hGroup.add(columnMesh);
+
+      this.hazardRigs.push({
+        group: hGroup,
+        ringMesh,
+        ringMat,
+        columnMesh,
+        columnMat,
+      });
+      this.hazardsGroup.add(hGroup);
+    }
+    this.scene.add(this.hazardsGroup);
+
+    this.secretsGroup = new THREE.Group();
+    this.secretsGroup.name = 'SecretAreasGroup';
+    const secRingGeo = new THREE.RingGeometry(0.72, 0.94, 24);
+    secRingGeo.rotateX(-Math.PI * 0.5);
+    const secCoreGeo = new THREE.OctahedronGeometry(0.32, 0);
+    for (let i = 0; i < 2; i++) {
+      const sGroup = new THREE.Group();
+      sGroup.visible = false;
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.9,
+      });
+      const coreMesh = new THREE.Mesh(secCoreGeo, coreMat);
+      coreMesh.position.y = 1.15;
+      sGroup.add(coreMesh);
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.65,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ringMesh = new THREE.Mesh(secRingGeo, ringMat);
+      ringMesh.position.y = 0.05;
+      sGroup.add(ringMesh);
+
+      this.secretRigs.push({
+        group: sGroup,
+        coreMesh,
+        coreMat,
+        ringMesh,
+        ringMat,
+      });
+      this.secretsGroup.add(sGroup);
+    }
+    this.scene.add(this.secretsGroup);
 
     // Player Rig
     this.playerRig = createSeraPlayerRig(this.shadowTex, !this.isHeadless);
@@ -1698,6 +1797,22 @@ export class ArenaSceneRenderer {
         case 'environmental_interaction_rejected':
           this.spawnBurst(ev.x, 1.0, ev.z, 6, 0xf59e0b, 3.2);
           break;
+        case 'traversal_route_unlocked':
+          this.spawnBurst(ev.x, 1.35, ev.z, 22, 0x22d3ee, 7.2);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0x22d3ee, 0.36);
+          break;
+        case 'timed_hazard_active':
+          this.spawnBurst(ev.x, 0.9, ev.z, 12, 0xef4444, 5.8);
+          break;
+        case 'timed_hazard_damaged_player':
+          this.spawnBurst(ev.x, 1.1, ev.z, 18, 0xef4444, 7.2);
+          this.triggerImpactRing(ev.x, 0.14, ev.z, 0xef4444, 0.32);
+          break;
+        case 'secret_area_discovered':
+          this.spawnBurst(ev.x, 1.35, ev.z, 28, 0xffffff, 8.4);
+          this.spawnBurst(ev.x, 1.15, ev.z, 20, 0x34d399, 6.8);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0x34d399, 0.42);
+          break;
       }
     }
   }
@@ -2022,6 +2137,85 @@ export class ArenaSceneRenderer {
             : isPrompted
               ? 0.82
               : 0.48 + Math.sin(ambientTime * 3.2 + i) * 0.14 * ambientScale;
+      }
+    }
+
+    // Phase 19: Retract unlocked corner containment pylons smoothly into the deck floor
+    if (this.obstacleMeshes && this.obstacleMeshes.length > 0 && world.obstacles) {
+      for (let i = 0; i < this.obstacleMeshes.length; i++) {
+        const meshGroup = this.obstacleMeshes[i];
+        const obs = world.obstacles[i];
+        if (!meshGroup || !obs || obs.id === 'loom-pylon') continue;
+        const targetY = obs.disabled ? -(obs.height + 0.35) : 0;
+        if (this.reducedMotion) {
+          meshGroup.position.y = targetY;
+        } else {
+          meshGroup.position.y +=
+            (targetY - meshGroup.position.y) * Math.min(1, dt * 6.5);
+        }
+      }
+    }
+
+    // Phase 19: Update Pooled Timed Energy Passages
+    if (this.hazardsGroup) {
+      const hazards = world.exploration?.hazards ?? [];
+      for (let i = 0; i < this.hazardRigs.length; i++) {
+        const hRig = this.hazardRigs[i];
+        const h = hazards[i];
+        if (!h) {
+          hRig.group.visible = false;
+          continue;
+        }
+        hRig.group.visible = true;
+        hRig.group.position.set(h.x, 0, h.z);
+        hRig.ringMesh.scale.setScalar(h.radius);
+        hRig.columnMesh.scale.set(h.radius * 0.85, 1, h.radius * 0.85);
+        hRig.ringMesh.rotation.z += ambientDt * (h.active ? 3.6 : 1.4);
+
+        if (h.phase === 'active') {
+          hRig.ringMat.color.setHex(0xef4444);
+          hRig.ringMat.opacity = 0.92;
+          hRig.columnMesh.visible = true;
+          hRig.columnMat.color.setHex(0xef4444);
+          hRig.columnMat.opacity =
+            0.38 + Math.sin(ambientTime * 14) * 0.12 * ambientScale;
+        } else if (h.phase === 'warning') {
+          hRig.ringMat.color.setHex(0xf59e0b);
+          hRig.ringMat.opacity =
+            0.68 + Math.sin(ambientTime * 10) * 0.18 * ambientScale;
+          hRig.columnMesh.visible = true;
+          hRig.columnMat.color.setHex(0xf59e0b);
+          hRig.columnMat.opacity = 0.16;
+        } else {
+          hRig.ringMat.color.setHex(0x22d3ee);
+          hRig.ringMat.opacity = 0.36;
+          hRig.columnMesh.visible = false;
+        }
+      }
+    }
+
+    // Phase 19: Update Pooled Secret Exploration Alcove Beacons
+    if (this.secretsGroup) {
+      const secrets = world.exploration?.secrets ?? [];
+      for (let i = 0; i < this.secretRigs.length; i++) {
+        const sRig = this.secretRigs[i];
+        const s = secrets[i];
+        if (!s || (!s.accessible && !s.discovered)) {
+          sRig.group.visible = false;
+          continue;
+        }
+        sRig.group.visible = true;
+        sRig.group.position.set(s.x, 0, s.z);
+        sRig.ringMesh.scale.setScalar(s.radius * 0.68);
+        sRig.coreMesh.rotation.y += ambientDt * (s.discovered ? 1.0 : 2.4);
+        sRig.coreMesh.position.y =
+          1.15 + Math.sin(ambientTime * 3.0 + i) * 0.08 * ambientScale;
+        const hex = s.discovered ? 0x34d399 : 0xe0f2fe;
+        sRig.coreMat.color.setHex(hex);
+        sRig.ringMat.color.setHex(s.discovered ? 0x34d399 : 0x22d3ee);
+        sRig.ringMat.opacity = s.discovered
+          ? 0.35
+          : 0.72 + Math.sin(ambientTime * 4.0) * 0.15 * ambientScale;
       }
     }
   }

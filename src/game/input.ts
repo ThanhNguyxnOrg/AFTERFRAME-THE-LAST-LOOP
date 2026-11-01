@@ -66,6 +66,7 @@ export class InputController {
   private onSkipSequenceCallback: (() => boolean) | null = null;
   private onAdvanceChapterCallback: (() => boolean) | null = null;
   private onSelectLoomEndingCallback: ((endingId: 'silence' | 'witness' | 'continuity') => boolean) | null = null;
+  private onMapToggleCallback: (() => void) | null = null;
 
   constructor() {
     this.loadSettings();
@@ -209,6 +210,7 @@ export class InputController {
       onSkipSequence?: () => boolean;
       onAdvanceChapter?: () => boolean;
       onSelectLoomEnding?: (endingId: 'silence' | 'witness' | 'continuity') => boolean;
+      onMapToggle?: () => void;
     }
   ): void {
     this.canvasEl = canvasContainer;
@@ -223,6 +225,7 @@ export class InputController {
     this.onSkipSequenceCallback = callbacks.onSkipSequence ?? null;
     this.onAdvanceChapterCallback = callbacks.onAdvanceChapter ?? null;
     this.onSelectLoomEndingCallback = callbacks.onSelectLoomEnding ?? null;
+    this.onMapToggleCallback = callbacks.onMapToggle ?? null;
 
     window.addEventListener('keydown', this.onKeyDownBound);
     window.addEventListener('keyup', this.onKeyUpBound);
@@ -342,6 +345,19 @@ export class InputController {
       if (state === 'playing' || state === 'paused') {
         e.preventDefault();
         this.onPauseToggleCallback?.();
+        return;
+      }
+    }
+
+    // Sector Map / Navigation Modal shortcut [N]
+    if (code === 'KeyN') {
+      if (state === 'playing' || state === 'paused') {
+        e.preventDefault();
+        if (this.onMapToggleCallback) {
+          this.onMapToggleCallback();
+        } else {
+          this.onPauseToggleCallback?.();
+        }
         return;
       }
     }

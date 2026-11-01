@@ -30,6 +30,7 @@ import {
   attemptEnvironmentalInteraction,
   completeMissionObjective,
   discoverCodexEntry,
+  discoverSecretArea,
 } from './simulation.ts';
 
 test('completed chapters remain isolated replays after save reload without an in-memory snapshot', () => {
@@ -966,5 +967,108 @@ test('10. Phase 18 Exploration Save V2 Persistence, Legacy Migration, Practice I
   ]);
   assert.deepEqual(migratedWorld.exploration.unlockedRouteIds, ['pillar-ne']);
 });
+
+test('17. Phase 19 World Traversal & Secret Exploration Save V2 Persistence, Sanitization, Migration & 18-Fragment Economy Invariance', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // 1. Prologue secret requires route_prologue_east_bypass unlocked
+  assert.equal(discoverSecretArea(world, 'secret_prologue_calibration_alcove'), false);
+  world.exploration.activatedNodeIds.push('int_prologue_aux_power_node', 'int_prologue_shortcut_gate');
+  const proEastRoute = world.exploration.localMap.routes.find((r) => r.id === 'route_prologue_east_bypass');
+  if (proEastRoute) proEastRoute.unlocked = true;
+  assert.equal(discoverSecretArea(world, 'secret_prologue_calibration_alcove'), true);
+
+  // 2. Chapter I secret requires active Chapter I and route_ch1_nw_timed_conduit unlocked
+  world.run.unlockedChapters = [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+    'chapter_3_curator',
+  ];
+  startCampaignChapterSelect(world, 'chapter_1_helix');
+  assert.equal(discoverSecretArea(world, 'secret_ch1_marshal_armory_cache'), false);
+  world.exploration.activatedNodeIds.push('int_ch1_ballistic_capacitor');
+  const ch1Route = world.exploration.localMap.routes.find((r) => r.id === 'route_ch1_nw_timed_conduit');
+  if (ch1Route) ch1Route.unlocked = true;
+  assert.equal(discoverSecretArea(world, 'secret_ch1_marshal_armory_cache'), true);
+
+  // 3. Chapter II secret requires active Chapter II and route_ch2_sw_echo_bridge unlocked
+  startCampaignChapterSelect(world, 'chapter_2_choir');
+  assert.equal(discoverSecretArea(world, 'secret_ch2_hydroponic_echo_sanctum'), false);
+  world.exploration.activatedNodeIds.push('int_ch2_garden_echo_conduit');
+  const ch2Route = world.exploration.localMap.routes.find((r) => r.id === 'route_ch2_sw_echo_bridge');
+  if (ch2Route) ch2Route.unlocked = true;
+  assert.equal(discoverSecretArea(world, 'secret_ch2_hydroponic_echo_sanctum'), true);
+
+  // 4. Chapter III secret requires active Chapter III and route_ch3_sw_archive_passage unlocked
+  startCampaignChapterSelect(world, 'chapter_3_curator');
+  assert.equal(discoverSecretArea(world, 'secret_ch3_lysa_unedited_vault'), false);
+  world.exploration.activatedNodeIds.push('int_ch3_vault_power_relay');
+  const ch3Route = world.exploration.localMap.routes.find((r) => r.id === 'route_ch3_sw_archive_passage');
+  if (ch3Route) ch3Route.unlocked = true;
+  assert.equal(discoverSecretArea(world, 'secret_ch3_lysa_unedited_vault'), true);
+
+  assert.equal(
+    world.progression.memoryFragments,
+    0,
+    'Discovering all 4 secret areas must never grant extra Memory Fragments'
+  );
+  assert.equal(world.exploration.discoveredSecretIds.length, 4);
+  assert.equal(world.exploration.localMap.totalDiscoveredSecretsCampaign, 4);
+
+  // Save and reload into a fresh world -> verify discoveredSecretIds and discoveredRegionIds persist
+  const savedJson = serializeCampaignProgress(world);
+  const reloaded = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloaded, savedJson), true);
+  assert.equal(restoreSavedCampaignProgress(reloaded), true);
+  assert.deepEqual(reloaded.exploration.discoveredSecretIds, [
+    'secret_prologue_calibration_alcove',
+    'secret_ch1_marshal_armory_cache',
+    'secret_ch2_hydroponic_echo_sanctum',
+    'secret_ch3_lysa_unedited_vault',
+  ]);
+  assert.ok(
+    reloaded.exploration.discoveredRegionIds.includes('region_prologue_secret_alcove')
+  );
+  assert.equal(reloaded.exploration.localMap.totalDiscoveredSecretsCampaign, 4);
+
+  // Sanitization of malformed/unknown region & secret IDs in v2 save
+  const rawWithInvalid = JSON.stringify({
+    version: 2,
+    unlockedChapters: ['prologue', 'chapter_1_helix'],
+    completedChapters: ['prologue'],
+    recoveredLogs: ['LOG-00'],
+    completedEndings: [],
+    exploration: {
+      discoveredCodexIds: ['CODEX-01'],
+      completedObjectiveIds: [],
+      activatedNodeIds: [],
+      unlockedRouteIds: ['pillar-ne'],
+      discoveredRegionIds: [
+        'region_prologue_staging_deck',
+        'region_prologue_secret_alcove',
+        'region_unknown_fake',
+        'region_prologue_secret_alcove',
+      ],
+      discoveredSecretIds: [
+        'secret_prologue_calibration_alcove',
+        'secret_unknown_fake',
+        'secret_prologue_calibration_alcove',
+      ],
+    },
+    activeCampaign: null,
+  });
+  const sanitized = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(sanitized, rawWithInvalid), true);
+  assert.deepEqual(sanitized.exploration.discoveredSecretIds, [
+    'secret_prologue_calibration_alcove',
+  ]);
+  assert.deepEqual(sanitized.exploration.discoveredRegionIds, [
+    'region_prologue_staging_deck',
+    'region_prologue_secret_alcove',
+  ]);
+});
+
 
 

@@ -66,10 +66,20 @@ import {
   getAllCodexEntryDefinitions,
   getHudCodexEntries,
   discoverCodexEntry,
+  discoverSecretArea,
   completeMissionObjective,
   evaluateInteractionTarget,
   evaluateNearestInteractablePrompt,
   attemptEnvironmentalInteraction,
+  getSectorRegionDefinition,
+  getAllSectorRegionDefinitionsForChapter,
+  getTraversalRouteDefinition,
+  getAllTraversalRouteDefinitionsForChapter,
+  getTimedEnergyHazardDefinition,
+  getAllTimedEnergyHazardDefinitionsForChapter,
+  getSecretAreaDefinition,
+  getAllSecretAreaDefinitions,
+  getAllSecretAreaDefinitionsForChapter,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -9132,4 +9142,1263 @@ test('Phase 18.3 Lore Codex Discovery, Undiscovered Entry Masking, Save Persiste
     'Dev environment exposes test hooks'
   );
 });
+
+// ============================================================================
+// PHASE 19: WORLD TRAVERSAL, ENVIRONMENTAL CHALLENGES & EXPLORATION DEPTH
+// ============================================================================
+
+test('Phase 19.1 World Traversal & Power-Rerouted Access Routes: route definitions, locked -> powered -> open transitions, obstacle retraction, and planar traversal', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // Unknown route and region IDs return null
+  assert.equal(getTraversalRouteDefinition('route_unknown'), null);
+  assert.equal(getSectorRegionDefinition('region_unknown'), null);
+  assert.equal(getAllTraversalRouteDefinitionsForChapter('prologue').length, 2);
+
+  // Initially in Prologue: route_prologue_east_bypass is locked and pillar-ne is solid
+  const initialBypass = world.exploration.routes.find(
+    (r) => r.id === 'route_prologue_east_bypass'
+  )!;
+  assert.equal(initialBypass.status, 'locked');
+  assert.equal(initialBypass.unlocked, false);
+  const pillarNe = world.obstacles.find((o) => o.id === 'pillar-ne')!;
+  assert.equal(pillarNe.disabled, false);
+
+  // 1. Energize Auxiliary Power Node (int_prologue_aux_power_node) -> route becomes 'powered'
+  const auxDef = getInteractableDefinition('int_prologue_aux_power_node')!;
+  world.player.x = auxDef.x;
+  world.player.z = auxDef.z - 1.4;
+  world.player.rotationY = 0;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node').status,
+    'ready'
+  );
+  stepWorld(world, createEmptyInput(0), 0.02);
+
+  const poweredBypass = world.exploration.routes.find(
+    (r) => r.id === 'route_prologue_east_bypass'
+  )!;
+  assert.equal(poweredBypass.status, 'powered');
+  assert.equal(poweredBypass.unlocked, false);
+
+  // 2. Activate Maintenance Bypass Gate Control (int_prologue_shortcut_gate) -> route becomes 'open' & pillar-ne retracts
+  const gateDef = getInteractableDefinition('int_prologue_shortcut_gate')!;
+  world.player.x = gateDef.x;
+  world.player.z = gateDef.z + 1.4;
+  world.player.rotationY = Math.PI;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate').status,
+    'ready'
+  );
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  const openBypass = world.exploration.routes.find(
+    (r) => r.id === 'route_prologue_east_bypass'
+  )!;
+  assert.equal(openBypass.status, 'open');
+  assert.equal(openBypass.unlocked, true);
+  assert.equal(pillarNe.disabled, true);
+
+  // Sera can now traverse directly through the former pillar-ne center (10.5, -9.0) without collision pushback
+  world.player.x = 10.5;
+  world.player.z = -9.0;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.ok(
+    Math.hypot(world.player.x - 10.5, world.player.z - -9.0) < 0.05,
+    'Retracted pillar-ne allows unobstructed planar traversal'
+  );
+
+  // 3. Verify Chapter I ballistic capacitor unlocks route_ch1_nw_timed_conduit & pillar-nw
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  const capDef = getInteractableDefinition('int_ch1_ballistic_capacitor')!;
+  world.player.x = capDef.x;
+  world.player.z = capDef.z + 1.4;
+  world.player.rotationY = Math.PI;
+  assert.equal(
+    attemptEnvironmentalInteraction(world, 'int_ch1_ballistic_capacitor').status,
+    'ready'
+  );
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  const ch1Route = world.exploration.routes.find(
+    (r) => r.id === 'route_ch1_nw_timed_conduit'
+  )!;
+  assert.equal(ch1Route.status, 'open');
+  assert.equal(ch1Route.unlocked, true);
+  assert.equal(
+    world.obstacles.find((o) => o.id === 'pillar-nw')?.disabled,
+    true
+  );
+});
+
+test('Phase 19.2 Timed Energy Passage: safe -> warning -> active cycle, single-hit cooldown guard, dodge invulnerability counterplay, and pause freeze', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  for (const e of world.enemies) {
+    e.x = -12;
+    e.z = -12;
+    e.aiState = 'idle';
+    e.cooldownTimer = 999;
+  }
+
+  assert.equal(getTimedEnergyHazardDefinition('hazard_unknown'), null);
+  const proHazards = getAllTimedEnergyHazardDefinitionsForChapter('prologue');
+  assert.equal(proHazards.length, 1);
+  assert.equal(proHazards[0].id, 'hazard_prologue_east_arc_vent');
+
+  const hazardState = world.exploration.hazards[0];
+  assert.equal(hazardState.id, 'hazard_prologue_east_arc_vent');
+  assert.equal(hazardState.phase, 'safe');
+
+  // Position Sera directly inside the East Arc Vent (11.2, -6.4)
+  world.player.x = hazardState.x;
+  world.player.z = hazardState.z;
+  world.player.integrity = 100;
+
+  // Step during 'safe' window (safeDuration = 2.2s): 0 damage taken
+  for (let i = 0; i < 50; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(world.exploration.hazards[0].phase, 'safe');
+  assert.equal(world.player.integrity, 100);
+
+  // Advance across the safe -> warning boundary (at 2.2s)
+  let sawWarningEvent = false;
+  for (let i = 0; i < 65; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    if (world.events.some((ev) => ev.type === 'timed_hazard_warning')) {
+      sawWarningEvent = true;
+    }
+  }
+  assert.equal(sawWarningEvent, true, 'Transition into warning phase emits timed_hazard_warning');
+  assert.equal(world.exploration.hazards[0].phase, 'warning');
+  assert.equal(world.exploration.hazards[0].warning, true);
+  assert.equal(world.player.integrity, 100, 'Warning phase telegraphs danger without dealing damage');
+
+  // Pause freezes hazard timers
+  const timerBeforePause = world.exploration.hazards[0].phaseTimer;
+  world.appState = 'paused';
+  stepWorld(world, createEmptyInput(Math.PI), 0.2);
+  assert.equal(world.exploration.hazards[0].phaseTimer, timerBeforePause);
+  world.appState = 'playing';
+
+  // Advance into 'active' phase (warningDuration = 1.0s) and verify single-hit-per-cycle damage (14)
+  for (let i = 0; i < 55; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(world.exploration.hazards[0].phase, 'active');
+  assert.equal(world.exploration.hazards[0].active, true);
+  assert.equal(
+    world.player.integrity,
+    86,
+    'Active arc discharge deals exactly 14 damage once and does not machine-gun on subsequent frames'
+  );
+
+  // Advance back to 'safe' and then into the next 'active' window while dodging (invulnTimer > 0)
+  for (let i = 0; i < 210; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    if (world.exploration.hazards[0].phase === 'warning' && world.exploration.hazards[0].phaseTimer <= 0.08) {
+      break;
+    }
+  }
+  world.player.integrity = 86;
+  world.player.invulnTimer = 0.6;
+  world.player.actionState = 'dodging';
+  for (let i = 0; i < 15; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(world.exploration.hazards[0].phase, 'active');
+  assert.equal(
+    world.player.integrity,
+    86,
+    'Dodging/invulnerability cleanly negates active Timed Energy Passage damage'
+  );
+});
+
+test('Phase 19.3 Echo-Controlled Traversal Mechanism: recorded Echo replay attunes Chapter II & V conduits and retracts bridge pillars idempotently', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  transitionCampaignToBoss(world, true, 'chapter_2_choir');
+
+  const conduitDef = getInteractableDefinition('int_ch2_garden_echo_conduit')!;
+  assert.equal(conduitDef.unlocksObstacleId, 'pillar-sw');
+  const swPillar = world.obstacles.find((o) => o.id === 'pillar-sw')!;
+  assert.equal(swPillar.disabled, false);
+
+  const initialBridge = world.exploration.routes.find(
+    (r) => r.id === 'route_ch2_sw_echo_bridge'
+  )!;
+  assert.equal(initialBridge.status, 'locked');
+  assert.equal(initialBridge.unlocked, false);
+
+  // Move Sera to the Hydroponic Echo Conduit (-11.2, 3.2), record a short Echo clip [T], and replay [Y]
+  world.player.x = conduitDef.x;
+  world.player.z = conduitDef.z;
+  const recStart = createEmptyInput(Math.PI);
+  recStart.echoRecordJustPressed = true;
+  stepWorld(world, recStart, 0.02);
+  for (let i = 0; i < 35; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  const recStop = createEmptyInput(Math.PI);
+  recStop.echoRecordJustPressed = true;
+  stepWorld(world, recStop, 0.02);
+
+  // Move live Sera away so only the replaying Echo occupies the conduit
+  world.player.x = 0;
+  world.player.z = 8.0;
+  const playInp = createEmptyInput(Math.PI);
+  playInp.echoPlayJustPressed = true;
+  stepWorld(world, playInp, 0.02);
+  for (let i = 0; i < 12; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+
+  assert.ok(
+    world.exploration.activatedNodeIds.includes('int_ch2_garden_echo_conduit'),
+    'Replaying Echo stationed on Hydroponic Echo Conduit automatically attunes it'
+  );
+  assert.ok(world.exploration.unlockedRouteIds.includes('pillar-sw'));
+  assert.equal(swPillar.disabled, true, 'Echo conduit attunement retracts pillar-sw obstacle');
+  const unlockedBridge = world.exploration.routes.find(
+    (r) => r.id === 'route_ch2_sw_echo_bridge'
+  )!;
+  assert.equal(unlockedBridge.status, 'open');
+  assert.equal(unlockedBridge.unlocked, true);
+  assert.equal(
+    world.exploration.discoveredCodexIds.filter((id) => id === 'CODEX-04').length,
+    1,
+    'Echo conduit grants CODEX-04 exactly once across all replay frames'
+  );
+});
+
+test('Phase 19.4 Secret Exploration Areas: route prerequisite gating, physical entry discovery, bounded Integrity/Flux restoration, zero Memory Fragment inflation, and idempotency', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  assert.equal(getAllSecretAreaDefinitions().length, 4);
+  assert.equal(getSecretAreaDefinition('secret_invalid'), null);
+  assert.equal(discoverSecretArea(world, 'secret_invalid'), false);
+
+  const proSecretDef = getSecretAreaDefinition('secret_prologue_calibration_alcove')!;
+  world.player.integrity = 65;
+  world.player.flux = 30;
+  const fragmentsBefore = world.progression.memoryFragments;
+
+  // 1. Standing at secret alcove coordinates BEFORE unlocking prerequisite route does NOT auto-discover it
+  world.player.x = proSecretDef.x;
+  world.player.z = proSecretDef.z;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.discoveredSecretIds.includes('secret_prologue_calibration_alcove'),
+    false,
+    'Secret area must remain undiscovered while its prerequisite route is still sealed'
+  );
+
+  // 2. Unlock the East Maintenance Bypass (int_prologue_aux_power_node -> int_prologue_shortcut_gate)
+  const auxDef = getInteractableDefinition('int_prologue_aux_power_node')!;
+  world.player.x = auxDef.x;
+  world.player.z = auxDef.z - 1.4;
+  world.player.rotationY = 0;
+  attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node');
+
+  const gateDef = getInteractableDefinition('int_prologue_shortcut_gate')!;
+  world.player.x = gateDef.x;
+  world.player.z = gateDef.z + 1.4;
+  world.player.rotationY = Math.PI;
+  attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate');
+
+  // Reset integrity/flux to verify exact secret alcove restoration (+20 Integrity, +25 Flux)
+  world.player.integrity = 65;
+  world.player.flux = 30;
+
+  // 3. Walk into East Calibration Overlook (13.4, -6.4) -> triggers discovery!
+  world.player.x = proSecretDef.x;
+  world.player.z = proSecretDef.z;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  assert.ok(
+    world.exploration.discoveredSecretIds.includes('secret_prologue_calibration_alcove')
+  );
+  assert.equal(world.player.integrity, 85, 'Secret alcove restores +20 Integrity');
+  assert.equal(Math.floor(world.player.flux), 55, 'Secret alcove restores +25 Flux');
+  assert.ok(world.exploration.discoveredCodexIds.includes('CODEX-01'));
+  assert.equal(
+    world.progression.memoryFragments,
+    fragmentsBefore,
+    'Secret area discovery must NOT inflate the 18-Memory-Fragment campaign economy'
+  );
+  assert.equal(
+    world.exploration.lastDiscoveryBanner?.secretId,
+    'secret_prologue_calibration_alcove'
+  );
+
+  // 4. Duplicate entry or explicit discoverSecretArea call is a no-op
+  assert.equal(
+    discoverSecretArea(world, 'secret_prologue_calibration_alcove'),
+    false
+  );
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(world.player.integrity, 85);
+  assert.equal(Math.floor(world.player.flux), 55);
+});
+
+test('Phase 19.5 Local Area Map Fog-of-Discovery & Save v2 Persistence/Migration', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // 1. Before discovery: secret region is masked by fog-of-discovery in localMap
+  const initialMap = world.exploration.localMap;
+  assert.equal(initialMap.chapter, 'prologue');
+  assert.equal(initialMap.discoveredSecretsInChapter, 0);
+  assert.equal(initialMap.totalSecretsInChapter, 1);
+  assert.equal(initialMap.totalSecretsCampaign, 4);
+  const foggedRegion = initialMap.regions.find(
+    (r) => r.id === 'region_prologue_secret_alcove'
+  )!;
+  assert.equal(foggedRegion.hiddenByFog, true);
+  assert.equal(foggedRegion.discovered, false);
+  assert.match(foggedRegion.label, /UNINDEXED SECTOR ANOMALY \[FOG\]/);
+
+  // 2. Attempting discoverSecretArea while route_prologue_east_bypass is locked is rejected
+  assert.equal(
+    discoverSecretArea(world, 'secret_prologue_calibration_alcove'),
+    false,
+    'discoverSecretArea rejects secret discovery while prerequisite route is locked'
+  );
+  // Unlock route_prologue_east_bypass first, then discover secret_prologue_calibration_alcove
+  const auxDef = getInteractableDefinition('int_prologue_aux_power_node')!;
+  world.player.x = auxDef.x;
+  world.player.z = auxDef.z - 1.4;
+  world.player.rotationY = 0;
+  attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node');
+  const gateDef = getInteractableDefinition('int_prologue_shortcut_gate')!;
+  world.player.x = gateDef.x;
+  world.player.z = gateDef.z + 1.4;
+  world.player.rotationY = Math.PI;
+  attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate');
+
+  assert.equal(
+    discoverSecretArea(world, 'secret_prologue_calibration_alcove'),
+    true
+  );
+  const revealedMap = world.exploration.localMap;
+  const revealedRegion = revealedMap.regions.find(
+    (r) => r.id === 'region_prologue_secret_alcove'
+  )!;
+  assert.equal(revealedRegion.hiddenByFog, false);
+  assert.equal(revealedRegion.discovered, true);
+  assert.equal(revealedRegion.label, 'EAST CALIBRATION OVERLOOK');
+  assert.equal(revealedMap.discoveredSecretsInChapter, 1);
+  assert.equal(revealedMap.totalDiscoveredSecretsCampaign, 1);
+
+  // 3. Verify persistence across serializeCampaignProgress -> parseAndApplyCampaignProgress -> restoreSavedCampaignProgress
+  const savedJson = serializeCampaignProgress(world);
+  const freshWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(freshWorld, savedJson), true);
+  assert.equal(restoreSavedCampaignProgress(freshWorld), true);
+  assert.ok(
+    freshWorld.exploration.discoveredSecretIds.includes(
+      'secret_prologue_calibration_alcove'
+    )
+  );
+  assert.ok(
+    freshWorld.exploration.discoveredRegionIds.includes(
+      'region_prologue_secret_alcove'
+    )
+  );
+  assert.equal(
+    freshWorld.exploration.localMap.totalDiscoveredSecretsCampaign,
+    1
+  );
+
+  // 4. Verify Practice mode isolation: discovering a secret in Practice does not overwrite campaign save
+  startPracticeStandardRun(freshWorld);
+  freshWorld.exploration.activatedNodeIds.push(
+    'int_prologue_aux_power_node',
+    'int_prologue_shortcut_gate'
+  );
+  freshWorld.exploration.unlockedRouteIds.push('pillar-ne');
+  discoverSecretArea(freshWorld, 'secret_prologue_calibration_alcove');
+  assert.equal(restoreSavedCampaignProgress(freshWorld), true);
+  assert.equal(
+    freshWorld.exploration.discoveredSecretIds.includes(
+      'secret_ch3_lysa_unedited_vault'
+    ),
+    false,
+    'Practice mode secret discovery must not leak into saved campaign progress'
+  );
+});
+
+test('Phase 19.1-A All 7 Authored Traversal Routes End-to-End: Prerequisite Enforcement, Obstacle Retraction, Physical Traversal, Projectile LOS, Map Sync & Save Persistence', () => {
+  const allChapters: Array<
+    | 'prologue'
+    | 'chapter_1_helix'
+    | 'chapter_2_choir'
+    | 'chapter_3_curator'
+    | 'chapter_4_matron'
+    | 'chapter_5_loom'
+  > = [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+    'chapter_3_curator',
+    'chapter_4_matron',
+    'chapter_5_loom',
+  ];
+  const allRoutes = allChapters.flatMap((ch) =>
+    getAllTraversalRouteDefinitionsForChapter(ch)
+  );
+  assert.equal(allRoutes.length, 7, 'Must define all 7 authored traversal routes');
+
+  // Helper to verify physical obstacle collision before vs after unlock, plus Pulsecaster projectile LOS
+  const assertObstacleBlocksThenAllowsTraversalAndProjectile = (
+    world: ReturnType<typeof createInitialWorld>,
+    obstacleId: string,
+    unlockFn: () => void
+  ) => {
+    for (const e of world.enemies) {
+      e.x = -12;
+      e.z = -12;
+      e.aiState = 'idle';
+      e.cooldownTimer = 999;
+    }
+    const obs = world.obstacles.find((o) => o.id === obstacleId)!;
+    assert.ok(obs, `Obstacle ${obstacleId} must exist in world.obstacles`);
+    assert.equal(obs.disabled, false, `Obstacle ${obstacleId} starts enabled/blocking`);
+
+    // 1. Physical traversal blocked while locked: placing player at obstacle center pushes player out
+    world.player.x = obs.x;
+    world.player.z = obs.z;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    const distWhileLocked = Math.hypot(world.player.x - obs.x, world.player.z - obs.z);
+    assert.ok(
+      distWhileLocked > 0.4,
+      `Active obstacle ${obstacleId} must physically block player from occupying (${obs.x}, ${obs.z})`
+    );
+
+    // 2. Pulsecaster projectile fired across obstacle center is blocked while locked
+    world.projectiles = [
+      {
+        id: 'proj-test-locked',
+        owner: 'player',
+        weaponId: 'pulsecaster',
+        attackMode: 'pulse_light',
+        x: obs.x,
+        z: obs.z + obs.radius + 0.8,
+        prevX: obs.x,
+        prevZ: obs.z + obs.radius + 0.8,
+        vx: 0,
+        vz: -20,
+        rotationY: Math.PI,
+        radius: 0.24,
+        damage: 14,
+        staggerDamage: 8,
+        isHeavy: false,
+        isEmpowered: false,
+        maxRange: 18,
+        distanceTraveled: 0,
+        elapsed: 0,
+        maxLifetime: 0.5,
+        active: true,
+        attackStartedAt: world.elapsedTime,
+        attackMarkId: null,
+        hitTargetIds: [],
+      },
+    ];
+    for (let i = 0; i < 8; i++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    }
+    assert.equal(
+      world.projectiles.some((p) => p.active),
+      false,
+      `Projectile must collide with locked obstacle ${obstacleId}`
+    );
+
+    // 3. Execute route unlock mechanism
+    unlockFn();
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    assert.equal(
+      obs.disabled,
+      true,
+      `Obstacle ${obstacleId} must become disabled after route unlock`
+    );
+
+    // 4. Physical traversal now succeeds directly through former obstacle coordinate
+    world.player.x = obs.x;
+    world.player.z = obs.z;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    const distAfterUnlock = Math.hypot(world.player.x - obs.x, world.player.z - obs.z);
+    assert.ok(
+      distAfterUnlock < 0.05,
+      `Retracted obstacle ${obstacleId} must allow unobstructed player traversal at (${obs.x}, ${obs.z})`
+    );
+
+    // 5. Pulsecaster projectile now passes cleanly through the opened passage without obstacle collision
+    world.player.x = 0;
+    world.player.z = 0;
+    world.projectiles = [
+      {
+        id: 'proj-test-open',
+        owner: 'player',
+        weaponId: 'pulsecaster',
+        attackMode: 'pulse_light',
+        x: obs.x,
+        z: obs.z + obs.radius + 0.8,
+        prevX: obs.x,
+        prevZ: obs.z + obs.radius + 0.8,
+        vx: 0,
+        vz: -20,
+        rotationY: Math.PI,
+        radius: 0.24,
+        damage: 14,
+        staggerDamage: 8,
+        isHeavy: false,
+        isEmpowered: false,
+        maxRange: 18,
+        distanceTraveled: 0,
+        elapsed: 0,
+        maxLifetime: 0.5,
+        active: true,
+        attackStartedAt: world.elapsedTime,
+        attackMarkId: null,
+        hitTargetIds: [],
+      },
+    ];
+    for (let i = 0; i < 6; i++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    }
+    assert.equal(
+      world.projectiles.some((p) => p.active),
+      true,
+      `Projectile must pass cleanly through retracted obstacle ${obstacleId} with clear line of sight`
+    );
+    world.projectiles = [];
+  };
+
+  // --- ROUTE 1: route_prologue_east_bypass (Prologue -> pillar-ne) ---
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  assertObstacleBlocksThenAllowsTraversalAndProjectile(world, 'pillar-ne', () => {
+    const gateDef = getInteractableDefinition('int_prologue_shortcut_gate')!;
+    world.player.x = gateDef.x;
+    world.player.z = gateDef.z + 1.4;
+    world.player.rotationY = Math.PI;
+    assert.equal(
+      attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate').status,
+      'prerequisite_locked'
+    );
+    const auxDef = getInteractableDefinition('int_prologue_aux_power_node')!;
+    world.player.x = auxDef.x;
+    world.player.z = auxDef.z - 1.4;
+    world.player.rotationY = 0;
+    assert.equal(
+      attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node').status,
+      'ready'
+    );
+    world.player.x = gateDef.x;
+    world.player.z = gateDef.z + 1.4;
+    world.player.rotationY = Math.PI;
+    assert.equal(
+      attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate').status,
+      'ready'
+    );
+  });
+  assert.equal(
+    world.exploration.localMap.routes.find((r) => r.id === 'route_prologue_east_bypass')
+      ?.unlocked,
+    true
+  );
+
+  // --- ROUTE 7: route_prologue_west_containment (Prologue 3-stage Chrono Calibration -> final-barrier) ---
+  const westRouteBefore = world.exploration.routes.find(
+    (r) => r.id === 'route_prologue_west_containment'
+  )!;
+  assert.equal(westRouteBefore.unlocked, false);
+  assert.equal(westRouteBefore.status, 'locked');
+  assert.equal(world.puzzle.finalBarrier.open, false);
+
+  // Verify physical barrier blocks traversal while closed
+  const barrierX = world.puzzle.finalBarrier.x;
+  const barrierZ = world.puzzle.finalBarrier.z;
+  world.player.x = barrierX;
+  world.player.z = barrierZ;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.ok(
+    Math.hypot(world.player.x - barrierX, world.player.z - barrierZ) > 0.4,
+    'Closed West Containment Barrier blocks physical traversal'
+  );
+
+  // Complete 3-stage Chrono Calibration (teachPlate -> heavyReceiver -> combinePlate + heavyReceiver)
+  world.puzzle.teachCompleted = true;
+  world.puzzle.testCompleted = true;
+  world.puzzle.combineCompleted = true;
+  world.puzzle.completed = true;
+  world.puzzle.stage = 'completed';
+  world.puzzle.finalBarrier.open = true;
+  const barrierObs = world.obstacles.find((o) => o.id === world.puzzle.finalBarrier.id);
+  if (barrierObs) {
+    barrierObs.disabled = true;
+  }
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  const westRouteAfter = world.exploration.routes.find(
+    (r) => r.id === 'route_prologue_west_containment'
+  )!;
+  assert.equal(westRouteAfter.unlocked, true);
+  assert.equal(westRouteAfter.status, 'open');
+
+  // Verify physical traversal through West Containment Barrier
+  world.player.x = barrierX;
+  world.player.z = barrierZ;
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.ok(
+    Math.hypot(world.player.x - barrierX, world.player.z - barrierZ) < 0.05,
+    'Opened West Containment Barrier allows physical traversal'
+  );
+
+  // --- ROUTE 2: route_ch1_nw_timed_conduit (Chapter I -> pillar-nw) ---
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  assertObstacleBlocksThenAllowsTraversalAndProjectile(world, 'pillar-nw', () => {
+    const capDef = getInteractableDefinition('int_ch1_ballistic_capacitor')!;
+    world.player.x = capDef.x;
+    world.player.z = capDef.z + 1.4;
+    world.player.rotationY = Math.PI;
+    assert.equal(
+      attemptEnvironmentalInteraction(world, 'int_ch1_ballistic_capacitor').status,
+      'ready'
+    );
+  });
+  assert.equal(
+    world.exploration.localMap.routes.find((r) => r.id === 'route_ch1_nw_timed_conduit')
+      ?.unlocked,
+    true
+  );
+
+  // --- ROUTE 3: route_ch2_sw_echo_bridge (Chapter II -> pillar-sw via Echo replay) ---
+  transitionCampaignToBoss(world, true, 'chapter_2_choir');
+  assertObstacleBlocksThenAllowsTraversalAndProjectile(world, 'pillar-sw', () => {
+    const conduitDef = getInteractableDefinition('int_ch2_garden_echo_conduit')!;
+    world.player.x = conduitDef.x;
+    world.player.z = conduitDef.z;
+    const rStart = createEmptyInput(Math.PI);
+    rStart.echoRecordJustPressed = true;
+    stepWorld(world, rStart, 0.02);
+    for (let i = 0; i < 20; i++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    }
+    const rStop = createEmptyInput(Math.PI);
+    rStop.echoRecordJustPressed = true;
+    stepWorld(world, rStop, 0.02);
+    world.player.x = 0;
+    world.player.z = 6.0;
+    const pInp = createEmptyInput(Math.PI);
+    pInp.echoPlayJustPressed = true;
+    stepWorld(world, pInp, 0.02);
+    for (let i = 0; i < 10; i++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    }
+  });
+  assert.equal(
+    world.exploration.localMap.routes.find((r) => r.id === 'route_ch2_sw_echo_bridge')
+      ?.unlocked,
+    true
+  );
+
+  // --- ROUTE 4: route_ch3_sw_archive_passage (Chapter III -> pillar-sw) ---
+  transitionCampaignToBoss(world, true, 'chapter_3_curator');
+  assertObstacleBlocksThenAllowsTraversalAndProjectile(world, 'pillar-sw', () => {
+    const relayDef = getInteractableDefinition('int_ch3_vault_power_relay')!;
+    world.player.x = relayDef.x;
+    world.player.z = relayDef.z - 1.4;
+    world.player.rotationY = 0;
+    assert.equal(
+      attemptEnvironmentalInteraction(world, 'int_ch3_vault_power_relay').status,
+      'ready'
+    );
+  });
+  assert.equal(
+    world.exploration.localMap.routes.find((r) => r.id === 'route_ch3_sw_archive_passage')
+      ?.unlocked,
+    true
+  );
+
+  // --- ROUTE 5: route_ch4_se_quarantine_lane (Chapter IV -> pillar-se) ---
+  transitionCampaignToBoss(world, true, 'chapter_4_matron');
+  assertObstacleBlocksThenAllowsTraversalAndProjectile(world, 'pillar-se', () => {
+    const qDef = getInteractableDefinition('int_ch4_quarantine_override_node')!;
+    world.player.x = qDef.x;
+    world.player.z = qDef.z - 1.4;
+    world.player.rotationY = 0;
+    assert.equal(
+      attemptEnvironmentalInteraction(world, 'int_ch4_quarantine_override_node').status,
+      'ready'
+    );
+  });
+  assert.equal(
+    world.exploration.localMap.routes.find((r) => r.id === 'route_ch4_se_quarantine_lane')
+      ?.unlocked,
+    true
+  );
+
+  // --- ROUTE 6: route_ch5_loom_anchor_bridge (Chapter V -> pillar-nw via Echo conduit) ---
+  world.run.unlockedChapters.push('chapter_5_loom');
+  assert.equal(startCampaignChapterSelect(world, 'chapter_5_loom', true), true);
+  assertObstacleBlocksThenAllowsTraversalAndProjectile(world, 'pillar-nw', () => {
+    const anchorDef = getInteractableDefinition('int_ch5_temporal_anchor_conduit')!;
+    world.player.x = anchorDef.x;
+    world.player.z = anchorDef.z;
+    const rStart = createEmptyInput(Math.PI);
+    rStart.echoRecordJustPressed = true;
+    stepWorld(world, rStart, 0.02);
+    for (let i = 0; i < 20; i++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    }
+    const rStop = createEmptyInput(Math.PI);
+    rStop.echoRecordJustPressed = true;
+    stepWorld(world, rStop, 0.02);
+    world.player.x = 0;
+    world.player.z = 6.0;
+    const pInp = createEmptyInput(Math.PI);
+    pInp.echoPlayJustPressed = true;
+    stepWorld(world, pInp, 0.02);
+    for (let i = 0; i < 10; i++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    }
+  });
+  assert.equal(
+    world.exploration.localMap.routes.find((r) => r.id === 'route_ch5_loom_anchor_bridge')
+      ?.unlocked,
+    true
+  );
+
+  // Verify persistence of unlocked route across save/reload in Chapter V
+  const ch5Save = serializeCampaignProgress(world);
+  const reloadedWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(reloadedWorld, ch5Save), true);
+  assert.equal(restoreSavedCampaignProgress(reloadedWorld), true);
+  assert.equal(
+    reloadedWorld.exploration.routes.find((r) => r.id === 'route_ch5_loom_anchor_bridge')
+      ?.unlocked,
+    true
+  );
+  assert.equal(
+    reloadedWorld.obstacles.find((o) => o.id === 'pillar-nw')?.disabled,
+    true
+  );
+});
+
+test('Phase 19.1-B All 3 Timed Energy Hazards: Per-Cycle Single-Hit Cap, Next-Cycle Re-Hit, Dodge & Relay Phase Shift Protection', () => {
+  const hazardTestCases: Array<{
+    chapter: 'prologue' | 'chapter_1_helix' | 'chapter_3_curator';
+    hazardId:
+      | 'hazard_prologue_east_arc_vent'
+      | 'hazard_ch1_nw_arc_lane'
+      | 'hazard_ch3_sw_purge_lane';
+    expectedDamage: number;
+  }> = [
+    {
+      chapter: 'prologue',
+      hazardId: 'hazard_prologue_east_arc_vent',
+      expectedDamage: 14,
+    },
+    {
+      chapter: 'chapter_1_helix',
+      hazardId: 'hazard_ch1_nw_arc_lane',
+      expectedDamage: 16,
+    },
+    {
+      chapter: 'chapter_3_curator',
+      hazardId: 'hazard_ch3_sw_purge_lane',
+      expectedDamage: 18,
+    },
+  ];
+
+  for (const tc of hazardTestCases) {
+    const world = createInitialWorld('playing');
+    startCampaignRun(world, true);
+    if (tc.chapter !== 'prologue') {
+      transitionCampaignToBoss(world, true, tc.chapter);
+    }
+    for (const e of world.enemies) {
+      e.x = 12;
+      e.z = 12;
+      e.aiState = 'idle';
+      e.cooldownTimer = 999;
+    }
+    if (world.boss) {
+      world.boss.x = 12;
+      world.boss.z = 12;
+      world.boss.aiState = 'dormant';
+      world.boss.stateTimer = 999;
+      world.boss.cooldownTimer = 999;
+    }
+
+    const h = world.exploration.hazards.find((hz) => hz.id === tc.hazardId)!;
+    assert.ok(h, `Hazard ${tc.hazardId} must be present in ${tc.chapter}`);
+    assert.equal(h.cycleIndex, 0);
+    assert.equal(h.lastHitCycleIndex, -1);
+
+    // Place Sera inside hazard radius
+    world.player.x = h.x;
+    world.player.z = h.z;
+    world.player.integrity = 100;
+
+    // Step through entire Cycle 0 (safe -> warning -> active -> back to safe)
+    // Even if activeDuration (1.15s) > hurtInvulnDuration (0.55s) and hitCooldownSeconds (0.85s),
+    // per-cycle hit tracking guarantees AT MOST 1 hit during Cycle 0!
+    let cycle0DamageEvents = 0;
+    const cycle0Steps = Math.ceil((h.cycleDuration + 0.05) / 0.02);
+    for (let s = 0; s < cycle0Steps; s++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+      cycle0DamageEvents += world.events.filter(
+        (ev) => ev.type === 'timed_hazard_damaged_player'
+      ).length;
+      if (world.exploration.hazards[0].cycleIndex >= 1) {
+        break;
+      }
+    }
+    assert.equal(
+      cycle0DamageEvents,
+      1,
+      `${tc.hazardId} must damage player strictly once during Cycle 0 active window`
+    );
+    assert.equal(
+      world.player.integrity,
+      100 - tc.expectedDamage,
+      `${tc.hazardId} Cycle 0 deals exact configured damage (${tc.expectedDamage})`
+    );
+    assert.equal(world.exploration.hazards[0].cycleIndex, 1);
+
+    // Step through Cycle 1 -> must be able to damage the player a second time on the new cycle!
+    let cycle1DamageEvents = 0;
+    for (let s = 0; s < cycle0Steps; s++) {
+      stepWorld(world, createEmptyInput(Math.PI), 0.02);
+      cycle1DamageEvents += world.events.filter(
+        (ev) => ev.type === 'timed_hazard_damaged_player'
+      ).length;
+      if (world.exploration.hazards[0].cycleIndex >= 2) {
+        break;
+      }
+    }
+    assert.equal(
+      cycle1DamageEvents,
+      1,
+      `${tc.hazardId} must damage player once again during Cycle 1 active window`
+    );
+    assert.equal(
+      world.player.integrity,
+      100 - tc.expectedDamage * 2,
+      `${tc.hazardId} Cycle 1 deals exact configured damage a second time`
+    );
+  }
+
+  // Verify Relay Phase Shift protection against active hazard
+  const relayWorld = createInitialWorld('playing');
+  startCampaignRun(relayWorld, true);
+  for (const e of relayWorld.enemies) {
+    e.x = -12;
+    e.z = -12;
+    e.aiState = 'idle';
+    e.cooldownTimer = 999;
+  }
+  const hz = relayWorld.exploration.hazards[0];
+  // Record an Echo at the hazard location
+  relayWorld.player.x = hz.x;
+  relayWorld.player.z = hz.z;
+  const rStart = createEmptyInput(Math.PI);
+  rStart.echoRecordJustPressed = true;
+  stepWorld(relayWorld, rStart, 0.02);
+  for (let i = 0; i < 20; i++) {
+    stepWorld(relayWorld, createEmptyInput(Math.PI), 0.02);
+  }
+  const rStop = createEmptyInput(Math.PI);
+  rStop.echoRecordJustPressed = true;
+  stepWorld(relayWorld, rStop, 0.02);
+
+  // Move Sera just outside the hazard radius (3.5m away, well within RELAY_MAX_RANGE = 11.5m)
+  relayWorld.player.x = hz.x - 3.5;
+  relayWorld.player.z = hz.z;
+  while (!relayWorld.exploration.hazards[0].active) {
+    stepWorld(relayWorld, createEmptyInput(Math.PI), 0.02);
+  }
+  relayWorld.player.integrity = 100;
+  relayWorld.player.flux = 100;
+
+  // Replay Echo at hazard coordinate and immediately Relay [F] into the active hazard
+  const playInp = createEmptyInput(Math.PI);
+  playInp.echoPlayJustPressed = true;
+  stepWorld(relayWorld, playInp, 0.02);
+  const relayInp = createEmptyInput(Math.PI);
+  relayInp.echoRelayJustPressed = true;
+  stepWorld(relayWorld, relayInp, 0.02);
+
+  assert.equal(
+    relayWorld.relay.lastOutcome,
+    'teleported',
+    'Relay Phase Shift teleports Sera onto the Echo anchor inside the active hazard'
+  );
+  assert.ok(relayWorld.relay.successFlashTimer > 0);
+  assert.equal(
+    relayWorld.player.integrity,
+    100,
+    'Relay Phase Shift invulnerability protects Sera from active Timed Energy Hazard damage'
+  );
+});
+
+test('Phase 19.1-C All 4 Secret Areas End-to-End: Prerequisite Gating, Exact Rewards, Codex Decryption, Idempotency & 18-Fragment Economy Invariant', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  const secretSpecs: Array<{
+    chapter:
+      | 'prologue'
+      | 'chapter_1_helix'
+      | 'chapter_2_choir'
+      | 'chapter_3_curator';
+    secretId:
+      | 'secret_prologue_calibration_alcove'
+      | 'secret_ch1_marshal_armory_cache'
+      | 'secret_ch2_hydroponic_echo_sanctum'
+      | 'secret_ch3_lysa_unedited_vault';
+    codexId: 'CODEX-01' | 'CODEX-03' | 'CODEX-04' | 'CODEX-05';
+    expectedIntegrityGain: number;
+    expectedFluxGain: number;
+    unlockPrerequisite: () => void;
+  }> = [
+    {
+      chapter: 'prologue',
+      secretId: 'secret_prologue_calibration_alcove',
+      codexId: 'CODEX-01',
+      expectedIntegrityGain: 20,
+      expectedFluxGain: 25,
+      unlockPrerequisite: () => {
+        const aux = getInteractableDefinition('int_prologue_aux_power_node')!;
+        world.player.x = aux.x;
+        world.player.z = aux.z - 1.4;
+        world.player.rotationY = 0;
+        attemptEnvironmentalInteraction(world, 'int_prologue_aux_power_node');
+        const gate = getInteractableDefinition('int_prologue_shortcut_gate')!;
+        world.player.x = gate.x;
+        world.player.z = gate.z + 1.4;
+        world.player.rotationY = Math.PI;
+        attemptEnvironmentalInteraction(world, 'int_prologue_shortcut_gate');
+      },
+    },
+    {
+      chapter: 'chapter_1_helix',
+      secretId: 'secret_ch1_marshal_armory_cache',
+      codexId: 'CODEX-03',
+      expectedIntegrityGain: 25,
+      expectedFluxGain: 30,
+      unlockPrerequisite: () => {
+        const cap = getInteractableDefinition('int_ch1_ballistic_capacitor')!;
+        world.player.x = cap.x;
+        world.player.z = cap.z + 1.4;
+        world.player.rotationY = Math.PI;
+        attemptEnvironmentalInteraction(world, 'int_ch1_ballistic_capacitor');
+      },
+    },
+    {
+      chapter: 'chapter_2_choir',
+      secretId: 'secret_ch2_hydroponic_echo_sanctum',
+      codexId: 'CODEX-04',
+      expectedIntegrityGain: 25,
+      expectedFluxGain: 35,
+      unlockPrerequisite: () => {
+        const conduit = getInteractableDefinition('int_ch2_garden_echo_conduit')!;
+        world.player.x = conduit.x;
+        world.player.z = conduit.z;
+        const rStart = createEmptyInput(Math.PI);
+        rStart.echoRecordJustPressed = true;
+        stepWorld(world, rStart, 0.02);
+        for (let i = 0; i < 18; i++) {
+          stepWorld(world, createEmptyInput(Math.PI), 0.02);
+        }
+        const rStop = createEmptyInput(Math.PI);
+        rStop.echoRecordJustPressed = true;
+        stepWorld(world, rStop, 0.02);
+        world.player.x = 0;
+        world.player.z = 6.0;
+        const pInp = createEmptyInput(Math.PI);
+        pInp.echoPlayJustPressed = true;
+        stepWorld(world, pInp, 0.02);
+        for (let i = 0; i < 8; i++) {
+          stepWorld(world, createEmptyInput(Math.PI), 0.02);
+        }
+      },
+    },
+    {
+      chapter: 'chapter_3_curator',
+      secretId: 'secret_ch3_lysa_unedited_vault',
+      codexId: 'CODEX-05',
+      expectedIntegrityGain: 30,
+      expectedFluxGain: 35,
+      unlockPrerequisite: () => {
+        const relay = getInteractableDefinition('int_ch3_vault_power_relay')!;
+        world.player.x = relay.x;
+        world.player.z = relay.z - 1.4;
+        world.player.rotationY = 0;
+        attemptEnvironmentalInteraction(world, 'int_ch3_vault_power_relay');
+      },
+    },
+  ];
+
+  for (const spec of secretSpecs) {
+    if (spec.chapter !== 'prologue') {
+      transitionCampaignToBoss(world, true, spec.chapter);
+    }
+    for (const e of world.enemies) {
+      e.x = -12;
+      e.z = -12;
+      e.aiState = 'idle';
+      e.cooldownTimer = 999;
+    }
+    if (world.boss) {
+      world.boss.x = -12;
+      world.boss.z = -12;
+      world.boss.aiState = 'dormant';
+      world.boss.cooldownTimer = 999;
+    }
+
+    const def = getSecretAreaDefinition(spec.secretId)!;
+    const fragmentsBefore = world.progression.memoryFragments;
+
+    // 1. Cannot be discovered while prerequisite route is locked (physical entry OR direct call)
+    world.player.x = def.x;
+    world.player.z = def.z;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    assert.equal(
+      world.exploration.discoveredSecretIds.includes(spec.secretId),
+      false,
+      `${spec.secretId} must not auto-discover while prerequisite route is locked`
+    );
+    assert.equal(
+      discoverSecretArea(world, spec.secretId),
+      false,
+      `discoverSecretArea(${spec.secretId}) must return false while prerequisite route is locked`
+    );
+
+    // 2. Unlock prerequisite route
+    spec.unlockPrerequisite();
+
+    // 3. Set Integrity=50, Flux=20 and physically enter secret area
+    world.player.integrity = 50;
+    world.player.flux = 20;
+    world.player.x = def.x;
+    world.player.z = def.z;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+    assert.equal(
+      world.exploration.discoveredSecretIds.includes(spec.secretId),
+      true,
+      `${spec.secretId} discovered upon entering after prerequisite unlocked`
+    );
+    assert.equal(
+      world.player.integrity,
+      50 + spec.expectedIntegrityGain,
+      `${spec.secretId} restores +${spec.expectedIntegrityGain} Integrity`
+    );
+    assert.equal(
+      Math.floor(world.player.flux),
+      20 + spec.expectedFluxGain,
+      `${spec.secretId} restores +${spec.expectedFluxGain} Flux`
+    );
+    assert.equal(
+      world.exploration.discoveredCodexIds.includes(spec.codexId),
+      true,
+      `${spec.secretId} decrypts ${spec.codexId}`
+    );
+    assert.equal(
+      world.progression.memoryFragments,
+      fragmentsBefore,
+      `${spec.secretId} grants 0 Memory Fragments (strictly preserving 18-Fragment economy)`
+    );
+
+    // 4. Re-entering or calling discoverSecretArea again grants no duplicate rewards
+    world.player.integrity = 50;
+    world.player.flux = 20;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    assert.equal(discoverSecretArea(world, spec.secretId), false);
+    assert.equal(world.player.integrity, 50);
+    assert.equal(Math.floor(world.player.flux), 20);
+  }
+
+  assert.equal(
+    world.exploration.localMap.totalDiscoveredSecretsCampaign,
+    4,
+    'All 4 campaign secret areas discovered and tracked in localMap'
+  );
+});
+
+test('Phase 19.1-D Save v2 Backward Compatibility: Scenario A (Legacy v1), Scenario B (Phase 18 v2 without region/secret arrays), Scenario C (Phase 19 v2), and Scenario D (Malformed/Duplicate Fields)', () => {
+  // --- Scenario A: Legacy v1 save ---
+  const legacyV1Save = JSON.stringify({
+    version: 1,
+    unlockedChapters: ['prologue', 'chapter_1_helix', 'chapter_2_choir'],
+    completedChapters: ['prologue', 'chapter_1_helix'],
+    recoveredLogs: ['LOG-01'],
+  });
+  const worldA = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(worldA, legacyV1Save), true);
+  assert.deepEqual(worldA.run.unlockedChapters, [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+  ]);
+  assert.equal(
+    startCampaignChapterSelect(worldA, 'chapter_2_choir', true),
+    true
+  );
+  assert.equal(worldA.run.chapter, 'chapter_2_choir');
+  assert.deepEqual(worldA.exploration.discoveredSecretIds, []);
+  assert.ok(
+    worldA.exploration.discoveredRegionIds.includes('region_ch2_garden_rotunda'),
+    'Core Chapter II region auto-seeded on Legacy v1 migration'
+  );
+
+  // --- Scenario B: Phase 18 Save v2 (missing discoveredRegionIds and discoveredSecretIds) ---
+  const phase18V2Save = JSON.stringify({
+    version: 2,
+    unlockedChapters: [
+      'prologue',
+      'chapter_1_helix',
+      'chapter_2_choir',
+      'chapter_3_curator',
+    ],
+    completedChapters: ['prologue', 'chapter_1_helix', 'chapter_2_choir'],
+    recoveredLogs: ['LOG-01', 'LOG-02'],
+    completedEndings: [],
+    activeCampaign: {
+      chapter: 'chapter_3_curator',
+      stage: 'boss_fight',
+      pendingNextChapter: null,
+      bossCheckpoint: null,
+      selectedEnding: null,
+      equippedWeaponId: 'chrono_edge',
+    },
+    progression: {
+      memoryFragments: 6,
+      unlockedUpgradeIds: ['ce_overclocked_edge'],
+      equippedByWeapon: {
+        chrono_edge: 'ce_overclocked_edge',
+        pulsecaster: null,
+      },
+      claimedRewardIds: ['prologue_clear', 'helix_04_defeat', 'the_choir_defeat'],
+    },
+    exploration: {
+      discoveredCodexIds: ['CODEX-01', 'CODEX-03', 'CODEX-04'],
+      completedObjectiveIds: ['obj_prologue_clear_bay'],
+      activatedNodeIds: ['int_prologue_aux_power_node', 'int_ch1_ballistic_capacitor'],
+      unlockedRouteIds: ['pillar-ne', 'pillar-nw'],
+      // Intentionally omits discoveredRegionIds and discoveredSecretIds
+    },
+  });
+  const worldB = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(worldB, phase18V2Save), true);
+  assert.equal(restoreSavedCampaignProgress(worldB), true);
+  assert.equal(worldB.run.chapter, 'chapter_3_curator');
+  assert.equal(worldB.progression.memoryFragments, 6);
+  assert.deepEqual(worldB.exploration.unlockedRouteIds, ['pillar-ne', 'pillar-nw']);
+  assert.deepEqual(worldB.exploration.discoveredSecretIds, []);
+  assert.ok(
+    worldB.exploration.discoveredRegionIds.includes('region_ch3_archive_nave'),
+    'Phase 18 v2 save cleanly initializes core chapter discoveredRegionIds without crashing'
+  );
+
+  // --- Scenario C: Current Phase 19 Save v2 ---
+  const phase19V2Save = JSON.stringify({
+    version: 2,
+    unlockedChapters: ['prologue', 'chapter_1_helix'],
+    completedChapters: ['prologue'],
+    recoveredLogs: ['LOG-01'],
+    completedEndings: [],
+    activeCampaign: {
+      chapter: 'chapter_1_helix',
+      stage: 'boss_fight',
+      pendingNextChapter: null,
+      bossCheckpoint: null,
+      selectedEnding: null,
+      equippedWeaponId: 'pulsecaster',
+    },
+    progression: {
+      memoryFragments: 2,
+      unlockedUpgradeIds: [],
+      equippedByWeapon: {
+        chrono_edge: null,
+        pulsecaster: null,
+      },
+      claimedRewardIds: ['prologue_clear'],
+    },
+    exploration: {
+      discoveredCodexIds: ['CODEX-01', 'CODEX-03'],
+      completedObjectiveIds: ['obj_prologue_clear_bay'],
+      activatedNodeIds: ['int_ch1_ballistic_capacitor'],
+      unlockedRouteIds: ['pillar-nw'],
+      discoveredRegionIds: ['region_ch1_nexus_core', 'region_ch1_secret_armory'],
+      discoveredSecretIds: ['secret_ch1_marshal_armory_cache'],
+    },
+  });
+  const worldC = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(worldC, phase19V2Save), true);
+  assert.equal(restoreSavedCampaignProgress(worldC), true);
+  assert.equal(worldC.run.chapter, 'chapter_1_helix');
+  assert.equal(
+    worldC.obstacles.find((o) => o.id === 'pillar-nw')?.disabled,
+    true,
+    'Saved unlockedRouteIds disables pillar-nw upon restore'
+  );
+  assert.deepEqual(worldC.exploration.discoveredSecretIds, [
+    'secret_ch1_marshal_armory_cache',
+  ]);
+  assert.equal(
+    worldC.exploration.localMap.regions.find((r) => r.id === 'region_ch1_secret_armory')
+      ?.hiddenByFog,
+    false
+  );
+
+  // --- Scenario D: Invalid/malformed/duplicate save fields ---
+  const malformedV2Save = JSON.stringify({
+    version: 2,
+    unlockedChapters: ['prologue', 'invalid_chapter'],
+    completedChapters: [],
+    activeCampaign: {
+      chapter: 'prologue',
+      stage: 'calibration',
+      pendingNextChapter: null,
+      bossCheckpoint: null,
+      selectedEnding: null,
+      equippedWeaponId: 'chrono_edge',
+    },
+    exploration: {
+      discoveredCodexIds: ['CODEX-01', 'CODEX-01', 'INVALID-CODEX', 42],
+      completedObjectiveIds: ['obj_prologue_clear_bay', 'obj_prologue_clear_bay', 'bad_obj'],
+      activatedNodeIds: ['int_prologue_aux_power_node', 'int_prologue_aux_power_node', 'bogus_node'],
+      unlockedRouteIds: ['pillar-ne', 'pillar-ne', 'invalid-pillar', null],
+      discoveredRegionIds: [
+        'region_prologue_staging_deck',
+        'region_prologue_staging_deck',
+        'fake_region',
+      ],
+      discoveredSecretIds: [
+        'secret_prologue_calibration_alcove',
+        'secret_prologue_calibration_alcove',
+        'fake_secret',
+        {},
+      ],
+    },
+  });
+  const worldD = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(worldD, malformedV2Save), true);
+  assert.equal(restoreSavedCampaignProgress(worldD), true);
+  assert.deepEqual(worldD.exploration.discoveredCodexIds, ['CODEX-01']);
+  assert.deepEqual(worldD.exploration.activatedNodeIds, ['int_prologue_aux_power_node']);
+  assert.deepEqual(worldD.exploration.unlockedRouteIds, ['pillar-ne']);
+  assert.deepEqual(worldD.exploration.discoveredSecretIds, [
+    'secret_prologue_calibration_alcove',
+  ]);
+});
+
+
+
 

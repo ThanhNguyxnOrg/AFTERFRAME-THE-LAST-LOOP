@@ -17,6 +17,7 @@ import {
   createBossWorld,
   createInitialWorld,
   discoverCodexEntry,
+  discoverSecretArea,
   dismissActiveTransmission,
   equipWeaponUpgrade,
   evaluateInteractionTarget,
@@ -58,6 +59,7 @@ import type {
   InteractableId,
   InteractionTargetEvaluation,
   MissionObjectiveId,
+  SecretAreaId,
   UpgradeEquipOutcome,
   UpgradePurchaseOutcome,
   WeaponId,
@@ -152,6 +154,9 @@ export default function App() {
       ? inputRef.current.getCameraSettings()
       : { sensitivity: 1.0, invertY: false, reducedMotion: false }
   );
+  const [initialExplorationTab, setInitialExplorationTab] = useState<
+    'missions' | 'map' | 'codex'
+  >('missions');
 
   const syncDomAndReactHud = useCallback(() => {
     const w = worldRef.current;
@@ -436,6 +441,7 @@ export default function App() {
     if (!w) return;
 
     if (w.appState === 'playing') {
+      setInitialExplorationTab('missions');
       w.appState = 'paused';
       document.body.dataset.state = 'paused';
       input?.clearAllInputs();
@@ -444,6 +450,31 @@ export default function App() {
     } else if (w.appState === 'paused') {
       w.appState = 'playing';
       document.body.dataset.state = 'playing';
+      input?.clearAllInputs();
+      input?.requestPointerLock();
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleOpenMap = useCallback(() => {
+    const w = worldRef.current;
+    const input = inputRef.current;
+    if (!w) return;
+
+    if (w.appState === 'playing') {
+      setInitialExplorationTab('map');
+      w.appState = 'paused';
+      document.body.dataset.state = 'paused';
+      input?.clearAllInputs();
+      input?.exitPointerLock();
+      syncDomAndReactHud();
+    } else if (w.appState === 'paused') {
+      w.appState = 'playing';
+      document.body.dataset.state = 'playing';
+      setInitialExplorationTab('missions');
       input?.clearAllInputs();
       input?.requestPointerLock();
       if (document.activeElement instanceof HTMLElement) {
@@ -623,6 +654,7 @@ export default function App() {
 
     input.attach(mountEl, {
       onPauseToggle: handleTogglePause,
+      onMapToggle: handleOpenMap,
       onPointerLockLost: handlePauseFromPointerLockLoss,
       onRestart: handleStartOrRestart,
       onMuteToggle: handleToggleMute,
@@ -693,6 +725,9 @@ export default function App() {
     let prevActivatedNodesCount = world.exploration.activatedNodeIds.length;
     let prevCompletedObjectivesCount = world.exploration.completedObjectiveIds.length;
     let prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
+    let prevDiscoveredSecretsCount = world.exploration.discoveredSecretIds.length;
+    let prevUnlockedRoutesCount = world.exploration.unlockedRouteIds.length;
+    let prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
     let prevPromptId = world.exploration.prompt.interactableId;
     let prevPromptStatus = world.exploration.prompt.status;
 
@@ -814,6 +849,9 @@ export default function App() {
         world.exploration.activatedNodeIds.length !== prevActivatedNodesCount ||
         world.exploration.completedObjectiveIds.length !== prevCompletedObjectivesCount ||
         world.exploration.discoveredCodexIds.length !== prevDiscoveredCodexCount ||
+        world.exploration.discoveredSecretIds.length !== prevDiscoveredSecretsCount ||
+        world.exploration.unlockedRouteIds.length !== prevUnlockedRoutesCount ||
+        (world.exploration.lastDiscoveryBanner?.secretId ?? null) !== prevDiscoveryBannerId ||
         world.exploration.prompt.interactableId !== prevPromptId ||
         world.exploration.prompt.status !== prevPromptStatus ||
         Math.ceil(world.player.integrity) !== Math.ceil(prevIntegrity);
@@ -861,6 +899,9 @@ export default function App() {
         prevActivatedNodesCount = world.exploration.activatedNodeIds.length;
         prevCompletedObjectivesCount = world.exploration.completedObjectiveIds.length;
         prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
+        prevDiscoveredSecretsCount = world.exploration.discoveredSecretIds.length;
+        prevUnlockedRoutesCount = world.exploration.unlockedRouteIds.length;
+        prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
         prevPromptId = world.exploration.prompt.interactableId;
         prevPromptStatus = world.exploration.prompt.status;
         document.body.dataset.state = world.appState;
@@ -957,6 +998,7 @@ export default function App() {
         evaluateInteraction: (targetId: InteractableId) => InteractionTargetEvaluation;
         completeObjective: (objectiveId: MissionObjectiveId) => boolean;
         discoverCodex: (codexId: CodexEntryId) => boolean;
+        discoverSecret: (secretId: SecretAreaId) => boolean;
         getExplorationState: () => WorldExplorationState;
       };
     };
@@ -1265,6 +1307,17 @@ export default function App() {
         setHud(extractHudSnapshot(world));
         return res;
       },
+      discoverSecret: (secretId: SecretAreaId) => {
+        const res = discoverSecretArea(world, secretId);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return res;
+      },
       getExplorationState: () => world.exploration,
     };
     }
@@ -1284,6 +1337,7 @@ export default function App() {
     };
   }, [
     handleAdvanceNextChapter,
+    handleOpenMap,
     handlePauseFromPointerLockLoss,
     handleSelectLoomEnding,
     handleSkipSequenceShortcut,
@@ -1365,6 +1419,7 @@ export default function App() {
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onTogglePause={handleTogglePause}
+          onOpenMap={handleOpenMap}
           onRestart={handleStartOrRestart}
           onStartBoss={() => handleStartBoss('helix-04')}
           onSkipIntro={handleSkipIntro}
@@ -1433,6 +1488,7 @@ export default function App() {
         onToggleMute={handleToggleMute}
         tutorialEnabled={hud.tutorial.enabled}
         onToggleTutorial={handleToggleTutorial}
+        initialExplorationTab={initialExplorationTab}
         onResume={handleTogglePause}
         onRestart={handleStartOrRestart}
         onAdvanceNextChapter={handleAdvanceNextChapter}

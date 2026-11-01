@@ -37,6 +37,7 @@ interface StatusModalProps {
   totalEnemies: number;
   progression?: HudWeaponProgressionSnapshot;
   exploration?: WorldExplorationState;
+  initialExplorationTab?: 'missions' | 'map' | 'codex';
   equippedWeaponId?: WeaponId;
   onPurchaseUpgrade?: (upgradeId: WeaponUpgradeId) => void;
   onEquipUpgrade?: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => void;
@@ -86,6 +87,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   totalEnemies,
   progression,
   exploration,
+  initialExplorationTab = 'missions',
   equippedWeaponId = 'chrono_edge',
   onPurchaseUpgrade,
   onEquipUpgrade,
@@ -104,8 +106,24 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   onStartBoss,
   onReturnToTitle,
 }) => {
-  const [activeExplorationTab, setActiveExplorationTab] = React.useState<'missions' | 'codex'>('missions');
+  const [activeExplorationTab, setActiveExplorationTab] = React.useState<
+    'missions' | 'map' | 'codex'
+  >(initialExplorationTab);
   const [selectedCodexId, setSelectedCodexId] = React.useState<CodexEntryId>('CODEX-01');
+
+  React.useEffect(() => {
+    if (appState === 'paused' || appState === 'gameover') {
+      setActiveExplorationTab(initialExplorationTab);
+      if (initialExplorationTab === 'map') {
+        requestAnimationFrame(() => {
+          const mapEl = document.querySelector('[data-testid="local-sector-map"]');
+          if (mapEl && typeof mapEl.scrollIntoView === 'function') {
+            mapEl.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
+          }
+        });
+      }
+    }
+  }, [appState, initialExplorationTab]);
 
   if (appState !== 'paused' && appState !== 'gameover') {
     return null;
@@ -498,13 +516,13 @@ export const StatusModal: React.FC<StatusModalProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/90">
               <div>
                 <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-cyan-300 font-bold">
-                  NADIR-9 FIELD JOURNAL & ARCHIVE CODEX
+                  NADIR-9 FIELD JOURNAL, SECTOR MAP & ARCHIVE CODEX
                 </div>
                 <div className="text-[10px] font-mono-tabular text-slate-400">
-                  {exploration.mission.code} · NODES ACTIVATED: {exploration.activatedNodeIds.length} · ROUTES UNLOCKED: {exploration.unlockedRouteIds.length}
+                  {exploration.mission.code} · NODES: {exploration.activatedNodeIds.length} · ROUTES: {exploration.unlockedRouteIds.length} · SECRETS: {exploration.discoveredSecretIds?.length ?? 0}/{exploration.localMap?.totalSecretsCampaign ?? 4}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   data-testid="modal-tab-missions"
@@ -517,6 +535,19 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   }`}
                 >
                   MISSIONS ({exploration.mission.objectives.filter((o) => o.status === 'completed').length}/{exploration.mission.objectives.length})
+                </button>
+                <button
+                  type="button"
+                  data-testid="modal-tab-map"
+                  aria-pressed={activeExplorationTab === 'map'}
+                  onClick={() => setActiveExplorationTab('map')}
+                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase border transition-colors cursor-pointer ${
+                    activeExplorationTab === 'map'
+                      ? 'bg-emerald-400/20 border-emerald-400 text-emerald-200'
+                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  SECTOR MAP [N] ({exploration.localMap?.discoveredSecretsInChapter ?? 0}/{exploration.localMap?.totalSecretsInChapter ?? 0})
                 </button>
                 <button
                   type="button"
@@ -599,6 +630,324 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                       </p>
                     </div>
                   ))}
+                </div>
+              </div>
+            ) : activeExplorationTab === 'map' && exploration.localMap ? (
+              <div
+                data-testid="local-sector-map"
+                data-current-region={exploration.localMap.currentRegionId}
+                data-discovered-secrets-chapter={exploration.localMap.discoveredSecretsInChapter}
+                data-total-secrets-chapter={exploration.localMap.totalSecretsInChapter}
+                className="grid grid-cols-1 sm:grid-cols-12 gap-3"
+              >
+                {/* 2D Top-Down Tactical Sector Schematic SVG */}
+                <div className="sm:col-span-5 bg-[#05080e] border border-slate-800 p-2.5 flex flex-col items-center justify-between">
+                  <div className="w-full flex items-center justify-between text-[9px] font-mono-tabular uppercase text-slate-400 mb-1">
+                    <span>{exploration.localMap.sectorCode} TOP-DOWN SCHEMATIC</span>
+                    <span data-testid="map-current-region" className="text-cyan-300 font-bold truncate">
+                      {exploration.localMap.currentRegionLabel}
+                    </span>
+                  </div>
+
+                  <svg
+                    viewBox="-24 -24 48 48"
+                    className="w-full max-w-[220px] aspect-square bg-[#04070c] border border-slate-800/80"
+                    role="img"
+                    aria-label="Sector Tactical Schematic Map"
+                  >
+                    {/* Arena Outer Bulkhead Perimeter */}
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r={exploration.localMap.arenaRadius}
+                      fill="#070c14"
+                      stroke="#1e293b"
+                      strokeWidth="0.6"
+                    />
+                    {/* Tactical Grid Crosshairs */}
+                    <line x1="-22" y1="0" x2="22" y2="0" stroke="#0f172a" strokeWidth="0.3" />
+                    <line x1="0" y1="-22" x2="0" y2="22" stroke="#0f172a" strokeWidth="0.3" />
+                    <circle cx="0" cy="-2" r="2.1" fill="#0f172a" stroke="#334155" strokeWidth="0.4" />
+
+                    {/* Sector Regions (with Fog-of-Discovery for undiscovered secret alcoves) */}
+                    {exploration.localMap.regions.map((reg) => {
+                      const isCurrent = reg.id === exploration.localMap.currentRegionId;
+                      return (
+                        <g
+                          key={reg.id}
+                          data-testid={`map-region-${reg.id}`}
+                          data-hidden-by-fog={reg.hiddenByFog ? 'true' : 'false'}
+                          data-discovered={reg.discovered ? 'true' : 'false'}
+                        >
+                          <circle
+                            cx={reg.x}
+                            cy={reg.z}
+                            r={reg.radius}
+                            fill={
+                              reg.hiddenByFog
+                                ? 'rgba(15, 23, 42, 0.78)'
+                                : reg.kind === 'secret_alcove'
+                                  ? 'rgba(16, 185, 129, 0.16)'
+                                  : isCurrent
+                                    ? 'rgba(34, 211, 238, 0.12)'
+                                    : 'rgba(14, 116, 144, 0.06)'
+                            }
+                            stroke={
+                              reg.hiddenByFog
+                                ? '#475569'
+                                : reg.kind === 'secret_alcove'
+                                  ? '#34d399'
+                                  : isCurrent
+                                    ? '#22d3ee'
+                                    : '#1e3a5f'
+                            }
+                            strokeWidth={isCurrent ? '0.55' : '0.38'}
+                            strokeDasharray={reg.hiddenByFog ? '1.1 0.9' : undefined}
+                          />
+                        </g>
+                      );
+                    })}
+
+                    {/* Traversal Routes & Gateways */}
+                    {exploration.localMap.routes.map((rt) => (
+                      <g
+                        key={rt.id}
+                        data-testid={`map-route-${rt.id}`}
+                        data-route-status={rt.status}
+                      >
+                        <line
+                          x1={rt.fromX}
+                          y1={rt.fromZ}
+                          x2={rt.toX}
+                          y2={rt.toZ}
+                          stroke={
+                            rt.status === 'open'
+                              ? '#34d399'
+                              : rt.status === 'powered'
+                                ? '#f59e0b'
+                                : '#f43f5e'
+                          }
+                          strokeWidth="0.7"
+                          strokeDasharray={rt.status === 'open' ? undefined : '1.0 0.8'}
+                        />
+                      </g>
+                    ))}
+
+                    {/* Timed Energy Passages */}
+                    {exploration.localMap.hazards.map((hz) => (
+                      <circle
+                        key={hz.id}
+                        data-testid={`map-hazard-${hz.id}`}
+                        data-hazard-phase={hz.phase}
+                        cx={hz.x}
+                        cy={hz.z}
+                        r={hz.radius}
+                        fill={
+                          hz.phase === 'active'
+                            ? 'rgba(239, 68, 68, 0.35)'
+                            : hz.phase === 'warning'
+                              ? 'rgba(245, 158, 11, 0.28)'
+                              : 'rgba(34, 211, 238, 0.14)'
+                        }
+                        stroke={
+                          hz.phase === 'active'
+                            ? '#ef4444'
+                            : hz.phase === 'warning'
+                              ? '#f59e0b'
+                              : '#22d3ee'
+                        }
+                        strokeWidth="0.45"
+                      />
+                    ))}
+
+                    {/* Environmental Interactable Nodes */}
+                    {exploration.interactables.map((node) => (
+                      <rect
+                        key={node.id}
+                        x={node.x - 0.65}
+                        y={node.z - 0.65}
+                        width="1.3"
+                        height="1.3"
+                        fill={
+                          node.status === 'activated'
+                            ? '#34d399'
+                            : node.status === 'locked'
+                              ? '#f59e0b'
+                              : '#38bdf8'
+                        }
+                        stroke="#020617"
+                        strokeWidth="0.25"
+                      />
+                    ))}
+
+                    {/* Main Objective Marker */}
+                    {exploration.localMap.objectiveTarget && (
+                      <polygon
+                        data-testid="map-objective-marker"
+                        points={`${exploration.localMap.objectiveTarget.x},${exploration.localMap.objectiveTarget.z - 1.2} ${exploration.localMap.objectiveTarget.x + 1.2},${exploration.localMap.objectiveTarget.z} ${exploration.localMap.objectiveTarget.x},${exploration.localMap.objectiveTarget.z + 1.2} ${exploration.localMap.objectiveTarget.x - 1.2},${exploration.localMap.objectiveTarget.z}`}
+                        fill="#f59e0b"
+                        stroke="#ffffff"
+                        strokeWidth="0.3"
+                      />
+                    )}
+
+                    {/* Sera Venn Live Position & Facing Marker */}
+                    <g
+                      data-testid="map-player-marker"
+                      transform={`translate(${exploration.localMap.playerX}, ${exploration.localMap.playerZ})`}
+                    >
+                      <circle cx="0" cy="0" r="1.05" fill="#22d3ee" stroke="#ffffff" strokeWidth="0.35" />
+                      <line
+                        x1="0"
+                        y1="0"
+                        x2={Math.sin(exploration.localMap.playerRotationY) * 2.1}
+                        y2={Math.cos(exploration.localMap.playerRotationY) * 2.1}
+                        stroke="#ffffff"
+                        strokeWidth="0.45"
+                      />
+                    </g>
+                  </svg>
+
+                  {/* Compact Legend */}
+                  <div className="w-full flex flex-wrap items-center justify-between gap-1 text-[8px] font-mono-tabular uppercase text-slate-400 mt-1.5 pt-1 border-t border-slate-800/80">
+                    <span className="text-cyan-300">● SERA</span>
+                    <span className="text-amber-300">◆ OBJECTIVE</span>
+                    <span className="text-emerald-300">━ OPEN ROUTE</span>
+                    <span className="text-slate-400">◌ FOG OF DISCOVERY</span>
+                  </div>
+                </div>
+
+                {/* Right Column: Traversal Routes, Timed Hazards & Secret Discovery Telemetry */}
+                <div className="sm:col-span-7 space-y-2">
+                  {/* Traversal Routes */}
+                  <div className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-1.5">
+                    <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 font-bold">
+                      SECTOR TRAVERSAL ROUTES & GATES
+                    </div>
+                    {exploration.localMap.routes.map((rt) => (
+                      <div
+                        key={rt.id}
+                        data-testid={`map-route-card-${rt.id}`}
+                        data-route-status={rt.status}
+                        className="p-1.5 bg-[#070b12] border border-slate-800 flex flex-col gap-0.5"
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="text-[10px] font-mono-tabular font-bold text-slate-100">
+                            {rt.label}
+                          </span>
+                          <span
+                            className={`text-[8px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border ${
+                              rt.status === 'open'
+                                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                                : rt.status === 'powered'
+                                  ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                                  : 'bg-rose-500/15 border-rose-500/60 text-rose-300'
+                            }`}
+                          >
+                            {rt.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-[9px] font-mono-tabular text-slate-400">
+                          {rt.statusMessage}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Timed Energy Passages */}
+                  {exploration.localMap.hazards.length > 0 && (
+                    <div className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-1.5">
+                      <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-amber-300 font-bold">
+                        TIMED ENERGY PASSAGES
+                      </div>
+                      {exploration.localMap.hazards.map((hz) => (
+                        <div
+                          key={hz.id}
+                          data-testid={`map-hazard-card-${hz.id}`}
+                          className="p-1.5 bg-[#070b12] border border-slate-800 flex items-center justify-between gap-2 text-[9px] font-mono-tabular"
+                        >
+                          <div>
+                            <div className="text-slate-200 font-bold">{hz.label}</div>
+                            <div className="text-slate-400">
+                              CYCLE: {hz.safeDuration.toFixed(1)}s SAFE / {hz.warningDuration.toFixed(1)}s WARN / {hz.activeDuration.toFixed(1)}s ARC ({hz.damage} DMG)
+                            </div>
+                          </div>
+                          <span
+                            className={`px-1.5 py-0.5 border font-bold uppercase shrink-0 ${
+                              hz.phase === 'active'
+                                ? 'bg-red-500/20 border-red-400 text-red-300'
+                                : hz.phase === 'warning'
+                                  ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                                  : 'bg-cyan-500/15 border-cyan-400 text-cyan-300'
+                            }`}
+                          >
+                            {hz.phase.toUpperCase()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Secret Exploration Areas (Fog-of-Discovery Protected) */}
+                  <div className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular uppercase tracking-wider text-emerald-300 font-bold">
+                      <span>SECRET EXPLORATION ALCOVES</span>
+                      <span className="text-slate-400">
+                        CAMPAIGN: {exploration.localMap.totalDiscoveredSecretsCampaign}/{exploration.localMap.totalSecretsCampaign}
+                      </span>
+                    </div>
+                    {exploration.localMap.secrets.length === 0 ? (
+                      <div className="text-[10px] font-mono-tabular text-slate-400">
+                        No hidden alcoves indexed in this sector.
+                      </div>
+                    ) : (
+                      exploration.localMap.secrets.map((sec) => (
+                        <div
+                          key={sec.id}
+                          data-testid={`map-secret-${sec.id}`}
+                          data-discovered={sec.discovered ? 'true' : 'false'}
+                          data-accessible={sec.accessible ? 'true' : 'false'}
+                          className={`p-2 border ${
+                            sec.discovered
+                              ? 'bg-[#081715] border-emerald-400/80'
+                              : sec.accessible
+                                ? 'bg-[#0b1420] border-cyan-400/70'
+                                : 'bg-[#070b12] border-slate-800/90'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-mono-tabular font-bold text-slate-100">
+                              {sec.discovered
+                                ? sec.title
+                                : 'UNINDEXED SECTOR SIGNAL // FOG OF DISCOVERY'}
+                            </span>
+                            <span
+                              className={`text-[8px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border ${
+                                sec.discovered
+                                  ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                                  : sec.accessible
+                                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                                    : 'bg-slate-900 border-slate-700 text-slate-400'
+                              }`}
+                            >
+                              {sec.discovered
+                                ? 'DISCOVERED'
+                                : sec.accessible
+                                  ? 'ROUTE OPEN · ENTER ALCOVE'
+                                  : 'SEALED'}
+                            </span>
+                          </div>
+                          <div className="text-[9px] font-mono-tabular text-slate-300 mt-0.5">
+                            {sec.discovered
+                              ? `${sec.subtitle} · ${sec.rewardSummary}`
+                              : sec.accessible
+                                ? 'Bypass route unsealed. Traverse outer perimeter alcove to uncover cache.'
+                                : 'Unseal the sector bypass route to clear fog-of-discovery.'}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (

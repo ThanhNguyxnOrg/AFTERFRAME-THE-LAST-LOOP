@@ -27,6 +27,7 @@ interface GameHudProps {
   onEchoCollapse?: () => void;
   onSwitchWeapon?: () => void;
   onInteract?: () => void;
+  onOpenMap?: () => void;
   onSelectLoomEnding?: (ending: ChronicleLoomEndingId) => void;
   onRestoreCampaign?: () => void;
   onTouchMoveHold?: (dx: number, dz: number, pointerId?: number | null) => void;
@@ -154,6 +155,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   onEchoCollapse,
   onSwitchWeapon,
   onInteract,
+  onOpenMap,
   onSelectLoomEnding,
   onRestoreCampaign,
   onTouchMoveHold,
@@ -997,20 +999,42 @@ export const GameHud: React.FC<GameHudProps> = ({
               </div>
             </div>
 
-            {/* Phase 18: Mission Tracker & Optional Exploration Objective Readout */}
+            {/* Phase 18 & 19: Mission Tracker, Timed Hazard Telemetry & Secret/Codex Readout */}
             <div
               data-testid="hud-optional-objective"
               data-mission-id={hud.exploration.mission.id}
               data-active-objective-id={hud.exploration.mission.activeMainObjectiveId ?? 'none'}
+              data-secrets-discovered={hud.exploration.discoveredSecretIds?.length ?? 0}
               className="mt-1 pt-1 border-t border-slate-800/70 flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-300"
             >
               <span className="truncate text-cyan-300/90">
                 {hud.exploration.mission.optionalObjectiveSummary ??
                   `${hud.exploration.mission.code} · ALL OPTIONAL OBJECTIVES COMPLETE`}
               </span>
-              <span className="text-slate-400 whitespace-nowrap shrink-0">
-                CODEX {hud.exploration.discoveredCodexIds.length}/{hud.exploration.codexEntries.length}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                {hud.exploration.hazards && hud.exploration.hazards.length > 0 && (
+                  <span
+                    data-testid="hud-hazard-telemetry"
+                    data-hazard-id={hud.exploration.hazards[0].id}
+                    data-hazard-phase={hud.exploration.hazards[0].phase}
+                    className={`hidden sm:inline px-1 py-0.2 border text-[8px] font-bold uppercase ${
+                      hud.exploration.hazards[0].phase === 'active'
+                        ? 'bg-red-500/20 border-red-400 text-red-300'
+                        : hud.exploration.hazards[0].phase === 'warning'
+                          ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                          : 'bg-cyan-500/10 border-cyan-500/50 text-cyan-300'
+                    }`}
+                  >
+                    VENT: {hud.exploration.hazards[0].phase.toUpperCase()}
+                  </span>
+                )}
+                <span className="text-slate-400 whitespace-nowrap">
+                  SECRETS {hud.exploration.localMap?.discoveredSecretsInChapter ?? 0}/
+                  {hud.exploration.localMap?.totalSecretsInChapter ?? 0} · CODEX{' '}
+                  {hud.exploration.discoveredCodexIds.length}/
+                  {hud.exploration.codexEntries.length}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1374,10 +1398,51 @@ export const GameHud: React.FC<GameHudProps> = ({
               )}
             </div>
           )}
+
+          {/* Phase 19: Restrained Secret Area Discovery Banner */}
+          {hud.exploration.lastDiscoveryBanner && (
+            <div
+              data-testid="hud-secret-discovery-banner"
+              data-secret-id={hud.exploration.lastDiscoveryBanner.secretId}
+              className="mt-1 w-full bg-[#071518]/95 border border-emerald-400 px-3 py-1.5 shadow-[0_8px_24px_rgba(16,185,129,0.28)]"
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold text-emerald-300">
+                <span className="truncate">
+                  SECRET DISCOVERED · {hud.exploration.lastDiscoveryBanner.title}
+                </span>
+                <span className="text-cyan-200 whitespace-nowrap shrink-0">
+                  {hud.exploration.lastDiscoveryBanner.rewardSummary}
+                </span>
+              </div>
+              <div className="text-[9px] font-mono-tabular text-slate-300 truncate mt-0.5">
+                {hud.exploration.lastDiscoveryBanner.subtitle} · LOGGED TO SECTOR MAP [N]
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Cluster 3 (Top-Right): Clear System & Navigation Controls (Fits on Row 1 beside Cluster 1 on 390px mobile) */}
         <div className="order-2 md:order-3 flex items-center gap-1 sm:gap-1.5 pointer-events-auto shrink-0">
+          <button
+            type="button"
+            tabIndex={-1}
+            data-testid="hud-map-btn"
+            aria-label="Open Sector Map [N]"
+            title="Open Sector Schematic Map & Exploration Status [N]"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              if (onOpenMap) {
+                onOpenMap();
+              } else {
+                onTogglePause();
+              }
+            }}
+            className="h-8 sm:h-9 px-2 flex items-center gap-1 justify-center bg-[#090d14]/90 hover:bg-[#162032] border border-cyan-500/60 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase">
+              MAP [N]
+            </span>
+          </button>
           {hud.run.isChapterReplay &&
             Boolean(hud.run.savedCampaignSnapshot) &&
             onRestoreCampaign && (

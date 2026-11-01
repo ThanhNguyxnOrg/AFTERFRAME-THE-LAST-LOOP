@@ -87,6 +87,21 @@ import type {
   WeaponProgressionState,
   WeaponUpgradeDefinition,
   WeaponUpgradeId,
+  SectorRegionId,
+  SectorRegionDefinition,
+  TraversalRouteId,
+  TraversalRouteStatus,
+  TraversalRouteDefinition,
+  TraversalRouteState,
+  TimedEnergyHazardId,
+  TimedEnergyHazardPhase,
+  TimedEnergyHazardDefinition,
+  TimedEnergyHazardState,
+  SecretAreaId,
+  SecretAreaDefinition,
+  SecretAreaState,
+  LocalMapRegionCell,
+  LocalMapSnapshot,
   WorldExplorationState,
   WorldState,
 } from './types.ts';
@@ -311,6 +326,49 @@ export const VALID_UNLOCKABLE_ROUTE_IDS: readonly string[] = [
   'pillar-se',
 ];
 
+export const VALID_SECTOR_REGION_IDS: readonly SectorRegionId[] = [
+  'region_prologue_staging_deck',
+  'region_prologue_west_lock',
+  'region_prologue_east_bypass',
+  'region_prologue_secret_alcove',
+  'region_ch1_nexus_core',
+  'region_ch1_nw_conduit_lane',
+  'region_ch1_secret_armory',
+  'region_ch2_garden_rotunda',
+  'region_ch2_sw_echo_bridge',
+  'region_ch2_secret_sanctum',
+  'region_ch3_archive_nave',
+  'region_ch3_sw_purge_lane',
+  'region_ch3_secret_vault',
+  'region_ch4_surgical_theater',
+  'region_ch4_se_override_bay',
+  'region_ch5_loom_sanctuary',
+  'region_ch5_nw_anchor_bridge',
+];
+
+export const VALID_TRAVERSAL_ROUTE_IDS: readonly TraversalRouteId[] = [
+  'route_prologue_west_containment',
+  'route_prologue_east_bypass',
+  'route_ch1_nw_timed_conduit',
+  'route_ch2_sw_echo_bridge',
+  'route_ch3_sw_archive_passage',
+  'route_ch4_se_quarantine_lane',
+  'route_ch5_loom_anchor_bridge',
+];
+
+export const VALID_TIMED_HAZARD_IDS: readonly TimedEnergyHazardId[] = [
+  'hazard_prologue_east_arc_vent',
+  'hazard_ch1_nw_arc_lane',
+  'hazard_ch3_sw_purge_lane',
+];
+
+export const VALID_SECRET_AREA_IDS: readonly SecretAreaId[] = [
+  'secret_prologue_calibration_alcove',
+  'secret_ch1_marshal_armory_cache',
+  'secret_ch2_hydroponic_echo_sanctum',
+  'secret_ch3_lysa_unedited_vault',
+];
+
 export function isValidMissionId(value: unknown): value is MissionId {
   return (
     typeof value === 'string' &&
@@ -345,6 +403,128 @@ export function isValidUnlockableRouteId(value: unknown): value is string {
   return (
     typeof value === 'string' && VALID_UNLOCKABLE_ROUTE_IDS.includes(value)
   );
+}
+
+export function isValidSectorRegionId(
+  value: unknown
+): value is SectorRegionId {
+  return (
+    typeof value === 'string' &&
+    (VALID_SECTOR_REGION_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function isValidTraversalRouteId(
+  value: unknown
+): value is TraversalRouteId {
+  return (
+    typeof value === 'string' &&
+    (VALID_TRAVERSAL_ROUTE_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function isValidTimedEnergyHazardId(
+  value: unknown
+): value is TimedEnergyHazardId {
+  return (
+    typeof value === 'string' &&
+    (VALID_TIMED_HAZARD_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function isValidSecretAreaId(value: unknown): value is SecretAreaId {
+  return (
+    typeof value === 'string' &&
+    (VALID_SECRET_AREA_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function getSectorRegionDefinition(
+  regionId: SectorRegionId
+): SectorRegionDefinition;
+export function getSectorRegionDefinition(
+  regionId: unknown
+): SectorRegionDefinition | null;
+export function getSectorRegionDefinition(
+  regionId: unknown
+): SectorRegionDefinition | null {
+  if (!isValidSectorRegionId(regionId)) return null;
+  return GAME_CONFIG.exploration.regions[regionId] ?? null;
+}
+
+export function getAllSectorRegionDefinitionsForChapter(
+  chapter: CampaignChapterId
+): SectorRegionDefinition[] {
+  return VALID_SECTOR_REGION_IDS.map((id) => getSectorRegionDefinition(id)).filter(
+    (def) => def.chapter === chapter
+  );
+}
+
+export function getTraversalRouteDefinition(
+  routeId: TraversalRouteId
+): TraversalRouteDefinition;
+export function getTraversalRouteDefinition(
+  routeId: unknown
+): TraversalRouteDefinition | null;
+export function getTraversalRouteDefinition(
+  routeId: unknown
+): TraversalRouteDefinition | null {
+  if (!isValidTraversalRouteId(routeId)) return null;
+  return GAME_CONFIG.exploration.routes[routeId] ?? null;
+}
+
+export function getAllTraversalRouteDefinitionsForChapter(
+  chapter: CampaignChapterId
+): TraversalRouteDefinition[] {
+  return VALID_TRAVERSAL_ROUTE_IDS.map((id) => getTraversalRouteDefinition(id)).filter(
+    (def) => def.chapter === chapter
+  );
+}
+
+export function getTimedEnergyHazardDefinition(
+  hazardId: TimedEnergyHazardId
+): TimedEnergyHazardDefinition;
+export function getTimedEnergyHazardDefinition(
+  hazardId: unknown
+): TimedEnergyHazardDefinition | null;
+export function getTimedEnergyHazardDefinition(
+  hazardId: unknown
+): TimedEnergyHazardDefinition | null {
+  if (!isValidTimedEnergyHazardId(hazardId)) return null;
+  return GAME_CONFIG.exploration.hazards[hazardId] ?? null;
+}
+
+export function getAllTimedEnergyHazardDefinitionsForChapter(
+  chapter: CampaignChapterId
+): TimedEnergyHazardDefinition[] {
+  return VALID_TIMED_HAZARD_IDS.map((id) => getTimedEnergyHazardDefinition(id)).filter(
+    (def) => def.chapter === chapter
+  );
+}
+
+export function getSecretAreaDefinition(
+  secretId: SecretAreaId
+): SecretAreaDefinition;
+export function getSecretAreaDefinition(
+  secretId: unknown
+): SecretAreaDefinition | null;
+export function getSecretAreaDefinition(
+  secretId: unknown
+): SecretAreaDefinition | null {
+  if (!isValidSecretAreaId(secretId)) return null;
+  return GAME_CONFIG.exploration.secrets[secretId] ?? null;
+}
+
+export function getAllSecretAreaDefinitionsForChapter(
+  chapter: CampaignChapterId
+): SecretAreaDefinition[] {
+  return VALID_SECRET_AREA_IDS.map((id) => getSecretAreaDefinition(id)).filter(
+    (def) => def.chapter === chapter
+  );
+}
+
+export function getAllSecretAreaDefinitions(): SecretAreaDefinition[] {
+  return VALID_SECRET_AREA_IDS.map((id) => getSecretAreaDefinition(id));
 }
 
 export function getMissionIdForChapter(chapter: CampaignChapterId): MissionId {
@@ -602,6 +782,287 @@ export function createEmptyInteractionPrompt(): InteractionTargetEvaluation {
   };
 }
 
+export function getPrimaryRegionIdForChapter(
+  chapter: CampaignChapterId
+): SectorRegionId {
+  switch (chapter) {
+    case 'chapter_1_helix':
+      return 'region_ch1_nexus_core';
+    case 'chapter_2_choir':
+      return 'region_ch2_garden_rotunda';
+    case 'chapter_3_curator':
+      return 'region_ch3_archive_nave';
+    case 'chapter_4_matron':
+      return 'region_ch4_surgical_theater';
+    case 'chapter_5_loom':
+      return 'region_ch5_loom_sanctuary';
+    case 'prologue':
+    default:
+      return 'region_prologue_staging_deck';
+  }
+}
+
+export function buildRoutesForChapter(
+  chapter: CampaignChapterId,
+  activatedNodeIds: readonly InteractableId[],
+  unlockedRouteIds: readonly string[],
+  prologueBarrierOpen = false
+): TraversalRouteState[] {
+  const defs = getAllTraversalRouteDefinitionsForChapter(chapter);
+  return defs.map((def) => {
+    let status: TraversalRouteStatus = 'locked';
+    let unlocked = false;
+    let statusMessage = 'ROUTE SEALED · LOCATE CONTROL CONDUIT OR POWER NODE';
+
+    const unlockedByControlNode = Boolean(
+      def.controlInteractableId &&
+        activatedNodeIds.includes(def.controlInteractableId)
+    );
+    const otherChapterNodeForSameObstacleActivated = Boolean(
+      def.obstacleId &&
+        VALID_INTERACTABLE_IDS.some((id) => {
+          const intDef = getInteractableDefinition(id);
+          return (
+            intDef.chapter !== def.chapter &&
+            intDef.unlocksObstacleId === def.obstacleId &&
+            activatedNodeIds.includes(id)
+          );
+        })
+    );
+    const unlockedByObstacleList = Boolean(
+      def.obstacleId &&
+        unlockedRouteIds.includes(def.obstacleId) &&
+        !otherChapterNodeForSameObstacleActivated
+    );
+
+    if (def.requiresPrologueBarrierOpen) {
+      if (prologueBarrierOpen) {
+        status = 'open';
+        unlocked = true;
+        statusMessage = 'CONTAINMENT BARRIER OPEN · CENTRAL BAY ACCESSIBLE';
+      } else {
+        status = 'locked';
+        unlocked = false;
+        statusMessage = 'LOCKED · COMPLETE 3-STAGE CHRONO CALIBRATION';
+      }
+    } else if (unlockedByControlNode || unlockedByObstacleList) {
+      status = 'open';
+      unlocked = true;
+      statusMessage = `${def.label} · UNSEALED & SIGHTLINE OPEN`;
+    } else if (
+      def.prerequisiteInteractableId &&
+      activatedNodeIds.includes(def.prerequisiteInteractableId)
+    ) {
+      status = 'powered';
+      unlocked = false;
+      const ctrlDef = def.controlInteractableId
+        ? getInteractableDefinition(def.controlInteractableId)
+        : null;
+      statusMessage = ctrlDef
+        ? `POWER REROUTED · ACTIVATE ${ctrlDef.label} [I] TO UNSEAL`
+        : 'POWER REROUTED · READY TO UNSEAL';
+    } else {
+      status = 'locked';
+      unlocked = false;
+      const prereqOrCtrlId =
+        def.prerequisiteInteractableId ?? def.controlInteractableId;
+      const prereqDef = prereqOrCtrlId
+        ? getInteractableDefinition(prereqOrCtrlId)
+        : null;
+      statusMessage = prereqDef
+        ? `SEALED · REQUIRES ${prereqDef.label}`
+        : 'SEALED · PREREQUISITE NODE REQUIRED';
+    }
+
+    return {
+      id: def.id,
+      chapter: def.chapter,
+      label: def.label,
+      challengeKind: def.challengeKind,
+      fromX: def.fromX,
+      fromZ: def.fromZ,
+      toX: def.toX,
+      toZ: def.toZ,
+      obstacleId: def.obstacleId,
+      prerequisiteInteractableId: def.prerequisiteInteractableId ?? null,
+      controlInteractableId: def.controlInteractableId ?? null,
+      hazardId: def.hazardId ?? null,
+      secretAreaId: def.secretAreaId ?? null,
+      status,
+      unlocked,
+      statusMessage,
+    };
+  });
+}
+
+export function buildHazardsForChapter(
+  chapter: CampaignChapterId,
+  existingHazards?: readonly TimedEnergyHazardState[] | null
+): TimedEnergyHazardState[] {
+  const defs = getAllTimedEnergyHazardDefinitionsForChapter(chapter);
+  return defs.map((def) => {
+    const prev = existingHazards?.find((h) => h.id === def.id);
+    if (prev) {
+      return {
+        ...prev,
+        cycleIndex: prev.cycleIndex ?? 0,
+        lastHitCycleIndex: prev.lastHitCycleIndex ?? -1,
+      };
+    }
+    const cycleDuration =
+      def.safeDuration + def.warningDuration + def.activeDuration;
+    return {
+      id: def.id,
+      chapter: def.chapter,
+      label: def.label,
+      x: def.x,
+      z: def.z,
+      radius: def.radius,
+      phase: 'safe' as TimedEnergyHazardPhase,
+      phaseTimer: def.safeDuration,
+      cycleDuration,
+      cycleTime: 0,
+      safeDuration: def.safeDuration,
+      warningDuration: def.warningDuration,
+      activeDuration: def.activeDuration,
+      damage: def.damage,
+      hitCooldownSeconds: def.hitCooldownSeconds,
+      lastPlayerHitTime: -999,
+      cycleIndex: 0,
+      lastHitCycleIndex: -1,
+      routeId: def.routeId,
+      active: false,
+      warning: false,
+    };
+  });
+}
+
+export function buildSecretsForChapter(
+  chapter: CampaignChapterId,
+  discoveredSecretIds: readonly SecretAreaId[],
+  routes: readonly TraversalRouteState[],
+  existingSecrets?: readonly SecretAreaState[] | null
+): SecretAreaState[] {
+  const defs = getAllSecretAreaDefinitionsForChapter(chapter);
+  return defs.map((def) => {
+    const discovered = discoveredSecretIds.includes(def.id);
+    const routeOpen = routes.some(
+      (r) => r.id === def.prerequisiteRouteId && r.unlocked
+    );
+    const prev = existingSecrets?.find((s) => s.id === def.id);
+    return {
+      id: def.id,
+      chapter: def.chapter,
+      title: def.title,
+      subtitle: def.subtitle,
+      x: def.x,
+      z: def.z,
+      radius: def.radius,
+      prerequisiteRouteId: def.prerequisiteRouteId,
+      prerequisiteInteractableId: def.prerequisiteInteractableId,
+      linkedCodexId: def.linkedCodexId,
+      fluxRestoreAmount: def.fluxRestoreAmount,
+      integrityRestoreAmount: def.integrityRestoreAmount,
+      rewardSummary: def.rewardSummary,
+      discovered,
+      accessible: discovered || routeOpen,
+      discoveredAtTime: discovered ? (prev?.discoveredAtTime ?? 0) : null,
+    };
+  });
+}
+
+export function buildLocalMapSnapshot(
+  chapter: CampaignChapterId,
+  playerPos: { x: number; z: number; rotationY: number },
+  mission: MissionRuntimeState,
+  routes: readonly TraversalRouteState[],
+  hazards: readonly TimedEnergyHazardState[],
+  secrets: readonly SecretAreaState[],
+  discoveredRegionIds: readonly SectorRegionId[],
+  discoveredSecretIds: readonly SecretAreaId[]
+): LocalMapSnapshot {
+  const regionDefs = getAllSectorRegionDefinitionsForChapter(chapter);
+  const primaryRegionId = getPrimaryRegionIdForChapter(chapter);
+  let currentRegionDef =
+    regionDefs.find((r) => r.id === primaryRegionId) ?? regionDefs[0];
+  let bestDist = Infinity;
+
+  for (let i = 0; i < regionDefs.length; i++) {
+    const reg = regionDefs[i];
+    if (reg.secretAreaId && !discoveredSecretIds.includes(reg.secretAreaId)) {
+      continue;
+    }
+    const d = Math.hypot(playerPos.x - reg.x, playerPos.z - reg.z);
+    if (d <= reg.radius + 1.2 && d < bestDist) {
+      bestDist = d;
+      currentRegionDef = reg;
+    }
+  }
+
+  const regions: LocalMapRegionCell[] = regionDefs.map((reg) => {
+    const isSecret = Boolean(reg.secretAreaId);
+    const isSecretDiscovered = reg.secretAreaId
+      ? discoveredSecretIds.includes(reg.secretAreaId)
+      : false;
+    const discovered = isSecret
+      ? isSecretDiscovered
+      : discoveredRegionIds.includes(reg.id) ||
+        reg.id === primaryRegionId ||
+        reg.id === currentRegionDef?.id;
+    const hiddenByFog = Boolean(isSecret && !isSecretDiscovered);
+    return {
+      id: reg.id,
+      label: hiddenByFog ? 'UNINDEXED SECTOR ANOMALY [FOG]' : reg.label,
+      kind: reg.kind,
+      x: reg.x,
+      z: reg.z,
+      radius: reg.radius,
+      discovered,
+      hiddenByFog,
+      secretAreaId: reg.secretAreaId ?? null,
+    };
+  });
+
+  let objectiveTarget: { x: number; z: number; label: string } | null = null;
+  if (chapter === 'prologue') {
+    objectiveTarget = {
+      x: -4.2,
+      z: 0.4,
+      label: mission.activeMainObjectiveTitle,
+    };
+  } else {
+    objectiveTarget = {
+      x: 0,
+      z: -4.0,
+      label: mission.activeMainObjectiveTitle,
+    };
+  }
+
+  const discoveredSecretsInChapter = secrets.filter((s) => s.discovered).length;
+  const totalSecretsInChapter = secrets.length;
+
+  return {
+    chapter,
+    sectorCode: mission.code,
+    sectorLabel: mission.sectorLabel,
+    arenaRadius: GAME_CONFIG.arena.radius,
+    currentRegionId: currentRegionDef?.id ?? primaryRegionId,
+    currentRegionLabel: currentRegionDef?.label ?? mission.sectorLabel,
+    playerX: Number(playerPos.x.toFixed(2)),
+    playerZ: Number(playerPos.z.toFixed(2)),
+    playerRotationY: Number(playerPos.rotationY.toFixed(2)),
+    objectiveTarget,
+    regions,
+    routes: routes.map((r) => ({ ...r })),
+    hazards: hazards.map((h) => ({ ...h })),
+    secrets: secrets.map((s) => ({ ...s })),
+    discoveredSecretsInChapter,
+    totalSecretsInChapter,
+    totalDiscoveredSecretsCampaign: discoveredSecretIds.length,
+    totalSecretsCampaign: VALID_SECRET_AREA_IDS.length,
+  };
+}
+
 export function createInitialExplorationState(
   chapter: CampaignChapterId = 'prologue',
   persisted?: Partial<PersistedExplorationState> | null
@@ -642,18 +1103,75 @@ export function createInitialExplorationState(
       }
     }
   }
+  const discoveredRegionIds: SectorRegionId[] = [];
+  if (persisted?.discoveredRegionIds) {
+    for (let i = 0; i < persisted.discoveredRegionIds.length; i++) {
+      const id = persisted.discoveredRegionIds[i];
+      if (isValidSectorRegionId(id) && !discoveredRegionIds.includes(id)) {
+        discoveredRegionIds.push(id);
+      }
+    }
+  }
+
+  const discoveredSecretIds: SecretAreaId[] = [];
+  if (persisted?.discoveredSecretIds) {
+    for (let i = 0; i < persisted.discoveredSecretIds.length; i++) {
+      const id = persisted.discoveredSecretIds[i];
+      if (isValidSecretAreaId(id) && !discoveredSecretIds.includes(id)) {
+        discoveredSecretIds.push(id);
+      }
+    }
+  }
+
+  const mission = buildMissionRuntimeState(chapter, completedObjectiveIds, null);
+  const interactables = buildInteractablesForChapter(chapter, activatedNodeIds);
+  const routes = buildRoutesForChapter(
+    chapter,
+    activatedNodeIds,
+    unlockedRouteIds,
+    false
+  );
+  const hazards = buildHazardsForChapter(chapter, null);
+  const secrets = buildSecretsForChapter(
+    chapter,
+    discoveredSecretIds,
+    routes,
+    null
+  );
+  const localMap = buildLocalMapSnapshot(
+    chapter,
+    {
+      x: GAME_CONFIG.player.spawnX,
+      z: GAME_CONFIG.player.spawnZ,
+      rotationY: Math.PI,
+    },
+    mission,
+    routes,
+    hazards,
+    secrets,
+    discoveredRegionIds,
+    discoveredSecretIds
+  );
 
   return {
-    mission: buildMissionRuntimeState(chapter, completedObjectiveIds, null),
-    interactables: buildInteractablesForChapter(chapter, activatedNodeIds),
+    mission,
+    interactables,
     prompt: createEmptyInteractionPrompt(),
     discoveredCodexIds,
     completedObjectiveIds,
     activatedNodeIds,
     unlockedRouteIds,
+    discoveredRegionIds,
+    discoveredSecretIds,
+    routes,
+    hazards,
+    secrets,
+    localMap,
+    lastDiscoveryBanner: null,
     codexEntries: getHudCodexEntries(discoveredCodexIds),
     newlyDiscoveredCodexId: null,
-    statusBannerText: 'SECTOR TELEMETRY ONLINE · EXPLORE TERMINALS & POWER NODES [I]',
+    statusBannerText:
+      'SECTOR TELEMETRY ONLINE · EXPLORE TERMINALS [I], REROUTE POWER & SURVEY MAP [N]',
   };
 }
 
@@ -672,6 +1190,12 @@ export function clonePersistedExplorationState(
       : [],
     unlockedRouteIds: exp?.unlockedRouteIds
       ? exp.unlockedRouteIds.filter(isValidUnlockableRouteId)
+      : [],
+    discoveredRegionIds: exp?.discoveredRegionIds
+      ? exp.discoveredRegionIds.filter(isValidSectorRegionId)
+      : [],
+    discoveredSecretIds: exp?.discoveredSecretIds
+      ? exp.discoveredSecretIds.filter(isValidSecretAreaId)
       : [],
   };
 }
@@ -719,11 +1243,31 @@ export function sanitizePersistedExplorationState(
       }
     }
   }
+  const discoveredRegionIds: SectorRegionId[] = [];
+  if (Array.isArray(obj.discoveredRegionIds)) {
+    for (let i = 0; i < obj.discoveredRegionIds.length; i++) {
+      const id = obj.discoveredRegionIds[i];
+      if (isValidSectorRegionId(id) && !discoveredRegionIds.includes(id)) {
+        discoveredRegionIds.push(id);
+      }
+    }
+  }
+  const discoveredSecretIds: SecretAreaId[] = [];
+  if (Array.isArray(obj.discoveredSecretIds)) {
+    for (let i = 0; i < obj.discoveredSecretIds.length; i++) {
+      const id = obj.discoveredSecretIds[i];
+      if (isValidSecretAreaId(id) && !discoveredSecretIds.includes(id)) {
+        discoveredSecretIds.push(id);
+      }
+    }
+  }
   return {
     discoveredCodexIds,
     completedObjectiveIds,
     activatedNodeIds,
     unlockedRouteIds,
+    discoveredRegionIds,
+    discoveredSecretIds,
   };
 }
 
@@ -734,18 +1278,74 @@ export function cloneWorldExplorationState(
   if (!exp) {
     return createInitialExplorationState(chapter, null);
   }
+  const discoveredRegionIds = exp.discoveredRegionIds
+    ? [...exp.discoveredRegionIds]
+    : [];
+  const discoveredSecretIds = exp.discoveredSecretIds
+    ? [...exp.discoveredSecretIds]
+    : [];
+  const mission = buildMissionRuntimeState(
+    chapter,
+    exp.completedObjectiveIds,
+    exp.mission
+  );
+  const routes = exp.routes
+    ? exp.routes.map((r) => ({ ...r }))
+    : buildRoutesForChapter(
+        chapter,
+        exp.activatedNodeIds,
+        exp.unlockedRouteIds,
+        false
+      );
+  const hazards = exp.hazards
+    ? exp.hazards.map((h) => ({ ...h }))
+    : buildHazardsForChapter(chapter, null);
+  const secrets = exp.secrets
+    ? exp.secrets.map((s) => ({ ...s }))
+    : buildSecretsForChapter(chapter, discoveredSecretIds, routes, null);
+  const localMap = exp.localMap
+    ? {
+        ...exp.localMap,
+        objectiveTarget: exp.localMap.objectiveTarget
+          ? { ...exp.localMap.objectiveTarget }
+          : null,
+        regions: exp.localMap.regions.map((r) => ({ ...r })),
+        routes: exp.localMap.routes.map((r) => ({ ...r })),
+        hazards: exp.localMap.hazards.map((h) => ({ ...h })),
+        secrets: exp.localMap.secrets.map((s) => ({ ...s })),
+      }
+    : buildLocalMapSnapshot(
+        chapter,
+        {
+          x: GAME_CONFIG.player.spawnX,
+          z: GAME_CONFIG.player.spawnZ,
+          rotationY: Math.PI,
+        },
+        mission,
+        routes,
+        hazards,
+        secrets,
+        discoveredRegionIds,
+        discoveredSecretIds
+      );
+
   return {
-    mission: buildMissionRuntimeState(
-      chapter,
-      exp.completedObjectiveIds,
-      exp.mission
-    ),
+    mission,
     interactables: buildInteractablesForChapter(chapter, exp.activatedNodeIds),
     prompt: { ...exp.prompt },
     discoveredCodexIds: [...exp.discoveredCodexIds],
     completedObjectiveIds: [...exp.completedObjectiveIds],
     activatedNodeIds: [...exp.activatedNodeIds],
     unlockedRouteIds: [...exp.unlockedRouteIds],
+    discoveredRegionIds,
+    discoveredSecretIds,
+    routes,
+    hazards,
+    secrets,
+    localMap,
+    lastDiscoveryBanner: exp.lastDiscoveryBanner
+      ? { ...exp.lastDiscoveryBanner }
+      : null,
     codexEntries: getHudCodexEntries(exp.discoveredCodexIds),
     newlyDiscoveredCodexId: exp.newlyDiscoveredCodexId,
     statusBannerText: exp.statusBannerText,
@@ -754,9 +1354,26 @@ export function cloneWorldExplorationState(
 
 export function syncUnlockedRoutesToObstacles(world: WorldState): void {
   if (!world.exploration || !world.obstacles) return;
+  const chapter = world.run?.chapter ?? 'prologue';
+  const prologueBarrierOpen = Boolean(
+    world.puzzle?.finalBarrier?.open || world.puzzle?.completed
+  );
+  const currentRoutes = buildRoutesForChapter(
+    chapter,
+    world.exploration.activatedNodeIds,
+    world.exploration.unlockedRouteIds,
+    prologueBarrierOpen
+  );
+  const unlockedObstaclesInChapter = new Set<string>();
+  for (let i = 0; i < currentRoutes.length; i++) {
+    const r = currentRoutes[i];
+    if (r.unlocked && r.obstacleId) {
+      unlockedObstaclesInChapter.add(r.obstacleId);
+    }
+  }
   for (let i = 0; i < world.obstacles.length; i++) {
     const obs = world.obstacles[i];
-    if (world.exploration.unlockedRouteIds.includes(obs.id)) {
+    if (unlockedObstaclesInChapter.has(obs.id)) {
       obs.disabled = true;
     }
   }
@@ -1088,6 +1705,23 @@ function executeInteractableActivation(
       world.exploration.unlockedRouteIds.push(def.unlocksObstacleId);
     }
     syncUnlockedRoutesToObstacles(world);
+    const unlockedRouteDef = VALID_TRAVERSAL_ROUTE_IDS.map((id) =>
+      getTraversalRouteDefinition(id)
+    ).find(
+      (r) =>
+        r.chapter === def.chapter &&
+        (r.obstacleId === def.unlocksObstacleId ||
+          r.controlInteractableId === def.id)
+    );
+    if (unlockedRouteDef) {
+      world.events.push({
+        type: 'traversal_route_unlocked',
+        x: def.x,
+        z: def.z,
+        interactableId: def.id,
+        routeId: unlockedRouteDef.id,
+      });
+    }
   }
 
   if (def.fluxRestoreAmount && def.fluxRestoreAmount > 0) {
@@ -1128,6 +1762,37 @@ function executeInteractableActivation(
     codexId: def.grantsCodexId,
     objectiveId: def.completesObjectiveId,
   });
+
+  const chapter = world.run?.chapter ?? 'prologue';
+  const prologueBarrierOpen = Boolean(
+    world.puzzle?.finalBarrier?.open || world.puzzle?.completed
+  );
+  world.exploration.routes = buildRoutesForChapter(
+    chapter,
+    world.exploration.activatedNodeIds,
+    world.exploration.unlockedRouteIds,
+    prologueBarrierOpen
+  );
+  world.exploration.secrets = buildSecretsForChapter(
+    chapter,
+    world.exploration.discoveredSecretIds,
+    world.exploration.routes,
+    world.exploration.secrets
+  );
+  world.exploration.localMap = buildLocalMapSnapshot(
+    chapter,
+    {
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      rotationY: world.player?.rotationY ?? Math.PI,
+    },
+    world.exploration.mission,
+    world.exploration.routes,
+    world.exploration.hazards,
+    world.exploration.secrets,
+    world.exploration.discoveredRegionIds,
+    world.exploration.discoveredSecretIds
+  );
 
   world.exploration.prompt = evaluateNearestInteractablePrompt(world);
 }
@@ -1211,27 +1876,303 @@ export function attemptEnvironmentalInteraction(
   };
 }
 
+export function discoverSecretArea(
+  world: WorldState,
+  secretId: unknown
+): boolean {
+  if (!isValidSecretAreaId(secretId)) {
+    return false;
+  }
+  const chapter = world.run?.chapter ?? 'prologue';
+  if (!world.exploration) {
+    world.exploration = createInitialExplorationState(chapter, null);
+  }
+  const exp = world.exploration;
+  if (exp.discoveredSecretIds.includes(secretId)) {
+    return false;
+  }
+
+  const def = getSecretAreaDefinition(secretId);
+  if (def.chapter !== chapter) {
+    return false;
+  }
+  const prologueBarrierOpen = Boolean(
+    world.puzzle?.finalBarrier?.open || world.puzzle?.completed
+  );
+  exp.routes = buildRoutesForChapter(
+    chapter,
+    exp.activatedNodeIds,
+    exp.unlockedRouteIds,
+    prologueBarrierOpen
+  );
+  const routeUnlocked =
+    exp.routes.some((r) => r.id === def.prerequisiteRouteId && r.unlocked) ||
+    exp.activatedNodeIds.includes(def.prerequisiteInteractableId);
+  if (!routeUnlocked) {
+    return false;
+  }
+
+  exp.discoveredSecretIds.push(secretId);
+
+  const matchingRegion = VALID_SECTOR_REGION_IDS.map((id) =>
+    getSectorRegionDefinition(id)
+  ).find((r) => r.secretAreaId === secretId);
+  if (
+    matchingRegion &&
+    !exp.discoveredRegionIds.includes(matchingRegion.id)
+  ) {
+    exp.discoveredRegionIds.push(matchingRegion.id);
+  }
+
+  if (def.fluxRestoreAmount > 0 && world.player) {
+    world.player.flux = Math.min(
+      world.player.maxFlux,
+      world.player.flux + def.fluxRestoreAmount
+    );
+  }
+  if (def.integrityRestoreAmount > 0 && world.player) {
+    world.player.integrity = Math.min(
+      world.player.maxIntegrity,
+      world.player.integrity + def.integrityRestoreAmount
+    );
+    world.player.ghostIntegrity = Math.max(
+      world.player.ghostIntegrity,
+      world.player.integrity
+    );
+  }
+
+  if (def.linkedCodexId) {
+    discoverCodexEntry(world, def.linkedCodexId);
+  }
+
+  exp.lastDiscoveryBanner = {
+    secretId: def.id,
+    title: def.title,
+    subtitle: def.subtitle,
+    rewardSummary: def.rewardSummary,
+    remainingTime: 5.0,
+  };
+  exp.statusBannerText = def.discoveryMessage;
+  world.run.checkpointNotice = def.discoveryMessage;
+  world.run.checkpointNoticeTimer = 4.6;
+
+  exp.routes = buildRoutesForChapter(
+    chapter,
+    exp.activatedNodeIds,
+    exp.unlockedRouteIds,
+    prologueBarrierOpen
+  );
+  exp.secrets = buildSecretsForChapter(
+    chapter,
+    exp.discoveredSecretIds,
+    exp.routes,
+    exp.secrets
+  );
+  const secState = exp.secrets.find((s) => s.id === secretId);
+  if (secState) {
+    secState.discoveredAtTime = world.elapsedTime;
+  }
+  exp.localMap = buildLocalMapSnapshot(
+    chapter,
+    {
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      rotationY: world.player?.rotationY ?? Math.PI,
+    },
+    exp.mission,
+    exp.routes,
+    exp.hazards,
+    exp.secrets,
+    exp.discoveredRegionIds,
+    exp.discoveredSecretIds
+  );
+
+  world.events.push({
+    type: 'secret_area_discovered',
+    x: def.x,
+    z: def.z,
+    secretId: def.id,
+    codexId: def.linkedCodexId,
+  });
+
+  return true;
+}
+
+export function advanceTimedEnergyHazards(
+  world: WorldState,
+  dt: number
+): void {
+  if (world.appState !== 'playing' || world.outcome !== 'none' || dt <= 0) {
+    return;
+  }
+  const chapter = world.run?.chapter ?? 'prologue';
+  if (!world.exploration) {
+    world.exploration = createInitialExplorationState(chapter, null);
+  }
+  const exp = world.exploration;
+  if (
+    !exp.hazards ||
+    (exp.hazards.length > 0 && exp.hazards[0].chapter !== chapter)
+  ) {
+    exp.hazards = buildHazardsForChapter(chapter, null);
+  }
+
+  if (exp.lastDiscoveryBanner && exp.lastDiscoveryBanner.remainingTime > 0) {
+    exp.lastDiscoveryBanner.remainingTime = Math.max(
+      0,
+      exp.lastDiscoveryBanner.remainingTime - dt
+    );
+    if (exp.lastDiscoveryBanner.remainingTime <= 0) {
+      exp.lastDiscoveryBanner = null;
+    }
+  }
+
+  const p = world.player;
+  for (let i = 0; i < exp.hazards.length; i++) {
+    const h = exp.hazards[i];
+    const prevPhase = h.phase;
+    const cycleDur = Math.max(
+      0.1,
+      h.safeDuration + h.warningDuration + h.activeDuration
+    );
+    h.cycleDuration = cycleDur;
+    const totalCycleTime = h.cycleTime + dt;
+    const cyclesWrapped = Math.floor(totalCycleTime / cycleDur);
+    if (cyclesWrapped > 0) {
+      h.cycleIndex = (h.cycleIndex ?? 0) + cyclesWrapped;
+    }
+    h.cycleTime = totalCycleTime % cycleDur;
+
+    if (h.cycleTime < h.safeDuration) {
+      h.phase = 'safe';
+      h.phaseTimer = Number((h.safeDuration - h.cycleTime).toFixed(3));
+      h.warning = false;
+      h.active = false;
+    } else if (h.cycleTime < h.safeDuration + h.warningDuration) {
+      h.phase = 'warning';
+      h.phaseTimer = Number(
+        (h.safeDuration + h.warningDuration - h.cycleTime).toFixed(3)
+      );
+      h.warning = true;
+      h.active = false;
+      if (prevPhase !== 'warning') {
+        world.events.push({
+          type: 'timed_hazard_warning',
+          x: h.x,
+          z: h.z,
+          hazardId: h.id,
+        });
+      }
+    } else {
+      h.phase = 'active';
+      h.phaseTimer = Number((cycleDur - h.cycleTime).toFixed(3));
+      h.warning = false;
+      h.active = true;
+      if (prevPhase !== 'active') {
+        world.events.push({
+          type: 'timed_hazard_active',
+          x: h.x,
+          z: h.z,
+          hazardId: h.id,
+        });
+      }
+    }
+
+    if (h.active && p && p.actionState !== 'dead') {
+      const dist = Math.hypot(p.x - h.x, p.z - h.z);
+      const hitThreshold = h.radius + GAME_CONFIG.player.radius * 0.65;
+      const currentCycleIndex = h.cycleIndex ?? 0;
+      const lastHitCycle = h.lastHitCycleIndex ?? -1;
+      const relayPhaseShiftActive = (world.relay?.successFlashTimer ?? 0) > 0;
+      if (
+        dist <= hitThreshold &&
+        p.actionState !== 'dodging' &&
+        p.invulnTimer <= 0 &&
+        !relayPhaseShiftActive &&
+        lastHitCycle !== currentCycleIndex &&
+        world.elapsedTime - h.lastPlayerHitTime >= h.hitCooldownSeconds
+      ) {
+        h.lastPlayerHitTime = world.elapsedTime;
+        h.lastHitCycleIndex = currentCycleIndex;
+        p.integrity = Math.max(0, p.integrity - h.damage);
+        p.invulnTimer = GAME_CONFIG.player.hurtInvulnDuration;
+        p.hurtFlashTimer = 0.22;
+        p.squashX = 1.18;
+        p.squashY = 0.84;
+        world.stats.damageTaken += h.damage;
+        world.hitstopTimer = Math.max(world.hitstopTimer, 0.04);
+        world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.42);
+
+        if (p.actionState === 'charging_heavy') {
+          p.actionState = 'idle';
+          p.chargeTime = 0;
+        }
+
+        world.events.push({
+          type: 'timed_hazard_damaged_player',
+          x: p.x,
+          z: p.z,
+          amount: h.damage,
+          hazardId: h.id,
+        });
+        world.events.push({
+          type: 'player_damaged',
+          x: p.x,
+          z: p.z,
+          amount: h.damage,
+        });
+
+        if (p.integrity <= 0) {
+          p.actionState = 'dead';
+          p.vx = 0;
+          p.vz = 0;
+          world.outcome = 'defeat';
+          world.outcomeDelayTimer = 0.55;
+          clearEchoState(world, 'outcome');
+          world.events.push({
+            type: 'encounter_defeat',
+            x: p.x,
+            z: p.z,
+          });
+        }
+      }
+    }
+  }
+}
+
 export function advanceMissionAndExplorationSystem(world: WorldState): void {
   const chapter = world.run?.chapter ?? 'prologue';
   if (!world.exploration) {
     world.exploration = createInitialExplorationState(chapter, null);
   }
-  if (world.exploration.mission.chapter !== chapter) {
-    world.exploration.mission = buildMissionRuntimeState(
+  const exp = world.exploration;
+  if (!exp.discoveredRegionIds) {
+    exp.discoveredRegionIds = [];
+  }
+  if (!exp.discoveredSecretIds) {
+    exp.discoveredSecretIds = [];
+  }
+
+  if (exp.mission.chapter !== chapter) {
+    exp.mission = buildMissionRuntimeState(
       chapter,
-      world.exploration.completedObjectiveIds,
+      exp.completedObjectiveIds,
       null
     );
-    world.exploration.interactables = buildInteractablesForChapter(
+    exp.interactables = buildInteractablesForChapter(
       chapter,
-      world.exploration.activatedNodeIds
+      exp.activatedNodeIds
     );
+    exp.hazards = buildHazardsForChapter(chapter, null);
+  } else if (!exp.hazards || exp.hazards.length === 0) {
+    exp.hazards = buildHazardsForChapter(chapter, exp.hazards);
   }
+
   syncUnlockedRoutesToObstacles(world);
 
-  // Check Echo / Pulsecaster strikes on Echo-Reactive conduits (acceptsEchoOrPulseStrike === true)
-  for (let i = 0; i < world.exploration.interactables.length; i++) {
-    const state = world.exploration.interactables[i];
+  // Check Echo / Pulsecaster strikes or Echo proximity on Echo-Reactive conduits (acceptsEchoOrPulseStrike === true)
+  for (let i = 0; i < exp.interactables.length; i++) {
+    const state = exp.interactables[i];
     if (state.status === 'activated') continue;
     const def = getInteractableDefinition(state.id);
     if (!def.acceptsEchoOrPulseStrike) continue;
@@ -1239,14 +2180,19 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
     let struckByEchoOrPulse = false;
     if (world.echo.state === 'playback' && world.echo.activeActor) {
       const actor = world.echo.activeActor;
+      const distToConduit = Math.hypot(actor.x - def.x, actor.z - def.z);
       const isEchoAttacking =
         actor.actionState === 'light_active' ||
         actor.actionState === 'heavy_active' ||
         actor.actionState === 'light_windup' ||
         actor.actionState === 'heavy_windup';
+      const isEchoStationedOnConduit =
+        def.kind === 'echo_conduit' &&
+        world.echo.playbackTime >= 0.08 &&
+        distToConduit <= def.interactRadius * 0.85;
       if (
-        isEchoAttacking &&
-        Math.hypot(actor.x - def.x, actor.z - def.z) <= def.interactRadius + 0.6
+        (isEchoAttacking && distToConduit <= def.interactRadius + 0.6) ||
+        isEchoStationedOnConduit
       ) {
         struckByEchoOrPulse = true;
       }
@@ -1366,7 +2312,73 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
     }
   }
 
-  world.exploration.prompt = evaluateNearestInteractablePrompt(world);
+  const prologueBarrierOpen = Boolean(
+    world.puzzle?.finalBarrier?.open || world.puzzle?.completed
+  );
+  exp.routes = buildRoutesForChapter(
+    chapter,
+    exp.activatedNodeIds,
+    exp.unlockedRouteIds,
+    prologueBarrierOpen
+  );
+
+  // Check player entry into non-secret sector regions and unlocked secret areas
+  if (world.player && world.player.actionState !== 'dead') {
+    const px = world.player.x;
+    const pz = world.player.z;
+
+    if (world.run?.mode === 'campaign' && !world.run?.isChapterReplay) {
+      const regionDefs = getAllSectorRegionDefinitionsForChapter(chapter);
+      for (let i = 0; i < regionDefs.length; i++) {
+        const reg = regionDefs[i];
+        if (reg.secretAreaId) continue;
+        if (
+          !exp.discoveredRegionIds.includes(reg.id) &&
+          Math.hypot(px - reg.x, pz - reg.z) <= reg.radius
+        ) {
+          exp.discoveredRegionIds.push(reg.id);
+        }
+      }
+    }
+
+    const secretDefs = getAllSecretAreaDefinitionsForChapter(chapter);
+    for (let i = 0; i < secretDefs.length; i++) {
+      const sec = secretDefs[i];
+      if (exp.discoveredSecretIds.includes(sec.id)) continue;
+      const routeUnlocked =
+        exp.routes.some((r) => r.id === sec.prerequisiteRouteId && r.unlocked) ||
+        exp.activatedNodeIds.includes(sec.prerequisiteInteractableId);
+      if (
+        routeUnlocked &&
+        Math.hypot(px - sec.x, pz - sec.z) <= sec.radius
+      ) {
+        discoverSecretArea(world, sec.id);
+      }
+    }
+  }
+
+  exp.secrets = buildSecretsForChapter(
+    chapter,
+    exp.discoveredSecretIds,
+    exp.routes,
+    exp.secrets
+  );
+  exp.localMap = buildLocalMapSnapshot(
+    chapter,
+    {
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      rotationY: world.player?.rotationY ?? Math.PI,
+    },
+    exp.mission,
+    exp.routes,
+    exp.hazards,
+    exp.secrets,
+    exp.discoveredRegionIds,
+    exp.discoveredSecretIds
+  );
+
+  exp.prompt = evaluateNearestInteractablePrompt(world);
 }
 
 function spawnWaveUnitsForEncounter(
@@ -3132,6 +4144,7 @@ export function getBossIdForChapter(chapter: CampaignChapterId): BossId {
     case 'chapter_3_curator':
       return 'the-curator';
     case 'chapter_4_matron':
+    case 'chapter_5_loom':
       return 'matron-v';
     case 'chapter_1_helix':
     default:
@@ -4104,6 +5117,7 @@ export function enterChronicleLoomChapter(
     bossCheckpoint: {
       ...checkpoint,
       chapter: 'chapter_5_loom',
+      bossId: 'matron-v',
       statsAtCheckpoint: { ...checkpoint.statsAtCheckpoint },
     },
     checkpointNotice: 'CHRONICLE LOOM CORE ACCESSED · SELECT FINAL PROTOCOL DIRECTIVE',
@@ -11339,7 +12353,8 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     world.relay.statusMessage = world.relay.preview.message;
   }
 
-  // Update contextual tutorial state machine, exploration objectives & live narrative comms
+  // Update timed energy hazards, contextual tutorial state machine, exploration objectives & live narrative comms
+  advanceTimedEnergyHazards(world, dt);
   advanceMissionAndExplorationSystem(world);
   updateTutorialSystem(world, input, dt);
   advanceNarrativeCommsSystem(world, dt);

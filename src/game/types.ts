@@ -1008,7 +1008,12 @@ export interface CombatEvent {
     | 'environmental_interaction_completed'
     | 'environmental_interaction_rejected'
     | 'mission_objective_completed'
-    | 'codex_entry_discovered';
+    | 'codex_entry_discovered'
+    | 'traversal_route_unlocked'
+    | 'timed_hazard_warning'
+    | 'timed_hazard_active'
+    | 'timed_hazard_damaged_player'
+    | 'secret_area_discovered';
   x: number;
   z: number;
   originX?: number;
@@ -1025,6 +1030,9 @@ export interface CombatEvent {
   interactableId?: InteractableId;
   objectiveId?: MissionObjectiveId;
   codexId?: CodexEntryId;
+  routeId?: TraversalRouteId;
+  hazardId?: TimedEnergyHazardId;
+  secretId?: SecretAreaId;
   echoAction?: EchoRecordedActionType;
   relayStatus?: RelayEvaluationStatus;
   resonanceOutcome?: ResonanceOutcome;
@@ -1337,11 +1345,238 @@ export interface HudCodexEntryView {
   tacticalNote: string;
 }
 
+// ============================================================================
+// PHASE 19 — WORLD TRAVERSAL, ENVIRONMENTAL CHALLENGES, SECRETS & SECTOR MAP
+// ============================================================================
+
+export type SectorRegionId =
+  | 'region_prologue_staging_deck'
+  | 'region_prologue_west_lock'
+  | 'region_prologue_east_bypass'
+  | 'region_prologue_secret_alcove'
+  | 'region_ch1_nexus_core'
+  | 'region_ch1_nw_conduit_lane'
+  | 'region_ch1_secret_armory'
+  | 'region_ch2_garden_rotunda'
+  | 'region_ch2_sw_echo_bridge'
+  | 'region_ch2_secret_sanctum'
+  | 'region_ch3_archive_nave'
+  | 'region_ch3_sw_purge_lane'
+  | 'region_ch3_secret_vault'
+  | 'region_ch4_surgical_theater'
+  | 'region_ch4_se_override_bay'
+  | 'region_ch5_loom_sanctuary'
+  | 'region_ch5_nw_anchor_bridge';
+
+export type SectorRegionKind =
+  | 'staging_deck'
+  | 'combat_bay'
+  | 'traversal_corridor'
+  | 'secret_alcove';
+
+export interface SectorRegionDefinition {
+  id: SectorRegionId;
+  chapter: CampaignChapterId;
+  kind: SectorRegionKind;
+  label: string;
+  x: number;
+  z: number;
+  radius: number;
+  secretAreaId?: SecretAreaId;
+}
+
+export type TraversalRouteId =
+  | 'route_prologue_west_containment'
+  | 'route_prologue_east_bypass'
+  | 'route_ch1_nw_timed_conduit'
+  | 'route_ch2_sw_echo_bridge'
+  | 'route_ch3_sw_archive_passage'
+  | 'route_ch4_se_quarantine_lane'
+  | 'route_ch5_loom_anchor_bridge';
+
+export type TraversalRouteChallengeKind =
+  | 'power_reroute'
+  | 'timed_energy_passage'
+  | 'echo_conduit_bridge';
+
+export type TraversalRouteStatus = 'locked' | 'powered' | 'open';
+
+export interface TraversalRouteDefinition {
+  id: TraversalRouteId;
+  chapter: CampaignChapterId;
+  label: string;
+  challengeKind: TraversalRouteChallengeKind;
+  fromX: number;
+  fromZ: number;
+  toX: number;
+  toZ: number;
+  obstacleId: string;
+  requiresPrologueBarrierOpen?: boolean;
+  prerequisiteInteractableId?: InteractableId;
+  controlInteractableId?: InteractableId;
+  hazardId?: TimedEnergyHazardId;
+  secretAreaId?: SecretAreaId;
+}
+
+export interface TraversalRouteState {
+  id: TraversalRouteId;
+  chapter: CampaignChapterId;
+  label: string;
+  challengeKind: TraversalRouteChallengeKind;
+  fromX: number;
+  fromZ: number;
+  toX: number;
+  toZ: number;
+  obstacleId: string;
+  prerequisiteInteractableId: InteractableId | null;
+  controlInteractableId: InteractableId | null;
+  hazardId: TimedEnergyHazardId | null;
+  secretAreaId: SecretAreaId | null;
+  status: TraversalRouteStatus;
+  unlocked: boolean;
+  statusMessage: string;
+}
+
+export type TimedEnergyHazardId =
+  | 'hazard_prologue_east_arc_vent'
+  | 'hazard_ch1_nw_arc_lane'
+  | 'hazard_ch3_sw_purge_lane';
+
+export type TimedEnergyHazardPhase = 'safe' | 'warning' | 'active';
+
+export interface TimedEnergyHazardDefinition {
+  id: TimedEnergyHazardId;
+  chapter: CampaignChapterId;
+  label: string;
+  x: number;
+  z: number;
+  radius: number;
+  safeDuration: number;
+  warningDuration: number;
+  activeDuration: number;
+  damage: number;
+  hitCooldownSeconds: number;
+  routeId: TraversalRouteId;
+}
+
+export interface TimedEnergyHazardState {
+  id: TimedEnergyHazardId;
+  chapter: CampaignChapterId;
+  label: string;
+  x: number;
+  z: number;
+  radius: number;
+  phase: TimedEnergyHazardPhase;
+  phaseTimer: number;
+  cycleDuration: number;
+  cycleTime: number;
+  safeDuration: number;
+  warningDuration: number;
+  activeDuration: number;
+  damage: number;
+  hitCooldownSeconds: number;
+  lastPlayerHitTime: number;
+  cycleIndex: number;
+  lastHitCycleIndex: number;
+  routeId: TraversalRouteId;
+  active: boolean;
+  warning: boolean;
+}
+
+export type SecretAreaId =
+  | 'secret_prologue_calibration_alcove'
+  | 'secret_ch1_marshal_armory_cache'
+  | 'secret_ch2_hydroponic_echo_sanctum'
+  | 'secret_ch3_lysa_unedited_vault';
+
+export interface SecretAreaDefinition {
+  id: SecretAreaId;
+  chapter: CampaignChapterId;
+  title: string;
+  subtitle: string;
+  x: number;
+  z: number;
+  radius: number;
+  prerequisiteRouteId: TraversalRouteId;
+  prerequisiteInteractableId: InteractableId;
+  linkedCodexId: CodexEntryId;
+  fluxRestoreAmount: number;
+  integrityRestoreAmount: number;
+  rewardSummary: string;
+  discoveryMessage: string;
+}
+
+export interface SecretAreaState {
+  id: SecretAreaId;
+  chapter: CampaignChapterId;
+  title: string;
+  subtitle: string;
+  x: number;
+  z: number;
+  radius: number;
+  prerequisiteRouteId: TraversalRouteId;
+  prerequisiteInteractableId: InteractableId;
+  linkedCodexId: CodexEntryId;
+  fluxRestoreAmount: number;
+  integrityRestoreAmount: number;
+  rewardSummary: string;
+  discovered: boolean;
+  accessible: boolean;
+  discoveredAtTime: number | null;
+}
+
+export interface SecretDiscoveryBannerState {
+  secretId: SecretAreaId;
+  title: string;
+  subtitle: string;
+  rewardSummary: string;
+  remainingTime: number;
+}
+
+export interface LocalMapRegionCell {
+  id: SectorRegionId;
+  label: string;
+  kind: SectorRegionKind;
+  x: number;
+  z: number;
+  radius: number;
+  discovered: boolean;
+  hiddenByFog: boolean;
+  secretAreaId: SecretAreaId | null;
+}
+
+export interface LocalMapSnapshot {
+  chapter: CampaignChapterId;
+  sectorCode: string;
+  sectorLabel: string;
+  arenaRadius: number;
+  currentRegionId: SectorRegionId;
+  currentRegionLabel: string;
+  playerX: number;
+  playerZ: number;
+  playerRotationY: number;
+  objectiveTarget: {
+    x: number;
+    z: number;
+    label: string;
+  } | null;
+  regions: LocalMapRegionCell[];
+  routes: TraversalRouteState[];
+  hazards: TimedEnergyHazardState[];
+  secrets: SecretAreaState[];
+  discoveredSecretsInChapter: number;
+  totalSecretsInChapter: number;
+  totalDiscoveredSecretsCampaign: number;
+  totalSecretsCampaign: number;
+}
+
 export interface PersistedExplorationState {
   discoveredCodexIds: CodexEntryId[];
   completedObjectiveIds: MissionObjectiveId[];
   activatedNodeIds: InteractableId[];
   unlockedRouteIds: string[];
+  discoveredRegionIds?: SectorRegionId[];
+  discoveredSecretIds?: SecretAreaId[];
 }
 
 export interface WorldExplorationState {
@@ -1352,6 +1587,13 @@ export interface WorldExplorationState {
   completedObjectiveIds: MissionObjectiveId[];
   activatedNodeIds: InteractableId[];
   unlockedRouteIds: string[];
+  discoveredRegionIds: SectorRegionId[];
+  discoveredSecretIds: SecretAreaId[];
+  routes: TraversalRouteState[];
+  hazards: TimedEnergyHazardState[];
+  secrets: SecretAreaState[];
+  localMap: LocalMapSnapshot;
+  lastDiscoveryBanner: SecretDiscoveryBannerState | null;
   codexEntries: HudCodexEntryView[];
   newlyDiscoveredCodexId: CodexEntryId | null;
   statusBannerText: string;
