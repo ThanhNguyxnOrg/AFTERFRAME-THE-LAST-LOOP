@@ -17,7 +17,7 @@ Phase 20.1 is a targeted hardening, delivery-integrity, and acceptance-closure m
 ## 2. Repository Baseline & Toolchain Metadata Reconciliation
 
 ### 2.1 Git & Working-Tree Environment Note
-In the AI Studio container workspace (`/app/applet`), `.git` metadata is not mounted inside the container filesystem. Baseline verification was therefore performed directly against the working tree, `package.json`, `bun.lock`, and the reviewed Phase 20 commit inventory (`c623d4d`). Because no remote Git credentials exist inside the container, files in `docs/` are verified locally on disk rather than claimed as remotely pushed.
+In the AI Studio container workspace (`/app/applet`), `.git` metadata is not mounted inside the container filesystem (`fatal: not a git repository (or any of the parent directories): .git`). Baseline verification was performed directly against the working tree, `package.json`, `bun.lock`, and the live public GitHub repository `ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP` (`main` branch: Phase 20 commit `f58d420e33f2ccbf2a7f1e830e4322a57542cc4a`, intermediate docs commit `ee9f8ebed415e0555ce5a13be7be0ac9ed00ae79`, and Phase 20.1 commit `f4a54901a39334f594aad46332123340e0e2ca3f`). Because no `.git` metadata or remote push credentials exist inside `/app/applet`, changes authored in the container must be synchronized to GitHub from a Git-enabled checkout.
 
 ### 2.2 Declared vs. Resolved Dependency Metadata (`package.json` & `bun.lock`)
 
@@ -52,20 +52,22 @@ In the AI Studio container workspace (`/app/applet`), `.git` metadata is not mou
 
 ## 4. Reconciled Changed-File Inventory
 
-| File Path | Phase 20 Commit (`c623d4d`) | Phase 20.1 Hardening | Purpose / Reconciliation Notes |
-| :--- | :--- | :--- | :--- |
-| `src/game/types.ts` | Modified | Preserved | Phase 20 narrative event, chapter world identity, and synthesis summary types. |
-| `src/game/config.ts` | Modified | Preserved | Authored 6 `chapterIdentities` and 24 `narrativeEvents` under `GAME_CONFIG.exploration`. |
-| `src/game/models.ts` | Modified | Preserved | Added `buildChapterLandmarkVisual` procedural 3D landmarks (omitted from initial Phase 20 report; now documented). |
-| `src/game/simulation.ts` | Modified | Modified | Hardened `buildCampaignEndingDiscoverySummary`, `discoverCodexEntry` summary refresh, and `canTriggerNarrativeEventNow` optional-state checks. |
-| `src/App.tsx` | Modified | Preserved | Added `triggerNarrativeEvent` test hook and HUD state-change tracking. |
-| `src/components/GameHud.tsx` | Modified | Preserved | Added `[data-testid="hud-narrative-event-badge"]` and `[data-testid="loom-convergence-summary"]`. |
-| `src/components/StatusModal.tsx` | Modified | Preserved | Added `[data-testid="journal-chapter-identity"]`, `[data-testid="journal-narrative-events-section"]`, and `[data-testid="modal-campaign-discovery-summary"]`. |
-| `src/game/simulation.test.ts` | Modified | Modified | Added `Phase 20.1 Campaign Synthesis Boundary-Condition Audit` (10 boundary cases + 3-path Lysa check + freshness) and `Phase 20.1 Narrative Event Trigger Correctness & Optional/Null-State Defensive Audit`. |
-| `src/game/campaign-release.test.ts` | Modified | Modified | Added `Phase 20.1 Independent Ending Acceptance` and `Phase 20.1 Full Legitimate Campaign Progression Chain`. |
-| `public/assets/aistudio/Paste_November_01__*` | Accidentally added | Deleted | Removed internal Phase 20 prompt artifacts from `public/assets/aistudio/`. |
-| `docs/AFTERFRAME_PHASE20_CAMPAIGN_INTEGRATION_AND_NARRATIVE_EXPANSION.md` | Missing on remote | Created & Reconciled Locally | Reconciled with exact source IDs, TypeScript `7.0.2` metadata, and 206-test verification. |
-| `docs/AFTERFRAME_PHASE20_1_DELIVERY_AND_ACCEPTANCE_CLOSURE.md` | N/A | Created Locally | This Phase 20.1 Delivery Integrity & Acceptance Closure audit document. |
+| File Path | Phase 20 Commit (`f58d420e`, ref `c623d4d`) | Intermediate Commit (`ee9f8ebe`) | Phase 20.1 Commit (`f4a54901`) | Purpose / Reconciliation Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `src/game/types.ts` | Modified (`+127/-1`) | Preserved | Preserved | Phase 20 narrative event, chapter world identity, and synthesis summary types. |
+| `src/game/config.ts` | Modified (`+523/-0`) | Preserved | Preserved | Authored 6 `chapterIdentities` and 24 `narrativeEvents` under `GAME_CONFIG.exploration`. |
+| `src/game/models.ts` | Modified (`+41/-0`) | Preserved | Preserved | Added `buildChapterLandmarkVisual` procedural 3D landmarks (omitted from initial Phase 20 report; now documented). |
+| `src/game/simulation.ts` | Modified (`+623/-4`) | Preserved | Modified (`+159/-44`) | Hardened `buildCampaignEndingDiscoverySummary`, `discoverCodexEntry` summary refresh, and `canTriggerNarrativeEventNow` optional-state checks. |
+| `src/App.tsx` | Modified (`+20/-0`) | Preserved | Preserved | Added `triggerNarrativeEvent` test hook and HUD state-change tracking. |
+| `src/components/GameHud.tsx` | Modified (`+42/-3`) | Preserved | Preserved | Added `[data-testid="hud-narrative-event-badge"]` and `[data-testid="loom-convergence-summary"]`. |
+| `src/components/StatusModal.tsx` | Modified (`+168/-0`) | Preserved | Preserved | Added `[data-testid="journal-chapter-identity"]`, `[data-testid="journal-narrative-events-section"]`, and `[data-testid="modal-campaign-discovery-summary"]`. |
+| `src/game/simulation.test.ts` | Modified (`+256/-0`) | Preserved | Modified (`+438/-0`) | Added `Phase 20.1 Campaign Synthesis Boundary-Condition Audit` (10 boundary cases + 3-path Lysa check + freshness) and `Phase 20.1 Narrative Event Trigger Correctness & Optional/Null-State Defensive Audit`. |
+| `src/game/campaign-release.test.ts` | Modified (`+234/-0`) | Preserved | Modified (`+298/-0`) | Added `Phase 20.1 Independent Ending Acceptance` and `Phase 20.1 Full Legitimate Campaign Progression Chain`. |
+| `public/assets/aistudio/Paste_November_01__2026_-_3_18AM_acc12fa0` | Accidentally added (`+918`) | Preserved | Deleted (`-918`) | Removed internal Phase 20 prompt artifact from `public/assets/aistudio/`. |
+| `public/assets/aistudio/Paste_November_01__2026_-_5_13AM_3588bfbf` | Absent | Accidentally added (`+781`) | Deleted (`-781`) | Removed internal Phase 20 prompt artifact from `public/assets/aistudio/`. |
+| `docs/AFTERFRAME_PHASE20_CAMPAIGN_INTEGRATION_AND_NARRATIVE_EXPANSION.md` | Missing | Added (`+292/-0`) | Modified (`+166/-122`) | Reconciled with exact source IDs, TypeScript `7.0.2` metadata, and 206-test verification. |
+| `docs/AFTERFRAME_PHASE20_1_DELIVERY_AND_ACCEPTANCE_CLOSURE.md` | Absent | Absent | Added (`+150/-0`) | This Phase 20.1 Delivery Integrity & Acceptance Closure audit document. |
+| `.aistudio/artifacts/brain/.../.tempmediaStorage/media_*.png` (`9` files) | Absent | Added (`9` binary PNGs) | Preserved | AI Studio temporary screenshot artifacts outside `public/` (not bundled in `dist/`). |
 
 ---
 

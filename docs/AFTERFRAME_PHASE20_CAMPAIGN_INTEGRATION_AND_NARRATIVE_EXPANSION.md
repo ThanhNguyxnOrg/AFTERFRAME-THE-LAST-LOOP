@@ -300,7 +300,7 @@ Real Chromium browser verification was executed via `playwright-cli` against `ht
 
 ## 18. Reconciled Changed-File Inventory (Phase 20 & Phase 20.1)
 
-### Files Changed in Phase 20 Commit (`c623d4d`)
+### Files Changed in Phase 20 Commit (`f58d420e33f2ccbf2a7f1e830e4322a57542cc4a`, referenced in review notes as `c623d4d`)
 - `src/game/types.ts` — Added Phase 20 types (`NarrativeEventId`, `NarrativeEventCategory`, `NarrativeEventTriggerKind`, `NarrativeEventDefinition`, `NarrativeEventState`, `ChapterWorldIdentityDefinition`, `CampaignSynthesisTier`, `CampaignEndingDiscoverySummary`) and extended `PersistedExplorationState` and `WorldExplorationState`.
 - `src/game/config.ts` — Authored `chapterIdentities` (6 chapters) and `narrativeEvents` (24 deterministic events including 4 Echo Memories) under `GAME_CONFIG.exploration`.
 - `src/game/models.ts` — Added `buildChapterLandmarkVisual` procedural 3D chapter landmark silhouettes for all 6 sectors.
@@ -310,21 +310,26 @@ Real Chromium browser verification was executed via `playwright-cli` against `ht
 - `src/components/StatusModal.tsx` — Added **Sector Identity** card (`[data-testid="journal-chapter-identity"]`), **Sector Narrative Events & Echo Memories** grid (`[data-testid="journal-narrative-events-section"]`), and the final Victory **Campaign Finale Discovery & Synthesis Summary** (`[data-testid="modal-campaign-discovery-summary"]`).
 - `src/game/simulation.test.ts` — Added Phase 20 unit tests (`20.1`, `20.2`, `20.3`).
 - `src/game/campaign-release.test.ts` — Added Phase 20 full-campaign narrative progression & synthesis test (`test 18`).
-- `public/assets/aistudio/Paste_November_01__2026_-_3_18AM_acc12fa0` — Accidental internal Phase 20 prompt artifact (subsequently removed in Phase 20.1).
+- `public/assets/aistudio/Paste_November_01__2026_-_3_18AM_acc12fa0` — Accidental internal Phase 20 prompt artifact (subsequently removed in Phase 20.1 commit `f4a54901a39334f594aad46332123340e0e2ca3f`).
 
-### Files Added / Updated / Removed in Phase 20.1 Hardening
-- `public/assets/aistudio/Paste_November_01__2026_-_3_18AM_acc12fa0` & `public/assets/aistudio/Paste_November_01__2026_-_5_13AM_3588bfbf` — Removed internal Phase 20 prompt artifacts from `public/assets/aistudio/` and verified absent from `dist/`.
+### Files Added in Intermediate Documentation Commit (`ee9f8ebed415e0555ce5a13be7be0ac9ed00ae79`)
+- `docs/AFTERFRAME_PHASE20_CAMPAIGN_INTEGRATION_AND_NARRATIVE_EXPANSION.md` — Initial Phase 20 documentation added to `origin/main`.
+- `public/assets/aistudio/Paste_November_01__2026_-_5_13AM_3588bfbf` — Accidental internal prompt artifact (subsequently removed in Phase 20.1 commit `f4a54901a39334f594aad46332123340e0e2ca3f`).
+- `.aistudio/artifacts/brain/7fc1d149-8f01-408e-a722-dce8da335205/.tempmediaStorage/media_*.png` (9 files) — AI Studio artifact media files committed outside `public/` (not bundled in `dist/`).
+
+### Files Added / Updated / Removed in Phase 20.1 Hardening Commit (`f4a54901a39334f594aad46332123340e0e2ca3f`)
+- `public/assets/aistudio/Paste_November_01__2026_-_3_18AM_acc12fa0` & `public/assets/aistudio/Paste_November_01__2026_-_5_13AM_3588bfbf` — Removed internal Phase 20 prompt artifacts from `public/assets/aistudio/` and verified absent from `dist/` and `origin/main`.
 - `src/game/simulation.ts` — Hardened `buildCampaignEndingDiscoverySummary` (explicit headline distinction between `8/8` Codex + `4/4` secrets exhaustive recovery vs. `6–7/8` Codex or `3/4` secrets high-completion threshold; truthful `reconstructed` headline when `lysaTruthUncovered === false`; immediate `convergenceSummary` refresh on `discoverCodexEntry`) and hardened `canTriggerNarrativeEventNow` against null/undefined `world.loom`, `world.run`, `world.player`, `world.puzzle`, and `world.pressurePlate`.
 - `src/game/simulation.test.ts` — Added `Phase 20.1 Campaign Synthesis Boundary-Condition Audit` (10 boundary cases + 3-path `lysaTruthUncovered` + `convergenceSummary` freshness) and `Phase 20.1 Narrative Event Trigger Correctness & Optional/Null-State Defensive Audit`.
 - `src/game/campaign-release.test.ts` — Added `Phase 20.1 Independent Ending Acceptance` (`silence`, `witness`, `continuity` in independent campaign states + edge cases) and `Phase 20.1 Full Legitimate Campaign Progression Chain` (`prologue` -> `chapter_5_loom` via legitimate puzzle/boss progression).
-- `docs/AFTERFRAME_PHASE20_CAMPAIGN_INTEGRATION_AND_NARRATIVE_EXPANSION.md` — Reconciled and verified locally in the repository working tree.
+- `docs/AFTERFRAME_PHASE20_CAMPAIGN_INTEGRATION_AND_NARRATIVE_EXPANSION.md` — Reconciled and verified in the repository working tree and on `origin/main`.
 - `docs/AFTERFRAME_PHASE20_1_DELIVERY_AND_ACCEPTANCE_CLOSURE.md` — Created Phase 20.1 Delivery Integrity, Narrative Synthesis & Campaign Acceptance Closure documentation.
 
 ---
 
 ## 19. Remaining Risks & Environment Notes
 
-1. **Container Git Metadata & Remote Publishing**: The AI Studio container environment does not include a `.git` directory or remote push credentials, so files created/updated in the workspace (`docs/AFTERFRAME_PHASE20_CAMPAIGN_INTEGRATION_AND_NARRATIVE_EXPANSION.md` and `docs/AFTERFRAME_PHASE20_1_DELIVERY_AND_ACCEPTANCE_CLOSURE.md`) are verified locally on disk and in the build rather than pushed directly to a remote branch.
+1. **Container Git Metadata & Remote Publishing**: The AI Studio container environment (`/app/applet`) does not mount a `.git` directory or remote push credentials (`fatal: not a git repository (or any of the parent directories): .git`). Live inspection of `ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP` (`main`) confirms that commit `f4a54901a39334f594aad46332123340e0e2ca3f` is published on `origin/main`, while subsequent edits inside `/app/applet` require external Git synchronization from a Git-enabled checkout.
 2. **Natural vs. Fixture-Driven Multi-Chapter Browser Acceptance**: Title Screen launch, Prologue entry, Pause/Journal/Codex/Map modal tabs, and the 3 Chronicle Loom ending buttons (`SILENCE`, `WITNESS`, `CONTINUITY`) were clicked naturally in Chromium, while multi-chapter boss/exploration setup across Chapters I–V uses deterministic `__afterframeTest` hooks alongside the 206 Node simulation and campaign release tests.
 
 ---
@@ -333,4 +338,4 @@ Real Chromium browser verification was executed via `playwright-cli` against `ht
 
 - **Automated Verification**: `206 / 206` unit and campaign integration tests passing (`0` failures), `tsc --noEmit` (`0` errors), `vite build` (`PASS`), `compile_applet` (`PASS`).
 - **Browser Acceptance Verification**: All `16 / 16` required scenarios + 3 independent ending verifications confirmed in headless Chromium at `1280x800` and `390x844` with `0` console errors, `0` uncaught page errors, and `0px` horizontal overflow.
-- **Final Decision**: **PASS** (see `docs/AFTERFRAME_PHASE20_1_DELIVERY_AND_ACCEPTANCE_CLOSURE.md` for full Phase 20.1 closure details).
+- **Final Decision**: **PASS** (see `docs/AFTERFRAME_PHASE20_1_DELIVERY_AND_ACCEPTANCE_CLOSURE.md` and `docs/AFTERFRAME_PHASE20_1_1_RELEASE_SYNCHRONIZATION_REPORT.md` for full closure and release synchronization details).
