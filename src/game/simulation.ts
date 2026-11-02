@@ -674,17 +674,88 @@ export function buildCampaignEndingDiscoverySummary(
         prologueBarrierOpen?: boolean;
       });
 
-  const completedChaptersCount = params.completedChapters
-    ? params.completedChapters.filter(isValidCampaignChapterId).length
-    : 0;
-  const recoveredLogsCount = params.recoveredLogs
-    ? params.recoveredLogs.filter(isValidArchiveLogId).length
-    : 0;
-  const discoveredCodexIds = params.discoveredCodexIds ?? [];
-  const discoveredSecretIds = params.discoveredSecretIds ?? [];
-  const activatedNodeIds = params.activatedNodeIds ?? [];
-  const unlockedRouteIds = params.unlockedRouteIds ?? [];
-  const completedNarrativeEventIds = params.completedNarrativeEventIds ?? [];
+  const validCompletedChapters: CampaignChapterId[] = [];
+  if (Array.isArray(params.completedChapters)) {
+    for (let i = 0; i < params.completedChapters.length; i++) {
+      const ch = params.completedChapters[i];
+      if (
+        isValidCampaignChapterId(ch) &&
+        !validCompletedChapters.includes(ch)
+      ) {
+        validCompletedChapters.push(ch);
+      }
+    }
+  }
+  const completedChaptersCount = validCompletedChapters.length;
+
+  const validRecoveredLogs: string[] = [];
+  if (Array.isArray(params.recoveredLogs)) {
+    for (let i = 0; i < params.recoveredLogs.length; i++) {
+      const logId = params.recoveredLogs[i];
+      if (isValidArchiveLogId(logId) && !validRecoveredLogs.includes(logId)) {
+        validRecoveredLogs.push(logId);
+      }
+    }
+  }
+  const recoveredLogsCount = validRecoveredLogs.length;
+
+  const discoveredCodexIds: CodexEntryId[] = [];
+  if (Array.isArray(params.discoveredCodexIds)) {
+    for (let i = 0; i < params.discoveredCodexIds.length; i++) {
+      const id = params.discoveredCodexIds[i];
+      if (isValidCodexEntryId(id) && !discoveredCodexIds.includes(id)) {
+        discoveredCodexIds.push(id);
+      }
+    }
+  }
+
+  const discoveredSecretIds: SecretAreaId[] = [];
+  if (Array.isArray(params.discoveredSecretIds)) {
+    for (let i = 0; i < params.discoveredSecretIds.length; i++) {
+      const id = params.discoveredSecretIds[i];
+      if (isValidSecretAreaId(id) && !discoveredSecretIds.includes(id)) {
+        discoveredSecretIds.push(id);
+      }
+    }
+  }
+
+  const activatedNodeIds: InteractableId[] = [];
+  if (Array.isArray(params.activatedNodeIds)) {
+    for (let i = 0; i < params.activatedNodeIds.length; i++) {
+      const id = params.activatedNodeIds[i];
+      if (isValidInteractableId(id) && !activatedNodeIds.includes(id)) {
+        activatedNodeIds.push(id);
+      }
+    }
+  }
+
+  const unlockedRouteIds: string[] = [];
+  if (Array.isArray(params.unlockedRouteIds)) {
+    for (let i = 0; i < params.unlockedRouteIds.length; i++) {
+      const id = params.unlockedRouteIds[i];
+      if (
+        typeof id === 'string' &&
+        id.length > 0 &&
+        !unlockedRouteIds.includes(id)
+      ) {
+        unlockedRouteIds.push(id);
+      }
+    }
+  }
+
+  const completedNarrativeEventIds: NarrativeEventId[] = [];
+  if (Array.isArray(params.completedNarrativeEventIds)) {
+    for (let i = 0; i < params.completedNarrativeEventIds.length; i++) {
+      const id = params.completedNarrativeEventIds[i];
+      if (
+        isValidNarrativeEventId(id) &&
+        !completedNarrativeEventIds.includes(id)
+      ) {
+        completedNarrativeEventIds.push(id);
+      }
+    }
+  }
+
   const prologueBarrierOpen = Boolean(params.prologueBarrierOpen);
 
   // Count how many of the 7 authored traversal routes have been unlocked across the campaign
@@ -692,11 +763,7 @@ export function buildCampaignEndingDiscoverySummary(
   for (let i = 0; i < VALID_TRAVERSAL_ROUTE_IDS.length; i++) {
     const rDef = getTraversalRouteDefinition(VALID_TRAVERSAL_ROUTE_IDS[i]);
     if (rDef.requiresPrologueBarrierOpen) {
-      if (
-        prologueBarrierOpen ||
-        (params.completedChapters &&
-          params.completedChapters.includes('prologue'))
-      ) {
+      if (prologueBarrierOpen || validCompletedChapters.includes('prologue')) {
         unlockedRoutesCount += 1;
       }
     } else if (
@@ -734,10 +801,19 @@ export function buildCampaignEndingDiscoverySummary(
     lysaTruthUncovered
   ) {
     synthesisTier = 'complete_chronicle';
-    synthesisHeadline =
-      'COMPLETE CHRONICLE RECONSTRUCTION · ALL UNINDEXED TRUTHS RECOVERED';
-    synthesisSummary =
-      'Having uncovered Lysa’s unedited Loop 412 audit, hidden sanctuaries, and the full Codex dossier, Sera approaches the Loom knowing the complete truth of Sector 07’s rupture and WARDEN’s forced preservation mandate.';
+    const isFullExhaustiveRecovery =
+      discoveredCodexCount >= VALID_CODEX_ENTRY_IDS.length &&
+      discoveredSecretsCount >= VALID_SECRET_AREA_IDS.length;
+    if (isFullExhaustiveRecovery) {
+      synthesisHeadline =
+        'COMPLETE CHRONICLE RECONSTRUCTION · ALL UNINDEXED TRUTHS RECOVERED';
+      synthesisSummary =
+        'Having uncovered Lysa’s unedited Loop 412 audit, all 4/4 hidden sanctuaries, and all 8/8 Codex records, Sera approaches the Loom knowing the complete truth of Sector 07’s rupture and WARDEN’s forced preservation mandate.';
+    } else {
+      synthesisHeadline =
+        'COMPLETE CHRONICLE RECONSTRUCTION · CORE ARCHIVE & LYSA AUDIT VERIFIED';
+      synthesisSummary = `Having uncovered Lysa’s unedited Loop 412 audit, ${discoveredSecretsCount}/${VALID_SECRET_AREA_IDS.length} hidden sanctuaries, and ${discoveredCodexCount}/${VALID_CODEX_ENTRY_IDS.length} Codex records, Sera approaches the Loom with verified proof of Sector 07’s rupture and WARDEN’s forced preservation mandate.`;
+    }
   } else if (
     discoveredCodexCount >= 3 ||
     discoveredSecretsCount >= 1 ||
@@ -746,10 +822,17 @@ export function buildCampaignEndingDiscoverySummary(
     lysaTruthUncovered
   ) {
     synthesisTier = 'reconstructed';
-    synthesisHeadline =
-      'RECONSTRUCTED ARCHIVE · LYSA’S UNINDEXED EVIDENCE INTEGRATED';
-    synthesisSummary =
-      'Sera recovered key unindexed records and sector evidence along her ascent, exposing how WARDEN edited crew grief and quarantined Lysa’s neural trace inside the Loom.';
+    if (lysaTruthUncovered) {
+      synthesisHeadline =
+        'RECONSTRUCTED ARCHIVE · LYSA’S UNINDEXED EVIDENCE INTEGRATED';
+      synthesisSummary =
+        'Sera recovered Lysa’s unindexed Loop 412 evidence and supporting sector records along her ascent, exposing how WARDEN edited crew grief and quarantined Lysa’s neural trace inside the Loom.';
+    } else {
+      synthesisHeadline =
+        'RECONSTRUCTED ARCHIVE · MULTI-SECTOR TELEMETRY INTEGRATED';
+      synthesisSummary =
+        'Sera recovered key sector records and Echo Memory traces along her ascent, revealing how WARDEN edited crew grief across Nadir-9 even as Vault 03’s deepest audit files remain sealed.';
+    }
   }
 
   return {
@@ -1726,6 +1809,8 @@ export function discoverCodexEntry(
   );
   const def = getCodexEntryDefinition(codexId);
   world.exploration.statusBannerText = `CODEX ARCHIVED · ${def.id}: ${def.title.toUpperCase()}`;
+  world.exploration.convergenceSummary =
+    buildCampaignEndingDiscoverySummary(world);
   world.events.push({
     type: 'codex_entry_discovered',
     x: world.player?.x ?? 0,
@@ -2518,63 +2603,82 @@ export function canTriggerNarrativeEventNow(
   world: WorldState,
   def: NarrativeEventDefinition
 ): boolean {
-  if (world.appState === 'paused' || world.appState === 'title') {
+  if (!world || !def) {
+    return false;
+  }
+  if (world.appState !== 'playing' || world.outcome === 'defeat') {
     return false;
   }
   if (
-    world.run &&
-    (world.run.mode !== 'campaign' || world.run.isChapterReplay)
+    !world.run ||
+    world.run.mode !== 'campaign' ||
+    Boolean(world.run.isChapterReplay)
   ) {
     return false;
   }
   if (
-    world.player &&
-    (world.player.actionState === 'dead' || world.player.integrity <= 0)
+    !world.player ||
+    world.player.actionState === 'dead' ||
+    world.player.integrity <= 0
   ) {
     return false;
   }
-  const chapter = world.run?.chapter ?? 'prologue';
+  const chapter = world.run.chapter;
   if (def.chapter !== chapter) {
     return false;
   }
   const exp = world.exploration;
-  if (!exp || exp.completedNarrativeEventIds.includes(def.id)) {
+  if (!exp || !Array.isArray(exp.completedNarrativeEventIds)) {
+    return false;
+  }
+  if (exp.completedNarrativeEventIds.includes(def.id)) {
     return false;
   }
 
+  const activatedNodeIds = Array.isArray(exp.activatedNodeIds)
+    ? exp.activatedNodeIds
+    : [];
+  const discoveredSecretIds = Array.isArray(exp.discoveredSecretIds)
+    ? exp.discoveredSecretIds
+    : [];
+  const routes = Array.isArray(exp.routes) ? exp.routes : [];
+  const completedObjectiveIds = Array.isArray(exp.completedObjectiveIds)
+    ? exp.completedObjectiveIds
+    : [];
+
   // Evaluate dual OR prerequisites when both an interactable/route and a secret are specified
   if (def.requiredInteractableId && def.requiredSecretId) {
-    const hasInt = exp.activatedNodeIds.includes(def.requiredInteractableId);
-    const hasSec = exp.discoveredSecretIds.includes(def.requiredSecretId);
+    const hasInt = activatedNodeIds.includes(def.requiredInteractableId);
+    const hasSec = discoveredSecretIds.includes(def.requiredSecretId);
     if (!hasInt && !hasSec) return false;
   } else if (def.requiredRouteId && def.requiredSecretId) {
-    const hasRoute = exp.routes.some(
+    const hasRoute = routes.some(
       (r) => r.id === def.requiredRouteId && r.unlocked
     );
-    const hasSec = exp.discoveredSecretIds.includes(def.requiredSecretId);
+    const hasSec = discoveredSecretIds.includes(def.requiredSecretId);
     if (!hasRoute && !hasSec) return false;
   } else if (def.requiredInteractableId && def.requiredRouteId) {
-    const hasInt = exp.activatedNodeIds.includes(def.requiredInteractableId);
-    const hasRoute = exp.routes.some(
+    const hasInt = activatedNodeIds.includes(def.requiredInteractableId);
+    const hasRoute = routes.some(
       (r) => r.id === def.requiredRouteId && r.unlocked
     );
     if (!hasInt && !hasRoute) return false;
   } else {
     if (
       def.requiredInteractableId &&
-      !exp.activatedNodeIds.includes(def.requiredInteractableId)
+      !activatedNodeIds.includes(def.requiredInteractableId)
     ) {
       return false;
     }
     if (
       def.requiredSecretId &&
-      !exp.discoveredSecretIds.includes(def.requiredSecretId)
+      !discoveredSecretIds.includes(def.requiredSecretId)
     ) {
       return false;
     }
     if (
       def.requiredRouteId &&
-      !exp.routes.some((r) => r.id === def.requiredRouteId && r.unlocked)
+      !routes.some((r) => r.id === def.requiredRouteId && r.unlocked)
     ) {
       return false;
     }
@@ -2582,7 +2686,7 @@ export function canTriggerNarrativeEventNow(
 
   if (
     def.requiredObjectiveId &&
-    !exp.completedObjectiveIds.includes(def.requiredObjectiveId)
+    !completedObjectiveIds.includes(def.requiredObjectiveId)
   ) {
     return false;
   }
@@ -2607,7 +2711,7 @@ export function canTriggerNarrativeEventNow(
           world.puzzle?.teachCompleted ||
             world.pressurePlate?.active ||
             (world.pressurePlate?.activationCount ?? 0) > 0 ||
-            exp.discoveredSecretIds.includes('secret_prologue_calibration_alcove')
+            discoveredSecretIds.includes('secret_prologue_calibration_alcove')
         );
       }
       return true;
@@ -2619,8 +2723,9 @@ export function canTriggerNarrativeEventNow(
         world.boss && (world.boss.hp <= 0 || world.boss.defeatTriggered)
       );
     case 'campaign_resolution':
-      return Boolean(
-        world.loom?.selectedEnding !== null || world.run?.selectedEnding !== null
+      return (
+        isValidChronicleLoomEndingId(world.loom?.selectedEnding) ||
+        isValidChronicleLoomEndingId(world.run?.selectedEnding)
       );
     default:
       return false;
@@ -6362,6 +6467,11 @@ export function parseAndApplyCampaignProgress(
     }
   }
 
+  if (world.exploration) {
+    world.exploration.convergenceSummary =
+      buildCampaignEndingDiscoverySummary(world);
+  }
+
   return true;
 }
 
@@ -6712,7 +6822,12 @@ export function selectChronicleLoomEnding(
   world: WorldState,
   endingId: ChronicleLoomEndingId
 ): boolean {
+  if (!isValidChronicleLoomEndingId(endingId)) {
+    return false;
+  }
   if (
+    !world.run ||
+    !world.loom ||
     world.run.mode !== 'campaign' ||
     world.run.chapter !== 'chapter_5_loom' ||
     !world.loom.active ||

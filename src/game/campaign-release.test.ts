@@ -1302,6 +1302,304 @@ test('18. Phase 20 Full Campaign Narrative Progression (Prologue -> Chapter V), 
   );
 });
 
+test('Phase 20.1 Independent Ending Acceptance: silence, witness, and continuity verified in separate clean campaign states with full edge-case coverage', () => {
+  const endings = ['silence', 'witness', 'continuity'] as const;
+
+  for (const endingId of endings) {
+    // Clean, independent campaign state for this specific ending
+    const world = createInitialWorld('playing');
+    startCampaignRun(world, true);
+    world.run.unlockedChapters = [
+      'prologue',
+      'chapter_1_helix',
+      'chapter_2_choir',
+      'chapter_3_curator',
+      'chapter_4_matron',
+      'chapter_5_loom',
+    ];
+    world.run.completedChapters = [
+      'prologue',
+      'chapter_1_helix',
+      'chapter_2_choir',
+      'chapter_3_curator',
+      'chapter_4_matron',
+    ];
+    world.run.recoveredLogs = ['LOG-00', 'LOG-01', 'LOG-02', 'LOG-03', 'LOG-04'];
+    assert.equal(startCampaignChapterSelect(world, 'chapter_5_loom', true), true);
+    assert.equal(world.run.isChapterReplay, false);
+    assert.equal(world.run.chapter, 'chapter_5_loom');
+    assert.equal(world.loom.active, true);
+    assert.equal(world.loom.endingChoiceAvailable, true);
+    assert.equal(world.loom.selectedEnding, null);
+
+    // Selecting invalid ending ID before valid choice must be rejected
+    assert.equal(
+      selectChronicleLoomEnding(
+        world,
+        'invalid_ending' as unknown as typeof endingId
+      ),
+      false
+    );
+    assert.equal(world.loom.selectedEnding, null);
+
+    // Execute the ending selection
+    assert.equal(selectChronicleLoomEnding(world, endingId), true);
+    assert.equal(world.loom.selectedEnding, endingId);
+    assert.equal(world.run.selectedEnding, endingId);
+    assert.equal(world.loom.endingChoiceAvailable, false);
+    assert.equal(world.outcome, 'victory');
+    assert.equal(world.appState, 'gameover');
+    assert.equal(world.run.stage, 'completed');
+    assert.deepEqual(world.run.completedEndings, [endingId]);
+    assert.equal(world.run.completedChapters.includes('chapter_5_loom'), true);
+    assert.equal(world.run.recoveredLogs.includes('LOG-05'), true);
+    assert.equal(
+      world.exploration.completedObjectiveIds.includes(
+        'obj_ch5_select_loom_directive'
+      ),
+      true
+    );
+    assert.equal(
+      world.exploration.completedNarrativeEventIds.includes(
+        'nev_ch5_final_resolution'
+      ),
+      true
+    );
+
+    // Duplicate ending attempt in the same run must be rejected
+    for (const secondAttempt of endings) {
+      assert.equal(
+        selectChronicleLoomEnding(world, secondAttempt),
+        false,
+        `Duplicate ending selection (${secondAttempt}) after ${endingId} must be rejected`
+      );
+    }
+    assert.equal(world.loom.selectedEnding, endingId);
+    assert.equal(world.loom.selectionCount, 1);
+
+    // Save and reload immediately after ending: activeCampaign is cleared (no stale mid-run resume), completedEndings & LOG-05 persist
+    const savedAfterEnding = serializeCampaignProgress(world);
+    const reloaded = createInitialWorld('title');
+    assert.equal(parseAndApplyCampaignProgress(reloaded, savedAfterEnding), true);
+    assert.deepEqual(reloaded.run.completedEndings, [endingId]);
+    assert.equal(reloaded.run.completedChapters.includes('chapter_5_loom'), true);
+    assert.equal(reloaded.run.recoveredLogs.includes('LOG-05'), true);
+    assert.equal(hasResumableCampaign(reloaded), false);
+  }
+
+  // Edge cases:
+  // 1) Ending attempted outside Chapter V must fail
+  const ch1World = createInitialWorld('playing');
+  startCampaignRun(ch1World, true);
+  transitionCampaignToBoss(ch1World, true, 'chapter_1_helix');
+  assert.equal(selectChronicleLoomEnding(ch1World, 'silence'), false);
+
+  // 2) Ending attempted in Practice Mode must fail
+  const practiceWorld = createInitialWorld('playing');
+  startPracticeStandardRun(practiceWorld, 'prologue_calibration_bay');
+  assert.equal(selectChronicleLoomEnding(practiceWorld, 'witness'), false);
+
+  // 3) Ending with no optional discoveries -> fragmented synthesis tier
+  const minimalWorld = createInitialWorld('playing');
+  startCampaignRun(minimalWorld, true);
+  minimalWorld.run.unlockedChapters = [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+    'chapter_3_curator',
+    'chapter_4_matron',
+    'chapter_5_loom',
+  ];
+  assert.equal(startCampaignChapterSelect(minimalWorld, 'chapter_5_loom', true), true);
+  assert.equal(selectChronicleLoomEnding(minimalWorld, 'silence'), true);
+  assert.equal(
+    minimalWorld.exploration.convergenceSummary.synthesisTier,
+    'fragmented'
+  );
+
+  // 4) Ending with partial discoveries -> reconstructed synthesis tier
+  const partialWorld = createInitialWorld('playing');
+  startCampaignRun(partialWorld, true);
+  discoverCodexEntry(partialWorld, 'CODEX-01');
+  discoverCodexEntry(partialWorld, 'CODEX-02');
+  discoverCodexEntry(partialWorld, 'CODEX-05');
+  partialWorld.run.unlockedChapters = [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+    'chapter_3_curator',
+    'chapter_4_matron',
+    'chapter_5_loom',
+  ];
+  assert.equal(startCampaignChapterSelect(partialWorld, 'chapter_5_loom', true), true);
+  assert.equal(selectChronicleLoomEnding(partialWorld, 'witness'), true);
+  assert.equal(
+    partialWorld.exploration.convergenceSummary.synthesisTier,
+    'reconstructed'
+  );
+  assert.equal(
+    partialWorld.exploration.convergenceSummary.lysaTruthUncovered,
+    true
+  );
+
+  // 5) Ending with full discoveries -> complete_chronicle synthesis tier
+  const fullWorld = createInitialWorld('playing');
+  startCampaignRun(fullWorld, true);
+  for (const codexId of [
+    'CODEX-01',
+    'CODEX-02',
+    'CODEX-03',
+    'CODEX-04',
+    'CODEX-05',
+    'CODEX-06',
+    'CODEX-07',
+    'CODEX-08',
+  ] as const) {
+    discoverCodexEntry(fullWorld, codexId);
+  }
+  fullWorld.exploration.discoveredSecretIds = [
+    'secret_prologue_calibration_alcove',
+    'secret_ch1_marshal_armory_cache',
+    'secret_ch2_hydroponic_echo_sanctum',
+    'secret_ch3_lysa_unedited_vault',
+  ];
+  fullWorld.run.unlockedChapters = [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+    'chapter_3_curator',
+    'chapter_4_matron',
+    'chapter_5_loom',
+  ];
+  assert.equal(startCampaignChapterSelect(fullWorld, 'chapter_5_loom', true), true);
+  assert.equal(selectChronicleLoomEnding(fullWorld, 'continuity'), true);
+  assert.equal(
+    fullWorld.exploration.convergenceSummary.synthesisTier,
+    'complete_chronicle'
+  );
+  assert.equal(
+    fullWorld.exploration.convergenceSummary.synthesisHeadline,
+    'COMPLETE CHRONICLE RECONSTRUCTION · ALL UNINDEXED TRUTHS RECOVERED'
+  );
+});
+
+test('Phase 20.1 Full Legitimate Campaign Progression Chain: Prologue -> HELIX-04 -> The Choir -> The Curator -> Matron-V -> Chronicle Loom without direct chapter assignment', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  assert.equal(world.run.chapter, 'prologue');
+
+  // Step 1: Prologue calibration & proxy neutralisation -> legitimate transition to Chapter I (HELIX-04)
+  for (const enemy of world.enemies) {
+    enemy.hp = 0;
+    enemy.aiState = 'ko';
+  }
+  world.puzzle.teachCompleted = true;
+  world.puzzle.testCompleted = true;
+  world.puzzle.combineCompleted = true;
+  world.puzzle.completed = true;
+  world.puzzle.finalBarrier.open = true;
+  // Stepping the world after puzzle completion and proxy neutralization triggers beginCampaignBossTransition
+  stepWorld(world, createEmptyInput(Math.PI), 0.05);
+  assert.equal(world.run.stage, 'transition_to_boss');
+  assert.equal(world.run.pendingNextChapter, 'chapter_1_helix');
+
+  // Advance transition into Chapter I: HELIX-04
+  assert.equal(advanceCampaignChapter(world, true), true);
+  assert.equal(world.run.chapter, 'chapter_1_helix');
+  assert.equal(world.boss?.id, 'helix-04');
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes(
+      'nev_ch1_containment_arrival'
+    ),
+    true
+  );
+
+  // Step 2: Defeat HELIX-04 via legitimate boss victory flow -> advance to Chapter II: The Choir
+  triggerBossDefeat(world);
+  assert.equal(world.outcome, 'victory');
+  assert.equal(world.run.pendingNextChapter, 'chapter_2_choir');
+  assert.equal(world.run.completedChapters.includes('chapter_1_helix'), true);
+  assert.equal(world.run.recoveredLogs.includes('LOG-01'), true);
+  assert.equal(advanceCampaignChapter(world, true), true);
+  assert.equal(world.run.chapter, 'chapter_2_choir');
+  assert.equal(world.boss?.id, 'the-choir');
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch2_garden_arrival'),
+    true
+  );
+
+  // Step 3: Defeat The Choir via legitimate boss victory flow -> advance to Chapter III: The Curator
+  triggerBossDefeat(world);
+  assert.equal(world.outcome, 'victory');
+  assert.equal(world.run.pendingNextChapter, 'chapter_3_curator');
+  assert.equal(world.run.completedChapters.includes('chapter_2_choir'), true);
+  assert.equal(world.run.recoveredLogs.includes('LOG-02'), true);
+  assert.equal(advanceCampaignChapter(world, true), true);
+  assert.equal(world.run.chapter, 'chapter_3_curator');
+  assert.equal(world.boss?.id, 'the-curator');
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch3_vault_arrival'),
+    true
+  );
+
+  // Step 4: Defeat The Curator via legitimate boss victory flow -> advance to Chapter IV: Matron-V
+  triggerBossDefeat(world);
+  assert.equal(world.outcome, 'victory');
+  assert.equal(world.run.pendingNextChapter, 'chapter_4_matron');
+  assert.equal(world.run.completedChapters.includes('chapter_3_curator'), true);
+  assert.equal(world.run.recoveredLogs.includes('LOG-03'), true);
+  assert.equal(advanceCampaignChapter(world, true), true);
+  assert.equal(world.run.chapter, 'chapter_4_matron');
+  assert.equal(world.boss?.id, 'matron-v');
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes(
+      'nev_ch4_quarantine_arrival'
+    ),
+    true
+  );
+
+  // Step 5: Defeat Matron-V via legitimate boss victory flow -> advance to Chapter V: Chronicle Loom
+  triggerBossDefeat(world);
+  assert.equal(world.outcome, 'victory');
+  assert.equal(world.run.pendingNextChapter, 'chapter_5_loom');
+  assert.equal(world.run.completedChapters.includes('chapter_4_matron'), true);
+  assert.equal(world.run.recoveredLogs.includes('LOG-04'), true);
+  assert.equal(advanceCampaignChapter(world, true), true);
+  assert.equal(world.run.chapter, 'chapter_5_loom');
+  assert.equal(world.run.stage, 'chronicle_loom');
+  assert.equal(world.loom.active, true);
+  assert.equal(world.loom.endingChoiceAvailable, true);
+  stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.equal(
+    world.exploration.completedNarrativeEventIds.includes('nev_ch5_loom_arrival'),
+    true
+  );
+
+  // Step 6: Execute Chronicle Loom resolution -> verify all 6 chapters & all 6 logs completed
+  assert.equal(selectChronicleLoomEnding(world, 'witness'), true);
+  assert.deepEqual(world.run.completedChapters, [
+    'prologue',
+    'chapter_1_helix',
+    'chapter_2_choir',
+    'chapter_3_curator',
+    'chapter_4_matron',
+    'chapter_5_loom',
+  ]);
+  assert.deepEqual(world.run.recoveredLogs, [
+    'LOG-00',
+    'LOG-01',
+    'LOG-02',
+    'LOG-03',
+    'LOG-04',
+    'LOG-05',
+  ]);
+});
+
+
 
 
 

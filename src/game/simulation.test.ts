@@ -10654,6 +10654,444 @@ test('Phase 20.3: Boss Phase II Transition, Boss Defeat, and Echo Memory Trigger
   );
 });
 
+test('Phase 20.1 Campaign Synthesis Boundary-Condition Audit: 10 boundary cases, lysaTruthUncovered 3-path verification, and convergenceSummary freshness', () => {
+  // 1. Fresh campaign with no discoveries -> fragmented
+  const b1 = buildCampaignEndingDiscoverySummary({});
+  assert.equal(b1.synthesisTier, 'fragmented');
+  assert.equal(b1.discoveredCodexCount, 0);
+  assert.equal(b1.discoveredSecretsCount, 0);
+  assert.equal(b1.discoveredEchoMemoriesCount, 0);
+  assert.equal(b1.completedNarrativeEventsCount, 0);
+  assert.equal(b1.lysaTruthUncovered, false);
+  assert.equal(
+    b1.synthesisHeadline,
+    'PARTIAL ARCHIVE TELEMETRY · CORE DIRECTIVES VERIFIED'
+  );
+
+  // 2. Just below reconstructed threshold (2 Codex, 0 secrets, 1 Echo Memory, 7 narrative events, lysaTruthUncovered = false) -> fragmented
+  const b2 = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: ['CODEX-01', 'CODEX-02'],
+    discoveredSecretIds: [],
+    completedNarrativeEventIds: [
+      'nev_prologue_awakening',
+      'nev_prologue_calibration_revelation',
+      'nev_prologue_bay_diagnostic_evidence',
+      'nev_prologue_echo_memory_trace', // 1 Echo Memory
+      'nev_ch1_containment_arrival',
+      'nev_ch1_lockdown_evidence',
+      'nev_ch1_aegis_escalation',
+    ],
+  });
+  assert.equal(b2.discoveredCodexCount, 2);
+  assert.equal(b2.discoveredSecretsCount, 0);
+  assert.equal(b2.discoveredEchoMemoriesCount, 1);
+  assert.equal(b2.completedNarrativeEventsCount, 7);
+  assert.equal(b2.lysaTruthUncovered, false);
+  assert.equal(b2.synthesisTier, 'fragmented');
+
+  // 3. Exactly at reconstructed threshold across each independent trigger axis:
+  // 3a: 3 Codex entries (without Lysa truth) -> reconstructed with truthful multi-sector headline
+  const b3Codex = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: ['CODEX-01', 'CODEX-02', 'CODEX-03'],
+  });
+  assert.equal(b3Codex.synthesisTier, 'reconstructed');
+  assert.equal(b3Codex.lysaTruthUncovered, false);
+  assert.equal(
+    b3Codex.synthesisHeadline,
+    'RECONSTRUCTED ARCHIVE · MULTI-SECTOR TELEMETRY INTEGRATED'
+  );
+
+  // 3b: 1 secret area (without Lysa truth) -> reconstructed
+  const b3Secret = buildCampaignEndingDiscoverySummary({
+    discoveredSecretIds: ['secret_prologue_calibration_alcove'],
+  });
+  assert.equal(b3Secret.synthesisTier, 'reconstructed');
+  assert.equal(b3Secret.lysaTruthUncovered, false);
+
+  // 3c: 2 Echo Memories -> reconstructed
+  const b3EchoMem = buildCampaignEndingDiscoverySummary({
+    completedNarrativeEventIds: [
+      'nev_prologue_echo_memory_trace',
+      'nev_ch2_echo_memory_duet',
+    ],
+  });
+  assert.equal(b3EchoMem.discoveredEchoMemoriesCount, 2);
+  assert.equal(b3EchoMem.synthesisTier, 'reconstructed');
+
+  // 3d: 8 narrative events (0 Echo Memories, no Lysa truth) -> reconstructed
+  const b3Events = buildCampaignEndingDiscoverySummary({
+    completedNarrativeEventIds: [
+      'nev_prologue_awakening',
+      'nev_prologue_calibration_revelation',
+      'nev_prologue_bay_diagnostic_evidence',
+      'nev_ch1_containment_arrival',
+      'nev_ch1_lockdown_evidence',
+      'nev_ch1_aegis_escalation',
+      'nev_ch1_seal_recovered',
+      'nev_ch2_garden_arrival',
+    ],
+  });
+  assert.equal(b3Events.completedNarrativeEventsCount, 8);
+  assert.equal(b3Events.discoveredEchoMemoriesCount, 0);
+  assert.equal(b3Events.lysaTruthUncovered, false);
+  assert.equal(b3Events.synthesisTier, 'reconstructed');
+
+  // 4. Just below complete_chronicle threshold:
+  // 4a: 5 Codex + 3 secrets + lysaTruthUncovered = true -> reconstructed
+  const b4a = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: ['CODEX-01', 'CODEX-02', 'CODEX-03', 'CODEX-04', 'CODEX-05'],
+    discoveredSecretIds: [
+      'secret_prologue_calibration_alcove',
+      'secret_ch1_marshal_armory_cache',
+      'secret_ch3_lysa_unedited_vault',
+    ],
+  });
+  assert.equal(b4a.discoveredCodexCount, 5);
+  assert.equal(b4a.discoveredSecretsCount, 3);
+  assert.equal(b4a.lysaTruthUncovered, true);
+  assert.equal(b4a.synthesisTier, 'reconstructed');
+  assert.equal(
+    b4a.synthesisHeadline,
+    'RECONSTRUCTED ARCHIVE · LYSA’S UNINDEXED EVIDENCE INTEGRATED'
+  );
+
+  // 4b: 6 Codex + 2 secrets + lysaTruthUncovered = true -> reconstructed
+  const b4b = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: [
+      'CODEX-01',
+      'CODEX-02',
+      'CODEX-03',
+      'CODEX-04',
+      'CODEX-05',
+      'CODEX-06',
+    ],
+    discoveredSecretIds: [
+      'secret_prologue_calibration_alcove',
+      'secret_ch3_lysa_unedited_vault',
+    ],
+  });
+  assert.equal(b4b.discoveredCodexCount, 6);
+  assert.equal(b4b.discoveredSecretsCount, 2);
+  assert.equal(b4b.lysaTruthUncovered, true);
+  assert.equal(b4b.synthesisTier, 'reconstructed');
+
+  // 5. Exactly at complete_chronicle threshold (6 Codex + 3 secrets + lysaTruthUncovered = true):
+  // Headline must not claim "ALL UNINDEXED TRUTHS RECOVERED" when 2 Codex and 1 secret are still missing
+  const b5 = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: [
+      'CODEX-01',
+      'CODEX-02',
+      'CODEX-03',
+      'CODEX-04',
+      'CODEX-05',
+      'CODEX-06',
+    ],
+    discoveredSecretIds: [
+      'secret_prologue_calibration_alcove',
+      'secret_ch1_marshal_armory_cache',
+      'secret_ch3_lysa_unedited_vault',
+    ],
+  });
+  assert.equal(b5.synthesisTier, 'complete_chronicle');
+  assert.equal(
+    b5.synthesisHeadline,
+    'COMPLETE CHRONICLE RECONSTRUCTION · CORE ARCHIVE & LYSA AUDIT VERIFIED'
+  );
+  assert.ok(b5.synthesisSummary.includes('3/4 hidden sanctuaries'));
+  assert.ok(b5.synthesisSummary.includes('6/8 Codex records'));
+
+  // 6. One Codex entry missing (7/8 Codex + 4/4 secrets + lysaTruthUncovered = true)
+  const b6 = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: [
+      'CODEX-01',
+      'CODEX-02',
+      'CODEX-03',
+      'CODEX-04',
+      'CODEX-05',
+      'CODEX-06',
+      'CODEX-07',
+    ],
+    discoveredSecretIds: [
+      'secret_prologue_calibration_alcove',
+      'secret_ch1_marshal_armory_cache',
+      'secret_ch2_hydroponic_echo_sanctum',
+      'secret_ch3_lysa_unedited_vault',
+    ],
+  });
+  assert.equal(b6.synthesisTier, 'complete_chronicle');
+  assert.equal(
+    b6.synthesisHeadline,
+    'COMPLETE CHRONICLE RECONSTRUCTION · CORE ARCHIVE & LYSA AUDIT VERIFIED'
+  );
+  assert.ok(b6.synthesisSummary.includes('7/8 Codex records'));
+
+  // 7. One secret area missing (8/8 Codex + 3/4 secrets + lysaTruthUncovered = true)
+  const b7 = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: [
+      'CODEX-01',
+      'CODEX-02',
+      'CODEX-03',
+      'CODEX-04',
+      'CODEX-05',
+      'CODEX-06',
+      'CODEX-07',
+      'CODEX-08',
+    ],
+    discoveredSecretIds: [
+      'secret_prologue_calibration_alcove',
+      'secret_ch1_marshal_armory_cache',
+      'secret_ch3_lysa_unedited_vault',
+    ],
+  });
+  assert.equal(b7.synthesisTier, 'complete_chronicle');
+  assert.equal(
+    b7.synthesisHeadline,
+    'COMPLETE CHRONICLE RECONSTRUCTION · CORE ARCHIVE & LYSA AUDIT VERIFIED'
+  );
+  assert.ok(b7.synthesisSummary.includes('3/4 hidden sanctuaries'));
+
+  // 8. Lysa truth evidence missing (6 Codex excluding CODEX-05, 3 secrets excluding secret_ch3_lysa_unedited_vault, no nev_ch3_lysa_audit_revelation) -> reconstructed
+  const b8 = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: [
+      'CODEX-01',
+      'CODEX-02',
+      'CODEX-03',
+      'CODEX-04',
+      'CODEX-06',
+      'CODEX-07',
+    ],
+    discoveredSecretIds: [
+      'secret_prologue_calibration_alcove',
+      'secret_ch1_marshal_armory_cache',
+      'secret_ch2_hydroponic_echo_sanctum',
+    ],
+    completedNarrativeEventIds: [],
+  });
+  assert.equal(b8.lysaTruthUncovered, false);
+  assert.equal(b8.synthesisTier, 'reconstructed');
+  assert.equal(
+    b8.synthesisHeadline,
+    'RECONSTRUCTED ARCHIVE · MULTI-SECTOR TELEMETRY INTEGRATED'
+  );
+
+  // 9. All required evidence present (8/8 Codex + 4/4 secrets + lysaTruthUncovered) -> complete_chronicle with ALL UNINDEXED TRUTHS RECOVERED
+  const b9 = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: [
+      'CODEX-01',
+      'CODEX-02',
+      'CODEX-03',
+      'CODEX-04',
+      'CODEX-05',
+      'CODEX-06',
+      'CODEX-07',
+      'CODEX-08',
+    ],
+    discoveredSecretIds: [
+      'secret_prologue_calibration_alcove',
+      'secret_ch1_marshal_armory_cache',
+      'secret_ch2_hydroponic_echo_sanctum',
+      'secret_ch3_lysa_unedited_vault',
+    ],
+  });
+  assert.equal(b9.synthesisTier, 'complete_chronicle');
+  assert.equal(
+    b9.synthesisHeadline,
+    'COMPLETE CHRONICLE RECONSTRUCTION · ALL UNINDEXED TRUTHS RECOVERED'
+  );
+
+  // 10. Invalid or duplicate IDs passed into public helper must be deduplicated & sanitized without inflating counts
+  const b10 = buildCampaignEndingDiscoverySummary({
+    completedChapters: [
+      'prologue',
+      'prologue',
+      'invalid_chapter' as unknown as 'prologue',
+    ],
+    recoveredLogs: ['LOG-00', 'LOG-00', 'LOG-99'],
+    discoveredCodexIds: [
+      'CODEX-01',
+      'CODEX-01',
+      'CODEX-01',
+      'CODEX-02',
+      'INVALID-CODEX' as unknown as 'CODEX-01',
+    ],
+    discoveredSecretIds: [
+      'invalid_secret' as unknown as 'secret_prologue_calibration_alcove',
+    ],
+    completedNarrativeEventIds: [
+      'nev_prologue_echo_memory_trace',
+      'nev_prologue_echo_memory_trace',
+      'invalid_event' as unknown as 'nev_prologue_awakening',
+    ],
+  });
+  assert.equal(b10.completedChaptersCount, 1);
+  assert.equal(b10.recoveredLogsCount, 1);
+  assert.equal(b10.discoveredCodexCount, 2);
+  assert.equal(b10.discoveredSecretsCount, 0);
+  assert.equal(b10.discoveredEchoMemoriesCount, 1);
+  assert.equal(b10.completedNarrativeEventsCount, 1);
+  assert.equal(b10.synthesisTier, 'fragmented');
+
+  // Section 6.3: Verify lysaTruthUncovered across all 3 canonical paths independently
+  const lysaViaCodex = buildCampaignEndingDiscoverySummary({
+    discoveredCodexIds: ['CODEX-05'],
+  });
+  assert.equal(lysaViaCodex.lysaTruthUncovered, true);
+  assert.equal(lysaViaCodex.synthesisTier, 'reconstructed');
+
+  const lysaViaSecret = buildCampaignEndingDiscoverySummary({
+    discoveredSecretIds: ['secret_ch3_lysa_unedited_vault'],
+  });
+  assert.equal(lysaViaSecret.lysaTruthUncovered, true);
+  assert.equal(lysaViaSecret.synthesisTier, 'reconstructed');
+
+  const lysaViaNarrative = buildCampaignEndingDiscoverySummary({
+    completedNarrativeEventIds: ['nev_ch3_lysa_audit_revelation'],
+  });
+  assert.equal(lysaViaNarrative.lysaTruthUncovered, true);
+  assert.equal(lysaViaNarrative.synthesisTier, 'reconstructed');
+
+  // Section 6.4: Verify world.exploration.convergenceSummary stays fresh across all mutation & save-load paths
+  const freshWorld = createInitialWorld('playing');
+  startCampaignRun(freshWorld, true);
+  assert.equal(freshWorld.exploration.convergenceSummary.synthesisTier, 'fragmented');
+
+  // 1) Codex discovery updates convergenceSummary immediately
+  discoverCodexEntry(freshWorld, 'CODEX-01');
+  discoverCodexEntry(freshWorld, 'CODEX-02');
+  discoverCodexEntry(freshWorld, 'CODEX-03');
+  assert.equal(freshWorld.exploration.convergenceSummary.discoveredCodexCount, 3);
+  assert.equal(freshWorld.exploration.convergenceSummary.synthesisTier, 'reconstructed');
+
+  // 2) Save and reload preserves fresh convergenceSummary
+  const savedJson = serializeCampaignProgress(freshWorld);
+  const loadedWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(loadedWorld, savedJson), true);
+  assert.equal(loadedWorld.exploration.convergenceSummary.discoveredCodexCount, 3);
+  assert.equal(loadedWorld.exploration.convergenceSummary.synthesisTier, 'reconstructed');
+});
+
+test('Phase 20.1 Narrative Event Trigger Correctness & Optional/Null-State Defensive Audit', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+
+  // 1. Invalid event IDs return false safely
+  assert.equal(triggerNarrativeEvent(world, 'invalid_event_id'), false);
+  assert.equal(triggerNarrativeEvent(world, null), false);
+  assert.equal(triggerNarrativeEvent(world, undefined), false);
+
+  // 2. Wrong chapter events cannot trigger
+  const ch1ArrivalDef = getNarrativeEventDefinition('nev_ch1_containment_arrival');
+  assert.equal(canTriggerNarrativeEventNow(world, ch1ArrivalDef), false);
+  assert.equal(triggerNarrativeEvent(world, 'nev_ch1_containment_arrival'), false);
+
+  // 3. Paused, title, or defeated worlds cannot trigger narrative events
+  const prologueAwakeningDef = getNarrativeEventDefinition('nev_prologue_awakening');
+  const pausedWorld = createInitialWorld('paused');
+  assert.equal(canTriggerNarrativeEventNow(pausedWorld, prologueAwakeningDef), false);
+
+  const titleWorld = createInitialWorld('title');
+  assert.equal(canTriggerNarrativeEventNow(titleWorld, prologueAwakeningDef), false);
+
+  const defeatedWorld = createInitialWorld('playing');
+  startCampaignRun(defeatedWorld, true);
+  defeatedWorld.exploration.completedNarrativeEventIds = [];
+  defeatedWorld.outcome = 'defeat';
+  assert.equal(canTriggerNarrativeEventNow(defeatedWorld, prologueAwakeningDef), false);
+
+  // 4. Dead player or zero integrity cannot trigger narrative events
+  const deadPlayerWorld = createInitialWorld('playing');
+  startCampaignRun(deadPlayerWorld, true);
+  deadPlayerWorld.exploration.completedNarrativeEventIds = [];
+  deadPlayerWorld.player.integrity = 0;
+  assert.equal(canTriggerNarrativeEventNow(deadPlayerWorld, prologueAwakeningDef), false);
+
+  // 5. Practice mode and Chapter Replay cannot trigger campaign narrative events
+  const practiceWorld = createInitialWorld('playing');
+  startPracticeStandardRun(practiceWorld, 'prologue_calibration_bay');
+  assert.equal(canTriggerNarrativeEventNow(practiceWorld, prologueAwakeningDef), false);
+  assert.equal(triggerNarrativeEvent(practiceWorld, 'nev_prologue_awakening'), false);
+
+  const replayWorld = createInitialWorld('playing');
+  startCampaignRun(replayWorld, true);
+  replayWorld.exploration.completedNarrativeEventIds = [];
+  replayWorld.run.isChapterReplay = true;
+  assert.equal(canTriggerNarrativeEventNow(replayWorld, prologueAwakeningDef), false);
+  assert.equal(triggerNarrativeEvent(replayWorld, 'nev_prologue_awakening'), false);
+
+  // 6. Optional/null-state defensive checks:
+  // 6a: campaign_resolution when world.loom or world.run is undefined or selectedEnding is null/undefined
+  const ch5ResolutionDef = getNarrativeEventDefinition('nev_ch5_final_resolution');
+  const ch5PartialWorld = createInitialWorld('playing');
+  startCampaignRun(ch5PartialWorld, true);
+  ch5PartialWorld.run.chapter = 'chapter_5_loom';
+  ch5PartialWorld.exploration.completedObjectiveIds.push('obj_ch5_select_loom_directive');
+  ch5PartialWorld.loom.selectedEnding = null;
+  ch5PartialWorld.run.selectedEnding = null;
+  assert.equal(
+    canTriggerNarrativeEventNow(ch5PartialWorld, ch5ResolutionDef),
+    false,
+    'campaign_resolution must not trigger when selectedEnding is null'
+  );
+
+  // Simulate undefined world.loom (previously undefined !== null evaluated to true!)
+  const ch5MissingLoomWorld = structuredClone(ch5PartialWorld);
+  (ch5MissingLoomWorld as unknown as { loom?: unknown }).loom = undefined;
+  assert.equal(
+    canTriggerNarrativeEventNow(ch5MissingLoomWorld, ch5ResolutionDef),
+    false,
+    'campaign_resolution must return false when world.loom is undefined and no valid ending is selected'
+  );
+
+  // When a valid ending is selected on world.loom or world.run, campaign_resolution returns true
+  ch5PartialWorld.loom.selectedEnding = 'witness';
+  assert.equal(canTriggerNarrativeEventNow(ch5PartialWorld, ch5ResolutionDef), true);
+
+  // 6b: world.puzzle undefined for calibration_revelation and echo_memory_activated
+  const calibDef = getNarrativeEventDefinition('nev_prologue_calibration_revelation');
+  const echoTraceDef = getNarrativeEventDefinition('nev_prologue_echo_memory_trace');
+  const noPuzzleWorld = createInitialWorld('playing');
+  startCampaignRun(noPuzzleWorld, true);
+  noPuzzleWorld.exploration.completedNarrativeEventIds = [];
+  (noPuzzleWorld as unknown as { puzzle?: unknown }).puzzle = undefined;
+  (noPuzzleWorld as unknown as { pressurePlate?: unknown }).pressurePlate = undefined;
+  assert.equal(canTriggerNarrativeEventNow(noPuzzleWorld, calibDef), false);
+  assert.equal(canTriggerNarrativeEventNow(noPuzzleWorld, echoTraceDef), false);
+
+  // 6c: world.boss null for boss_phase_transition and boss_defeat
+  const ch1PhaseDef = getNarrativeEventDefinition('nev_ch1_aegis_escalation');
+  const ch1DefeatDef = getNarrativeEventDefinition('nev_ch1_seal_recovered');
+  const noBossWorld = createInitialWorld('playing');
+  startCampaignRun(noBossWorld, true);
+  noBossWorld.run.chapter = 'chapter_1_helix';
+  noBossWorld.boss = null;
+  assert.equal(canTriggerNarrativeEventNow(noBossWorld, ch1PhaseDef), false);
+  assert.equal(canTriggerNarrativeEventNow(noBossWorld, ch1DefeatDef), false);
+
+  // 6d: world.run undefined or world.player undefined returns false safely without throwing
+  const noRunWorld = createInitialWorld('playing');
+  (noRunWorld as unknown as { run?: unknown }).run = undefined;
+  assert.equal(canTriggerNarrativeEventNow(noRunWorld, prologueAwakeningDef), false);
+
+  const noPlayerWorld = createInitialWorld('playing');
+  (noPlayerWorld as unknown as { player?: unknown }).player = undefined;
+  assert.equal(canTriggerNarrativeEventNow(noPlayerWorld, prologueAwakeningDef), false);
+
+  // 7. Completed events never re-trigger or duplicate rewards/transmissions
+  const dupWorld = createInitialWorld('playing');
+  startCampaignRun(dupWorld, true);
+  dupWorld.exploration.completedNarrativeEventIds = [];
+  assert.equal(triggerNarrativeEvent(dupWorld, 'nev_prologue_awakening'), true);
+  const eventsCountAfterFirst = dupWorld.events.filter(
+    (e) => e.type === 'narrative_event_triggered'
+  ).length;
+  assert.equal(triggerNarrativeEvent(dupWorld, 'nev_prologue_awakening'), false);
+  assert.equal(
+    dupWorld.events.filter((e) => e.type === 'narrative_event_triggered').length,
+    eventsCountAfterFirst
+  );
+});
+
+
 
 
 
