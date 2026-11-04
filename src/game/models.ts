@@ -29,6 +29,8 @@ export interface PlayerRig {
   rightFootPivot: THREE.Group;
   bladeMesh: THREE.Mesh;
   bladeMaterial: THREE.MeshStandardMaterial;
+  phaseRailGroup?: THREE.Group;
+  gravBreakerGroup?: THREE.Group;
   pulsecasterCoreMesh: THREE.Mesh;
   pulsecasterMaterial: THREE.MeshStandardMaterial;
   slashArcPivot: THREE.Group;
@@ -1398,6 +1400,10 @@ export function buildChapterEnvironment(chapter: CampaignChapterId): ChapterEnvi
     const anchorRing = mesh(group, new THREE.TorusGeometry(2.05, 0.045, 8, 36), glowMat, -7.4, 0.06, 4.8);
     anchorRing.rotation.x = Math.PI / 2;
     rotors.push(anchorRing);
+    // Phase 21: Sovereign Loom Architect Arena Ring
+    const sovereignRing = mesh(group, new THREE.TorusGeometry(9.2, 0.055, 10, 64), accentMat, 0, 0.05, -2.0);
+    sovereignRing.rotation.x = Math.PI / 2;
+    rotors.push(sovereignRing);
   }
 
   return { group, rotors, pulseMaterials };
@@ -2005,6 +2011,79 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
   bladeMesh.position.set(0.02, -0.02, 0.28);
   weaponPivot.add(bladeMesh);
 
+  // Phase 21: Null-Point Rail Lance 3D Weapon Assembly (visible when phase_rail equipped)
+  const phaseRailGroup = new THREE.Group();
+  phaseRailGroup.visible = false;
+  weaponPivot.add(phaseRailGroup);
+
+  const railBarrelTop = new THREE.Mesh(
+    new RoundedBoxGeometry(0.055, 0.05, 1.95, 2, 0.015),
+    silverArmorMat
+  );
+  railBarrelTop.position.set(0, 0.065, 0.98);
+  phaseRailGroup.add(railBarrelTop);
+
+  const railBarrelBottom = new THREE.Mesh(
+    new RoundedBoxGeometry(0.055, 0.05, 1.85, 2, 0.015),
+    graphiteJointMat
+  );
+  railBarrelBottom.position.set(0, -0.065, 0.92);
+  phaseRailGroup.add(railBarrelBottom);
+
+  const railCoreBeam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.024, 0.032, 1.9, 12),
+    chronoCyanMat
+  );
+  railCoreBeam.rotation.x = Math.PI / 2;
+  railCoreBeam.position.set(0, 0, 0.96);
+  phaseRailGroup.add(railCoreBeam);
+
+  for (const rz of [0.55, 1.05, 1.55]) {
+    const railCoil = new THREE.Mesh(
+      new THREE.TorusGeometry(0.088, 0.016, 8, 20),
+      warmBronzeMat
+    );
+    railCoil.position.set(0, 0, rz);
+    phaseRailGroup.add(railCoil);
+  }
+
+  // Phase 21: Grav-Breaker Maul 3D Weapon Assembly (visible when grav_breaker equipped)
+  const gravBreakerGroup = new THREE.Group();
+  gravBreakerGroup.visible = false;
+  weaponPivot.add(gravBreakerGroup);
+
+  const maulHaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.044, 0.05, 1.48, 12),
+    graphiteJointMat
+  );
+  maulHaft.rotation.x = Math.PI / 2;
+  maulHaft.position.set(0, 0, 0.72);
+  gravBreakerGroup.add(maulHaft);
+
+  const maulHead = new THREE.Mesh(
+    new RoundedBoxGeometry(0.46, 0.36, 0.54, 3, 0.06),
+    silverArmorMat
+  );
+  maulHead.position.set(0, 0, 1.38);
+  gravBreakerGroup.add(maulHead);
+
+  const maulAnvilFace = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.19, 0.19, 0.56, 16),
+    warmBronzeMat
+  );
+  maulAnvilFace.rotation.z = Math.PI / 2;
+  maulAnvilFace.position.set(0, 0, 1.42);
+  gravBreakerGroup.add(maulAnvilFace);
+
+  for (const mz of [1.22, 1.54]) {
+    const singularityRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.22, 0.026, 8, 20),
+      chronoCyanMat
+    );
+    singularityRing.position.set(0, 0, mz);
+    gravBreakerGroup.add(singularityRing);
+  }
+
   // --- 7. 3D-Orientable Feathered Weapon Cleave Trail Arc ---
   const slashArcPivot = new THREE.Group();
   slashArcPivot.position.set(0, 1.12, 0.08);
@@ -2095,6 +2174,8 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
     rightFootPivot: rightLeg.footPivot,
     bladeMesh,
     bladeMaterial,
+    phaseRailGroup,
+    gravBreakerGroup,
     pulsecasterCoreMesh: pulsecasterCore,
     pulsecasterMaterial,
     slashArcPivot,
@@ -2627,7 +2708,8 @@ export function createEnemyRig(
     archetype === 'helix' ||
     archetype === 'choir' ||
     archetype === 'curator' ||
-    archetype === 'matron';
+    archetype === 'matron' ||
+    archetype === 'warden_prime';
 
   const coreMaterial = new THREE.MeshStandardMaterial({
     color:
@@ -2666,29 +2748,34 @@ export function createEnemyRig(
     side: THREE.DoubleSide,
   });
 
-  if (archetype === 'bastion' || archetype === 'eraser') {
+  if (
+    archetype === 'bastion' ||
+    archetype === 'eraser' ||
+    archetype === 'aegis_sentinel'
+  ) {
     const isEraser = archetype === 'eraser';
+    const isSentinel = archetype === 'aegis_sentinel';
     // =========================================================================
-    // BASTION-09 / ERASER-09 — Heavy Enforcer & Anti-Echo Nullifier
-    // Calibrated Gunmetal/Slate/Bronze/Amber PBR Materials so silhouette reads
+    // BASTION-09 / ERASER-09 / SENTINEL-A7 — Heavy Enforcer, Nullifier & Phalanx
+    // Calibrated Gunmetal/Slate/Bronze/Amber/Cyan PBR Materials so silhouette reads
     // clearly against the dark deck with heavy hydraulic articulation.
     // =========================================================================
     const graphiteChassisMat = new THREE.MeshStandardMaterial({
-      color: isEraser ? 0x31102f : 0x293548,
+      color: isEraser ? 0x31102f : isSentinel ? 0x162d3d : 0x293548,
       bumpMap: armorBump,
       bumpScale: 0.012,
       roughness: 0.54,
       metalness: 0.58,
     });
     const gunmetalPlateMat = new THREE.MeshStandardMaterial({
-      color: isEraser ? 0x881337 : 0x4b5d73,
+      color: isEraser ? 0x881337 : isSentinel ? 0x0e7490 : 0x4b5d73,
       bumpMap: armorBump,
       bumpScale: 0.01,
       roughness: 0.26,
       metalness: 0.78,
     });
     const slateSteelMat = new THREE.MeshStandardMaterial({
-      color: isEraser ? 0xfda4af : 0x8496ad,
+      color: isEraser ? 0xfda4af : isSentinel ? 0xcffafe : 0x8496ad,
       roughness: 0.22,
       metalness: 0.85,
     });
@@ -3260,7 +3347,7 @@ export function createEnemyRig(
       metalness: 0.45,
     });
 
-    if (archetype !== 'helix') {
+    if (archetype !== 'helix' && archetype !== 'warden_prime') {
       const bespoke = buildBespokeBossChassis(
         archetype,
         bodyGroup,
@@ -3836,7 +3923,7 @@ export function createEnemyRig(
 
   // Ground Telegraph AoE Disc & Expanding Warning Ring
   const telegraphRadius =
-    archetype === 'scout'
+    archetype === 'scout' || archetype === 'null_weaver'
       ? 1.15
       : isBossArchetype
         ? GAME_CONFIG.boss.attacks.anchor_slam.innerRadius
@@ -3874,9 +3961,9 @@ export function createEnemyRig(
   let laserSightMesh: THREE.Mesh | undefined;
   let laserSightMaterial: THREE.MeshBasicMaterial | undefined;
 
-  if (archetype === 'scout') {
+  if (archetype === 'scout' || archetype === 'null_weaver') {
     laserSightMaterial = new THREE.MeshBasicMaterial({
-      color: 0xec4899,
+      color: archetype === 'null_weaver' ? 0xa855f7 : 0xec4899,
       transparent: true,
       opacity: 0,
       side: THREE.DoubleSide,

@@ -160,7 +160,12 @@ const _scratchSubstepInput: PlayerInputFrame = {
   interactJustPressed: false,
 };
 
-export const VALID_WEAPON_IDS: readonly WeaponId[] = ['chrono_edge', 'pulsecaster'];
+export const VALID_WEAPON_IDS: readonly WeaponId[] = [
+  'chrono_edge',
+  'pulsecaster',
+  'phase_rail',
+  'grav_breaker',
+];
 
 export function isValidWeaponId(value: unknown): value is WeaponId {
   return (
@@ -2379,6 +2384,18 @@ export function discoverSecretArea(
     discoverCodexEntry(world, def.linkedCodexId);
   }
 
+  if (
+    secretId === 'secret_prologue_calibration_alcove' ||
+    secretId === 'secret_ch1_marshal_armory_cache'
+  ) {
+    unlockPlayerWeapon(world, 'phase_rail');
+  } else if (
+    secretId === 'secret_ch2_hydroponic_echo_sanctum' ||
+    secretId === 'secret_ch3_lysa_unedited_vault'
+  ) {
+    unlockPlayerWeapon(world, 'grav_breaker');
+  }
+
   exp.lastDiscoveryBanner = {
     secretId: def.id,
     title: def.title,
@@ -3151,6 +3168,10 @@ export const VALID_WEAPON_UPGRADE_IDS: readonly WeaponUpgradeId[] = [
   'edge_harmonic_conductor',
   'pulse_thermal_sink',
   'pulse_overcharge_condenser',
+  'rail_null_aperture',
+  'rail_phase_capacitor',
+  'breaker_seismic_core',
+  'breaker_singularity_coil',
 ];
 
 export const VALID_PROGRESSION_REWARD_IDS: readonly WeaponProgressionRewardId[] = [
@@ -3196,14 +3217,30 @@ export function getProgressionRewardDefinition(
   return GAME_CONFIG.weapons.progression.rewards[rewardId];
 }
 
+function normalizeUnlockedWeaponIds(rawList: unknown): WeaponId[] {
+  const result: WeaponId[] = ['chrono_edge', 'pulsecaster'];
+  if (Array.isArray(rawList)) {
+    for (let i = 0; i < VALID_WEAPON_IDS.length; i++) {
+      const candidate = VALID_WEAPON_IDS[i];
+      if (!result.includes(candidate) && rawList.includes(candidate)) {
+        result.push(candidate);
+      }
+    }
+  }
+  return result;
+}
+
 export function createInitialWeaponProgressionState(): WeaponProgressionState {
   return {
     memoryFragments: 0,
     claimedRewardIds: [],
+    unlockedWeaponIds: ['chrono_edge', 'pulsecaster'],
     purchasedUpgrades: [],
     equippedUpgrades: {
       chrono_edge: null,
       pulsecaster: null,
+      phase_rail: null,
+      grav_breaker: null,
     },
     lastPurchaseOutcome: null,
     lastEquipOutcome: null,
@@ -3213,25 +3250,31 @@ export function createInitialWeaponProgressionState(): WeaponProgressionState {
 
 export function clonePersistedWeaponProgressionState(
   prog: PersistedWeaponProgressionState | undefined | null
-): PersistedWeaponProgressionState {
+): PersistedWeaponProgressionState & { unlockedWeaponIds: WeaponId[] } {
   if (!prog) {
     return {
       memoryFragments: 0,
       claimedRewardIds: [],
+      unlockedWeaponIds: ['chrono_edge', 'pulsecaster'],
       purchasedUpgrades: [],
       equippedUpgrades: {
         chrono_edge: null,
         pulsecaster: null,
+        phase_rail: null,
+        grav_breaker: null,
       },
     };
   }
   return {
     memoryFragments: prog.memoryFragments,
     claimedRewardIds: [...prog.claimedRewardIds],
+    unlockedWeaponIds: normalizeUnlockedWeaponIds(prog.unlockedWeaponIds),
     purchasedUpgrades: [...prog.purchasedUpgrades],
     equippedUpgrades: {
       chrono_edge: prog.equippedUpgrades?.chrono_edge ?? null,
       pulsecaster: prog.equippedUpgrades?.pulsecaster ?? null,
+      phase_rail: prog.equippedUpgrades?.phase_rail ?? null,
+      grav_breaker: prog.equippedUpgrades?.grav_breaker ?? null,
     },
   };
 }
@@ -3242,8 +3285,10 @@ export function cloneWeaponProgressionState(
   if (!prog) {
     return createInitialWeaponProgressionState();
   }
+  const cloned = clonePersistedWeaponProgressionState(prog);
   return {
-    ...clonePersistedWeaponProgressionState(prog),
+    ...cloned,
+    unlockedWeaponIds: normalizeUnlockedWeaponIds(cloned.unlockedWeaponIds),
     lastPurchaseOutcome: prog.lastPurchaseOutcome ?? null,
     lastEquipOutcome: prog.lastEquipOutcome ?? null,
     lastActionMessage:
@@ -3277,6 +3322,26 @@ export function sanitizePersistedWeaponProgressionState(
     }
   }
 
+  const unlockedWeaponIds = normalizeUnlockedWeaponIds(obj.unlockedWeaponIds);
+  // Also infer unlocked weapons from claimed boss rewards if saving from an older state
+  if (
+    (claimedRewardIds.includes('prologue_calibration_combine') ||
+      claimedRewardIds.includes('prologue_bay_proxies_cleared') ||
+      claimedRewardIds.includes('chapter_1_helix_defeated')) &&
+    !unlockedWeaponIds.includes('phase_rail')
+  ) {
+    unlockedWeaponIds.push('phase_rail');
+  }
+  if (
+    (claimedRewardIds.includes('chapter_1_helix_defeated') ||
+      claimedRewardIds.includes('chapter_2_choir_defeated') ||
+      claimedRewardIds.includes('chapter_3_curator_defeated') ||
+      claimedRewardIds.includes('chapter_4_matron_defeated')) &&
+    !unlockedWeaponIds.includes('grav_breaker')
+  ) {
+    unlockedWeaponIds.push('grav_breaker');
+  }
+
   const purchasedUpgrades: WeaponUpgradeId[] = [];
   if (Array.isArray(obj.purchasedUpgrades)) {
     for (let i = 0; i < obj.purchasedUpgrades.length; i++) {
@@ -3290,6 +3355,8 @@ export function sanitizePersistedWeaponProgressionState(
   const equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null> = {
     chrono_edge: null,
     pulsecaster: null,
+    phase_rail: null,
+    grav_breaker: null,
   };
   if (
     obj.equippedUpgrades &&
@@ -3313,9 +3380,40 @@ export function sanitizePersistedWeaponProgressionState(
   return {
     memoryFragments,
     claimedRewardIds,
+    unlockedWeaponIds: normalizeUnlockedWeaponIds(unlockedWeaponIds),
     purchasedUpgrades,
     equippedUpgrades,
   };
+}
+
+export function getUnlockedWeaponIds(world: WorldState): WeaponId[] {
+  if (world.run && world.run.mode !== 'campaign') {
+    return [...VALID_WEAPON_IDS];
+  }
+  return normalizeUnlockedWeaponIds(world.progression?.unlockedWeaponIds);
+}
+
+export function unlockPlayerWeapon(world: WorldState, weaponId: WeaponId): boolean {
+  if (!isValidWeaponId(weaponId)) return false;
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const current = normalizeUnlockedWeaponIds(world.progression.unlockedWeaponIds);
+  if (current.includes(weaponId)) {
+    world.progression.unlockedWeaponIds = current;
+    return false;
+  }
+  current.push(weaponId);
+  world.progression.unlockedWeaponIds = normalizeUnlockedWeaponIds(current);
+  const def = getWeaponDefinition(weaponId);
+  world.progression.lastActionMessage = `ARSENAL UNLOCKED · ${def.name} (${def.roleLabel})`;
+  world.events.push({
+    type: 'weapon_unlocked',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    weaponId,
+  });
+  return true;
 }
 
 export function getEquippedWeaponUpgrade(
@@ -3694,6 +3792,7 @@ export function createInitialPlayer(): PlayerState {
     currentAttackMarkId: null,
     bufferedAction: 'none',
     bufferTimer: 0,
+    fluxDampenedTimer: 0,
   };
 }
 
@@ -4335,6 +4434,15 @@ export function createBossStateForId(
     radius = GAME_CONFIG.enemies.matron.radius;
     statusP1 = 'PHASE I · SURGICAL QUARANTINE PROTOCOL';
     statusIntro = 'QUARANTINE WARDEN AWAKENING · MATRON-V';
+  } else if (bossId === 'warden-prime') {
+    id = GAME_CONFIG.wardenPrime.id;
+    name = GAME_CONFIG.wardenPrime.name;
+    subtitle = GAME_CONFIG.wardenPrime.subtitle;
+    maxHp = GAME_CONFIG.wardenPrime.maxHp;
+    maxStagger = GAME_CONFIG.wardenPrime.maxStagger;
+    radius = GAME_CONFIG.enemies.warden_prime.radius;
+    statusP1 = 'PHASE I · SOVEREIGN LOOM DIRECTIVE';
+    statusIntro = 'SOVEREIGN ARCHITECT ONLINE · WARDEN PRIME';
   }
 
   return {
@@ -4848,6 +4956,8 @@ export function getChapterForBossId(bossId: BossId): CampaignChapterId {
       return 'chapter_3_curator';
     case 'matron-v':
       return 'chapter_4_matron';
+    case 'warden-prime':
+      return 'chapter_5_loom';
     case 'helix-04':
     default:
       return 'chapter_1_helix';
@@ -4876,6 +4986,7 @@ export function getTutorialStepForBossId(bossId: BossId): TutorialStep {
     case 'the-curator':
       return 'curator_gravity_pin';
     case 'matron-v':
+    case 'warden-prime':
       return 'matron_echo_collapse';
     case 'helix-04':
     default:
@@ -5102,7 +5213,9 @@ export function startBossEncounter(
         ? 'curator'
         : bossId === 'matron-v'
           ? 'matron'
-          : 'helix';
+          : bossId === 'warden-prime'
+            ? 'warden_prime'
+            : 'helix';
 
   const bossEnemy = createEnemy(
     boss.id,
@@ -5125,12 +5238,15 @@ export function startBossEncounter(
   const isChoir = bossId === 'the-choir';
   const isCurator = bossId === 'the-curator';
   const isMatron = bossId === 'matron-v';
+  const isWardenPrime = bossId === 'warden-prime';
 
   const choirState = createInitialChoirState(isChoir);
-  const curatorState = createInitialCuratorState(isCurator);
-  const matronState = createInitialMatronState(isMatron);
-  const gravityPinState = createInitialGravityPinState(isCurator || isMatron);
-  const echoCollapseState = createInitialEchoCollapseState(isMatron);
+  const curatorState = createInitialCuratorState(isCurator || isWardenPrime);
+  const matronState = createInitialMatronState(isMatron || isWardenPrime);
+  const gravityPinState = createInitialGravityPinState(
+    isCurator || isMatron || isWardenPrime
+  );
+  const echoCollapseState = createInitialEchoCollapseState(isMatron || isWardenPrime);
   const loomState = createInitialChronicleLoomState(false);
 
   if (isCurator) {
@@ -5226,7 +5342,9 @@ export function startBossEncounter(
         ? 'chapter3_intro'
         : bossId === 'matron-v'
           ? 'chapter4_intro'
-          : 'chapter1_intro';
+          : bossId === 'warden-prime'
+            ? 'warden_prime_intro'
+            : 'chapter1_intro';
   triggerNarrativeTransmission(world, introCommKey, true);
   world.stats = fresh.stats;
   world.frozenSummary = null;
@@ -5607,6 +5725,7 @@ export function beginCampaignBossTransition(world: WorldState): void {
       'LOG-00'
     );
     world.run.pendingNextChapter = 'chapter_1_helix';
+    unlockPlayerWeapon(world, 'phase_rail');
   }
 
   world.run.stage = 'transition_to_boss';
@@ -5685,6 +5804,25 @@ export function transitionCampaignToBoss(
     : clonePersistedExplorationState(world.exploration);
 
   startBossEncounter(world, skipBossIntro, bossId);
+  if (!isReplay) {
+    if (
+      targetChapter === 'chapter_1_helix' ||
+      targetChapter === 'chapter_2_choir' ||
+      targetChapter === 'chapter_3_curator' ||
+      targetChapter === 'chapter_4_matron' ||
+      targetChapter === 'chapter_5_loom'
+    ) {
+      unlockPlayerWeapon(world, 'phase_rail');
+    }
+    if (
+      targetChapter === 'chapter_2_choir' ||
+      targetChapter === 'chapter_3_curator' ||
+      targetChapter === 'chapter_4_matron' ||
+      targetChapter === 'chapter_5_loom'
+    ) {
+      unlockPlayerWeapon(world, 'grav_breaker');
+    }
+  }
   world.exploration = createInitialExplorationState(
     targetChapter,
     preservedExploration
@@ -5806,6 +5944,10 @@ export function enterChronicleLoomChapter(
   world.loom = createInitialChronicleLoomState(true);
   world.comms = createInitialNarrativeCommsState();
   world.progression = cloneWeaponProgressionState(world.progression);
+  if (!isReplay) {
+    unlockPlayerWeapon(world, 'phase_rail');
+    unlockPlayerWeapon(world, 'grav_breaker');
+  }
   world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
   world.exploration = createInitialExplorationState(
     'chapter_5_loom',
@@ -5846,6 +5988,80 @@ export function enterChronicleLoomChapter(
   );
   triggerNarrativeTransmission(world, 'chapter5_loom_arrival', true);
   advanceMissionAndExplorationSystem(world);
+}
+
+export function engageWardenPrimeInLoom(
+  world: WorldState,
+  skipIntro = false
+): boolean {
+  if (!world || !world.run || world.run.chapter !== 'chapter_5_loom') {
+    return false;
+  }
+  const preserveTutorialEnabled = world.tutorial ? world.tutorial.enabled : true;
+  const isReplay = Boolean(world.run.isChapterReplay);
+  const savedSnap = world.run.savedCampaignSnapshot;
+  const unlockedChapters = [...world.run.unlockedChapters];
+  const completedChapters = [...world.run.completedChapters];
+  const recoveredLogs = [...(world.run.recoveredLogs ?? [])];
+  const completedEndings = [...(world.run.completedEndings ?? [])];
+  const preservedExploration = clonePersistedExplorationState(world.exploration);
+  const preservedProgression = cloneWeaponProgressionState(world.progression);
+  const checkpoint = captureBossCheckpointFromWorld(
+    world,
+    'chapter_5_loom',
+    'warden-prime'
+  );
+
+  startBossEncounter(world, skipIntro, 'warden-prime');
+  world.progression = preservedProgression;
+  if (!isReplay) {
+    unlockPlayerWeapon(world, 'phase_rail');
+    unlockPlayerWeapon(world, 'grav_breaker');
+  }
+  world.exploration = createInitialExplorationState(
+    'chapter_5_loom',
+    preservedExploration
+  );
+  syncUnlockedRoutesToObstacles(world);
+  syncResonanceUpgradeParameters(world);
+
+  world.run = {
+    mode: 'campaign',
+    stage: skipIntro ? 'boss_fight' : 'boss_intro',
+    chapter: 'chapter_5_loom',
+    unlockedChapters,
+    completedChapters,
+    recoveredLogs,
+    completedEndings,
+    pendingNextChapter: null,
+    isChapterReplay: isReplay,
+    savedCampaignSnapshot: savedSnap,
+    selectedEnding: null,
+    introTimer: 0,
+    introDuration: GAME_CONFIG.verticalSlice.introDuration,
+    transitionTimer: 0,
+    transitionDuration: GAME_CONFIG.verticalSlice.transitionDuration,
+    bossCheckpoint: {
+      ...checkpoint,
+      chapter: 'chapter_5_loom',
+      bossId: 'warden-prime',
+      statsAtCheckpoint: { ...checkpoint.statsAtCheckpoint },
+    },
+    checkpointNotice: 'SOVEREIGN ARCHITECT ENGAGED · NEUTRALIZE WARDEN PRIME TO SEIZE LOOM CONTROL',
+    checkpointNoticeTimer: 5.5,
+  };
+  world.tutorial = createInitialTutorialState(
+    preserveTutorialEnabled,
+    'matron_echo_collapse'
+  );
+  world.player.integrity = checkpoint.integrity;
+  world.player.ghostIntegrity = checkpoint.integrity;
+  world.player.flux = checkpoint.flux;
+  if (checkpoint.equippedWeaponId && isValidWeaponId(checkpoint.equippedWeaponId)) {
+    world.player.equippedWeaponId = checkpoint.equippedWeaponId;
+  }
+  advanceMissionAndExplorationSystem(world);
+  return true;
 }
 
 const CAMPAIGN_CHAPTER_ORDER: readonly CampaignChapterId[] = [
@@ -5955,6 +6171,7 @@ const VALID_BOSS_IDS: readonly BossId[] = [
   'the-choir',
   'the-curator',
   'matron-v',
+  'warden-prime',
 ];
 
 function isValidVerticalSliceStage(value: unknown): value is VerticalSliceStage {
@@ -6004,7 +6221,12 @@ function isValidStageForChapter(
     return false;
   }
   if (chapter === 'chapter_5_loom') {
-    return stage === 'chronicle_loom' && pendingNextChapter === null;
+    return (
+      (stage === 'chronicle_loom' ||
+        stage === 'boss_intro' ||
+        stage === 'boss_fight') &&
+      pendingNextChapter === null
+    );
   }
   if (
     stage === 'boss_intro' ||
@@ -6059,7 +6281,10 @@ function sanitizeBossCheckpoint(
     return null;
   }
   const expectedBossId = getBossIdForChapter(expectedChapter);
-  if (!isValidBossId(obj.bossId) || obj.bossId !== expectedBossId) {
+  const validChapter5Boss =
+    expectedChapter === 'chapter_5_loom' &&
+    (obj.bossId === 'matron-v' || obj.bossId === 'warden-prime');
+  if (!isValidBossId(obj.bossId) || (obj.bossId !== expectedBossId && !validChapter5Boss)) {
     return null;
   }
 
@@ -6756,7 +6981,11 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
     startCampaignRun(world, true, true);
   } else if (targetChapter === 'chapter_5_loom') {
     world.run.bossCheckpoint = savedCheckpoint;
-    enterChronicleLoomChapter(world, false);
+    if (targetStage === 'boss_fight') {
+      engageWardenPrimeInLoom(world, true);
+    } else {
+      enterChronicleLoomChapter(world, false);
+    }
   } else {
     world.run.bossCheckpoint = savedCheckpoint;
     transitionCampaignToBoss(world, true, targetChapter);
@@ -6907,7 +7136,9 @@ export function skipBossIntroBanner(world: WorldState): boolean {
             ? 'PHASE I · ARCHIVAL RECONSTRUCTION'
             : world.boss.id === 'matron-v'
               ? 'PHASE I · QUARANTINE SURGICAL WARD'
-              : 'PHASE I · CONTAINMENT PROTOCOL';
+              : world.boss.id === 'warden-prime'
+                ? 'PHASE I · SOVEREIGN LOOM DIRECTIVE'
+                : 'PHASE I · CONTAINMENT PROTOCOL';
     }
     return true;
   }
@@ -6918,6 +7149,32 @@ export function retryBossFromCheckpoint(world: WorldState, skipBossIntro = false
   if (world.run.mode === 'campaign' && world.run.bossCheckpoint) {
     const targetChapter = world.run.bossCheckpoint.chapter ?? world.run.chapter ?? 'chapter_1_helix';
     if (targetChapter === 'chapter_5_loom') {
+      if (world.run.bossCheckpoint.bossId === 'warden-prime') {
+        const cp = {
+          ...world.run.bossCheckpoint,
+          statsAtCheckpoint: { ...world.run.bossCheckpoint.statsAtCheckpoint },
+        };
+        engageWardenPrimeInLoom(world, skipBossIntro);
+        world.run.bossCheckpoint = cp;
+        world.player.integrity = cp.integrity;
+        world.player.ghostIntegrity = cp.integrity;
+        world.player.flux = cp.flux;
+        if (cp.equippedWeaponId && isValidWeaponId(cp.equippedWeaponId)) {
+          world.player.equippedWeaponId = cp.equippedWeaponId;
+        }
+        world.elapsedTime = cp.elapsedTimeAtCheckpoint;
+        world.stats = {
+          damageDealt: cp.statsAtCheckpoint.damageDealt,
+          damageTaken: cp.statsAtCheckpoint.damageTaken,
+          parriesLanded: cp.statsAtCheckpoint.parriesLanded,
+          vulnerableHits: cp.statsAtCheckpoint.vulnerableHits,
+        };
+        world.resonance.convergenceCount = cp.statsAtCheckpoint.convergencesTriggered;
+        world.relay.activationCount = cp.statsAtCheckpoint.relaysUsed;
+        world.run.checkpointNotice = `CHECKPOINT RESTORED · INTEGRITY ${cp.integrity} · FLUX ${cp.flux}`;
+        world.run.checkpointNoticeTimer = 4.0;
+        return;
+      }
       enterChronicleLoomChapter(world, world.run.isChapterReplay);
       return;
     }
@@ -7090,7 +7347,11 @@ function capturePlayerEchoSample(
   const chargeThresh =
     player.equippedWeaponId === 'pulsecaster'
       ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
-      : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+      : player.equippedWeaponId === 'phase_rail'
+        ? GAME_CONFIG.weapons.phase_rail.heavyShot.chargeThreshold
+        : player.equippedWeaponId === 'grav_breaker'
+          ? GAME_CONFIG.weapons.grav_breaker.heavySlam.chargeThreshold
+          : GAME_CONFIG.player.heavyAttack.chargeThreshold;
   return {
     t,
     x: player.x,
@@ -7124,6 +7385,15 @@ function recordEchoActionEvent(
     contactTime = t + GAME_CONFIG.weapons.pulsecaster.lightShot.windup;
   } else if (action === 'pulse_charged_shot') {
     contactTime = t + GAME_CONFIG.weapons.pulsecaster.heavyShot.windup;
+  } else if (action === 'rail_shot') {
+    contactTime = t + GAME_CONFIG.weapons.phase_rail.lightShot.windup;
+  } else if (action === 'rail_charged_shot') {
+    contactTime = t + GAME_CONFIG.weapons.phase_rail.heavyShot.windup;
+  } else if (action === 'breaker_slam') {
+    const stepIdx = Math.min(2, Math.max(0, p.comboIndex));
+    contactTime = t + (GAME_CONFIG.weapons.grav_breaker.lightSlam.windup[stepIdx] ?? 0.16);
+  } else if (action === 'breaker_charged_slam') {
+    contactTime = t + GAME_CONFIG.weapons.grav_breaker.heavySlam.windup;
   }
   world.echo.recordingEvents.push({
     id: `clip-${world.echo.clipCounter + 1}-evt-${eventIndex}`,
@@ -7233,7 +7503,15 @@ function finalizeEchoRecording(world: WorldState, autoCapped = false): boolean {
                 ? GAME_CONFIG.weapons.pulsecaster.lightShot.windup
                 : ev.action === 'pulse_charged_shot'
                   ? GAME_CONFIG.weapons.pulsecaster.heavyShot.windup
-                  : 0;
+                  : ev.action === 'rail_shot'
+                    ? GAME_CONFIG.weapons.phase_rail.lightShot.windup
+                    : ev.action === 'rail_charged_shot'
+                      ? GAME_CONFIG.weapons.phase_rail.heavyShot.windup
+                      : ev.action === 'breaker_slam'
+                        ? (GAME_CONFIG.weapons.grav_breaker.lightSlam.windup[Math.min(2, Math.max(0, ev.comboIndex))] ?? 0.16)
+                        : ev.action === 'breaker_charged_slam'
+                          ? GAME_CONFIG.weapons.grav_breaker.heavySlam.windup
+                          : 0;
         const rawContact =
           typeof ev.contactTime === 'number' ? ev.contactTime : clampedT + defaultOffset;
         return {
@@ -7334,11 +7612,17 @@ function spawnEchoPulsecasterProjectile(
   clipId: number,
   ev: EchoRecordedActionEvent
 ): void {
-  if (ev.action !== 'pulse_shot' && ev.action !== 'pulse_charged_shot') return;
-  const isHeavy = ev.action === 'pulse_charged_shot';
-  const cfg = isHeavy
-    ? GAME_CONFIG.weapons.pulsecaster.heavyShot
-    : GAME_CONFIG.weapons.pulsecaster.lightShot;
+  const isPulse = ev.action === 'pulse_shot' || ev.action === 'pulse_charged_shot';
+  const isRail = ev.action === 'rail_shot' || ev.action === 'rail_charged_shot';
+  if (!isPulse && !isRail) return;
+  const isHeavy = ev.action === 'pulse_charged_shot' || ev.action === 'rail_charged_shot';
+  const cfg = isRail
+    ? isHeavy
+      ? GAME_CONFIG.weapons.phase_rail.heavyShot
+      : GAME_CONFIG.weapons.phase_rail.lightShot
+    : isHeavy
+      ? GAME_CONFIG.weapons.pulsecaster.heavyShot
+      : GAME_CONFIG.weapons.pulsecaster.lightShot;
   const dirX = Math.sin(ev.rotationY);
   const dirZ = Math.cos(ev.rotationY);
   const muzzleOffset = 0.65;
@@ -7353,9 +7637,15 @@ function spawnEchoPulsecasterProjectile(
   world.projectiles.push({
     id: projId,
     owner: 'echo',
-    weaponId: 'pulsecaster',
+    weaponId: isRail ? 'phase_rail' : 'pulsecaster',
     equippedUpgradeId: ev.equippedUpgradeId ?? null,
-    attackMode: isHeavy ? 'pulse_heavy' : 'pulse_light',
+    attackMode: isRail
+      ? isHeavy
+        ? 'rail_heavy'
+        : 'rail_light'
+      : isHeavy
+        ? 'pulse_heavy'
+        : 'pulse_light',
     x: startX,
     z: startZ,
     prevX: ev.x,
@@ -7373,6 +7663,7 @@ function spawnEchoPulsecasterProjectile(
     elapsed: 0,
     maxLifetime: cfg.maxLifetime,
     active: true,
+    piercing: Boolean(isRail && isHeavy),
     attackStartedAt: world.elapsedTime,
     attackMarkId: null,
     hitTargetIds: [],
@@ -7459,7 +7750,11 @@ function startEchoPlayback(world: WorldState): boolean {
       type: 'echo_action_visual',
       x: ev.x,
       z: ev.z,
-      isHeavy: ev.action === 'heavy_swing' || ev.action === 'pulse_charged_shot',
+      isHeavy:
+        ev.action === 'heavy_swing' ||
+        ev.action === 'pulse_charged_shot' ||
+        ev.action === 'rail_charged_shot' ||
+        ev.action === 'breaker_charged_slam',
       echoAction: ev.action,
       weaponId: ev.weaponId,
     });
@@ -7564,7 +7859,10 @@ function evaluateEchoActionOnPuzzle(world: WorldState, ev: EchoRecordedActionEve
   const distActor = actor ? Math.hypot(actor.x - receiver.x, actor.z - receiver.z) : distEvent;
   const distToPad = Math.min(distEvent, distActor);
   const isQualifyingHeavy =
-    ev.action === 'heavy_swing' || ev.action === 'pulse_charged_shot';
+    ev.action === 'heavy_swing' ||
+    ev.action === 'pulse_charged_shot' ||
+    ev.action === 'rail_charged_shot' ||
+    ev.action === 'breaker_charged_slam';
 
   if (distToPad <= receiver.radius) {
     if (!isQualifyingHeavy) {
@@ -7672,14 +7970,25 @@ export function queryEchoResonanceTarget(
   attackerX: number,
   attackerZ: number,
   attackerYaw: number,
-  isRangedPulse = false
+  isRangedPulse = false,
+  echoAction?: EchoRecordedActionType
 ): { target: EnemyState | null; outcome: 'found' | 'out_of_range' | 'line_of_sight_blocked' } {
-  const range = isRangedPulse
-    ? GAME_CONFIG.weapons.pulsecaster.heavyShot.range
-    : GAME_CONFIG.player.heavyAttack.range;
-  const arcRadians = isRangedPulse
-    ? Math.PI * 0.34
-    : GAME_CONFIG.player.heavyAttack.arcRadians;
+  const isRail = echoAction === 'rail_charged_shot';
+  const isBreaker = echoAction === 'breaker_charged_slam';
+  const range = isRail
+    ? GAME_CONFIG.weapons.phase_rail.heavyShot.range
+    : isRangedPulse
+      ? GAME_CONFIG.weapons.pulsecaster.heavyShot.range
+      : isBreaker
+        ? GAME_CONFIG.weapons.grav_breaker.heavySlam.range
+        : GAME_CONFIG.player.heavyAttack.range;
+  const arcRadians = isRail
+    ? Math.PI * 0.28
+    : isRangedPulse
+      ? Math.PI * 0.34
+      : isBreaker
+        ? GAME_CONFIG.weapons.grav_breaker.heavySlam.arcRadians
+        : GAME_CONFIG.player.heavyAttack.arcRadians;
 
   let bestEnemy: EnemyState | null = null;
   let bestDist = Infinity;
@@ -7759,6 +8068,19 @@ export function getEchoActionContactTime(_clip: EchoClip, ev: EchoRecordedAction
   if (ev.action === 'pulse_charged_shot') {
     return ev.t + GAME_CONFIG.weapons.pulsecaster.heavyShot.windup;
   }
+  if (ev.action === 'rail_shot') {
+    return ev.t + GAME_CONFIG.weapons.phase_rail.lightShot.windup;
+  }
+  if (ev.action === 'rail_charged_shot') {
+    return ev.t + GAME_CONFIG.weapons.phase_rail.heavyShot.windup;
+  }
+  if (ev.action === 'breaker_slam') {
+    const stepIdx = Math.min(2, Math.max(0, ev.comboIndex));
+    return ev.t + (GAME_CONFIG.weapons.grav_breaker.lightSlam.windup[stepIdx] ?? 0.16);
+  }
+  if (ev.action === 'breaker_charged_slam') {
+    return ev.t + GAME_CONFIG.weapons.grav_breaker.heavySlam.windup;
+  }
   return ev.t;
 }
 
@@ -7774,12 +8096,16 @@ function evaluateDueEchoChoirNodes(
   for (let i = 0; i < clip.events.length; i++) {
     const ev = clip.events[i];
     const isPulseAction =
-      ev.action === 'pulse_shot' || ev.action === 'pulse_charged_shot';
-    if (
-      ev.action !== 'heavy_swing' &&
-      ev.action !== 'light_swing' &&
-      !isPulseAction
-    ) {
+      ev.action === 'pulse_shot' ||
+      ev.action === 'pulse_charged_shot' ||
+      ev.action === 'rail_shot' ||
+      ev.action === 'rail_charged_shot';
+    const isMeleeAction =
+      ev.action === 'heavy_swing' ||
+      ev.action === 'light_swing' ||
+      ev.action === 'breaker_slam' ||
+      ev.action === 'breaker_charged_slam';
+    if (!isMeleeAction && !isPulseAction) {
       continue;
     }
 
@@ -7809,7 +8135,11 @@ function evaluateDueEchoChoirNodes(
       if (dist <= strikeRange && dist < bestDist) {
         bestDist = dist;
         closestNode = node;
-      } else if (isPulseAction && dist <= GAME_CONFIG.weapons.pulsecaster.lightShot.range && dist < bestDist) {
+      } else if (
+        isPulseAction &&
+        dist <= GAME_CONFIG.weapons.phase_rail.lightShot.range &&
+        dist < bestDist
+      ) {
         const angleToNode = Math.atan2(node.x - contactX, node.z - contactZ);
         if (
           Math.abs(angleDiff(angleToNode, contactYaw)) <= Math.PI * 0.22 &&
@@ -7850,7 +8180,14 @@ function evaluateDueEchoResonanceContacts(
 
   for (let i = 0; i < clip.events.length; i++) {
     const ev = clip.events[i];
-    if (ev.action !== 'heavy_swing' && ev.action !== 'pulse_charged_shot') continue;
+    if (
+      ev.action !== 'heavy_swing' &&
+      ev.action !== 'pulse_charged_shot' &&
+      ev.action !== 'rail_charged_shot' &&
+      ev.action !== 'breaker_charged_slam'
+    ) {
+      continue;
+    }
 
     const contactTime = getEchoActionContactTime(clip, ev);
     const eventId = ev.id ?? `clip-${clip.id}-evt-${i}`;
@@ -7893,7 +8230,8 @@ function evaluateDueEchoResonanceContacts(
       contactX,
       contactZ,
       contactYaw,
-      ev.action === 'pulse_charged_shot'
+      ev.action === 'pulse_charged_shot' || ev.action === 'rail_charged_shot',
+      ev.action
     );
     if (!query.target) {
       res.lastOutcome =
@@ -8052,7 +8390,11 @@ function advanceEchoSystem(world: WorldState, dt: number): void {
         type: 'echo_action_visual',
         x: ev.x,
         z: ev.z,
-        isHeavy: ev.action === 'heavy_swing' || ev.action === 'pulse_charged_shot',
+        isHeavy:
+          ev.action === 'heavy_swing' ||
+          ev.action === 'pulse_charged_shot' ||
+          ev.action === 'rail_charged_shot' ||
+          ev.action === 'breaker_charged_slam',
         echoAction: ev.action,
         weaponId: ev.weaponId,
         upgradeId: ev.equippedUpgradeId ?? null,
@@ -8378,9 +8720,10 @@ function startLightAttack(
   moveVec: { dirX: number; dirZ: number; length: number }
 ): void {
   const p = world.player;
+  const isBreaker = p.equippedWeaponId === 'grav_breaker';
   const cfg = GAME_CONFIG.player.lightAttack;
 
-  if (p.comboWindowTimer > 0 && p.comboIndex < 2) {
+  if (!isBreaker && p.comboWindowTimer > 0 && p.comboIndex < 2) {
     p.comboIndex += 1;
   } else {
     p.comboIndex = 0;
@@ -8390,14 +8733,16 @@ function startLightAttack(
   p.rotationY = resolveCombatAimAngle(world, input, moveVec, 4.6);
 
   p.actionState = 'light_windup';
-  p.stateTimer = cfg.windup[p.comboIndex] ?? 0.09;
+  p.stateTimer = isBreaker
+    ? (GAME_CONFIG.weapons.grav_breaker.lightSlam.windup[p.comboIndex] ?? 0.16)
+    : (cfg.windup[p.comboIndex] ?? 0.09);
   p.attackHitIds = [];
   p.currentAttackStartedAt = world.elapsedTime;
   p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
-  p.squashX = 0.9;
-  p.squashY = 1.1;
+  p.squashX = isBreaker ? 0.86 : 0.9;
+  p.squashY = isBreaker ? 1.14 : 1.1;
 
-  recordEchoActionEvent(world, 'light_swing');
+  recordEchoActionEvent(world, isBreaker ? 'breaker_slam' : 'light_swing');
 }
 
 function startHeavyWindup(
@@ -8406,7 +8751,10 @@ function startHeavyWindup(
   moveVec: { dirX: number; dirZ: number; length: number }
 ): void {
   const p = world.player;
-  const cfg = GAME_CONFIG.player.heavyAttack;
+  const isBreaker = p.equippedWeaponId === 'grav_breaker';
+  const cfg = isBreaker
+    ? GAME_CONFIG.weapons.grav_breaker.heavySlam
+    : GAME_CONFIG.player.heavyAttack;
 
   if (p.actionState !== 'charging_heavy') {
     p.currentAttackStartedAt = world.elapsedTime;
@@ -8419,11 +8767,16 @@ function startHeavyWindup(
   const hasActiveResonanceMark =
     world.resonance.activeMark !== null && world.resonance.cooldownTimer <= 0;
   const edgeUpgrade = getEquippedWeaponUpgrade(world, 'chrono_edge');
-  const empowerFluxCost =
-    cfg.fluxCostForEmpower +
-    (edgeUpgrade === 'edge_harmonic_conductor'
-      ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.empoweredFluxCostDelta
-      : 0);
+  const breakerUpgrade = getEquippedWeaponUpgrade(world, 'grav_breaker');
+  const empowerFluxCost = isBreaker
+    ? GAME_CONFIG.weapons.grav_breaker.heavySlam.fluxCostForEmpower +
+      (breakerUpgrade === 'breaker_singularity_coil'
+        ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.empoweredFluxCostDelta
+        : 0)
+    : GAME_CONFIG.player.heavyAttack.fluxCostForEmpower +
+      (edgeUpgrade === 'edge_harmonic_conductor'
+        ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.empoweredFluxCostDelta
+        : 0);
   p.isEmpoweredHeavy = !hasActiveResonanceMark && p.flux >= empowerFluxCost;
   if (p.isEmpoweredHeavy) {
     p.flux = Math.max(0, p.flux - empowerFluxCost);
@@ -8434,10 +8787,10 @@ function startHeavyWindup(
   p.chargeTime = 0;
   p.comboWindowTimer = 0;
   p.attackHitIds = [];
-  p.squashX = 0.84;
-  p.squashY = 1.18;
+  p.squashX = isBreaker ? 0.8 : 0.84;
+  p.squashY = isBreaker ? 1.22 : 1.18;
 
-  recordEchoActionEvent(world, 'heavy_swing');
+  recordEchoActionEvent(world, isBreaker ? 'breaker_charged_slam' : 'heavy_swing');
 
   // If live Sera performs a Heavy Attack at the Echo-only Heavy Receiver while NOT recording,
   // reject live activation explicitly and guide the player to record & replay with an Echo.
@@ -8515,7 +8868,10 @@ function resolvePulsecasterAimAngle(
   moveVec: { dirX: number; dirZ: number; length: number }
 ): number {
   const p = world.player;
-  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+  const isRail = p.equippedWeaponId === 'phase_rail';
+  const rangedCfg = isRail
+    ? GAME_CONFIG.weapons.phase_rail
+    : GAME_CONFIG.weapons.pulsecaster;
   let baseAngle: number;
 
   if (typeof input.aimWorldX === 'number' && typeof input.aimWorldZ === 'number') {
@@ -8532,8 +8888,8 @@ function resolvePulsecasterAimAngle(
     p,
     world.enemies,
     baseAngle,
-    pulseCfg.aimAssistMaxRange,
-    pulseCfg.aimAssistConeRadians
+    rangedCfg.aimAssistMaxRange,
+    rangedCfg.aimAssistConeRadians
   );
   if (assistAngle !== null) {
     return moveAngleTowards(baseAngle, assistAngle, 0.42);
@@ -8556,12 +8912,24 @@ export function switchPlayerWeapon(world: WorldState, targetWeaponId?: WeaponId)
     return false;
   }
 
-  const nextWeaponId: WeaponId =
-    targetWeaponId !== undefined
-      ? targetWeaponId
-      : p.equippedWeaponId === 'chrono_edge'
-        ? 'pulsecaster'
-        : 'chrono_edge';
+  const unlockedList = getUnlockedWeaponIds(world);
+  if (targetWeaponId !== undefined && !unlockedList.includes(targetWeaponId)) {
+    return false;
+  }
+
+  const cycleList = normalizeUnlockedWeaponIds(world.progression?.unlockedWeaponIds);
+  let nextWeaponId: WeaponId;
+  if (targetWeaponId !== undefined) {
+    nextWeaponId = targetWeaponId;
+  } else if (cycleList.length <= 1) {
+    nextWeaponId = cycleList[0] ?? 'chrono_edge';
+  } else {
+    const curIdx = cycleList.indexOf(p.equippedWeaponId);
+    nextWeaponId =
+      curIdx >= 0
+        ? cycleList[(curIdx + 1) % cycleList.length]
+        : cycleList[0];
+  }
 
   if (nextWeaponId === p.equippedWeaponId) {
     return false;
@@ -8613,7 +8981,10 @@ function startPulsecasterLightShot(
   moveVec: { dirX: number; dirZ: number; length: number }
 ): boolean {
   const p = world.player;
-  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+  const isRail = p.equippedWeaponId === 'phase_rail';
+  const rangedCfg = isRail
+    ? GAME_CONFIG.weapons.phase_rail
+    : GAME_CONFIG.weapons.pulsecaster;
 
   if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
     p.lastWeaponShotOutcome = 'overheated';
@@ -8628,14 +8999,14 @@ function startPulsecasterLightShot(
   p.comboIndex = 0;
   p.comboWindowTimer = 0;
   p.actionState = 'light_windup';
-  p.stateTimer = pulseCfg.lightShot.windup;
+  p.stateTimer = rangedCfg.lightShot.windup;
   p.attackHitIds = [];
   p.currentAttackStartedAt = world.elapsedTime;
   p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
   p.squashX = 0.94;
   p.squashY = 1.06;
 
-  recordEchoActionEvent(world, 'pulse_shot');
+  recordEchoActionEvent(world, isRail ? 'rail_shot' : 'pulse_shot');
   return true;
 }
 
@@ -8645,8 +9016,11 @@ function startPulsecasterHeavyWindup(
   moveVec: { dirX: number; dirZ: number; length: number }
 ): boolean {
   const p = world.player;
-  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
-  const heavyCfg = pulseCfg.heavyShot;
+  const isRail = p.equippedWeaponId === 'phase_rail';
+  const rangedCfg = isRail
+    ? GAME_CONFIG.weapons.phase_rail
+    : GAME_CONFIG.weapons.pulsecaster;
+  const heavyCfg = rangedCfg.heavyShot;
 
   if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
     p.lastWeaponShotOutcome = 'overheated';
@@ -8683,7 +9057,7 @@ function startPulsecasterHeavyWindup(
   p.squashX = 0.88;
   p.squashY = 1.12;
 
-  recordEchoActionEvent(world, 'pulse_charged_shot');
+  recordEchoActionEvent(world, isRail ? 'rail_charged_shot' : 'pulse_charged_shot');
 
   const receiver = world.puzzle?.heavyReceiver;
   if (receiver && receiver.interactionPolicy === 'echo_only') {
@@ -8711,17 +9085,26 @@ function startPulsecasterHeavyWindup(
 
 function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): void {
   const p = world.player;
-  const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
-  const shotCfg = isHeavy ? pulseCfg.heavyShot : pulseCfg.lightShot;
-  const pulseUpgrade = getEquippedWeaponUpgrade(world, 'pulsecaster');
+  const isRail = p.equippedWeaponId === 'phase_rail';
+  const rangedCfg = isRail
+    ? GAME_CONFIG.weapons.phase_rail
+    : GAME_CONFIG.weapons.pulsecaster;
+  const shotCfg = isHeavy ? rangedCfg.heavyShot : rangedCfg.lightShot;
+  const equippedUpgrade = getEquippedWeaponUpgrade(world, p.equippedWeaponId);
 
   let heatCost: number = shotCfg.heatCost;
   let cooldown: number = shotCfg.cooldown;
-  if (!isHeavy && pulseUpgrade === 'pulse_thermal_sink') {
+  if (!isRail && !isHeavy && equippedUpgrade === 'pulse_thermal_sink') {
     heatCost = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightHeatCost;
-  } else if (isHeavy && pulseUpgrade === 'pulse_overcharge_condenser') {
+  } else if (!isRail && isHeavy && equippedUpgrade === 'pulse_overcharge_condenser') {
     heatCost = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyHeatCost;
     cooldown = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyCooldown;
+  } else if (isRail && !isHeavy && equippedUpgrade === 'rail_phase_capacitor') {
+    heatCost = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightHeatCost;
+  } else if (isRail && isHeavy && equippedUpgrade === 'rail_null_aperture') {
+    heatCost = GAME_CONFIG.weapons.upgrades.rail_null_aperture.heavyHeatCost;
+  } else if (isRail && isHeavy && equippedUpgrade === 'rail_phase_capacitor') {
+    cooldown = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.heavyCooldown;
   }
 
   // Apply heat cost & check overheat threshold
@@ -8732,52 +9115,65 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
   if (p.weaponHeat >= p.maxWeaponHeat) {
     p.weaponHeat = p.maxWeaponHeat;
     p.weaponOverheated = true;
-    p.weaponOverheatTimer = pulseCfg.overheatLockoutDuration;
+    p.weaponOverheatTimer = rangedCfg.overheatLockoutDuration;
     world.events.push({
       type: 'pulse_overheated',
       x: p.x,
       z: p.z,
-      weaponId: 'pulsecaster',
+      weaponId: p.equippedWeaponId,
     });
   }
 
-  if (world.projectiles.length >= pulseCfg.maxActiveProjectiles) {
+  if (world.projectiles.length >= rangedCfg.maxActiveProjectiles) {
     world.projectiles.shift();
   }
 
   const dirX = Math.sin(p.rotationY);
   const dirZ = Math.cos(p.rotationY);
-  const muzzleOffset = 0.56;
+  const muzzleOffset = isRail ? 0.68 : 0.56;
   const spawnX = p.x + dirX * muzzleOffset;
   const spawnZ = p.z + dirZ * muzzleOffset;
 
   const isEmpowered = isHeavy && p.isEmpoweredHeavy;
   let damage: number = isHeavy
     ? isEmpowered
-      ? pulseCfg.heavyShot.empoweredDamage
-      : pulseCfg.heavyShot.damage
-    : pulseCfg.lightShot.damage;
+      ? rangedCfg.heavyShot.empoweredDamage
+      : rangedCfg.heavyShot.damage
+    : rangedCfg.lightShot.damage;
   let staggerDamage: number = isHeavy
     ? isEmpowered
-      ? pulseCfg.heavyShot.empoweredStaggerDamage
-      : pulseCfg.heavyShot.staggerDamage
-    : pulseCfg.lightShot.staggerDamage;
+      ? rangedCfg.heavyShot.empoweredStaggerDamage
+      : rangedCfg.heavyShot.staggerDamage
+    : rangedCfg.lightShot.staggerDamage;
 
-  if (!isHeavy && pulseUpgrade === 'pulse_thermal_sink') {
+  if (!isRail && !isHeavy && equippedUpgrade === 'pulse_thermal_sink') {
     damage = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightDamage;
     staggerDamage = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightStagger;
-  } else if (isHeavy && pulseUpgrade === 'pulse_overcharge_condenser') {
+  } else if (!isRail && isHeavy && equippedUpgrade === 'pulse_overcharge_condenser') {
     const condCfg = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser;
     damage = isEmpowered ? condCfg.heavyEmpoweredDamage : condCfg.heavyBaseDamage;
     staggerDamage = isEmpowered ? condCfg.heavyEmpoweredStagger : condCfg.heavyStagger;
+  } else if (isRail && !isHeavy && equippedUpgrade === 'rail_phase_capacitor') {
+    damage = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightDamage;
+    staggerDamage = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightStagger;
+  } else if (isRail && isHeavy && equippedUpgrade === 'rail_null_aperture') {
+    const nullCfg = GAME_CONFIG.weapons.upgrades.rail_null_aperture;
+    damage = isEmpowered ? nullCfg.heavyEmpoweredDamage : nullCfg.heavyBaseDamage;
+    staggerDamage = isEmpowered ? nullCfg.heavyEmpoweredStagger : nullCfg.heavyStagger;
   }
 
   world.projectiles.push({
     id: `proj-${world.nextProjectileId++}`,
     owner: 'player',
-    weaponId: 'pulsecaster',
-    equippedUpgradeId: pulseUpgrade,
-    attackMode: isHeavy ? 'pulse_heavy' : 'pulse_light',
+    weaponId: p.equippedWeaponId,
+    equippedUpgradeId: equippedUpgrade,
+    attackMode: isRail
+      ? isHeavy
+        ? 'rail_heavy'
+        : 'rail_light'
+      : isHeavy
+        ? 'pulse_heavy'
+        : 'pulse_light',
     x: spawnX,
     z: spawnZ,
     prevX: p.x,
@@ -8795,18 +9191,25 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     elapsed: 0,
     maxLifetime: shotCfg.maxLifetime,
     active: true,
+    piercing: Boolean(isRail && isHeavy),
     attackStartedAt: p.currentAttackStartedAt,
     attackMarkId: p.currentAttackMarkId,
     hitTargetIds: [],
   });
 
   world.events.push({
-    type: isHeavy ? 'player_pulse_heavy_shot' : 'player_pulse_shot',
+    type: isRail
+      ? isHeavy
+        ? 'player_rail_heavy_shot'
+        : 'player_rail_shot'
+      : isHeavy
+        ? 'player_pulse_heavy_shot'
+        : 'player_pulse_shot',
     x: spawnX,
     z: spawnZ,
     isHeavy,
-    weaponId: 'pulsecaster',
-    upgradeId: pulseUpgrade,
+    weaponId: p.equippedWeaponId,
+    upgradeId: equippedUpgrade,
   });
 }
 
@@ -8815,8 +9218,12 @@ export function isQualifyingConvergenceAttack(
   isHeavy: boolean,
   attackMode?: WeaponAttackMode
 ): boolean {
-  if (attackMode === 'pulse_heavy') return true;
-  if (attackMode === 'pulse_light') return false;
+  if (attackMode === 'pulse_heavy' || attackMode === 'rail_heavy' || attackMode === 'breaker_heavy') {
+    return true;
+  }
+  if (attackMode === 'pulse_light' || attackMode === 'rail_light') {
+    return false;
+  }
   if (isHeavy || player.actionState === 'heavy_active') return true;
   if (player.actionState === 'light_active' && player.comboIndex === 2) return true;
   return false;
@@ -8827,7 +9234,8 @@ export function isBossArchetype(archetype: EnemyArchetype): boolean {
     archetype === 'helix' ||
     archetype === 'choir' ||
     archetype === 'curator' ||
-    archetype === 'matron'
+    archetype === 'matron' ||
+    archetype === 'warden_prime'
   );
 }
 
@@ -9466,6 +9874,7 @@ function getBossPhase2Threshold(bossId: string): number {
   if (bossId === 'the-choir') return GAME_CONFIG.choir.phase2HpThreshold;
   if (bossId === 'the-curator') return GAME_CONFIG.curator.phase2HpThreshold;
   if (bossId === 'matron-v') return GAME_CONFIG.matron.phase2HpThreshold;
+  if (bossId === 'warden-prime') return GAME_CONFIG.wardenPrime.phase2HpThreshold;
   return GAME_CONFIG.boss.phase2HpThreshold;
 }
 
@@ -9500,7 +9909,9 @@ function checkAndTriggerBossPhase2(
           ? 'PHASE II · ARCHIVAL RECONSTRUCTION SURGE'
           : bossState.id === 'matron-v'
             ? 'PHASE II · QUARANTINE SURGICAL PROTOCOL'
-            : 'PHASE II · HELIX OVERLOAD INITIATED';
+            : bossState.id === 'warden-prime'
+              ? 'PHASE II · SOVEREIGN CHRONICLE OVERDRIVE'
+              : 'PHASE II · HELIX OVERLOAD INITIATED';
 
     const res = world.resonance;
     if (res.activeMark && res.activeMark.enemyId === enemy.id) {
@@ -9521,7 +9932,9 @@ function checkAndTriggerBossPhase2(
           ? 'chapter3_phase2'
           : bossState.id === 'matron-v'
             ? 'chapter4_phase2'
-            : 'chapter1_phase2';
+            : bossState.id === 'warden-prime'
+              ? 'warden_prime_phase2'
+              : 'chapter1_phase2';
     triggerNarrativeTransmission(world, phase2CommKey, true);
 
     world.events.push({
@@ -9584,9 +9997,10 @@ function handleEnemyZeroHpDefeat(
           ? 'THE CURATOR DECOMMISSIONED · ARCHIVE PATHWAY CLEAR'
           : bossState.id === 'matron-v'
             ? 'MATRON-V NEUTRALIZED · CHRONICLE LOOM ACCESS UNLOCKED'
-            : 'HELIX-04 NEUTRALIZED · CONTAINMENT CORE OFFLINE';
+            : bossState.id === 'warden-prime'
+              ? 'WARDEN PRIME SUBDUED · SOVEREIGN LOOM MATRIX EXPOSED'
+              : 'HELIX-04 NEUTRALIZED · CONTAINMENT CORE OFFLINE';
 
-    // When a boss is defeated, also neutralize any remaining support units/decoys in the boss arena
     for (let k = 0; k < world.enemies.length; k++) {
       const other = world.enemies[k];
       if (other.id !== enemy.id && other.hp > 0 && other.aiState !== 'ko') {
@@ -9614,10 +10028,11 @@ function handleEnemyZeroHpDefeat(
           ? 'chapter3_defeat'
           : bossState.id === 'matron-v'
             ? 'chapter4_defeat'
-            : 'chapter1_defeat';
+            : bossState.id === 'warden-prime'
+              ? 'warden_prime_defeat'
+              : 'chapter1_defeat';
     triggerNarrativeTransmission(world, defeatCommKey, true);
 
-    // Authoritative campaign progression unlock when winning a boss encounter in active campaign mode
     if (world.run.mode === 'campaign') {
       const bossChapter = getChapterForBossId(bossState.id as BossId);
       world.run.chapter = bossChapter;
@@ -9632,16 +10047,18 @@ function handleEnemyZeroHpDefeat(
             'LOG-00'
           );
         }
-        world.run.completedChapters = addUniqueChapter(
-          world.run.completedChapters,
-          bossChapter
-        );
+        if (bossState.id !== 'warden-prime') {
+          world.run.completedChapters = addUniqueChapter(
+            world.run.completedChapters,
+            bossChapter
+          );
+        }
         const recoveredLogId =
           bossState.id === 'the-choir'
             ? 'LOG-02'
             : bossState.id === 'the-curator'
               ? 'LOG-03'
-              : bossState.id === 'matron-v'
+              : bossState.id === 'matron-v' || bossState.id === 'warden-prime'
                 ? 'LOG-04'
                 : 'LOG-01';
         world.run.recoveredLogs = addUniqueString(
@@ -9652,6 +10069,7 @@ function handleEnemyZeroHpDefeat(
         if (bossState.id === 'helix-04') {
           nextChap = 'chapter_2_choir';
           grantProgressionReward(world, 'chapter_1_helix_defeated');
+          unlockPlayerWeapon(world, 'grav_breaker');
         } else if (bossState.id === 'the-choir') {
           nextChap = 'chapter_3_curator';
           grantProgressionReward(world, 'chapter_2_choir_defeated');
@@ -9676,25 +10094,43 @@ function handleEnemyZeroHpDefeat(
       world.run.pendingNextChapter = null;
     }
 
-    world.outcome = 'victory';
-    world.run.stage = 'completed';
-    world.outcomeDelayTimer = 0.5;
-    advanceMissionAndExplorationSystem(world);
-    world.frozenSummary = buildRunSummary(world);
-    clearEchoState(world, 'outcome');
+    if (bossState.id === 'warden-prime' && world.run.mode === 'campaign') {
+      world.loom = createInitialChronicleLoomState(true);
+      world.encounterMode = 'standard';
+      world.run.stage = 'chronicle_loom';
+      world.run.checkpointNotice =
+        'WARDEN PRIME SUBDUED // SELECT FINAL DIRECTIVE: [1] SILENCE · [2] WITNESS · [3] CONTINUITY';
+      world.run.checkpointNoticeTimer = 6.0;
+      advanceMissionAndExplorationSystem(world);
+      clearEchoState(world, 'outcome');
+      world.events.push({
+        type: 'boss_defeated',
+        x: enemy.x,
+        z: enemy.z,
+        enemyId: enemy.id,
+        bossPhase: bossState.phase,
+      });
+    } else {
+      world.outcome = 'victory';
+      world.run.stage = 'completed';
+      world.outcomeDelayTimer = 0.5;
+      advanceMissionAndExplorationSystem(world);
+      world.frozenSummary = buildRunSummary(world);
+      clearEchoState(world, 'outcome');
 
-    world.events.push({
-      type: 'boss_defeated',
-      x: enemy.x,
-      z: enemy.z,
-      enemyId: enemy.id,
-      bossPhase: bossState.phase,
-    });
-    world.events.push({
-      type: 'encounter_victory',
-      x: world.player.x,
-      z: world.player.z,
-    });
+      world.events.push({
+        type: 'boss_defeated',
+        x: enemy.x,
+        z: enemy.z,
+        enemyId: enemy.id,
+        bossPhase: bossState.phase,
+      });
+      world.events.push({
+        type: 'encounter_victory',
+        x: world.player.x,
+        z: world.player.z,
+      });
+    }
   }
 
   world.hitstopTimer = Math.max(world.hitstopTimer, 0.085);
@@ -9723,30 +10159,65 @@ export function triggerBossDefeat(world: WorldState): boolean {
 
 function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
   const p = world.player;
-  const range = isHeavy
-    ? GAME_CONFIG.player.heavyAttack.range
-    : GAME_CONFIG.player.lightAttack.range;
-  const arcRadians = isHeavy
-    ? GAME_CONFIG.player.heavyAttack.arcRadians
-    : GAME_CONFIG.player.lightAttack.arcRadians;
+  const isBreaker = p.equippedWeaponId === 'grav_breaker';
+  const breakerCfg = GAME_CONFIG.weapons.grav_breaker;
+  const breakerUpgrade = getEquippedWeaponUpgrade(world, 'grav_breaker');
+  const range = isBreaker
+    ? isHeavy
+      ? breakerCfg.heavySlam.range +
+        (breakerUpgrade === 'breaker_singularity_coil'
+          ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.heavyRangeBonus
+          : 0)
+      : breakerCfg.lightSlam.range
+    : isHeavy
+      ? GAME_CONFIG.player.heavyAttack.range
+      : GAME_CONFIG.player.lightAttack.range;
+  const arcRadians = isBreaker
+    ? isHeavy
+      ? breakerCfg.heavySlam.arcRadians
+      : breakerCfg.lightSlam.arcRadians
+    : isHeavy
+      ? GAME_CONFIG.player.heavyAttack.arcRadians
+      : GAME_CONFIG.player.lightAttack.arcRadians;
 
   const edgeUpgrade = getEquippedWeaponUpgrade(world, 'chrono_edge');
-  let baseDamage = isHeavy
-    ? p.isEmpoweredHeavy
-      ? GAME_CONFIG.player.heavyAttack.empoweredDamage
-      : GAME_CONFIG.player.heavyAttack.baseDamage
-    : (GAME_CONFIG.player.lightAttack.damage[p.comboIndex] ?? 16);
+  let baseDamage = isBreaker
+    ? isHeavy
+      ? p.isEmpoweredHeavy
+        ? breakerCfg.heavySlam.empoweredDamage
+        : breakerCfg.heavySlam.baseDamage
+      : (breakerCfg.lightSlam.damage[p.comboIndex] ?? 26)
+    : isHeavy
+      ? p.isEmpoweredHeavy
+        ? GAME_CONFIG.player.heavyAttack.empoweredDamage
+        : GAME_CONFIG.player.heavyAttack.baseDamage
+      : (GAME_CONFIG.player.lightAttack.damage[p.comboIndex] ?? 16);
 
-  let staggerAmount = isHeavy
-    ? p.isEmpoweredHeavy
-      ? GAME_CONFIG.player.heavyAttack.empoweredStagger
-      : GAME_CONFIG.player.heavyAttack.stagger
-    : (GAME_CONFIG.player.lightAttack.stagger[p.comboIndex] ?? 12);
+  let staggerAmount = isBreaker
+    ? isHeavy
+      ? p.isEmpoweredHeavy
+        ? breakerCfg.heavySlam.empoweredStagger
+        : breakerCfg.heavySlam.stagger
+      : (breakerCfg.lightSlam.stagger[p.comboIndex] ?? 26)
+    : isHeavy
+      ? p.isEmpoweredHeavy
+        ? GAME_CONFIG.player.heavyAttack.empoweredStagger
+        : GAME_CONFIG.player.heavyAttack.stagger
+      : (GAME_CONFIG.player.lightAttack.stagger[p.comboIndex] ?? 12);
 
-  if (edgeUpgrade === 'edge_breaker_cleave') {
-    const breakerCfg = GAME_CONFIG.weapons.upgrades.edge_breaker_cleave;
-    baseDamage = Math.max(1, Math.round(baseDamage * breakerCfg.damageMultiplier));
-    staggerAmount = Math.round(staggerAmount * breakerCfg.staggerMultiplier);
+  if (isBreaker) {
+    if (breakerUpgrade === 'breaker_seismic_core') {
+      const seisCfg = GAME_CONFIG.weapons.upgrades.breaker_seismic_core;
+      baseDamage = Math.max(1, Math.round(baseDamage * seisCfg.damageMultiplier));
+      staggerAmount = Math.round(staggerAmount * seisCfg.staggerMultiplier);
+    } else if (breakerUpgrade === 'breaker_singularity_coil' && isHeavy) {
+      const coilCfg = GAME_CONFIG.weapons.upgrades.breaker_singularity_coil;
+      baseDamage = Math.max(1, Math.round(baseDamage * coilCfg.heavyDamageMultiplier));
+    }
+  } else if (edgeUpgrade === 'edge_breaker_cleave') {
+    const cleaveCfg = GAME_CONFIG.weapons.upgrades.edge_breaker_cleave;
+    baseDamage = Math.max(1, Math.round(baseDamage * cleaveCfg.damageMultiplier));
+    staggerAmount = Math.round(staggerAmount * cleaveCfg.staggerMultiplier);
   } else if (
     edgeUpgrade === 'edge_harmonic_conductor' &&
     isHeavy &&
@@ -9759,7 +10230,6 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     );
   }
 
-  // Evaluate Chapter II Harmonic Node strikes first
   evaluateLivePlayerStrikeOnChoirNodes(world, isHeavy);
 
   for (let i = 0; i < world.enemies.length; i++) {
@@ -9797,7 +10267,6 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
 
     p.attackHitIds.push(enemy.id);
 
-    // Evaluate Temporal Resonance / Convergence eligibility on this hit
     const res = world.resonance;
     const effectiveConvFluxCost = getEffectiveConvergenceFluxCost(world);
     res.fluxCost = effectiveConvFluxCost;
@@ -9857,23 +10326,34 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
       enemy.aiState === 'staggered' ||
       (bossState !== null && bossState.coreExposed);
 
-    // Check directional frontal guard or Chapter II Choir harmonic shielding
     let isGuarded = false;
-    if (enemy.archetype === 'bastion' && !isVulnerable && !isHeavy) {
+    if (
+      (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') &&
+      !isVulnerable &&
+      (!isHeavy || isBreaker)
+    ) {
       const angleFromEnemyToPlayer = Math.atan2(p.x - enemy.x, p.z - enemy.z);
       const facingDiff = Math.abs(angleDiff(angleFromEnemyToPlayer, enemy.rotationY));
-      if (facingDiff <= GAME_CONFIG.enemies.bastion.frontGuardArc * 0.5) {
+      const guardArc =
+        enemy.archetype === 'aegis_sentinel'
+          ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardArc
+          : GAME_CONFIG.enemies.bastion.frontGuardArc;
+      if (facingDiff <= guardArc * 0.5) {
         isGuarded = true;
       }
     } else if (
-      enemy.archetype === 'helix' &&
+      (enemy.archetype === 'helix' || enemy.archetype === 'warden_prime') &&
       !isVulnerable &&
       !isHeavy &&
       (!bossState || bossState.aiState !== 'phase_transition')
     ) {
       const angleFromEnemyToPlayer = Math.atan2(p.x - enemy.x, p.z - enemy.z);
       const facingDiff = Math.abs(angleDiff(angleFromEnemyToPlayer, enemy.rotationY));
-      if (facingDiff <= GAME_CONFIG.boss.frontGuardArc * 0.5) {
+      const guardArc =
+        enemy.archetype === 'warden_prime'
+          ? GAME_CONFIG.wardenPrime.frontGuardArc
+          : GAME_CONFIG.boss.frontGuardArc;
+      if (facingDiff <= guardArc * 0.5) {
         isGuarded = true;
       }
     } else if (
@@ -9881,7 +10361,6 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
       !isVulnerable &&
       world.choir.synchronizedCount < world.choir.requiredNodeCount
     ) {
-      // THE CHOIR's harmonic shield dampens direct hits until linked nodes are synchronized
       isGuarded = true;
     }
 
@@ -9897,27 +10376,43 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
         ? GAME_CONFIG.boss.exposedCoreStaggerMult
         : 1.0;
     const guardDmgMult = isGuarded
-      ? enemy.archetype === 'helix'
-        ? GAME_CONFIG.boss.frontalArmorDamageMult
-        : enemy.archetype === 'choir'
-          ? GAME_CONFIG.choir.unharmonizedDamageMult
-          : GAME_CONFIG.enemies.bastion.frontGuardLightDamageMult
+      ? isBreaker
+        ? isHeavy
+          ? breakerCfg.heavySlam.guardPenetrationMultiplier
+          : breakerCfg.lightSlam.guardPenetrationMultiplier
+        : enemy.archetype === 'helix'
+          ? GAME_CONFIG.boss.frontalArmorDamageMult
+          : enemy.archetype === 'warden_prime'
+            ? GAME_CONFIG.wardenPrime.frontalArmorDamageMult
+            : enemy.archetype === 'choir'
+              ? GAME_CONFIG.choir.unharmonizedDamageMult
+              : enemy.archetype === 'aegis_sentinel'
+                ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightDamageMult
+                : GAME_CONFIG.enemies.bastion.frontGuardLightDamageMult
       : 1.0;
     let guardStaggerMult = isGuarded
-      ? enemy.archetype === 'helix' || enemy.archetype === 'choir'
-        ? GAME_CONFIG.boss.frontalArmorStaggerMult
-        : GAME_CONFIG.enemies.bastion.frontGuardLightStaggerMult
+      ? isBreaker
+        ? breakerCfg.guardedStaggerMultiplier
+        : enemy.archetype === 'helix' ||
+            enemy.archetype === 'choir' ||
+            enemy.archetype === 'warden_prime'
+          ? GAME_CONFIG.boss.frontalArmorStaggerMult
+          : enemy.archetype === 'aegis_sentinel'
+            ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightStaggerMult
+            : GAME_CONFIG.enemies.bastion.frontGuardLightStaggerMult
       : 1.0;
-    if (isGuarded && edgeUpgrade === 'edge_breaker_cleave') {
+    if (isGuarded && !isBreaker && edgeUpgrade === 'edge_breaker_cleave') {
       guardStaggerMult +=
         GAME_CONFIG.weapons.upgrades.edge_breaker_cleave.frontalGuardStaggerBonus;
+    } else if (isGuarded && isBreaker && breakerUpgrade === 'breaker_seismic_core') {
+      guardStaggerMult +=
+        GAME_CONFIG.weapons.upgrades.breaker_seismic_core.frontalGuardStaggerBonus;
     }
 
     const effectiveConvPostureBonus = getEffectiveConvergencePostureBonus(world);
     res.postureBonus = effectiveConvPostureBonus;
     const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
 
-    // Qualifying hit applies its normal damage once; Convergence grants posture bonus through existing rules
     const finalDamage = Math.max(
       1,
       Math.round(baseDamage * vulnMult * guardDmgMult)
@@ -9949,20 +10444,28 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
 
     // Grant Flux on ordinary melee hits when not attempting or rejecting a Resonance Convergence
     if (!triggeredConvergence && rejectedConvergenceReason === null) {
+      const fluxDampenMult =
+        (p.fluxDampenedTimer ?? 0) > 0
+          ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
+          : 1.0;
       const harmonicBonus =
         edgeUpgrade === 'edge_harmonic_conductor' && !isGuarded
           ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.fluxGainBonus
           : 0;
       if (!isHeavy) {
         const fluxGain =
-          (isGuarded
+          ((isGuarded
             ? GAME_CONFIG.player.fluxGainOnGuardedHit
-            : GAME_CONFIG.player.fluxGainOnLightHit) + harmonicBonus;
+            : GAME_CONFIG.player.fluxGainOnLightHit) +
+            harmonicBonus) *
+          fluxDampenMult;
         p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
       } else if (!p.isEmpoweredHeavy) {
         p.flux = Math.min(
           p.maxFlux,
-          p.flux + GAME_CONFIG.player.fluxGainOnHeavyHit + harmonicBonus
+          p.flux +
+            (GAME_CONFIG.player.fluxGainOnHeavyHit + harmonicBonus) *
+              fluxDampenMult
         );
       }
     }
@@ -9993,13 +10496,16 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
       }
 
       if (
-        enemy.archetype === 'scout' &&
+        (enemy.archetype === 'scout' || enemy.archetype === 'null_weaver') &&
         enemy.aiState === 'telegraph' &&
         isHeavy &&
         enemy.stagger < enemy.maxStagger
       ) {
         enemy.aiState = 'recovery';
-        enemy.stateDuration = GAME_CONFIG.enemies.scout.recoveryDuration;
+        enemy.stateDuration =
+          enemy.archetype === 'null_weaver'
+            ? GAME_CONFIG.enemies.null_weaver.recoveryDuration
+            : GAME_CONFIG.enemies.scout.recoveryDuration;
         enemy.stateTimer = enemy.stateDuration;
         enemy.telegraphLocked = false;
         enemy.vx = 0;
@@ -10255,24 +10761,35 @@ function applyPlayerProjectileHitToEnemy(
     enemy.aiState === 'staggered' ||
     (bossState !== null && bossState.coreExposed);
 
-  // Ranged shots respect frontal shields (Bastion Aegis Guard & HELIX-04 Frontal Armor) and Choir harmonic shielding
   let isGuarded = false;
-  if (enemy.archetype === 'bastion' && !isVulnerable && !isHeavy && !triggeredConvergence) {
+  if (
+    (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') &&
+    !isVulnerable &&
+    !isHeavy &&
+    !triggeredConvergence
+  ) {
     const angleFromEnemyToShot = Math.atan2(proj.prevX - enemy.x, proj.prevZ - enemy.z);
     const facingDiff = Math.abs(angleDiff(angleFromEnemyToShot, enemy.rotationY));
-    if (facingDiff <= GAME_CONFIG.enemies.bastion.frontGuardArc * 0.5) {
+    const guardArc =
+      enemy.archetype === 'aegis_sentinel'
+        ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardArc
+        : GAME_CONFIG.enemies.bastion.frontGuardArc;
+    if (facingDiff <= guardArc * 0.5) {
       isGuarded = true;
     }
   } else if (
-    enemy.archetype === 'helix' &&
+    (enemy.archetype === 'helix' || enemy.archetype === 'warden_prime') &&
     !isVulnerable &&
     !triggeredConvergence &&
     (!bossState || bossState.aiState !== 'phase_transition')
   ) {
-    // HELIX-04's frontal armor dampens direct ranged fire unless flanked, core-exposed, or shattered via Convergence
     const angleFromEnemyToShot = Math.atan2(proj.prevX - enemy.x, proj.prevZ - enemy.z);
     const facingDiff = Math.abs(angleDiff(angleFromEnemyToShot, enemy.rotationY));
-    if (facingDiff <= GAME_CONFIG.boss.frontGuardArc * 0.5) {
+    const guardArc =
+      enemy.archetype === 'warden_prime'
+        ? GAME_CONFIG.wardenPrime.frontGuardArc
+        : GAME_CONFIG.boss.frontGuardArc;
+    if (facingDiff <= guardArc * 0.5) {
       isGuarded = true;
     }
   } else if (
@@ -10283,13 +10800,26 @@ function applyPlayerProjectileHitToEnemy(
     isGuarded = true;
   }
 
-  const vulnMult = isVulnerable
-    ? isBossArchetype(enemy.archetype)
-      ? enemy.aiState === 'staggered'
-        ? GAME_CONFIG.boss.staggeredDamageMult
-        : GAME_CONFIG.boss.exposedCoreDamageMult
-      : GAME_CONFIG.player.vulnerableDamageMultiplier
+  const isPhaseRailProj =
+    proj.attackMode === 'rail_light' || proj.attackMode === 'rail_heavy';
+  const railUpgrade = getEquippedWeaponUpgrade(world, 'phase_rail');
+  const railExposedMult = isPhaseRailProj
+    ? railUpgrade === 'rail_null_aperture'
+      ? GAME_CONFIG.weapons.upgrades.rail_null_aperture.exposedCoreDamageMultiplier
+      : GAME_CONFIG.weapons.phase_rail.exposedCoreDamageMultiplier
     : 1.0;
+
+  const vulnMult = isVulnerable
+    ? isPhaseRailProj
+      ? railExposedMult
+      : isBossArchetype(enemy.archetype)
+        ? enemy.aiState === 'staggered'
+          ? GAME_CONFIG.boss.staggeredDamageMult
+          : GAME_CONFIG.boss.exposedCoreDamageMult
+        : GAME_CONFIG.player.vulnerableDamageMultiplier
+    : triggeredConvergence && isPhaseRailProj
+      ? railExposedMult
+      : 1.0;
   const vulnStaggerMult =
     isVulnerable && bossState !== null
       ? GAME_CONFIG.boss.exposedCoreStaggerMult
@@ -10297,14 +10827,26 @@ function applyPlayerProjectileHitToEnemy(
   const guardDmgMult = isGuarded
     ? enemy.archetype === 'helix'
       ? GAME_CONFIG.boss.frontalArmorDamageMult
-      : enemy.archetype === 'choir'
-        ? GAME_CONFIG.choir.unharmonizedDamageMult
-        : GAME_CONFIG.weapons.pulsecaster.guardedDamageMultiplier
+      : enemy.archetype === 'warden_prime'
+        ? GAME_CONFIG.wardenPrime.frontalArmorDamageMult
+        : enemy.archetype === 'choir'
+          ? GAME_CONFIG.choir.unharmonizedDamageMult
+          : enemy.archetype === 'aegis_sentinel'
+            ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightDamageMult
+            : isPhaseRailProj
+              ? GAME_CONFIG.weapons.phase_rail.guardedDamageMultiplier
+              : GAME_CONFIG.weapons.pulsecaster.guardedDamageMultiplier
     : 1.0;
   const guardStaggerMult = isGuarded
-    ? enemy.archetype === 'helix' || enemy.archetype === 'choir'
+    ? enemy.archetype === 'helix' ||
+        enemy.archetype === 'choir' ||
+        enemy.archetype === 'warden_prime'
       ? GAME_CONFIG.boss.frontalArmorStaggerMult
-      : GAME_CONFIG.weapons.pulsecaster.guardedStaggerMultiplier
+      : enemy.archetype === 'aegis_sentinel'
+        ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightStaggerMult
+        : isPhaseRailProj
+          ? GAME_CONFIG.weapons.phase_rail.guardedStaggerMultiplier
+          : GAME_CONFIG.weapons.pulsecaster.guardedStaggerMultiplier
     : 1.0;
 
   const effectiveConvPostureBonus = getEffectiveConvergencePostureBonus(world);
@@ -10339,17 +10881,30 @@ function applyPlayerProjectileHitToEnemy(
     world.stats.vulnerableHits += 1;
   }
 
-  // Pulsecaster grants small Flux on clean non-empowered hits
   if (!triggeredConvergence && rejectedConvergenceReason === null) {
+    const fluxDampenMult =
+      (p.fluxDampenedTimer ?? 0) > 0
+        ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
+        : 1.0;
     if (!isHeavy) {
-      const fluxGain = isGuarded
-        ? GAME_CONFIG.weapons.pulsecaster.lightShot.fluxGainOnGuardedHit
-        : GAME_CONFIG.weapons.pulsecaster.lightShot.fluxGainOnHit;
+      const fluxGain =
+        (isGuarded
+          ? isPhaseRailProj
+            ? GAME_CONFIG.weapons.phase_rail.lightShot.fluxGainOnGuardedHit
+            : GAME_CONFIG.weapons.pulsecaster.lightShot.fluxGainOnGuardedHit
+          : isPhaseRailProj
+            ? GAME_CONFIG.weapons.phase_rail.lightShot.fluxGainOnHit
+            : GAME_CONFIG.weapons.pulsecaster.lightShot.fluxGainOnHit) *
+        fluxDampenMult;
       p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
     } else if (!proj.isEmpowered) {
       p.flux = Math.min(
         p.maxFlux,
-        p.flux + GAME_CONFIG.weapons.pulsecaster.heavyShot.fluxGainOnHit
+        p.flux +
+          (isPhaseRailProj
+            ? GAME_CONFIG.weapons.phase_rail.heavyShot.fluxGainOnHit
+            : GAME_CONFIG.weapons.pulsecaster.heavyShot.fluxGainOnHit) *
+            fluxDampenMult
       );
     }
   }
@@ -10378,13 +10933,16 @@ function applyPlayerProjectileHitToEnemy(
     }
 
     if (
-      enemy.archetype === 'scout' &&
+      (enemy.archetype === 'scout' || enemy.archetype === 'null_weaver') &&
       enemy.aiState === 'telegraph' &&
       isHeavy &&
       enemy.stagger < enemy.maxStagger
     ) {
       enemy.aiState = 'recovery';
-      enemy.stateDuration = GAME_CONFIG.enemies.scout.recoveryDuration;
+      enemy.stateDuration =
+        enemy.archetype === 'null_weaver'
+          ? GAME_CONFIG.enemies.null_weaver.recoveryDuration
+          : GAME_CONFIG.enemies.scout.recoveryDuration;
       enemy.stateTimer = enemy.stateDuration;
       enemy.telegraphLocked = false;
       enemy.vx = 0;
@@ -10606,7 +11164,9 @@ function advanceProjectiles(world: WorldState, dt: number): void {
       proj.x = hitNode.x;
       proj.z = hitNode.z;
       proj.hitTargetIds.push(hitNode.id);
-      proj.active = false;
+      if (!proj.piercing) {
+        proj.active = false;
+      }
       if (proj.owner === 'player') {
         world.player.lastWeaponShotOutcome = 'hit_node';
         applyLivePlayerStrikeToChoirNode(world, hitNode);
@@ -10626,22 +11186,27 @@ function advanceProjectiles(world: WorldState, dt: number): void {
           enemyId: hitNode.id,
         });
       }
-      continue;
+      if (!proj.active) {
+        continue;
+      }
     }
 
     if (hitKind === 'enemy' && hitEnemy) {
       proj.x = prevX + (nextX - prevX) * earliestT;
       proj.z = prevZ + (nextZ - prevZ) * earliestT;
       proj.hitTargetIds.push(hitEnemy.id);
-      proj.active = false;
+      if (!proj.piercing) {
+        proj.active = false;
+      }
       if (proj.owner === 'player') {
         world.player.lastWeaponShotOutcome = 'hit_enemy';
         applyPlayerProjectileHitToEnemy(world, proj, hitEnemy);
       } else {
-        // Echo projectile hit visual confirmation without duplicating live player damage
         hitEnemy.hitFlashTimer = Math.max(hitEnemy.hitFlashTimer, 0.09);
       }
-      continue;
+      if (!proj.active) {
+        continue;
+      }
     }
 
     proj.x = nextX;
@@ -10659,7 +11224,10 @@ function advanceProjectiles(world: WorldState, dt: number): void {
         x: proj.x,
         z: proj.z,
         isHeavy: proj.isHeavy,
-        weaponId: 'pulsecaster',
+        weaponId:
+          proj.attackMode === 'rail_light' || proj.attackMode === 'rail_heavy'
+            ? 'phase_rail'
+            : 'pulsecaster',
       });
       continue;
     }
@@ -10672,7 +11240,6 @@ function advanceProjectiles(world: WorldState, dt: number): void {
     }
   }
 
-  // Compact active projectiles in-place
   let writeIdx = 0;
   for (let i = 0; i < world.projectiles.length; i++) {
     const p = world.projectiles[i];
@@ -10687,7 +11254,6 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   const p = world.player;
   if (p.actionState === 'dead') return;
 
-  // Cooldowns & timers
   p.dodgeCooldownTimer = Math.max(0, p.dodgeCooldownTimer - dt);
   p.parryCooldownTimer = Math.max(0, p.parryCooldownTimer - dt);
   p.invulnTimer = Math.max(0, p.invulnTimer - dt);
@@ -10701,8 +11267,9 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     p.bufferedAction = 'none';
   }
 
-  // Pulsecaster heat & overheat dissipation (cools whether equipped or holstered)
   const pulseCfg = GAME_CONFIG.weapons.pulsecaster;
+  const railCfg = GAME_CONFIG.weapons.phase_rail;
+  const breakerCfg = GAME_CONFIG.weapons.grav_breaker;
   if (p.weaponOverheated) {
     p.weaponOverheatTimer = Math.max(0, p.weaponOverheatTimer - dt);
     const lockDuration = Math.max(0.1, pulseCfg.overheatLockoutDuration);
@@ -10718,28 +11285,35 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         type: 'pulse_overheat_cleared',
         x: p.x,
         z: p.z,
-        weaponId: 'pulsecaster',
+        weaponId: p.equippedWeaponId === 'phase_rail' ? 'phase_rail' : 'pulsecaster',
       });
     }
   } else if (p.weaponHeat > 0) {
     const coolRateMult =
       getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_thermal_sink'
         ? GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.coolRateMultiplier
-        : 1.0;
+        : getEquippedWeaponUpgrade(world, 'phase_rail') === 'rail_phase_capacitor'
+          ? GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.coolRateMultiplier
+          : 1.0;
     p.weaponHeat = Math.max(0, p.weaponHeat - pulseCfg.heatCoolRatePerSec * coolRateMult * dt);
   }
 
-  // Passive Flux regeneration
-  p.flux = Math.min(p.maxFlux, p.flux + GAME_CONFIG.player.fluxRegenPerSec * dt);
+  p.fluxDampenedTimer = Math.max(0, (p.fluxDampenedTimer ?? 0) - dt);
+  const fluxRegenMult =
+    (p.fluxDampenedTimer ?? 0) > 0
+      ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
+      : 1.0;
+  p.flux = Math.min(
+    p.maxFlux,
+    p.flux + GAME_CONFIG.player.fluxRegenPerSec * fluxRegenMult * dt
+  );
 
-  // Delayed ghost bar decay
   if (p.ghostIntegrity > p.integrity) {
     p.ghostIntegrity = Math.max(p.integrity, p.ghostIntegrity - 28 * dt);
   } else {
     p.ghostIntegrity = p.integrity;
   }
 
-  // Squash & stretch recovery
   const dampFactor = 1 - Math.exp(-14 * dt);
   p.squashX += (1 - p.squashX) * dampFactor;
   p.squashY += (1 - p.squashY) * dampFactor;
@@ -10755,7 +11329,6 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     }
   }
 
-  // Process explicit weapon switch or direct weapon slot selection before attack buffering
   if (input.selectWeaponId && isValidWeaponId(input.selectWeaponId)) {
     if (input.selectWeaponId !== p.equippedWeaponId) {
       switchPlayerWeapon(world, input.selectWeaponId);
@@ -10764,7 +11337,6 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     switchPlayerWeapon(world);
   }
 
-  // Input buffering for responsive controls
   if (input.dodgeJustPressed) {
     p.bufferedAction = 'dodge';
     p.bufferTimer = 0.16;
@@ -10779,7 +11351,6 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     p.bufferTimer = 0.15;
   }
 
-  // Defensive actions (Dodge & Parry) can cancel attack recovery so skilled players can react to telegraphs
   const canCancelIntoDodge =
     p.dodgeCooldownTimer <= 0 &&
     (p.actionState === 'idle' ||
@@ -10809,24 +11380,38 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   }
 
   const isPulsecaster = p.equippedWeaponId === 'pulsecaster';
+  const isPhaseRail = p.equippedWeaponId === 'phase_rail';
+  const isRangedWeapon = isPulsecaster || isPhaseRail;
+  const isBreaker = p.equippedWeaponId === 'grav_breaker';
   const isNeutralState = p.actionState === 'idle' || p.actionState === 'moving';
+  const maxComboIdx = isBreaker ? 1 : 2;
   const canChainCancelRecovery =
-    !isPulsecaster &&
+    !isRangedWeapon &&
     p.actionState === 'light_recovery' &&
-    p.comboIndex < 2 &&
-    p.stateTimer <= GAME_CONFIG.player.lightAttack.chainCancelRemaining;
+    p.comboIndex < maxComboIdx &&
+    p.stateTimer <=
+      (isBreaker
+        ? breakerCfg.lightSlam.chainCancelRemaining
+        : GAME_CONFIG.player.lightAttack.chainCancelRemaining);
 
-  const heavyChargeThreshold = isPulsecaster
-    ? pulseCfg.heavyShot.chargeThreshold
-    : GAME_CONFIG.player.heavyAttack.chargeThreshold;
-  const heavyMaxChargeTime = isPulsecaster
-    ? pulseCfg.heavyShot.maxChargeTime
-    : GAME_CONFIG.player.heavyAttack.maxChargeTime;
+  const heavyChargeThreshold = isPhaseRail
+    ? railCfg.heavyShot.chargeThreshold
+    : isPulsecaster
+      ? pulseCfg.heavyShot.chargeThreshold
+      : isBreaker
+        ? breakerCfg.heavySlam.chargeThreshold
+        : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+  const heavyMaxChargeTime = isPhaseRail
+    ? railCfg.heavyShot.maxChargeTime
+    : isPulsecaster
+      ? pulseCfg.heavyShot.maxChargeTime
+      : isBreaker
+        ? breakerCfg.heavySlam.maxChargeTime
+        : GAME_CONFIG.player.heavyAttack.maxChargeTime;
 
-  // Dedicated heavy attack key (Right-click or E) can initiate from neutral or chain-cancel hits 1 & 2
   if (p.bufferedAction === 'heavy' && (isNeutralState || canChainCancelRecovery)) {
     p.bufferedAction = 'none';
-    if (isPulsecaster) {
+    if (isRangedWeapon) {
       if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
         p.lastWeaponShotOutcome = 'overheated';
       } else if (p.weaponShotCooldownTimer <= 0) {
@@ -10838,7 +11423,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
           type: 'player_heavy_charge_ready',
           x: p.x,
           z: p.z,
-          weaponId: 'pulsecaster',
+          weaponId: p.equippedWeaponId,
         });
         startPulsecasterHeavyWindup(world, input, moveVec);
         return;
@@ -10854,21 +11439,20 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         type: 'player_heavy_charge_ready',
         x: p.x,
         z: p.z,
-        weaponId: 'chrono_edge',
+        weaponId: p.equippedWeaponId,
       });
       startHeavyWindup(world, input, moveVec);
       return;
     }
   }
 
-  // Light attack & left-click hold charging logic
-  const canStartLightAttack = isPulsecaster
+  const canStartLightAttack = isRangedWeapon
     ? p.weaponShotCooldownTimer <= 0 && !p.weaponOverheated && isNeutralState
     : p.comboCooldownTimer <= 0 && (isNeutralState || canChainCancelRecovery);
 
   if (
     isNeutralState &&
-    (isPulsecaster ? p.weaponShotCooldownTimer <= 0 && !p.weaponOverheated : p.comboCooldownTimer <= 0) &&
+    (isRangedWeapon ? p.weaponShotCooldownTimer <= 0 && !p.weaponOverheated : p.comboCooldownTimer <= 0) &&
     input.heavyHoldActive
   ) {
     if (p.bufferedAction === 'light') {
@@ -10879,7 +11463,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       p.bufferedAction = 'none';
     }
   } else if (p.bufferedAction === 'light') {
-    if (isPulsecaster) {
+    if (isRangedWeapon) {
       if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
         p.bufferedAction = 'none';
         p.lastWeaponShotOutcome = 'overheated';
@@ -10896,7 +11480,6 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     }
   }
 
-  // State machine transitions
   switch (p.actionState) {
     case 'idle':
     case 'moving': {
@@ -10955,14 +11538,14 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
       if (released || reachedMax) {
         if (p.chargeTime >= heavyChargeThreshold) {
-          if (isPulsecaster) {
+          if (isRangedWeapon) {
             startPulsecasterHeavyWindup(world, input, moveVec);
           } else {
             startHeavyWindup(world, input, moveVec);
           }
         } else {
           p.chargeTime = 0;
-          if (isPulsecaster) {
+          if (isRangedWeapon) {
             startPulsecasterLightShot(world, input, moveVec);
           } else {
             startLightAttack(world, input, moveVec);
@@ -10974,26 +11557,30 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'light_windup': {
       p.stateTimer -= dt;
-      if (isPulsecaster) {
+      if (isRangedWeapon) {
         p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * 0.52;
         p.vz = moveVec.dirZ * GAME_CONFIG.player.moveSpeed * 0.52;
         if (p.stateTimer <= 0) {
           p.actionState = 'light_active';
-          p.stateTimer = pulseCfg.lightShot.active;
+          p.stateTimer = isPhaseRail ? railCfg.lightShot.active : pulseCfg.lightShot.active;
           firePlayerPulsecasterProjectile(world, false);
         }
       } else {
-        const lunge = GAME_CONFIG.player.lightAttack.lungeSpeed[p.comboIndex] ?? 3.5;
+        const lunge = isBreaker
+          ? (breakerCfg.lightSlam.lungeSpeed[p.comboIndex] ?? 2.8)
+          : (GAME_CONFIG.player.lightAttack.lungeSpeed[p.comboIndex] ?? 3.5);
         p.vx = Math.sin(p.rotationY) * lunge;
         p.vz = Math.cos(p.rotationY) * lunge;
         if (p.stateTimer <= 0) {
           p.actionState = 'light_active';
-          p.stateTimer = GAME_CONFIG.player.lightAttack.active[p.comboIndex] ?? 0.12;
+          p.stateTimer = isBreaker
+            ? (breakerCfg.lightSlam.active[p.comboIndex] ?? 0.16)
+            : (GAME_CONFIG.player.lightAttack.active[p.comboIndex] ?? 0.12);
           world.events.push({
-            type: 'player_light_swing',
+            type: isBreaker ? 'breaker_shockwave_slam' : 'player_light_swing',
             x: p.x,
             z: p.z,
-            weaponId: 'chrono_edge',
+            weaponId: p.equippedWeaponId,
           });
           performPlayerMeleeHitCheck(world, false);
         }
@@ -11003,13 +11590,12 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'light_active': {
       p.stateTimer -= dt;
-      if (isPulsecaster) {
-        // Gentle recoil step
-        p.vx = -Math.sin(p.rotationY) * 0.65;
-        p.vz = -Math.cos(p.rotationY) * 0.65;
+      if (isRangedWeapon) {
+        p.vx = -Math.sin(p.rotationY) * (isPhaseRail ? 1.05 : 0.65);
+        p.vz = -Math.cos(p.rotationY) * (isPhaseRail ? 1.05 : 0.65);
         if (p.stateTimer <= 0) {
           p.actionState = 'light_recovery';
-          p.stateTimer = pulseCfg.lightShot.recovery;
+          p.stateTimer = isPhaseRail ? railCfg.lightShot.recovery : pulseCfg.lightShot.recovery;
           p.comboWindowTimer = 0;
         }
       } else {
@@ -11018,13 +11604,23 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         performPlayerMeleeHitCheck(world, false);
         if (p.stateTimer <= 0) {
           p.actionState = 'light_recovery';
-          const recDuration = GAME_CONFIG.player.lightAttack.recovery[p.comboIndex] ?? 0.24;
+          const recDuration = isBreaker
+            ? (breakerCfg.lightSlam.recovery[p.comboIndex] ?? 0.28)
+            : (GAME_CONFIG.player.lightAttack.recovery[p.comboIndex] ?? 0.24);
           p.stateTimer = recDuration;
-          if (p.comboIndex < 2) {
-            p.comboWindowTimer = recDuration + GAME_CONFIG.player.lightAttack.comboResetTime;
+          if (p.comboIndex < maxComboIdx) {
+            p.comboWindowTimer =
+              recDuration +
+              (isBreaker
+                ? breakerCfg.lightSlam.comboResetTime
+                : GAME_CONFIG.player.lightAttack.comboResetTime);
           } else {
             p.comboWindowTimer = 0;
-            p.comboCooldownTimer = recDuration + GAME_CONFIG.player.lightAttack.finisherCooldown;
+            p.comboCooldownTimer =
+              recDuration +
+              (isBreaker
+                ? breakerCfg.lightSlam.finisherCooldown
+                : GAME_CONFIG.player.lightAttack.finisherCooldown);
           }
         }
       }
@@ -11034,13 +11630,13 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     case 'light_recovery': {
       p.stateTimer -= dt;
       const moveMult =
-        !isPulsecaster && p.comboIndex === 2
+        !isRangedWeapon && p.comboIndex === maxComboIdx
           ? GAME_CONFIG.player.attackMoveSpeedMultiplier * 0.55
           : GAME_CONFIG.player.attackMoveSpeedMultiplier;
       p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * moveMult;
       p.vz = moveVec.dirZ * GAME_CONFIG.player.moveSpeed * moveMult;
       if (p.stateTimer <= 0) {
-        if (p.comboIndex === 2) {
+        if (p.comboIndex === maxComboIdx) {
           p.comboIndex = 0;
         }
         p.actionState = moveVec.length > 0.05 ? 'moving' : 'idle';
@@ -11050,31 +11646,35 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'heavy_windup': {
       p.stateTimer -= dt;
-      if (isPulsecaster) {
+      if (isRangedWeapon) {
         p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * 0.35;
         p.vz = moveVec.dirZ * GAME_CONFIG.player.moveSpeed * 0.35;
         if (p.stateTimer <= 0) {
           p.actionState = 'heavy_active';
-          p.stateTimer = pulseCfg.heavyShot.active;
+          p.stateTimer = isPhaseRail ? railCfg.heavyShot.active : pulseCfg.heavyShot.active;
           p.squashX = 1.16;
           p.squashY = 0.86;
           firePlayerPulsecasterProjectile(world, true);
         }
       } else {
-        const lunge = GAME_CONFIG.player.heavyAttack.lungeSpeed;
+        const lunge = isBreaker
+          ? breakerCfg.heavySlam.lungeSpeed
+          : GAME_CONFIG.player.heavyAttack.lungeSpeed;
         p.vx = Math.sin(p.rotationY) * lunge;
         p.vz = Math.cos(p.rotationY) * lunge;
         if (p.stateTimer <= 0) {
           p.actionState = 'heavy_active';
-          p.stateTimer = GAME_CONFIG.player.heavyAttack.active;
+          p.stateTimer = isBreaker
+            ? breakerCfg.heavySlam.active
+            : GAME_CONFIG.player.heavyAttack.active;
           p.squashX = 1.24;
           p.squashY = 0.78;
           world.events.push({
-            type: 'player_heavy_swing',
+            type: isBreaker ? 'breaker_shockwave_slam' : 'player_heavy_swing',
             x: p.x,
             z: p.z,
             isHeavy: true,
-            weaponId: 'chrono_edge',
+            weaponId: p.equippedWeaponId,
           });
           performPlayerMeleeHitCheck(world, true);
         }
@@ -11084,13 +11684,14 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'heavy_active': {
       p.stateTimer -= dt;
-      if (isPulsecaster) {
-        p.vx = -Math.sin(p.rotationY) * 1.35;
-        p.vz = -Math.cos(p.rotationY) * 1.35;
+      if (isRangedWeapon) {
+        p.vx = -Math.sin(p.rotationY) * (isPhaseRail ? 1.85 : 1.35);
+        p.vz = -Math.cos(p.rotationY) * (isPhaseRail ? 1.85 : 1.35);
         if (p.stateTimer <= 0) {
           p.actionState = 'heavy_recovery';
-          p.stateTimer =
-            getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_overcharge_condenser'
+          p.stateTimer = isPhaseRail
+            ? railCfg.heavyShot.recovery
+            : getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_overcharge_condenser'
               ? GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyRecovery
               : pulseCfg.heavyShot.recovery;
           p.isEmpoweredHeavy = false;
@@ -11101,11 +11702,15 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         performPlayerMeleeHitCheck(world, true);
         if (p.stateTimer <= 0) {
           p.actionState = 'heavy_recovery';
-          p.stateTimer =
-            GAME_CONFIG.player.heavyAttack.recovery +
-            (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_breaker_cleave'
-              ? GAME_CONFIG.weapons.upgrades.edge_breaker_cleave.heavyRecoveryDelta
-              : 0);
+          p.stateTimer = isBreaker
+            ? breakerCfg.heavySlam.recovery +
+              (getEquippedWeaponUpgrade(world, 'grav_breaker') === 'breaker_singularity_coil'
+                ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.heavyRecoveryDelta
+                : 0)
+            : GAME_CONFIG.player.heavyAttack.recovery +
+              (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_breaker_cleave'
+                ? GAME_CONFIG.weapons.upgrades.edge_breaker_cleave.heavyRecoveryDelta
+                : 0);
           p.isEmpoweredHeavy = false;
         }
       }
@@ -11375,6 +11980,13 @@ const MATRON_ATTACK_PATTERN: readonly BossAttackType[] = [
   'chrono_sever',
 ];
 
+const WARDEN_PRIME_ATTACK_PATTERN: readonly BossAttackType[] = [
+  'directive_lance',
+  'temporal_convergence_grid',
+  'sovereign_purge_wave',
+  'directive_lance',
+];
+
 export function selectNextBossAttack(
   boss: BossState,
   distToPlayer: number,
@@ -11398,6 +12010,19 @@ export function selectNextBossAttack(
     let chosen = MATRON_ATTACK_PATTERN[boss.attackSequenceIndex % MATRON_ATTACK_PATTERN.length];
     if (hasActiveEcho && boss.lastAttack !== 'chrono_sever') {
       chosen = 'chrono_sever';
+    }
+    boss.attackSequenceIndex += 1;
+    boss.lastAttack = chosen;
+    return chosen;
+  }
+
+  if (boss.id === 'warden-prime') {
+    let chosen =
+      WARDEN_PRIME_ATTACK_PATTERN[boss.attackSequenceIndex % WARDEN_PRIME_ATTACK_PATTERN.length];
+    if (distToPlayer > 6.5) {
+      chosen = 'directive_lance';
+    } else if (distToPlayer <= 3.8 && boss.phase === 2 && boss.lastAttack !== 'sovereign_purge_wave') {
+      chosen = 'sovereign_purge_wave';
     }
     boss.attackSequenceIndex += 1;
     boss.lastAttack = chosen;
@@ -11522,17 +12147,41 @@ export function beginBossTelegraph(
   let telegraphDuration: number;
   let statusLabel: string;
 
-  if (attack === 'vector_ram' || attack === 'surgical_incision') {
+  if (
+    attack === 'vector_ram' ||
+    attack === 'surgical_incision' ||
+    attack === 'directive_lance'
+  ) {
     telegraphDuration =
-      boss.phase === 2 ? cfg.vector_ram.telegraphP2 : cfg.vector_ram.telegraphP1;
+      attack === 'directive_lance'
+        ? boss.phase === 2
+          ? GAME_CONFIG.wardenPrime.attacks.directive_lance.telegraphP2
+          : GAME_CONFIG.wardenPrime.attacks.directive_lance.telegraphP1
+        : boss.phase === 2
+          ? cfg.vector_ram.telegraphP2
+          : cfg.vector_ram.telegraphP1;
     statusLabel =
       attack === 'surgical_incision'
         ? 'TELEGRAPH · SURGICAL INCISION LUNGE'
-        : 'TELEGRAPH · VECTOR RAM LANE LOCKING';
-  } else if (attack === 'helical_sweep') {
+        : attack === 'directive_lance'
+          ? 'TELEGRAPH · SOVEREIGN DIRECTIVE LANCE'
+          : 'TELEGRAPH · VECTOR RAM LANE LOCKING';
+  } else if (
+    attack === 'helical_sweep' ||
+    attack === 'temporal_convergence_grid'
+  ) {
     telegraphDuration =
-      boss.phase === 2 ? cfg.helical_sweep.telegraphP2 : cfg.helical_sweep.telegraphP1;
-    statusLabel = 'TELEGRAPH · HELICAL SWEEP ARC WINDUP';
+      attack === 'temporal_convergence_grid'
+        ? boss.phase === 2
+          ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.telegraphP2
+          : GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.telegraphP1
+        : boss.phase === 2
+          ? cfg.helical_sweep.telegraphP2
+          : cfg.helical_sweep.telegraphP1;
+    statusLabel =
+      attack === 'temporal_convergence_grid'
+        ? 'TELEGRAPH · TEMPORAL CONVERGENCE LATTICE'
+        : 'TELEGRAPH · HELICAL SWEEP ARC WINDUP';
   } else if (
     attack === 'resonance_wave' ||
     attack === 'harmonic_chord' ||
@@ -11560,7 +12209,6 @@ export function beginBossTelegraph(
     if (world.matron.active) {
       world.matron.chronoSeverActive = true;
       world.matron.chronoSeverWarningTimer = telegraphDuration;
-      // Target the active playing Echo if within arena, or center on Matron
       if (world.echo.state === 'playback' && world.echo.activeActor) {
         world.matron.chronoSeverZoneX = world.echo.activeActor.x;
         world.matron.chronoSeverZoneZ = world.echo.activeActor.z;
@@ -11573,11 +12221,19 @@ export function beginBossTelegraph(
     }
   } else {
     telegraphDuration =
-      boss.phase === 2 ? cfg.anchor_slam.telegraphP2 : cfg.anchor_slam.telegraphP1;
+      attack === 'sovereign_purge_wave'
+        ? boss.phase === 2
+          ? GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.telegraphP2
+          : GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.telegraphP1
+        : boss.phase === 2
+          ? cfg.anchor_slam.telegraphP2
+          : cfg.anchor_slam.telegraphP1;
     statusLabel =
       attack === 'quarantine_wave'
         ? 'TELEGRAPH · QUARANTINE PULSE WAVE'
-        : 'TELEGRAPH · ANCHOR SLAM RADIAL IMPACT';
+        : attack === 'sovereign_purge_wave'
+          ? 'TELEGRAPH · SOVEREIGN PURGE CASCADE'
+          : 'TELEGRAPH · ANCHOR SLAM RADIAL IMPACT';
   }
 
   boss.aiState = 'telegraph';
@@ -11591,9 +12247,13 @@ export function beginBossTelegraph(
   boss.shockwaveMaxRadius =
     attack === 'chrono_sever'
       ? GAME_CONFIG.matron.chronoSever.radius
-      : boss.phase === 2
-        ? cfg.anchor_slam.outerRadiusP2
-        : cfg.anchor_slam.outerRadiusP1;
+      : attack === 'sovereign_purge_wave'
+        ? boss.phase === 2
+          ? GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.outerRadiusP2
+          : GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.outerRadiusP1
+        : boss.phase === 2
+          ? cfg.anchor_slam.outerRadiusP2
+          : cfg.anchor_slam.outerRadiusP1;
   boss.coreExposed = false;
   boss.rotationY = wrapAngle(angleToPlayer);
   boss.attackOriginX = boss.x;
@@ -11655,15 +12315,33 @@ function beginBossAttackActive(
   let activeDuration: number;
   let statusLabel: string;
 
-  if (attack === 'vector_ram' || attack === 'surgical_incision') {
-    activeDuration = cfg.vector_ram.activeDuration;
+  if (
+    attack === 'vector_ram' ||
+    attack === 'surgical_incision' ||
+    attack === 'directive_lance'
+  ) {
+    activeDuration =
+      attack === 'directive_lance'
+        ? GAME_CONFIG.wardenPrime.attacks.directive_lance.activeDuration
+        : cfg.vector_ram.activeDuration;
     statusLabel =
       attack === 'surgical_incision'
         ? 'COMMITTED · SURGICAL INCISION THRUST'
-        : 'COMMITTED · VECTOR RAM OVERDRIVE';
-  } else if (attack === 'helical_sweep') {
-    activeDuration = cfg.helical_sweep.activeDuration;
-    statusLabel = 'COMMITTED · HELICAL CONTAINMENT CLEAVE';
+        : attack === 'directive_lance'
+          ? 'COMMITTED · SOVEREIGN DIRECTIVE LANCE'
+          : 'COMMITTED · VECTOR RAM OVERDRIVE';
+  } else if (
+    attack === 'helical_sweep' ||
+    attack === 'temporal_convergence_grid'
+  ) {
+    activeDuration =
+      attack === 'temporal_convergence_grid'
+        ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.activeDuration
+        : cfg.helical_sweep.activeDuration;
+    statusLabel =
+      attack === 'temporal_convergence_grid'
+        ? 'COMMITTED · TEMPORAL CONVERGENCE CLEAVE'
+        : 'COMMITTED · HELICAL CONTAINMENT CLEAVE';
   } else if (
     attack === 'archive_lance' ||
     attack === 'reconstructed_sweep' ||
@@ -11675,11 +12353,16 @@ function beginBossAttackActive(
     activeDuration = GAME_CONFIG.matron.chronoSever.activeDuration;
     statusLabel = 'COMMITTED · CHRONO SEVER DISCHARGE';
   } else {
-    activeDuration = cfg.anchor_slam.activeDuration;
+    activeDuration =
+      attack === 'sovereign_purge_wave'
+        ? GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.activeDuration
+        : cfg.anchor_slam.activeDuration;
     statusLabel =
       attack === 'resonance_wave' || attack === 'harmonic_chord' || attack === 'cadenza_slam'
         ? 'COMMITTED · HARMONIC RESONANCE WAVE'
-        : 'COMMITTED · ANCHOR SLAM SHOCKWAVE';
+        : attack === 'sovereign_purge_wave'
+          ? 'COMMITTED · SOVEREIGN PURGE CASCADE'
+          : 'COMMITTED · ANCHOR SLAM SHOCKWAVE';
   }
 
   boss.aiState = 'attack';
@@ -11700,16 +12383,24 @@ function beginBossAttackActive(
     attack === 'harmonic_chord' ||
     attack === 'cadenza_slam' ||
     attack === 'quarantine_wave' ||
-    attack === 'chrono_sever'
+    attack === 'chrono_sever' ||
+    attack === 'sovereign_purge_wave'
   ) {
     boss.shockwaveActive = true;
-    boss.shockwaveRadius = cfg.anchor_slam.innerRadius;
+    boss.shockwaveRadius =
+      attack === 'sovereign_purge_wave'
+        ? GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.innerRadius
+        : cfg.anchor_slam.innerRadius;
     boss.shockwaveMaxRadius =
       attack === 'chrono_sever'
         ? GAME_CONFIG.matron.chronoSever.radius
-        : boss.phase === 2
-          ? cfg.anchor_slam.outerRadiusP2
-          : cfg.anchor_slam.outerRadiusP1;
+        : attack === 'sovereign_purge_wave'
+          ? boss.phase === 2
+            ? GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.outerRadiusP2
+            : GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.outerRadiusP1
+          : boss.phase === 2
+            ? cfg.anchor_slam.outerRadiusP2
+            : cfg.anchor_slam.outerRadiusP1;
     world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.38);
   } else {
     boss.shockwaveActive = false;
@@ -11837,7 +12528,9 @@ function updateBoss(world: WorldState, dt: number): void {
               ? 'PHASE I · ARCHIVAL RECONSTRUCTION'
               : boss.id === 'matron-v'
                 ? 'PHASE I · QUARANTINE SURGICAL WARD'
-                : 'PHASE I · CONTAINMENT PROTOCOL';
+                : boss.id === 'warden-prime'
+                  ? 'PHASE I · SOVEREIGN LOOM DIRECTIVE'
+                  : 'PHASE I · CONTAINMENT PROTOCOL';
       }
       enemy.aiState = 'pursue';
       enemy.stateTimer = boss.stateTimer;
@@ -11868,7 +12561,9 @@ function updateBoss(world: WorldState, dt: number): void {
               ? 'PHASE II · ARCHIVAL RECONSTRUCTION SURGE'
               : boss.id === 'matron-v'
                 ? 'PHASE II · QUARANTINE SURGICAL PROTOCOL'
-                : 'PHASE II · HELIX OVERLOAD';
+                : boss.id === 'warden-prime'
+                  ? 'PHASE II · SOVEREIGN CHRONICLE OVERDRIVE'
+                  : 'PHASE II · HELIX OVERLOAD';
       }
       break;
     }
@@ -11913,9 +12608,13 @@ function updateBoss(world: WorldState, dt: number): void {
               ? boss.phase === 2
                 ? 'PHASE II · QUARANTINE SURGICAL PROTOCOL'
                 : 'PHASE I · QUARANTINE SURGICAL WARD'
-              : boss.phase === 2
-                ? 'PHASE II · HELIX OVERLOAD'
-                : 'PHASE I · CONTAINMENT PROTOCOL';
+              : boss.id === 'warden-prime'
+                ? boss.phase === 2
+                  ? 'PHASE II · SOVEREIGN CHRONICLE OVERDRIVE'
+                  : 'PHASE I · SOVEREIGN LOOM DIRECTIVE'
+                : boss.phase === 2
+                  ? 'PHASE II · HELIX OVERLOAD'
+                  : 'PHASE I · CONTAINMENT PROTOCOL';
 
       enemy.aiState = 'pursue';
       enemy.stateTimer = 0;
@@ -11996,8 +12695,15 @@ function updateBoss(world: WorldState, dt: number): void {
       const prevProgress = Math.max(0, Math.min(1, 1 - prevTimer / duration));
       const progress = Math.max(0, Math.min(1, 1 - boss.stateTimer / duration));
 
-      if (attack === 'vector_ram' || attack === 'surgical_incision') {
-        const ramCfg = cfg.attacks.vector_ram;
+      if (
+        attack === 'vector_ram' ||
+        attack === 'surgical_incision' ||
+        attack === 'directive_lance'
+      ) {
+        const ramCfg =
+          attack === 'directive_lance'
+            ? GAME_CONFIG.wardenPrime.attacks.directive_lance
+            : cfg.attacks.vector_ram;
         const dashSpeed =
           boss.phase === 2 ? ramCfg.dashSpeedP2 : ramCfg.dashSpeedP1;
         const traveled = Math.hypot(
@@ -12011,8 +12717,14 @@ function updateBoss(world: WorldState, dt: number): void {
           boss.vx = 0;
           boss.vz = 0;
         }
-      } else if (attack === 'helical_sweep') {
-        const sweepCfg = cfg.attacks.helical_sweep;
+      } else if (
+        attack === 'helical_sweep' ||
+        attack === 'temporal_convergence_grid'
+      ) {
+        const sweepCfg =
+          attack === 'temporal_convergence_grid'
+            ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid
+            : cfg.attacks.helical_sweep;
         boss.vx = boss.attackDirX * sweepCfg.lungeSpeed;
         boss.vz = boss.attackDirZ * sweepCfg.lungeSpeed;
       } else if (
@@ -12029,7 +12741,6 @@ function updateBoss(world: WorldState, dt: number): void {
         boss.shockwaveMaxRadius = GAME_CONFIG.matron.chronoSever.radius;
         boss.shockwaveRadius = GAME_CONFIG.matron.chronoSever.radius * progress;
 
-        // Evaluate Chrono Sever anti-Echo effect once per strike!
         if (world.matron.active && world.matron.chronoSeverActive) {
           world.matron.chronoSeverActive = false;
           const severX = world.matron.chronoSeverZoneX;
@@ -12042,7 +12753,6 @@ function updateBoss(world: WorldState, dt: number): void {
               world.echo.activeActor.z - severZ
             );
             if (distToEcho <= severRange + GAME_CONFIG.player.radius) {
-              // Sever the active Echo actor inside the zone WITHOUT corrupting world.echo.clip
               world.echo.state = 'ready';
               world.echo.activeActor = null;
               world.echo.playbackTime = 0;
@@ -12072,8 +12782,10 @@ function updateBoss(world: WorldState, dt: number): void {
           }
         }
       } else {
-        // Anchor Slam / Harmonic Pulse: stationary chassis impact + expanding temporal shockwave ring
-        const slamCfg = cfg.attacks.anchor_slam;
+        const slamCfg =
+          attack === 'sovereign_purge_wave'
+            ? GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave
+            : cfg.attacks.anchor_slam;
         boss.vx = 0;
         boss.vz = 0;
         boss.shockwaveActive = true;
@@ -12095,7 +12807,6 @@ function updateBoss(world: WorldState, dt: number): void {
         }
       }
 
-      // Advance boss position during active attack before checking hit envelope
       boss.x += boss.vx * dt;
       boss.z += boss.vz * dt;
       enemy.x = boss.x;
@@ -12104,7 +12815,6 @@ function updateBoss(world: WorldState, dt: number): void {
       enemy.vz = boss.vz;
       enemy.rotationY = boss.rotationY;
 
-      // Authoritative single-hit-per-attack-event check
       if (!boss.hasDealtDamageThisAttack && p.actionState !== 'dead') {
         const curDx = p.x - boss.x;
         const curDz = p.z - boss.z;
@@ -12114,8 +12824,15 @@ function updateBoss(world: WorldState, dt: number): void {
         let hitPlayer = false;
         let hitDamage = 0;
 
-        if (attack === 'vector_ram' || attack === 'surgical_incision') {
-          const ramCfg = cfg.attacks.vector_ram;
+        if (
+          attack === 'vector_ram' ||
+          attack === 'surgical_incision' ||
+          attack === 'directive_lance'
+        ) {
+          const ramCfg =
+            attack === 'directive_lance'
+              ? GAME_CONFIG.wardenPrime.attacks.directive_lance
+              : cfg.attacks.vector_ram;
           const relX = p.x - boss.attackOriginX;
           const relZ = p.z - boss.attackOriginZ;
           const traveled = Math.hypot(
@@ -12135,8 +12852,14 @@ function updateBoss(world: WorldState, dt: number): void {
             hitPlayer = true;
             hitDamage = ramCfg.damage;
           }
-        } else if (attack === 'helical_sweep') {
-          const sweepCfg = cfg.attacks.helical_sweep;
+        } else if (
+          attack === 'helical_sweep' ||
+          attack === 'temporal_convergence_grid'
+        ) {
+          const sweepCfg =
+            attack === 'temporal_convergence_grid'
+              ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid
+              : cfg.attacks.helical_sweep;
           const diff = Math.abs(angleDiff(curAngleToPlayer, boss.rotationY));
           const inArc = diff <= sweepCfg.arcRadians * 0.5;
 
@@ -12153,7 +12876,6 @@ function updateBoss(world: WorldState, dt: number): void {
           attack === 'reconstructed_sweep' ||
           attack === 'curator_burst'
         ) {
-          // Damage is resolved via deterministic ReconstructedAttackTrace in advanceCuratorSystem
           hitPlayer = false;
         } else if (attack === 'chrono_sever') {
           const severX = world.matron.active ? world.matron.chronoSeverZoneX : boss.x;
@@ -12167,8 +12889,10 @@ function updateBoss(world: WorldState, dt: number): void {
             hitDamage = GAME_CONFIG.matron.chronoSever.damage;
           }
         } else {
-          // Anchor Slam / Harmonic Pulse: inner impact footprint OR expanding shockwave ring
-          const slamCfg = cfg.attacks.anchor_slam;
+          const slamCfg =
+            attack === 'sovereign_purge_wave'
+              ? GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave
+              : cfg.attacks.anchor_slam;
           const inInnerImpact =
             progress <= 0.4 && curDist <= slamCfg.innerRadius + pRadius;
           const inShockwaveBand =
@@ -12193,14 +12917,15 @@ function updateBoss(world: WorldState, dt: number): void {
         }
       }
 
-      // Check if attack completed (and wasn't interrupted by a Parry stagger)
       if (boss.stateTimer <= 0 && boss.aiState === 'attack') {
         const recDuration =
-          attack === 'vector_ram' || attack === 'surgical_incision'
+          attack === 'vector_ram' ||
+          attack === 'surgical_incision' ||
+          attack === 'directive_lance'
             ? boss.phase === 2
               ? cfg.attacks.vector_ram.recoveryDurationP2
               : cfg.attacks.vector_ram.recoveryDuration
-            : attack === 'helical_sweep'
+            : attack === 'helical_sweep' || attack === 'temporal_convergence_grid'
               ? boss.phase === 2
                 ? cfg.attacks.helical_sweep.recoveryDurationP2
                 : cfg.attacks.helical_sweep.recoveryDuration
@@ -12265,9 +12990,13 @@ function updateBoss(world: WorldState, dt: number): void {
               ? 'PHASE I · ARCHIVAL RECONSTRUCTION'
               : boss.id === 'matron-v'
                 ? 'PHASE I · QUARANTINE SURGICAL WARD'
-                : boss.phase === 2
-                  ? 'PHASE II · HELIX OVERLOAD'
-                  : 'PHASE I · CONTAINMENT PROTOCOL';
+                : boss.id === 'warden-prime'
+                  ? boss.phase === 2
+                    ? 'PHASE II · SOVEREIGN CHRONICLE OVERDRIVE'
+                    : 'PHASE I · SOVEREIGN LOOM DIRECTIVE'
+                  : boss.phase === 2
+                    ? 'PHASE II · HELIX OVERLOAD'
+                    : 'PHASE I · CONTAINMENT PROTOCOL';
 
         enemy.aiState = 'pursue';
         enemy.cooldownTimer = boss.cooldownTimer;
@@ -12400,7 +13129,7 @@ function updateEnemies(world: WorldState, dt: number): void {
         }
 
         // Distinct movement & spacing policies per archetype
-        if (enemy.archetype === 'bastion') {
+        if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
           if (distTarget > cfg.preferredRange) {
             enemy.vx = (dxTarget / distTarget) * cfg.moveSpeed;
             enemy.vz = (dzTarget / distTarget) * cfg.moveSpeed;
@@ -12557,9 +13286,16 @@ function updateEnemies(world: WorldState, dt: number): void {
           const lunge = GAME_CONFIG.enemies.scrapper.lungeSpeed;
           enemy.vx = Math.sin(enemy.rotationY) * lunge;
           enemy.vz = Math.cos(enemy.rotationY) * lunge;
-        } else if (enemy.archetype === 'bastion') {
-          enemy.vx = Math.sin(enemy.rotationY) * 3.4;
-          enemy.vz = Math.cos(enemy.rotationY) * 3.4;
+        } else if (
+          enemy.archetype === 'bastion' ||
+          enemy.archetype === 'aegis_sentinel'
+        ) {
+          const lunge =
+            enemy.archetype === 'aegis_sentinel'
+              ? GAME_CONFIG.enemies.aegis_sentinel.lungeSpeed
+              : 3.4;
+          enemy.vx = Math.sin(enemy.rotationY) * lunge;
+          enemy.vz = Math.cos(enemy.rotationY) * lunge;
         } else {
           enemy.vx = 0;
           enemy.vz = 0;
@@ -12621,7 +13357,7 @@ function updateEnemies(world: WorldState, dt: number): void {
 
           let hitPlayer = false;
 
-          if (enemy.archetype === 'scout') {
+          if (enemy.archetype === 'scout' || enemy.archetype === 'null_weaver') {
             const dirX = Math.sin(enemy.rotationY);
             const dirZ = Math.cos(enemy.rotationY);
             const proj = dxToPlayer * dirX + dzToPlayer * dirZ;
@@ -12652,7 +13388,10 @@ function updateEnemies(world: WorldState, dt: number): void {
             );
             if (!hasClearAttackLos) {
               enemy.hasDealtDamageThisAttack = true;
-              if (enemy.archetype === 'scout') {
+              if (
+                enemy.archetype === 'scout' ||
+                enemy.archetype === 'null_weaver'
+              ) {
                 const dirX = Math.sin(enemy.rotationY);
                 const dirZ = Math.cos(enemy.rotationY);
                 world.events.push({
@@ -12668,27 +13407,46 @@ function updateEnemies(world: WorldState, dt: number): void {
               const prevParries = world.stats.parriesLanded;
               applyDamageToPlayer(world, cfg.damage, enemy);
 
-            // Siphon unit bounded single-event Flux drain (only when strike connects without being dodged/parried)
-            if (
-              enemy.archetype === 'siphon' &&
-              p.integrity < prevIntegrity &&
-              world.stats.parriesLanded === prevParries
-            ) {
-              const drain = Math.min(p.flux, GAME_CONFIG.matron.siphonFluxDrain);
-              p.flux = Math.max(0, p.flux - drain);
-              if (world.matron.active) {
-                world.matron.totalFluxDrained += drain;
-                world.matron.siphonDrainEventsCount += 1;
-                world.matron.statusMessage = `SIPHON DRAINED ${Math.round(drain)} FLUX · INTERRUPT OR DODGE SIPHON`;
+              // Siphon unit bounded single-event Flux drain (only when strike connects without being dodged/parried)
+              if (
+                enemy.archetype === 'siphon' &&
+                p.integrity < prevIntegrity &&
+                world.stats.parriesLanded === prevParries
+              ) {
+                const drain = Math.min(p.flux, GAME_CONFIG.matron.siphonFluxDrain);
+                p.flux = Math.max(0, p.flux - drain);
+                if (world.matron.active) {
+                  world.matron.totalFluxDrained += drain;
+                  world.matron.siphonDrainEventsCount += 1;
+                  world.matron.statusMessage = `SIPHON DRAINED ${Math.round(drain)} FLUX · INTERRUPT OR DODGE SIPHON`;
+                }
+                world.events.push({
+                  type: 'siphon_flux_drained',
+                  x: p.x,
+                  z: p.z,
+                  enemyId: enemy.id,
+                  amount: drain,
+                });
+              } else if (
+                enemy.archetype === 'null_weaver' &&
+                p.integrity < prevIntegrity &&
+                world.stats.parriesLanded === prevParries
+              ) {
+                const nwCfg = GAME_CONFIG.enemies.null_weaver;
+                const drain = Math.min(p.flux, nwCfg.fluxDrainOnHit);
+                p.flux = Math.max(0, p.flux - drain);
+                p.fluxDampenedTimer = Math.max(
+                  p.fluxDampenedTimer ?? 0,
+                  nwCfg.fluxDampenDuration
+                );
+                world.events.push({
+                  type: 'null_weaver_flux_dampened',
+                  x: p.x,
+                  z: p.z,
+                  enemyId: enemy.id,
+                  amount: drain,
+                });
               }
-              world.events.push({
-                type: 'siphon_flux_drained',
-                x: p.x,
-                z: p.z,
-                enemyId: enemy.id,
-                amount: drain,
-              });
-            }
             }
           }
         }
@@ -12908,6 +13666,10 @@ function advanceNarrativeCommsSystem(world: WorldState, dt: number): void {
       }
       if (world.boss.phase >= 2) {
         triggerNarrativeTransmission(world, 'chapter4_phase2', true);
+      }
+    } else if (bossId === 'warden-prime') {
+      if (world.boss.phase >= 2) {
+        triggerNarrativeTransmission(world, 'warden_prime_phase2', true);
       }
     }
   }
@@ -13256,6 +14018,9 @@ export function getEnemyTacticalProfile(
   if (enemy.archetype === 'bastion') {
     roleId = 'bulwark';
     roleLabel = 'AEGIS BULWARK';
+  } else if (enemy.archetype === 'aegis_sentinel') {
+    roleId = 'bulwark';
+    roleLabel = 'PHALANX SENTINEL';
   } else if (enemy.archetype === 'scrapper') {
     roleId = 'skirmisher';
     roleLabel = 'FLANKING SKIRMISHER';
@@ -13265,6 +14030,9 @@ export function getEnemyTacticalProfile(
   } else if (enemy.archetype === 'scout') {
     roleId = 'suppressor';
     roleLabel = 'RANGED SUPPRESSOR';
+  } else if (enemy.archetype === 'null_weaver') {
+    roleId = 'disruptor';
+    roleLabel = 'PHASE SUPPRESSOR';
   } else if (enemy.archetype === 'siphon') {
     roleId = 'disruptor';
     roleLabel = 'FLUX EXTRACTOR';
@@ -13277,17 +14045,21 @@ export function getEnemyTacticalProfile(
   }
 
   const isFrontShieldActive =
-    enemy.archetype === 'bastion' &&
+    (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') &&
     enemy.aiState !== 'recovery' &&
     enemy.aiState !== 'staggered' &&
     enemy.aiState !== 'ko';
 
   let isPlayerInFrontArc = false;
-  if (player && enemy.archetype === 'bastion') {
+  if (player && (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel')) {
     const angleFromEnemyToPlayer = Math.atan2(player.x - enemy.x, player.z - enemy.z);
+    const guardArc =
+      enemy.archetype === 'aegis_sentinel'
+        ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardArc
+        : GAME_CONFIG.enemies.bastion.frontGuardArc;
     isPlayerInFrontArc =
       Math.abs(angleDiff(angleFromEnemyToPlayer, enemy.rotationY)) <=
-      GAME_CONFIG.enemies.bastion.frontGuardArc * 0.5;
+      guardArc * 0.5;
   }
 
   const telegraphLocked = Boolean(enemy.telegraphLocked);
@@ -13299,7 +14071,7 @@ export function getEnemyTacticalProfile(
     statusLabel = 'POSTURE BROKEN · 1.5x DMG';
   } else if (enemy.aiState === 'recovery') {
     statusLabel =
-      enemy.archetype === 'bastion'
+      enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel'
         ? 'SHIELD OPEN · 1.5x VULNERABLE'
         : 'VULNERABLE RECOVERY · 1.5x DMG';
   } else if (enemy.aiState === 'telegraph') {
@@ -13307,9 +14079,13 @@ export function getEnemyTacticalProfile(
       statusLabel = telegraphLocked
         ? 'PULSE AIM LOCKED · DODGE OR BREAK'
         : 'CALIBRATING PULSE · HEAVY BREAKS';
-    } else if (enemy.archetype === 'bastion') {
+    } else if (enemy.archetype === 'null_weaver') {
       statusLabel = telegraphLocked
-        ? 'MAUL SLAM COMMITTED · PARRY/DODGE'
+        ? 'SUPPRESSION BOLT LOCKED · DODGE OR BREAK LOS'
+        : 'CHARGING FLUX DAMPENER · HEAVY BREAKS';
+    } else if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
+      statusLabel = telegraphLocked
+        ? 'COUNTER-SWEEP COMMITTED · PARRY/DODGE'
         : 'MAUL WINDUP · PARRY OR FLANK';
     } else if (enemy.archetype === 'scrapper') {
       statusLabel = telegraphLocked
@@ -13324,12 +14100,18 @@ export function getEnemyTacticalProfile(
     }
   } else if (enemy.aiState === 'attack') {
     statusLabel = 'ACTIVE STRIKE';
+  } else if (enemy.archetype === 'aegis_sentinel') {
+    statusLabel = isPlayerInFrontArc
+      ? 'FRONTAL BARRIER · 82% MITIGATION (USE GRAV-BREAKER OR FLANK)'
+      : 'FLANK OPEN · 1.0x UNGUARDED DMG';
   } else if (enemy.archetype === 'bastion') {
     statusLabel = isPlayerInFrontArc
       ? 'FRONTAL GUARD · 0.42x DMG (FLANK/HEAVY)'
       : 'FLANK OPEN · 1.0x UNGUARDED DMG';
   } else if (enemy.archetype === 'scout') {
     statusLabel = 'STANDOFF ORBIT · USE COVER OR RANGED';
+  } else if (enemy.archetype === 'null_weaver') {
+    statusLabel = 'PHASE SUPPRESSOR · DAMPENS FLUX ON HIT';
   } else if (enemy.archetype === 'scrapper') {
     statusLabel = 'FLANKING APPROACH · LOW POSTURE';
   } else if (enemy.archetype === 'siphon') {
@@ -13472,6 +14254,26 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
     } else if (world.boss?.id === 'matron-v') {
       objectiveText = 'CHAPTER IV · NEUTRALIZE MATRON-V, THE SURGEON';
       objectiveSubtext = world.matron.statusMessage;
+    } else if (world.boss?.id === 'warden-prime') {
+      objectiveText = 'CHAPTER V · NEUTRALIZE WARDEN PRIME, SOVEREIGN ARCHITECT';
+      if (bossSnapshot.aiState === 'phase_transition') {
+        objectiveSubtext = 'WARNING · SOVEREIGN CHRONICLE OVERDRIVE INITIATED';
+      } else if (bossSnapshot.aiState === 'telegraph') {
+        if (bossSnapshot.activeAttack === 'directive_lance') {
+          objectiveSubtext = 'DIRECTIVE ZERO LANCE · Sidestep or Dodge [Space] out of the charge lane';
+        } else if (bossSnapshot.activeAttack === 'temporal_convergence_grid') {
+          objectiveSubtext = 'TEMPORAL CONVERGENCE CLEAVE · Evade outside frontal arc or timed Parry [Q]';
+        } else {
+          objectiveSubtext = 'SOVEREIGN PURGE NOVA · Clear radial impact zone & expanding shockwave';
+        }
+      } else if (bossSnapshot.coreExposed) {
+        objectiveSubtext = 'SOVEREIGN CORE EXPOSED · Strike with Null-Point Rail Lance [3] or Echo Convergence';
+      } else {
+        objectiveSubtext =
+          bossSnapshot.phase === 2
+            ? 'PHASE II OVERDRIVE · Evade reconstructed traces and use Grav-Breaker [4] or Resonance'
+            : 'PHASE I DIRECTIVE · Frontal Aegis active — use Grav-Breaker [4], Parry [Q], or Flank';
+      }
     } else if (bossSnapshot.aiState === 'phase_transition') {
       objectiveText = `WARNING · ${bossSnapshot.name} PHASE II OVERLOAD`;
       objectiveSubtext = 'Containment cage accelerating — prepare for escalated attack cadence';
@@ -13597,16 +14399,21 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
     ghostIntegrity: Math.ceil(p.ghostIntegrity),
     flux: Math.floor(p.flux),
     maxFlux: p.maxFlux,
+    fluxDampenedTimer: Number((p.fluxDampenedTimer ?? 0).toFixed(2)),
     playerActionState: p.actionState,
     chargeRatio: Math.min(
       1,
       p.chargeTime /
-        (p.equippedWeaponId === 'pulsecaster'
-          ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
-          : GAME_CONFIG.player.heavyAttack.chargeThreshold)
+        (p.equippedWeaponId === 'phase_rail'
+          ? GAME_CONFIG.weapons.phase_rail.heavyShot.chargeThreshold
+          : p.equippedWeaponId === 'pulsecaster'
+            ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
+            : p.equippedWeaponId === 'grav_breaker'
+              ? GAME_CONFIG.weapons.grav_breaker.heavySlam.chargeThreshold
+              : GAME_CONFIG.player.heavyAttack.chargeThreshold)
     ),
     comboStep:
-      p.equippedWeaponId === 'chrono_edge' &&
+      (p.equippedWeaponId === 'chrono_edge' || p.equippedWeaponId === 'grav_breaker') &&
       (p.actionState.startsWith('light_') || p.comboWindowTimer > 0)
         ? p.comboIndex + 1
         : 0,
@@ -13634,7 +14441,7 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
       shotCooldownTimer: Number(p.weaponShotCooldownTimer.toFixed(2)),
       switchCooldownTimer: Number(p.weaponSwitchCooldownTimer.toFixed(2)),
       canFire:
-        p.equippedWeaponId === 'chrono_edge'
+        p.equippedWeaponId === 'chrono_edge' || p.equippedWeaponId === 'grav_breaker'
           ? p.comboCooldownTimer <= 0
           : !p.weaponOverheated && p.weaponShotCooldownTimer <= 0,
       canSwitch:
@@ -13649,21 +14456,30 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
       lastShotOutcome: p.lastWeaponShotOutcome,
       statusLabel: p.weaponOverheated
         ? `OVERHEAT ${p.weaponOverheatTimer.toFixed(1)}s`
-        : p.equippedWeaponId === 'pulsecaster'
+        : p.equippedWeaponId === 'pulsecaster' || p.equippedWeaponId === 'phase_rail'
           ? `HEAT ${Math.round(p.weaponHeat)}%`
-          : `COMBO ${
-              p.actionState.startsWith('light_') || p.comboWindowTimer > 0
-                ? p.comboIndex + 1
-                : 0
-            }/3`,
+          : p.equippedWeaponId === 'grav_breaker'
+            ? `SLAM ${
+                p.actionState.startsWith('light_') || p.comboWindowTimer > 0
+                  ? p.comboIndex + 1
+                  : 0
+              }/2`
+            : `COMBO ${
+                p.actionState.startsWith('light_') || p.comboWindowTimer > 0
+                  ? p.comboIndex + 1
+                  : 0
+              }/3`,
     },
     progression: {
       memoryFragments: world.progression?.memoryFragments ?? 0,
+      unlockedWeaponIds: getUnlockedWeaponIds(world),
       claimedRewardIds: [...(world.progression?.claimedRewardIds ?? [])],
       purchasedUpgrades: [...(world.progression?.purchasedUpgrades ?? [])],
       equippedUpgrades: {
         chrono_edge: getEquippedWeaponUpgrade(world, 'chrono_edge'),
         pulsecaster: getEquippedWeaponUpgrade(world, 'pulsecaster'),
+        phase_rail: getEquippedWeaponUpgrade(world, 'phase_rail'),
+        grav_breaker: getEquippedWeaponUpgrade(world, 'grav_breaker'),
       },
       canModifyLoadout: canModifyWeaponUpgrades(world),
       lastActionMessage:

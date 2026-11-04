@@ -2,9 +2,17 @@ export type GameAppState = 'title' | 'playing' | 'paused' | 'gameover';
 
 export type GameOutcome = 'none' | 'victory' | 'defeat';
 
-export type WeaponId = 'chrono_edge' | 'pulsecaster';
+export type WeaponId = 'chrono_edge' | 'pulsecaster' | 'phase_rail' | 'grav_breaker';
 
-export type WeaponAttackMode = 'melee' | 'ranged' | 'pulse_light' | 'pulse_heavy';
+export type WeaponAttackMode =
+  | 'melee'
+  | 'ranged'
+  | 'pulse_light'
+  | 'pulse_heavy'
+  | 'rail_light'
+  | 'rail_heavy'
+  | 'breaker_light'
+  | 'breaker_heavy';
 
 export type WeaponShotOutcome =
   | 'none'
@@ -24,7 +32,11 @@ export type WeaponUpgradeId =
   | 'edge_breaker_cleave'
   | 'edge_harmonic_conductor'
   | 'pulse_thermal_sink'
-  | 'pulse_overcharge_condenser';
+  | 'pulse_overcharge_condenser'
+  | 'rail_null_aperture'
+  | 'rail_phase_capacitor'
+  | 'breaker_seismic_core'
+  | 'breaker_singularity_coil';
 
 export type WeaponProgressionRewardId =
   | 'prologue_calibration_teach'
@@ -76,9 +88,11 @@ export interface PersistedWeaponProgressionState {
   claimedRewardIds: WeaponProgressionRewardId[];
   purchasedUpgrades: WeaponUpgradeId[];
   equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
+  unlockedWeaponIds?: WeaponId[];
 }
 
 export interface WeaponProgressionState extends PersistedWeaponProgressionState {
+  unlockedWeaponIds: WeaponId[];
   lastPurchaseOutcome: UpgradePurchaseOutcome | null;
   lastEquipOutcome: UpgradeEquipOutcome | null;
   lastActionMessage: string;
@@ -89,6 +103,7 @@ export interface HudWeaponProgressionSnapshot {
   claimedRewardIds: WeaponProgressionRewardId[];
   purchasedUpgrades: WeaponUpgradeId[];
   equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
+  unlockedWeaponIds: WeaponId[];
   canModifyLoadout: boolean;
   lastActionMessage: string;
 }
@@ -113,7 +128,8 @@ export interface ProjectileState {
   owner: 'player' | 'echo';
   weaponId: WeaponId;
   equippedUpgradeId?: WeaponUpgradeId | null;
-  attackMode: 'pulse_light' | 'pulse_heavy';
+  attackMode: 'pulse_light' | 'pulse_heavy' | 'rail_light' | 'rail_heavy';
+  piercing?: boolean;
   x: number;
   z: number;
   prevX: number;
@@ -157,15 +173,18 @@ export type EnemyArchetype =
   | 'bastion'
   | 'scrapper'
   | 'scout'
+  | 'aegis_sentinel'
+  | 'null_weaver'
   | 'helix'
   | 'choir'
   | 'curator'
   | 'curator_decoy'
   | 'matron'
+  | 'warden_prime'
   | 'siphon'
   | 'eraser';
 
-export type BossId = 'helix-04' | 'the-choir' | 'the-curator' | 'matron-v';
+export type BossId = 'helix-04' | 'the-choir' | 'the-curator' | 'matron-v' | 'warden-prime';
 export type BossEncounterId = BossId;
 
 export type CampaignChapterId =
@@ -349,7 +368,10 @@ export type BossAttackType =
   | 'curator_burst'
   | 'surgical_incision'
   | 'quarantine_wave'
-  | 'chrono_sever';
+  | 'chrono_sever'
+  | 'directive_lance'
+  | 'temporal_convergence_grid'
+  | 'sovereign_purge_wave';
 
 export type BossAiState =
   | 'dormant'
@@ -378,6 +400,10 @@ export type EchoRecordedActionType =
   | 'heavy_swing'
   | 'pulse_shot'
   | 'pulse_charged_shot'
+  | 'rail_shot'
+  | 'rail_charged_shot'
+  | 'breaker_slam'
+  | 'breaker_charged_slam'
   | 'dodge'
   | 'parry';
 
@@ -784,6 +810,12 @@ export interface CameraSettings {
   sensitivity: number; // 0.3 to 2.5, default 1.0
   invertY: boolean; // default false
   reducedMotion: boolean;
+  masterVolume?: number; // 0 to 1, default 0.85
+  musicVolume?: number; // 0 to 1, default 0.7
+  sfxVolume?: number; // 0 to 1, default 0.9
+  cameraShake?: boolean; // default true
+  screenEffects?: boolean; // default true
+  subtitlesEnabled?: boolean; // default true
 }
 
 export interface PlayerInputFrame {
@@ -849,6 +881,7 @@ export interface PlayerState {
   currentAttackMarkId: number | null; // Active Resonance markId at the moment current attack was initiated
   bufferedAction: 'none' | 'light' | 'heavy' | 'dodge' | 'parry';
   bufferTimer: number;
+  fluxDampenedTimer?: number;
 }
 
 export interface EnemyState {
@@ -987,6 +1020,7 @@ export interface CombatEvent {
     | 'gravity_pin_activated'
     | 'gravity_pin_rejected'
     | 'siphon_flux_drained'
+    | 'null_weaver_flux_dampened'
     | 'eraser_echo_disrupted'
     | 'matron_chrono_sever'
     | 'echo_collapse_detonated'
@@ -995,8 +1029,14 @@ export interface CombatEvent {
     | 'chronicle_loom_ending_selected'
     | 'comms_transmission_started'
     | 'weapon_switched'
+    | 'weapon_unlocked'
     | 'player_pulse_shot'
     | 'player_pulse_heavy_shot'
+    | 'player_rail_shot'
+    | 'player_rail_heavy_shot'
+    | 'player_breaker_slam'
+    | 'player_breaker_heavy_slam'
+    | 'breaker_shockwave_slam'
     | 'pulse_overheated'
     | 'pulse_overheat_cleared'
     | 'pulse_impact_obstacle'
@@ -1796,6 +1836,7 @@ export interface HudSnapshot {
   ghostIntegrity: number;
   flux: number;
   maxFlux: number;
+  fluxDampenedTimer?: number;
   playerActionState: PlayerActionState;
   chargeRatio: number;
   comboStep: number;

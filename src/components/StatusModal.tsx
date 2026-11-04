@@ -458,32 +458,54 @@ export const StatusModal: React.FC<StatusModalProps> = ({
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {(['chrono_edge', 'pulsecaster'] as const).map((weaponId) => {
+              {(
+                ['chrono_edge', 'pulsecaster', 'phase_rail', 'grav_breaker'] as const
+              ).map((weaponId) => {
                 const weaponUpgrades = ALL_UPGRADE_DEFINITIONS.filter(
                   (u) => u.weaponId === weaponId
                 );
                 const activeUpgradeId = progression.equippedUpgrades[weaponId];
                 const isCurrentWeapon = equippedWeaponId === weaponId;
+                const unlockedWeapons = progression.unlockedWeaponIds ?? [
+                  'chrono_edge',
+                  'pulsecaster',
+                ];
+                const isWeaponUnlocked = unlockedWeapons.includes(weaponId);
+                const weaponTitle =
+                  weaponId === 'chrono_edge'
+                    ? '[1] CHRONO EDGE (MELEE)'
+                    : weaponId === 'pulsecaster'
+                      ? '[2] PULSECASTER (RANGED)'
+                      : weaponId === 'phase_rail'
+                        ? '[3] NULL-POINT RAIL LANCE'
+                        : '[4] GRAV-BREAKER MAUL';
                 return (
                   <div
                     key={weaponId}
                     data-testid={`upgrade-column-${weaponId}`}
+                    data-weapon-unlocked={isWeaponUnlocked ? 'true' : 'false'}
                     className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-2"
                   >
                     <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-slate-800/80">
                       <span
                         className={`text-[10px] font-mono-tabular font-bold uppercase tracking-wider ${
-                          weaponId === 'pulsecaster' ? 'text-sky-300' : 'text-cyan-300'
+                          weaponId === 'pulsecaster' || weaponId === 'phase_rail'
+                            ? 'text-sky-300'
+                            : weaponId === 'grav_breaker'
+                              ? 'text-amber-300'
+                              : 'text-cyan-300'
                         }`}
                       >
-                        {weaponId === 'chrono_edge' ? 'CHRONO EDGE (MELEE)' : 'PULSECASTER (RANGED)'}
+                        {weaponTitle}
                       </span>
                       <span className="text-[9px] font-mono-tabular uppercase text-slate-400">
-                        {activeUpgradeId
-                          ? weaponUpgrades.find((u) => u.id === activeUpgradeId)?.shortLabel
-                          : isCurrentWeapon
-                            ? 'EQUIPPED WEAPON'
-                            : 'STANDBY'}
+                        {!isWeaponUnlocked
+                          ? 'WEAPON LOCKED'
+                          : activeUpgradeId
+                            ? weaponUpgrades.find((u) => u.id === activeUpgradeId)?.shortLabel
+                            : isCurrentWeapon
+                              ? 'EQUIPPED WEAPON'
+                              : 'STANDBY'}
                       </span>
                     </div>
 
@@ -983,6 +1005,27 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                     <span className="text-emerald-300">━ OPEN ROUTE</span>
                     <span className="text-slate-400">◌ FOG OF DISCOVERY</span>
                   </div>
+
+                  {/* Phase 21: Sector Checkpoint & Armory Cache Status */}
+                  <div
+                    data-testid="map-checkpoint-armory-status"
+                    className="w-full mt-1.5 pt-1 border-t border-slate-800/80 flex items-center justify-between text-[8px] font-mono-tabular uppercase text-slate-300"
+                  >
+                    <span>
+                      CHECKPOINT:{' '}
+                      <strong className="text-cyan-300">
+                        {bossCheckpoint
+                          ? `${(bossCheckpoint.chapter ?? chapter ?? 'prologue').toUpperCase()} (${bossCheckpoint.integrity} HP)`
+                          : 'SECTOR ENTRY ANCHOR'}
+                      </strong>
+                    </span>
+                    <span>
+                      ARMORY:{' '}
+                      <strong className="text-emerald-300">
+                        {(progression?.unlockedWeaponIds ?? ['chrono_edge', 'pulsecaster']).length}/4 UNLOCKED
+                      </strong>
+                    </span>
+                  </div>
                 </div>
 
                 {/* Right Column: Traversal Routes, Timed Hazards & Secret Discovery Telemetry */}
@@ -1302,6 +1345,110 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                 {cameraSettings.invertY ? 'INVERTED' : 'STANDARD'}
               </button>
             </div>
+            {/* Master & SFX Volume Sliders */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label
+                    htmlFor="modal-master-volume-slider"
+                    className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-300"
+                  >
+                    MASTER VOLUME
+                  </label>
+                  <span className="text-[11px] font-mono-tabular font-bold text-cyan-400">
+                    {Math.round((cameraSettings.masterVolume ?? 0.85) * 100)}%
+                  </span>
+                </div>
+                <input
+                  id="modal-master-volume-slider"
+                  data-testid="modal-setting-master-volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={cameraSettings.masterVolume ?? 0.85}
+                  onChange={(e) =>
+                    onUpdateCameraSettings({ masterVolume: parseFloat(e.target.value) })
+                  }
+                  className="w-full accent-cyan-400 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label
+                    htmlFor="modal-sfx-volume-slider"
+                    className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-300"
+                  >
+                    SFX / COMBAT BUS
+                  </label>
+                  <span className="text-[11px] font-mono-tabular font-bold text-cyan-400">
+                    {Math.round((cameraSettings.sfxVolume ?? 0.9) * 100)}%
+                  </span>
+                </div>
+                <input
+                  id="modal-sfx-volume-slider"
+                  data-testid="modal-setting-sfx-volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={cameraSettings.sfxVolume ?? 0.9}
+                  onChange={(e) =>
+                    onUpdateCameraSettings({ sfxVolume: parseFloat(e.target.value) })
+                  }
+                  className="w-full accent-cyan-400 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Camera Shake & Subtitles Toggles */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                data-testid="modal-setting-camera-shake"
+                onClick={() =>
+                  onUpdateCameraSettings({
+                    cameraShake: !(cameraSettings.cameraShake ?? true),
+                  })
+                }
+                className="flex items-center justify-between px-3 py-1.5 bg-[#0b1018] hover:bg-[#131d2d] border border-slate-700 text-[10px] font-mono-tabular cursor-pointer"
+              >
+                <span className="text-slate-300">CAMERA SHAKE</span>
+                <span
+                  className={
+                    (cameraSettings.cameraShake ?? true)
+                      ? 'text-cyan-300 font-bold'
+                      : 'text-slate-500 font-bold'
+                  }
+                >
+                  {(cameraSettings.cameraShake ?? true) ? 'ON' : 'OFF'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="modal-setting-subtitles"
+                onClick={() =>
+                  onUpdateCameraSettings({
+                    subtitlesEnabled: !(cameraSettings.subtitlesEnabled ?? true),
+                  })
+                }
+                className="flex items-center justify-between px-3 py-1.5 bg-[#0b1018] hover:bg-[#131d2d] border border-slate-700 text-[10px] font-mono-tabular cursor-pointer"
+              >
+                <span className="text-slate-300">COMMS SUBTITLES</span>
+                <span
+                  className={
+                    (cameraSettings.subtitlesEnabled ?? true)
+                      ? 'text-cyan-300 font-bold'
+                      : 'text-slate-500 font-bold'
+                  }
+                >
+                  {(cameraSettings.subtitlesEnabled ?? true) ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            </div>
+
             <div className="space-y-1">
               <button
                 type="button"

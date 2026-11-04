@@ -1,7 +1,13 @@
 import React from 'react';
 import { GAME_CONFIG } from '../game/config.ts';
 import { getCurrentCalibrationObjective } from '../game/simulation.ts';
-import type { ChronicleLoomEndingId, HudSnapshot, TutorialStep } from '../game/types.ts';
+import type {
+  CameraSettings,
+  ChronicleLoomEndingId,
+  HudSnapshot,
+  TutorialStep,
+  WeaponId,
+} from '../game/types.ts';
 
 interface GameHudProps {
   hud: HudSnapshot;
@@ -26,10 +32,13 @@ interface GameHudProps {
   onGravityPin?: () => void;
   onEchoCollapse?: () => void;
   onSwitchWeapon?: () => void;
+  onSelectWeapon?: (weaponId: WeaponId) => void;
   onInteract?: () => void;
   onOpenMap?: () => void;
+  onEngageWardenPrime?: () => void;
   onSelectLoomEnding?: (ending: ChronicleLoomEndingId) => void;
   onRestoreCampaign?: () => void;
+  cameraSettings?: CameraSettings;
   onTouchMoveHold?: (dx: number, dz: number, pointerId?: number | null) => void;
   onTouchMovePulse?: (dx: number, dz: number) => void;
   onTouchCameraStart?: (
@@ -154,10 +163,13 @@ export const GameHud: React.FC<GameHudProps> = ({
   onGravityPin,
   onEchoCollapse,
   onSwitchWeapon,
+  onSelectWeapon,
   onInteract,
   onOpenMap,
+  onEngageWardenPrime,
   onSelectLoomEnding,
   onRestoreCampaign,
+  cameraSettings,
   onTouchMoveHold,
   onTouchMovePulse,
   onTouchCameraStart,
@@ -605,15 +617,18 @@ export const GameHud: React.FC<GameHudProps> = ({
                     tabIndex={-1}
                     data-testid="weapon-switch-btn"
                     aria-label={`Switch Weapon [Tab / Z] (Currently ${hud.weapon.label})`}
-                    title="Switch Weapon [Tab / Z / 1-2]"
+                    title="Cycle Unlocked Arsenal Weapon [Tab / Z / 1-4]"
                     onClick={(e) => {
                       e.currentTarget.blur();
                       onSwitchWeapon?.();
                     }}
                     className={`px-1.5 py-0.5 text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                      hud.weapon.equippedWeaponId === 'pulsecaster'
+                      hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                      hud.weapon.equippedWeaponId === 'phase_rail'
                         ? 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-400 text-sky-200'
-                        : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
+                        : hud.weapon.equippedWeaponId === 'grav_breaker'
+                          ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400 text-amber-200'
+                          : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
                     }`}
                   >
                     <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
@@ -650,6 +665,54 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </div>
               </div>
 
+              {/* Phase 21: 4-Slot Arsenal Quick-Select Strip ([1] Edge · [2] Pulse · [3] Rail · [4] Breaker) */}
+              <div
+                data-testid="weapon-arsenal-slots"
+                className="grid grid-cols-4 gap-1 mb-0.5 pointer-events-auto"
+              >
+                {(
+                  [
+                    { id: 'chrono_edge', key: '1', short: 'EDGE' },
+                    { id: 'pulsecaster', key: '2', short: 'PULSE' },
+                    { id: 'phase_rail', key: '3', short: 'RAIL' },
+                    { id: 'grav_breaker', key: '4', short: 'MAUL' },
+                  ] as const
+                ).map((slot) => {
+                  const unlockedList = hud.progression.unlockedWeaponIds ?? [
+                    'chrono_edge',
+                    'pulsecaster',
+                  ];
+                  const unlocked = unlockedList.includes(slot.id);
+                  const active = hud.weapon.equippedWeaponId === slot.id;
+                  return (
+                    <button
+                      key={slot.id}
+                      type="button"
+                      tabIndex={-1}
+                      disabled={!unlocked}
+                      data-testid={`weapon-slot-${slot.id}`}
+                      data-unlocked={unlocked ? 'true' : 'false'}
+                      data-active={active ? 'true' : 'false'}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        if (unlocked) {
+                          onSelectWeapon?.(slot.id);
+                        }
+                      }}
+                      className={`px-1 py-0.5 text-[8px] font-mono-tabular font-bold uppercase border transition-colors truncate ${
+                        active
+                          ? 'bg-cyan-500/25 border-cyan-300 text-white cursor-pointer'
+                          : unlocked
+                            ? 'bg-[#0b121e] hover:bg-[#142238] border-slate-700 text-slate-300 cursor-pointer'
+                            : 'bg-[#06090f] border-slate-800/70 text-slate-600 cursor-not-allowed'
+                      }`}
+                    >
+                      [{slot.key}] {slot.short}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Active Weapon Upgrade Modification Readout */}
               <div className="flex items-center justify-between gap-1 text-[8px] sm:text-[9px] font-mono-tabular uppercase mb-0.5">
                 <span className="text-slate-500 whitespace-nowrap shrink-0">MOD CORE</span>
@@ -658,9 +721,12 @@ export const GameHud: React.FC<GameHudProps> = ({
                   data-upgrade-id={hud.weapon.equippedUpgradeId ?? 'none'}
                   className={`truncate font-semibold ${
                     hud.weapon.equippedUpgradeId
-                      ? hud.weapon.equippedWeaponId === 'pulsecaster'
+                      ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                        hud.weapon.equippedWeaponId === 'phase_rail'
                         ? 'text-sky-300'
-                        : 'text-cyan-300'
+                        : hud.weapon.equippedWeaponId === 'grav_breaker'
+                          ? 'text-amber-300'
+                          : 'text-cyan-300'
                       : 'text-slate-500'
                   }`}
                 >
@@ -668,7 +734,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </span>
               </div>
 
-              {/* Pulsecaster Heat & Status Bar (Always mounted in DOM for deterministic telemetry) */}
+              {/* Pulsecaster / Rail Heat & Status Bar (Always mounted in DOM for deterministic telemetry) */}
               <div
                 data-testid="pulsecaster-heat-bar"
                 data-heat={hud.weapon.heat}
@@ -693,7 +759,8 @@ export const GameHud: React.FC<GameHudProps> = ({
                   className={`text-[8px] sm:text-[9px] font-mono-tabular uppercase whitespace-nowrap shrink-0 ${
                     hud.weapon.overheated
                       ? 'text-red-400 font-bold'
-                      : hud.weapon.equippedWeaponId === 'pulsecaster'
+                      : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                          hud.weapon.equippedWeaponId === 'phase_rail'
                         ? hud.weapon.heat >= 70
                           ? 'text-amber-300 font-semibold'
                           : 'text-sky-300'
@@ -702,7 +769,8 @@ export const GameHud: React.FC<GameHudProps> = ({
                 >
                   {hud.weapon.overheated
                     ? `OVERHEAT ${hud.weapon.overheatTimer.toFixed(1)}s`
-                    : hud.weapon.equippedWeaponId === 'pulsecaster'
+                    : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                        hud.weapon.equippedWeaponId === 'phase_rail'
                       ? `HEAT ${hud.weapon.heat}%`
                       : `COMBO ${hud.comboStep}/3`}
                 </span>
@@ -713,7 +781,11 @@ export const GameHud: React.FC<GameHudProps> = ({
               <span className="whitespace-nowrap shrink-0">
                 {hud.weapon.equippedWeaponId === 'pulsecaster'
                   ? 'RANGED · 12.5m'
-                  : `COMBO ${hud.comboStep}/3`}
+                  : hud.weapon.equippedWeaponId === 'phase_rail'
+                    ? 'RAIL · 17.0m'
+                    : hud.weapon.equippedWeaponId === 'grav_breaker'
+                      ? 'BREAKER · 85% PIERCE'
+                      : `COMBO ${hud.comboStep}/3`}
               </span>
               <span
                 className={`whitespace-nowrap shrink-0 ${
@@ -727,14 +799,19 @@ export const GameHud: React.FC<GameHudProps> = ({
                 {resonance.primed && resonance.canConverge
                   ? `CONVERGE [E] ${resonance.fluxCost} FLUX`
                   : isEmpoweredReady
-                    ? hud.weapon.equippedWeaponId === 'pulsecaster'
+                    ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                      hud.weapon.equippedWeaponId === 'phase_rail'
                       ? 'LANCE [E] EMPOWERED'
                       : 'HEAVY [E] EMPOWERED'
                     : hud.weapon.equippedWeaponId === 'pulsecaster'
                       ? 'LANCE [E] 20 FLUX'
-                      : `HEAVY [E] ${
-                          hud.weapon.equippedUpgradeId === 'edge_harmonic_conductor' ? 30 : 25
-                        } FLUX`}
+                      : hud.weapon.equippedWeaponId === 'phase_rail'
+                        ? 'NULL LANCE [E] 22 FLUX'
+                        : hud.weapon.equippedWeaponId === 'grav_breaker'
+                          ? 'CRUSH [E] 28 FLUX'
+                          : `HEAVY [E] ${
+                              hud.weapon.equippedUpgradeId === 'edge_harmonic_conductor' ? 30 : 25
+                            } FLUX`}
               </span>
             </div>
 
@@ -1662,6 +1739,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       {/* In-World Live Narrative Comms Feed (Non-blocking during active exploration & combat) */}
       {hud.comms.active &&
+        (cameraSettings?.subtitlesEnabled ?? true) &&
         hud.run.stage !== 'intro' &&
         hud.run.stage !== 'transition_to_boss' &&
         (!hud.loom.active || inspectingLoomChamber) && (
@@ -1983,7 +2061,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 
             <div
               data-testid="loom-lysa-transmission"
-              className="bg-[#081220] border-l-2 border-cyan-400 border-y border-r border-slate-800 px-3 py-2 mb-3.5"
+              className="bg-[#081220] border-l-2 border-cyan-400 border-y border-r border-slate-800 px-3 py-2 mb-3"
             >
               <div className="text-[10px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300 mb-0.5">
                 {GAME_CONFIG.campaignChapters.chapter_5_loom.archiveLog.id} //{' '}
@@ -1993,6 +2071,33 @@ export const GameHud: React.FC<GameHudProps> = ({
                 {GAME_CONFIG.chronicleLoom.lysaFinalTransmission}
               </p>
             </div>
+
+            {/* Phase 21: Optional / Climactic Confrontation with WARDEN PRIME in Chronicle Loom Core */}
+            {onEngageWardenPrime && (
+              <div
+                data-testid="loom-warden-prime-bar"
+                className="flex flex-wrap items-center justify-between gap-2 bg-[#120b18] border border-amber-500/60 px-3 py-2 mb-3"
+              >
+                <div className="text-[10px] sm:text-[11px] font-mono-tabular text-amber-200">
+                  <strong className="text-amber-400 uppercase tracking-wider">
+                    SOVEREIGN OVERRIDE DETECTED:
+                  </strong>{' '}
+                  WARDEN PRIME’s Sovereign Architect chassis guards the Loom core. Confront it directly or execute an immediate override directive below.
+                </div>
+                <button
+                  type="button"
+                  data-testid="loom-btn-confront-warden-prime"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onEngageWardenPrime();
+                  }}
+                  className="px-3 py-1.5 text-[10px] font-mono-tabular font-bold uppercase bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  CONFRONT WARDEN PRIME [BOSS]
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {LOOM_ENDING_CARDS.map((card) => {
                 const cfg = GAME_CONFIG.chronicleLoom.endings[card.id];

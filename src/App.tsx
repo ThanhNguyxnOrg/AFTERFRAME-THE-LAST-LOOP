@@ -19,6 +19,7 @@ import {
   discoverCodexEntry,
   discoverSecretArea,
   dismissActiveTransmission,
+  engageWardenPrimeInLoom,
   equipWeaponUpgrade,
   evaluateInteractionTarget,
   extractHudSnapshot,
@@ -154,7 +155,17 @@ export default function App() {
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(() =>
     inputRef.current
       ? inputRef.current.getCameraSettings()
-      : { sensitivity: 1.0, invertY: false, reducedMotion: false }
+      : {
+          sensitivity: 1.0,
+          invertY: false,
+          reducedMotion: false,
+          masterVolume: 0.85,
+          musicVolume: 0.7,
+          sfxVolume: 0.9,
+          cameraShake: true,
+          screenEffects: true,
+          subtitlesEnabled: true,
+        }
   );
   const [initialExplorationTab, setInitialExplorationTab] = useState<
     'missions' | 'map' | 'codex'
@@ -369,6 +380,23 @@ export default function App() {
     [syncDomAndReactHud]
   );
 
+  const handleEngageWardenPrime = useCallback((): boolean => {
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w) return false;
+
+    if (engageWardenPrimeInLoom(w, false)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+      return true;
+    }
+    return false;
+  }, [syncDomAndReactHud, syncRendererAndCamera]);
+
   const handleSkipIntro = useCallback(() => {
     const w = worldRef.current;
     if (!w) return;
@@ -566,6 +594,21 @@ export default function App() {
     inputRef.current?.triggerSwitchWeapon();
   }, []);
 
+  const handleSelectWeapon = useCallback(
+    (weaponId: WeaponId) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      if (switchPlayerWeapon(w, weaponId)) {
+        if (w.events.length > 0) {
+          soundRef.current?.playEvents(w.events);
+        }
+        syncDomAndReactHud();
+      }
+    },
+    [syncDomAndReactHud]
+  );
+
   const handleInteract = useCallback(() => {
     inputRef.current?.triggerInteract();
   }, []);
@@ -718,8 +761,11 @@ export default function App() {
     let prevWeaponOverheated = world.player.weaponOverheated;
     let prevMemoryFragments = world.progression.memoryFragments;
     let prevPurchasedCount = world.progression.purchasedUpgrades.length;
+    let prevUnlockedWeaponsCount = (world.progression.unlockedWeaponIds ?? []).length;
     let prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
     let prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
+    let prevEquippedRailUpgrade = world.progression.equippedUpgrades.phase_rail ?? null;
+    let prevEquippedBreakerUpgrade = world.progression.equippedUpgrades.grav_breaker ?? null;
     let prevEncounterId = world.encounter.encounterId;
     let prevWaveIndex = world.encounter.currentWaveIndex;
     let prevWaveClearedCount = world.encounter.waveClearedCount;
@@ -844,8 +890,11 @@ export default function App() {
         world.player.weaponOverheated !== prevWeaponOverheated ||
         world.progression.memoryFragments !== prevMemoryFragments ||
         world.progression.purchasedUpgrades.length !== prevPurchasedCount ||
+        (world.progression.unlockedWeaponIds ?? []).length !== prevUnlockedWeaponsCount ||
         world.progression.equippedUpgrades.chrono_edge !== prevEquippedEdgeUpgrade ||
         world.progression.equippedUpgrades.pulsecaster !== prevEquippedPulseUpgrade ||
+        (world.progression.equippedUpgrades.phase_rail ?? null) !== prevEquippedRailUpgrade ||
+        (world.progression.equippedUpgrades.grav_breaker ?? null) !== prevEquippedBreakerUpgrade ||
         world.encounter.encounterId !== prevEncounterId ||
         world.encounter.currentWaveIndex !== prevWaveIndex ||
         world.encounter.waveClearedCount !== prevWaveClearedCount ||
@@ -896,8 +945,11 @@ export default function App() {
         prevWeaponOverheated = world.player.weaponOverheated;
         prevMemoryFragments = world.progression.memoryFragments;
         prevPurchasedCount = world.progression.purchasedUpgrades.length;
+        prevUnlockedWeaponsCount = (world.progression.unlockedWeaponIds ?? []).length;
         prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
         prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
+        prevEquippedRailUpgrade = world.progression.equippedUpgrades.phase_rail ?? null;
+        prevEquippedBreakerUpgrade = world.progression.equippedUpgrades.grav_breaker ?? null;
         prevEncounterId = world.encounter.encounterId;
         prevWaveIndex = world.encounter.currentWaveIndex;
         prevWaveClearedCount = world.encounter.waveClearedCount;
@@ -950,6 +1002,7 @@ export default function App() {
           skipIntro?: boolean
         ) => WorldState;
         restoreSavedCampaignProgress: () => WorldState;
+        engageWardenPrimeInLoom: (skipIntro?: boolean) => WorldState;
         selectChronicleLoomEnding: (ending: ChronicleLoomEndingId) => WorldState;
         skipBossIntroBanner: () => WorldState;
         dismissActiveTransmission: () => WorldState;
@@ -1144,6 +1197,20 @@ export default function App() {
       restoreSavedCampaignProgress: () => {
         input.exitPointerLock();
         restoreSavedCampaignProgress(world);
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        document.body.dataset.state = world.appState;
+        document.body.dataset.encounter = world.encounterMode;
+        document.body.dataset.runMode = world.run.mode;
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return world;
+      },
+      engageWardenPrimeInLoom: (skipIntro = true) => {
+        input.exitPointerLock();
+        engageWardenPrimeInLoom(world, skipIntro);
         sceneRenderer.syncEnemyRigs(world);
         input.resetCameraAngles();
         sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
@@ -1371,12 +1438,25 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    rendererRef.current?.setReducedMotion(cameraSettings.reducedMotion);
+    const effectiveReducedMotion =
+      cameraSettings.reducedMotion || cameraSettings.cameraShake === false;
+    rendererRef.current?.setReducedMotion(effectiveReducedMotion);
+    soundRef.current?.setVolumeSettings({
+      masterVolume: cameraSettings.masterVolume,
+      musicVolume: cameraSettings.musicVolume,
+      sfxVolume: cameraSettings.sfxVolume,
+    });
     document.body.dataset.reducedMotion = String(cameraSettings.reducedMotion);
     return () => {
       delete document.body.dataset.reducedMotion;
     };
-  }, [cameraSettings.reducedMotion]);
+  }, [
+    cameraSettings.reducedMotion,
+    cameraSettings.cameraShake,
+    cameraSettings.masterVolume,
+    cameraSettings.musicVolume,
+    cameraSettings.sfxVolume,
+  ]);
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#07090d]">
@@ -1429,6 +1509,8 @@ export default function App() {
           onToggleTutorial={handleToggleTutorial}
           cameraSettings={cameraSettings}
           onUpdateCameraSettings={handleUpdateCameraSettings}
+          progression={hud.progression}
+          exploration={hud.exploration}
         />
       )}
 
@@ -1458,9 +1540,12 @@ export default function App() {
           onGravityPin={handleGravityPin}
           onEchoCollapse={handleEchoCollapse}
           onSwitchWeapon={handleSwitchWeapon}
+          onSelectWeapon={handleSelectWeapon}
           onInteract={handleInteract}
+          onEngageWardenPrime={handleEngageWardenPrime}
           onSelectLoomEnding={handleSelectLoomEnding}
           onRestoreCampaign={handleRestoreSavedCampaign}
+          cameraSettings={cameraSettings}
           onTouchMoveHold={handleTouchMoveHold}
           onTouchMovePulse={handleTouchMovePulse}
           onTouchCameraStart={handleTouchCameraStart}

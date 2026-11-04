@@ -1762,7 +1762,13 @@ export class ArenaSceneRenderer {
             1.15,
             ev.z,
             8,
-            ev.weaponId === 'pulsecaster' ? 0x38bdf8 : 0x22d3ee,
+            ev.weaponId === 'grav_breaker'
+              ? 0xf59e0b
+              : ev.weaponId === 'phase_rail'
+                ? 0xe0f2fe
+                : ev.weaponId === 'pulsecaster'
+                  ? 0x38bdf8
+                  : 0x22d3ee,
             3.8
           );
           break;
@@ -1772,6 +1778,32 @@ export class ArenaSceneRenderer {
         case 'player_pulse_heavy_shot':
           this.spawnBurst(ev.x, 1.15, ev.z, 16, 0xf59e0b, 7.4);
           this.triggerImpactRing(ev.x, 0.22, ev.z, 0x38bdf8, 0.22);
+          break;
+        case 'player_rail_shot':
+          this.spawnBurst(ev.x, 1.15, ev.z, 14, 0xe0f2fe, 6.8);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x38bdf8, 0.24);
+          break;
+        case 'player_rail_heavy_shot':
+          this.spawnBurst(ev.x, 1.15, ev.z, 26, 0xffffff, 9.4);
+          this.spawnBurst(ev.x, 1.15, ev.z, 16, 0x22d3ee, 7.6);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xffffff, 0.34);
+          break;
+        case 'breaker_shockwave_slam':
+          this.spawnBurst(
+            ev.x,
+            0.35,
+            ev.z,
+            ev.isHeavy ? 32 : 20,
+            ev.isHeavy ? 0xf59e0b : 0xfbbf24,
+            ev.isHeavy ? 9.8 : 7.2
+          );
+          this.triggerImpactRing(
+            ev.x,
+            0.16,
+            ev.z,
+            ev.isHeavy ? 0xf59e0b : 0x38bdf8,
+            ev.isHeavy ? 0.44 : 0.3
+          );
           break;
         case 'pulse_overheated':
           this.spawnBurst(ev.x, 1.2, ev.z, 14, 0xef4444, 5.5);
@@ -2365,9 +2397,21 @@ export class ArenaSceneRenderer {
     this.playerRig.slashArcMesh.rotation.z = 0;
     this.playerRig.slashArcPivot.rotation.set(0, 0, 0);
 
-    const isPulsecaster = p.equippedWeaponId === 'pulsecaster';
+    const isPulsecaster =
+      p.equippedWeaponId === 'pulsecaster' || p.equippedWeaponId === 'phase_rail';
+    const isPhaseRail = p.equippedWeaponId === 'phase_rail';
+    const isGravBreaker = p.equippedWeaponId === 'grav_breaker';
 
-    // Visually distinguish active weapon on Sera's rig
+    // Visually distinguish active weapon on Sera's rig across all 4 Arsenal weapons
+    this.playerRig.bladeMesh.visible =
+      p.equippedWeaponId === 'chrono_edge' || p.equippedWeaponId === 'pulsecaster';
+    if (this.playerRig.phaseRailGroup) {
+      this.playerRig.phaseRailGroup.visible = isPhaseRail;
+    }
+    if (this.playerRig.gravBreakerGroup) {
+      this.playerRig.gravBreakerGroup.visible = isGravBreaker;
+    }
+
     if (isPulsecaster) {
       this.playerRig.bladeMesh.scale.set(0.72, 0.72, 0.28);
       this.playerRig.bladeMaterial.emissiveIntensity = 0.42;
@@ -2384,13 +2428,13 @@ export class ArenaSceneRenderer {
         this.playerRig.pulsecasterMaterial.emissive.setHex(0x38bdf8);
         this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.15;
       }
-      // Ready the left-forearm Pulsecaster forward in neutral/moving states
+      // Ready the left-forearm projector or right-hand Rail Lance forward in neutral/moving states
       targetLeftArmX = -0.58 - swing * 0.18;
       targetLeftArmY = 0.16;
       targetLeftArmZ = -0.14;
       targetLeftForearmX = -0.44;
-      targetRightArmX = 0.18 + swing * 0.24;
-      targetRightArmY = -0.12;
+      targetRightArmX = isPhaseRail ? -0.52 + swing * 0.16 : 0.18 + swing * 0.24;
+      targetRightArmY = isPhaseRail ? -0.08 : -0.12;
       targetRightArmZ = 0.14;
       targetRightForearmX = -0.48;
     } else {
@@ -2403,7 +2447,11 @@ export class ArenaSceneRenderer {
 
     if (p.hurtFlashTimer > 0) {
       this.playerRig.bladeMaterial.emissive.setHex(0xef4444);
-    } else if (p.actionState === 'charging_heavy' || p.actionState.startsWith('heavy_')) {
+    } else if (
+      isGravBreaker ||
+      p.actionState === 'charging_heavy' ||
+      p.actionState.startsWith('heavy_')
+    ) {
       this.playerRig.bladeMaterial.emissive.setHex(0xf59e0b);
     } else {
       this.playerRig.bladeMaterial.emissive.setHex(0x06b6d4);
@@ -2411,9 +2459,13 @@ export class ArenaSceneRenderer {
 
     switch (p.actionState) {
       case 'charging_heavy': {
-        const threshold = isPulsecaster
-          ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
-          : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+        const threshold = isPhaseRail
+          ? GAME_CONFIG.weapons.phase_rail.heavyShot.chargeThreshold
+          : p.equippedWeaponId === 'pulsecaster'
+            ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
+            : isGravBreaker
+              ? GAME_CONFIG.weapons.grav_breaker.heavySlam.chargeThreshold
+              : GAME_CONFIG.player.heavyAttack.chargeThreshold;
         const ratio = Math.min(1, p.chargeTime / Math.max(0.01, threshold));
         if (isPulsecaster) {
           targetBodyY = -0.04 * ratio;
@@ -2993,7 +3045,18 @@ export class ArenaSceneRenderer {
       this.echoRig.slashArcPivot.rotation.set(0, 0, 0);
       this.echoRig.weaponPivot.rotation.set(0, 0, 0);
 
-      const echoPulsecaster = actor.weaponId === 'pulsecaster';
+      const echoPulsecaster =
+        actor.weaponId === 'pulsecaster' || actor.weaponId === 'phase_rail';
+      const echoPhaseRail = actor.weaponId === 'phase_rail';
+      const echoGravBreaker = actor.weaponId === 'grav_breaker';
+      this.echoRig.bladeMesh.visible =
+        actor.weaponId === 'chrono_edge' || actor.weaponId === 'pulsecaster';
+      if (this.echoRig.phaseRailGroup) {
+        this.echoRig.phaseRailGroup.visible = echoPhaseRail;
+      }
+      if (this.echoRig.gravBreakerGroup) {
+        this.echoRig.gravBreakerGroup.visible = echoGravBreaker;
+      }
       if (echoPulsecaster) {
         this.echoRig.bladeMesh.scale.set(0.72, 0.72, 0.28);
       } else {
@@ -3769,7 +3832,8 @@ export class ArenaSceneRenderer {
         enemy.archetype === 'helix' ||
         enemy.archetype === 'choir' ||
         enemy.archetype === 'curator' ||
-        enemy.archetype === 'matron'
+        enemy.archetype === 'matron' ||
+        enemy.archetype === 'warden_prime'
       ) {
         const boss = world.boss;
         const bState = boss ? boss.aiState : enemy.aiState;
@@ -4134,7 +4198,10 @@ export class ArenaSceneRenderer {
         rig.rightLegPivot.rotation.x = -legSwing;
 
         if (rig.leftShinPivot && rig.rightShinPivot) {
-          if (enemy.archetype === 'bastion') {
+          if (
+            enemy.archetype === 'bastion' ||
+            enemy.archetype === 'aegis_sentinel'
+          ) {
             rig.leftShinPivot.rotation.x = isEnemyMoving
               ? Math.max(0.06, -Math.sin(walkCycle + 0.5)) * 0.48
               : 0.08;
@@ -4153,7 +4220,7 @@ export class ArenaSceneRenderer {
         }
       }
 
-      if (enemy.archetype === 'scout') {
+      if (enemy.archetype === 'scout' || enemy.archetype === 'null_weaver') {
         const hoverPhase = world.elapsedTime * 3.8 + enemy.x * 0.4;
         rig.bodyGroup.position.y =
           Math.sin(hoverPhase) * 0.14 + Math.cos(hoverPhase * 1.9) * 0.04;
@@ -4162,7 +4229,11 @@ export class ArenaSceneRenderer {
         const gyroRate =
           enemy.aiState === 'telegraph' ? 4.8 : enemy.aiState === 'recovery' ? 0.45 : 1.65;
         rig.secondaryPivot.rotation.y += dt * gyroRate;
-      } else if (enemy.archetype === 'bastion' || enemy.archetype === 'eraser') {
+      } else if (
+        enemy.archetype === 'bastion' ||
+        enemy.archetype === 'eraser' ||
+        enemy.archetype === 'aegis_sentinel'
+      ) {
         // BASTION-09: Heavy, deliberate hydraulic stomp, fortified shield brace, high-mass weight transfer
         const stompBounce = isEnemyMoving
           ? Math.pow(Math.abs(Math.sin(walkCycle)), 1.7) * 0.072
@@ -4275,8 +4346,8 @@ export class ArenaSceneRenderer {
         rig.telegraphRingMaterial.color.setHex(isLocked ? 0xef4444 : 0xf59e0b);
         rig.telegraphRingMaterial.opacity = 0.58 + progress * 0.4;
 
-        if (enemy.archetype === 'bastion') {
-          // Bastion raises heavy shock-maul high overhead while planting legs
+        if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
+          // Bastion / Sentinel raises heavy shock-maul high overhead while planting legs
           rig.bodyGroup.position.y = -0.04 * progress;
           rig.bodyGroup.rotation.x = -0.18 * progress;
           if (rig.torsoPivot) {
@@ -4307,7 +4378,7 @@ export class ArenaSceneRenderer {
       } else if (enemy.aiState === 'attack') {
         rig.telegraphDiscMaterial.opacity = 0.46;
         rig.telegraphRingMaterial.opacity = 0.92;
-        if (enemy.archetype === 'bastion') {
+        if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
           // Bastion commits to heavy downward ground-slam
           rig.bodyGroup.position.y = -0.06;
           rig.bodyGroup.rotation.x = 0.28;
@@ -4389,7 +4460,7 @@ export class ArenaSceneRenderer {
       }
     }
 
-    // Phase 14: Sync Pooled Pulsecaster Projectile Meshes
+    // Phase 14 & Phase 21: Sync Pooled Pulsecaster & Rail Lance Projectile Meshes
     const projs = world.projectiles ?? [];
     for (let i = 0; i < this.projectileRigs.length; i++) {
       const pRig = this.projectileRigs[i];
@@ -4401,22 +4472,38 @@ export class ArenaSceneRenderer {
       pRig.group.visible = true;
       pRig.group.position.set(proj.x, 1.15, proj.z);
       pRig.group.rotation.y = proj.rotationY;
+      const isRailProj =
+        proj.attackMode === 'rail_light' || proj.attackMode === 'rail_heavy';
       if (proj.isHeavy) {
-        pRig.group.scale.set(1.35, 1.35, 1.75);
+        pRig.group.scale.set(
+          isRailProj ? 1.55 : 1.35,
+          isRailProj ? 1.55 : 1.35,
+          isRailProj ? 3.8 : 1.75
+        );
         pRig.coreMat.color.setHex(0xffffff);
         pRig.haloMat.color.setHex(
-          proj.owner === 'echo'
-            ? 0x38bdf8
-            : proj.isEmpowered
-              ? 0xf59e0b
-              : 0x22d3ee
+          isRailProj
+            ? 0xe0f2fe
+            : proj.owner === 'echo'
+              ? 0x38bdf8
+              : proj.isEmpowered
+                ? 0xf59e0b
+                : 0x22d3ee
         );
-        pRig.haloMat.opacity = 0.68;
+        pRig.haloMat.opacity = isRailProj ? 0.88 : 0.68;
       } else {
-        pRig.group.scale.set(1, 1, 1);
-        pRig.coreMat.color.setHex(proj.owner === 'echo' ? 0xbae6fd : 0xe0f2fe);
-        pRig.haloMat.color.setHex(proj.owner === 'echo' ? 0x38bdf8 : 0x22d3ee);
-        pRig.haloMat.opacity = 0.48;
+        pRig.group.scale.set(
+          isRailProj ? 1.18 : 1,
+          isRailProj ? 1.18 : 1,
+          isRailProj ? 2.6 : 1
+        );
+        pRig.coreMat.color.setHex(
+          isRailProj ? 0xffffff : proj.owner === 'echo' ? 0xbae6fd : 0xe0f2fe
+        );
+        pRig.haloMat.color.setHex(
+          isRailProj ? 0x22d3ee : proj.owner === 'echo' ? 0x38bdf8 : 0x22d3ee
+        );
+        pRig.haloMat.opacity = isRailProj ? 0.72 : 0.48;
       }
     }
 
