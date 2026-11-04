@@ -1,0 +1,88 @@
+# CCGS project configuration — single source of truth for AFTERFRAME: THE LAST LOOP.
+# See .claude/docs/effects-map.md for full schema.
+
+schema_version: 1
+
+framework:
+  version: 1.2.0
+  last_upgraded: 2026-11-04
+
+project:
+  name: "AFTERFRAME: THE LAST LOOP"
+  version: "0.21.1"
+  genre: "3D Sci-Fi Action-Puzzle RPG"
+  kind: "3D"
+  stage: "Production"
+
+engine:
+  name: "ThreeJS"
+  version: "0.186.1"
+  language: "TypeScript"
+  rendering: "WebGL2 (Three.js WebGLRenderer + Procedural & GLB Pipeline)"
+  physics: "Deterministic Custom 2.5D/3D Arena Simulation"
+
+specialists:
+  code: "gameplay-programmer"
+  shader: "technical-artist"
+  ui: "ui-programmer"
+  additional:
+    - "combat-designer"
+    - "systems-designer"
+    - "ai-Behavior-programmer"
+    - "qa-tester"
+
+naming:
+  classes: "PascalCase"
+  variables: "camelCase"
+  constants: "SCREAMING_SNAKE"
+  signals: "snake_case"
+  files: "camelCase"
+  scenes: "snake_case"
+
+platform:
+  targets:
+    - "Web (Desktop Chromium/Firefox/Safari 1280x800+)"
+    - "Web (Mobile Touch 390x844+)"
+  primary_input: "Keyboard/Mouse"
+  input_methods:
+    - "Keyboard/Mouse"
+    - "Touch"
+  online: false
+  cert_tier: "none"
+
+performance:
+  target_framerate: 60
+  frame_budget_ms: 16.6
+  draw_call_limit: 250
+  memory_ceiling_mb: 512
+  enforce: "warn"
+
+accessibility:
+  target: "standard"
+
+commands:
+  build: "npm run build"
+  test: "npm test"
+  run: "npm run dev"
+  smoke: "npm run lint"
+
+testing:
+  framework: "node:test (tsx --test src/game/simulation.test.ts) + playwright-cli"
+  strict:
+    logic: true
+    integration: true
+    visual: true
+    ui: true
+    config: true
+
+modes:
+  rigor: "standard"
+  automation: "collaborative"
+
+features:
+  session_state: "on"
+  read_guard: "on"
+  read_guard_kb: 40
+
+updates:
+  check: false

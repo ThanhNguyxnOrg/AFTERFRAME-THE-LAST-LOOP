@@ -1,0 +1,63 @@
+# Canonical Entity Registry — AFTERFRAME: THE LAST LOOP
+schema_version: 1
+entities:
+  - id: sera_venn
+    type: character
+    name: "Sera Venn"
+    status: active
+    source: "src/game/simulation.ts"
+  - id: chrono_edge
+    type: weapon
+    name: "Chrono Edge"
+    status: active
+    source: "src/game/config.ts"
+  - id: pulsecaster
+    type: weapon
+    name: "Pulsecaster"
+    status: active
+    source: "src/game/config.ts"
+  - id: phase_rail
+    type: weapon
+    name: "Null-Point Rail Lance"
+    status: active
+    source: "src/game/config.ts"
+  - id: grav_breaker
+    type: weapon
+    name: "Grav-Breaker Maul"
+    status: active
+    source: "src/game/config.ts"
+  - id: aegis_sentinel
+    type: enemy
+    name: "Aegis Sentinel"
+    status: active
+    source: "src/game/config.ts"
+  - id: null_weaver
+    type: enemy
+    name: "Null Weaver"
+    status: active
+    source: "src/game/config.ts"
+  - id: helix-04
+    type: boss
+    name: "Marshal HELIX-04"
+    status: active
+    source: "src/game/config.ts"
+  - id: the-choir
+    type: boss
+    name: "THE CHOIR"
+    status: active
+    source: "src/game/config.ts"
+  - id: the-curator
+    type: boss
+    name: "THE CURATOR"
+    status: active
+    source: "src/game/config.ts"
+  - id: matron-v
+    type: boss
+    name: "MATRON-V, The Surgeon"
+    status: active
+    source: "src/game/config.ts"
+  - id: warden-prime
+    type: boss
+    name: "WARDEN PRIME"
+    status: active
+    source: "src/game/config.ts"
