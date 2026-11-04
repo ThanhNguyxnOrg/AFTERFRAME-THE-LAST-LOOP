@@ -5,6 +5,9 @@ const MUTE_STORAGE_KEY = 'afterframe_audio_muted_v1';
 export class SoundEngine {
   private ctx: AudioContext | null = null;
   private muted: boolean = false;
+  private masterVolume = 0.85;
+  private musicVolume = 0.7;
+  private sfxVolume = 0.9;
 
   constructor() {
     try {
@@ -33,6 +36,38 @@ export class SoundEngine {
   public toggleMute(): boolean {
     this.setMuted(!this.muted);
     return this.muted;
+  }
+
+  public setVolumeSettings(settings: {
+    masterVolume?: number;
+    musicVolume?: number;
+    sfxVolume?: number;
+  }): void {
+    if (typeof settings.masterVolume === 'number' && Number.isFinite(settings.masterVolume)) {
+      this.masterVolume = Math.max(0, Math.min(1, settings.masterVolume));
+    }
+    if (typeof settings.musicVolume === 'number' && Number.isFinite(settings.musicVolume)) {
+      this.musicVolume = Math.max(0, Math.min(1, settings.musicVolume));
+    }
+    if (typeof settings.sfxVolume === 'number' && Number.isFinite(settings.sfxVolume)) {
+      this.sfxVolume = Math.max(0, Math.min(1, settings.sfxVolume));
+    }
+  }
+
+  public getVolumeSettings(): {
+    masterVolume: number;
+    musicVolume: number;
+    sfxVolume: number;
+  } {
+    return {
+      masterVolume: this.masterVolume,
+      musicVolume: this.musicVolume,
+      sfxVolume: this.sfxVolume,
+    };
+  }
+
+  private getEffectiveSfxScale(): number {
+    return Math.max(0, Math.min(1.5, this.masterVolume * this.sfxVolume));
   }
 
   private ensureContext(): AudioContext | null {
@@ -253,13 +288,24 @@ export class SoundEngine {
           this.playCommsTransmission();
           break;
         case 'weapon_switched':
-          this.playWeaponSwitch(ev.weaponId === 'pulsecaster');
+          this.playWeaponSwitch(
+            ev.weaponId === 'pulsecaster' || ev.weaponId === 'phase_rail'
+          );
           break;
         case 'player_pulse_shot':
           this.playPulsecasterShot(false);
           break;
         case 'player_pulse_heavy_shot':
           this.playPulsecasterShot(true);
+          break;
+        case 'player_rail_shot':
+          this.playPhaseRailShot(false);
+          break;
+        case 'player_rail_heavy_shot':
+          this.playPhaseRailShot(true);
+          break;
+        case 'breaker_shockwave_slam':
+          this.playGravBreakerSlam(Boolean(ev.isHeavy));
           break;
         case 'pulse_overheated':
           this.playPulsecasterOverheat();
@@ -294,6 +340,47 @@ export class SoundEngine {
           break;
       }
     }
+  }
+
+  private playPhaseRailShot(isHeavy: boolean): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const scale = this.getEffectiveSfxScale();
+    if (scale <= 0.001) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isHeavy ? 'sawtooth' : 'sine';
+    osc.frequency.setValueAtTime(this.pitchJitter(isHeavy ? 1180 : 1040), now);
+    osc.frequency.exponentialRampToValueAtTime(
+      isHeavy ? 190 : 320,
+      now + (isHeavy ? 0.24 : 0.14)
+    );
+    gain.gain.setValueAtTime((isHeavy ? 0.16 : 0.12) * scale, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + (isHeavy ? 0.25 : 0.15));
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + (isHeavy ? 0.26 : 0.16));
+  }
+
+  private playGravBreakerSlam(isHeavy: boolean): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const scale = this.getEffectiveSfxScale();
+    if (scale <= 0.001) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(this.pitchJitter(isHeavy ? 145 : 190), now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + (isHeavy ? 0.28 : 0.19));
+    gain.gain.setValueAtTime((isHeavy ? 0.22 : 0.15) * scale, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + (isHeavy ? 0.29 : 0.2));
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + (isHeavy ? 0.3 : 0.21));
   }
 
   private playProgressionReward(): void {

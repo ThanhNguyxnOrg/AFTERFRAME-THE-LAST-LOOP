@@ -109,6 +109,24 @@ export class InputController {
         if (typeof parsed.reducedMotion === 'boolean') {
           this.settings.reducedMotion = parsed.reducedMotion;
         }
+        if (typeof parsed.masterVolume === 'number' && Number.isFinite(parsed.masterVolume)) {
+          this.settings.masterVolume = Math.max(0, Math.min(1, parsed.masterVolume));
+        }
+        if (typeof parsed.musicVolume === 'number' && Number.isFinite(parsed.musicVolume)) {
+          this.settings.musicVolume = Math.max(0, Math.min(1, parsed.musicVolume));
+        }
+        if (typeof parsed.sfxVolume === 'number' && Number.isFinite(parsed.sfxVolume)) {
+          this.settings.sfxVolume = Math.max(0, Math.min(1, parsed.sfxVolume));
+        }
+        if (typeof parsed.cameraShake === 'boolean') {
+          this.settings.cameraShake = parsed.cameraShake;
+        }
+        if (typeof parsed.screenEffects === 'boolean') {
+          this.settings.screenEffects = parsed.screenEffects;
+        }
+        if (typeof parsed.subtitlesEnabled === 'boolean') {
+          this.settings.subtitlesEnabled = parsed.subtitlesEnabled;
+        }
       }
     } catch {
       // Ignore storage access errors
@@ -128,6 +146,24 @@ export class InputController {
     }
     if (typeof next.reducedMotion === 'boolean') {
       this.settings.reducedMotion = next.reducedMotion;
+    }
+    if (typeof next.masterVolume === 'number' && Number.isFinite(next.masterVolume)) {
+      this.settings.masterVolume = Math.max(0, Math.min(1, Number(next.masterVolume.toFixed(2))));
+    }
+    if (typeof next.musicVolume === 'number' && Number.isFinite(next.musicVolume)) {
+      this.settings.musicVolume = Math.max(0, Math.min(1, Number(next.musicVolume.toFixed(2))));
+    }
+    if (typeof next.sfxVolume === 'number' && Number.isFinite(next.sfxVolume)) {
+      this.settings.sfxVolume = Math.max(0, Math.min(1, Number(next.sfxVolume.toFixed(2))));
+    }
+    if (typeof next.cameraShake === 'boolean') {
+      this.settings.cameraShake = next.cameraShake;
+    }
+    if (typeof next.screenEffects === 'boolean') {
+      this.settings.screenEffects = next.screenEffects;
+    }
+    if (typeof next.subtitlesEnabled === 'boolean') {
+      this.settings.subtitlesEnabled = next.subtitlesEnabled;
     }
     try {
       window.localStorage.setItem(CAMERA_SETTINGS_STORAGE_KEY, JSON.stringify(this.settings));
@@ -589,7 +625,11 @@ export class InputController {
         ? 'chrono_edge'
         : this.justPressedKeys.has('Digit2')
           ? 'pulsecaster'
-          : null);
+          : this.justPressedKeys.has('Digit3')
+            ? 'phase_rail'
+            : this.justPressedKeys.has('Digit4')
+              ? 'grav_breaker'
+              : null);
     const echoRecordJustPressed = this.justPressedKeys.has('KeyT');
     const echoPlayJustPressed = this.justPressedKeys.has('KeyY');
     const echoClearJustPressed = this.justPressedKeys.has('KeyC');

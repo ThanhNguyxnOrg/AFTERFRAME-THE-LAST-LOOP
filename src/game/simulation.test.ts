@@ -87,6 +87,9 @@ import {
   buildCampaignEndingDiscoverySummary,
   canTriggerNarrativeEventNow,
   triggerNarrativeEvent,
+  getUnlockedWeaponIds,
+  unlockPlayerWeapon,
+  engageWardenPrimeInLoom,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -7736,11 +7739,15 @@ test('Phase 14.3: Pulsecaster respects Boss frontal armor, Choir harmonic shield
 
 test('Phase 15: Weapon upgrade definitions, purchase/equip validation, and mid-combat action locks', () => {
   const defs = getAllWeaponUpgradeDefinitions();
-  assert.equal(defs.length, 4, 'Phase 15 must define 4 focused weapon upgrades');
+  assert.equal(defs.length, 8, 'Arsenal must define 8 focused weapon upgrades (2 per weapon)');
   const edgeUpgrades = defs.filter((d) => d.weaponId === 'chrono_edge');
   const pulseUpgrades = defs.filter((d) => d.weaponId === 'pulsecaster');
+  const railUpgrades = defs.filter((d) => d.weaponId === 'phase_rail');
+  const breakerUpgrades = defs.filter((d) => d.weaponId === 'grav_breaker');
   assert.equal(edgeUpgrades.length, 2, 'Chrono Edge must have 2 upgrades');
   assert.equal(pulseUpgrades.length, 2, 'Pulsecaster must have 2 upgrades');
+  assert.equal(railUpgrades.length, 2, 'Null-Point Rail Lance must have 2 upgrades');
+  assert.equal(breakerUpgrades.length, 2, 'Grav-Breaker Maul must have 2 upgrades');
 
   for (const d of defs) {
     assert.ok(d.id.length > 0);
@@ -11091,8 +11098,488 @@ test('Phase 20.1 Narrative Event Trigger Correctness & Optional/Null-State Defen
   );
 });
 
+// ============================================================================
+// PHASE 21: EXPANDED 4-WEAPON ARSENAL, 8 UPGRADES, ENEMY ROSTER & WARDEN PRIME
+// ============================================================================
 
+test('Phase 21.1: Null-Point Rail Lance (phase_rail) and Grav-Breaker Maul (grav_breaker) attacks, upgrades, Echo recording/replay, and save v2 weapon unlock persistence', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
 
+  // Initially only chrono_edge and pulsecaster are unlocked in Prologue campaign
+  assert.deepEqual(getUnlockedWeaponIds(world), ['chrono_edge', 'pulsecaster']);
+  assert.equal(
+    switchPlayerWeapon(world, 'phase_rail'),
+    false,
+    'Locked weapon cannot be selected in campaign before unlock'
+  );
 
+  // Unlock phase_rail and grav_breaker
+  assert.equal(unlockPlayerWeapon(world, 'phase_rail'), true);
+  assert.equal(unlockPlayerWeapon(world, 'grav_breaker'), true);
+  assert.deepEqual(getUnlockedWeaponIds(world), [
+    'chrono_edge',
+    'pulsecaster',
+    'phase_rail',
+    'grav_breaker',
+  ]);
 
+  // 1. Test Null-Point Rail Lance (phase_rail) light & heavy piercing attacks
+  assert.equal(switchPlayerWeapon(world, 'phase_rail'), true);
+  assert.equal(world.player.equippedWeaponId, 'phase_rail');
 
+  for (const e of world.enemies) {
+    e.x = -12;
+    e.z = -12;
+    e.cooldownTimer = 99;
+  }
+  const target1 = world.enemies[0];
+  const target2 = world.enemies[1];
+  target1.x = 0;
+  target1.z = 2.0;
+  target1.hp = 100;
+  target1.maxHp = 100;
+  target2.x = 0;
+  target2.z = 5.0;
+  target2.hp = 100;
+  target2.maxHp = 100;
+
+  world.player.x = 0;
+  world.player.z = 8.0;
+  world.player.rotationY = Math.PI;
+
+  // Fire Rail Dart [J] -> hits front target1 (z = 5.0) and builds heat
+  const railLight = createEmptyInput(Math.PI);
+  railLight.lightAttackJustPressed = true;
+  stepWorld(world, railLight, 0.02);
+  for (let i = 0; i < 12; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.ok(target2.hp < 100, 'Rail Dart must damage target in line of fire');
+  assert.ok(world.player.weaponHeat > 0, 'Rail Dart must build thermal heat');
+
+  // Reset cooldown/state and fire Charged Null-Aperture Lance [K] -> pierces through both aligned targets!
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.player.weaponShotCooldownTimer = 0;
+  world.player.weaponHeat = 0;
+  world.hitstopTimer = 0;
+  target1.hp = 100;
+  target2.hp = 100;
+
+  const railHeavy = createEmptyInput(Math.PI);
+  railHeavy.heavyAttackJustPressed = true;
+  stepWorld(world, railHeavy, 0.02);
+  for (let i = 0; i < 20; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.ok(target2.hp < 100, 'Charged Null-Aperture Lance must hit first aligned target');
+  assert.ok(target1.hp < 100, 'Charged Null-Aperture Lance must pierce through to second aligned target');
+
+  // 2. Test Grav-Breaker Maul (grav_breaker) frontal guard penetration against Bastion
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.player.weaponSwitchCooldownTimer = 0;
+  world.hitstopTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'grav_breaker'), true);
+  assert.equal(world.player.equippedWeaponId, 'grav_breaker');
+
+  const bastion = world.enemies.find((e) => e.archetype === 'bastion') ?? world.enemies[0];
+  bastion.archetype = 'bastion';
+  bastion.hp = 120;
+  bastion.maxHp = 120;
+  bastion.x = 0;
+  bastion.z = 6.2;
+  bastion.rotationY = 0; // facing player at z = 8.0
+  world.player.x = 0;
+  world.player.z = 8.0;
+  world.player.rotationY = Math.PI;
+
+  const maulLight = createEmptyInput(Math.PI);
+  maulLight.lightAttackJustPressed = true;
+  stepWorld(world, maulLight, 0.02);
+  for (let i = 0; i < 15; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  assert.ok(bastion.hp < 120, 'Grav-Breaker Maul Seismic Slam must penetrate frontal Bastion shield');
+
+  // 3. Purchase & equip all 4 new weapon upgrades
+  world.player.actionState = 'idle';
+  world.progression.memoryFragments = 50;
+  for (const upgId of [
+    'rail_null_aperture',
+    'rail_phase_capacitor',
+    'breaker_seismic_core',
+    'breaker_singularity_coil',
+  ] as const) {
+    assert.equal(
+      purchaseWeaponUpgrade(world, upgId).outcome,
+      'purchased',
+      `Must purchase ${upgId}`
+    );
+  }
+  assert.equal(getEquippedWeaponUpgrade(world, 'phase_rail'), 'rail_phase_capacitor');
+  assert.equal(getEquippedWeaponUpgrade(world, 'grav_breaker'), 'breaker_singularity_coil');
+
+  assert.equal(
+    equipWeaponUpgrade(world, 'phase_rail', 'rail_null_aperture').outcome,
+    'equipped'
+  );
+  assert.equal(getEquippedWeaponUpgrade(world, 'phase_rail'), 'rail_null_aperture');
+
+  // 4. Verify Echo recording and replay of rail_shot, rail_charged_shot, breaker_slam, and breaker_charged_slam
+  world.echo.state = 'idle';
+  world.echo.recordingSamples = [];
+  world.echo.recordingEvents = [];
+  world.echo.clip = null;
+  world.echo.activeActor = null;
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.player.weaponSwitchCooldownTimer = 0;
+  world.player.weaponShotCooldownTimer = 0;
+  world.player.weaponHeat = 0;
+  world.hitstopTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'phase_rail'), true);
+
+  const recStart = createEmptyInput(Math.PI);
+  recStart.echoRecordJustPressed = true;
+  stepWorld(world, recStart, 0.02);
+  assert.equal(world.echo.state, 'recording');
+
+  const recRailDart = createEmptyInput(Math.PI);
+  recRailDart.lightAttackJustPressed = true;
+  stepWorld(world, recRailDart, 0.02);
+  for (let i = 0; i < 20; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.player.weaponShotCooldownTimer = 0;
+  world.player.weaponHeat = 0;
+  const recRailCharged = createEmptyInput(Math.PI);
+  recRailCharged.heavyAttackJustPressed = true;
+  stepWorld(world, recRailCharged, 0.02);
+  for (let i = 0; i < 20; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'grav_breaker'), true);
+
+  const recBreakerLight = createEmptyInput(Math.PI);
+  recBreakerLight.lightAttackJustPressed = true;
+  stepWorld(world, recBreakerLight, 0.02);
+  for (let i = 0; i < 20; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  const recBreakerHeavy = createEmptyInput(Math.PI);
+  recBreakerHeavy.heavyAttackJustPressed = true;
+  stepWorld(world, recBreakerHeavy, 0.02);
+  for (let i = 0; i < 25; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+
+  const recordedTypes = world.echo.recordingEvents.map((ev) => ev.action);
+  assert.ok(recordedTypes.includes('rail_shot'), 'Echo recording must capture rail_shot');
+  assert.ok(recordedTypes.includes('rail_charged_shot'), 'Echo recording must capture rail_charged_shot');
+  assert.ok(recordedTypes.includes('breaker_slam'), 'Echo recording must capture breaker_slam');
+  assert.ok(recordedTypes.includes('breaker_charged_slam'), 'Echo recording must capture breaker_charged_slam');
+
+  const recStop = createEmptyInput(Math.PI);
+  recStop.echoRecordJustPressed = true;
+  stepWorld(world, recStop, 0.02);
+  assert.ok(world.echo.clip !== null, 'Stopping recording must store EchoClip with recorded Phase 21 weapon events');
+  const recReplay = createEmptyInput(Math.PI);
+  recReplay.echoPlayJustPressed = true;
+  stepWorld(world, recReplay, 0.02);
+  assert.equal(world.echo.state, 'playback');
+  assert.ok(world.echo.activeActor !== null, 'Replaying clip must spawn EchoActorState');
+
+  // Verify phase_rail 1.75x weakpoint bonus against exposed Boss Core
+  const bossTestWorld = createBossWorld('playing', true, 'helix-04');
+  unlockPlayerWeapon(bossTestWorld, 'phase_rail');
+  bossTestWorld.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(bossTestWorld, 'phase_rail'), true);
+  const bossEnemy = bossTestWorld.enemies.find((e) => e.id === 'helix-04')!;
+  bossEnemy.x = 0;
+  bossEnemy.z = 2.0;
+  bossEnemy.hp = 300;
+  bossEnemy.aiState = 'recovery';
+  bossEnemy.stateTimer = 3.0;
+  bossTestWorld.boss!.hp = 300;
+  bossTestWorld.boss!.aiState = 'recovery';
+  bossTestWorld.boss!.stateTimer = 3.0;
+  bossTestWorld.boss!.coreExposed = true;
+  bossTestWorld.player.x = 0;
+  bossTestWorld.player.z = 6.0;
+  bossTestWorld.player.rotationY = Math.PI;
+
+  const railVsCore = createEmptyInput(Math.PI);
+  railVsCore.lightAttackJustPressed = true;
+  stepWorld(bossTestWorld, railVsCore, 0.02);
+  for (let i = 0; i < 12; i++) stepWorld(bossTestWorld, createEmptyInput(Math.PI), 0.02);
+  const coreDamageTaken = 300 - bossEnemy.hp;
+  assert.equal(
+    coreDamageTaken,
+    Math.round(
+      GAME_CONFIG.weapons.phase_rail.lightShot.damage *
+        GAME_CONFIG.weapons.phase_rail.exposedCoreDamageMultiplier
+    ),
+    `Null-Point Rail Lance must apply 1.75x exposed core weakpoint multiplier (dealt ${coreDamageTaken})`
+  );
+
+  // 5. Verify Save v2 serializes and restores unlockedWeaponIds and new weapon upgrades
+  const saved = serializeCampaignProgress(world);
+  const restoredWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(restoredWorld, saved), true);
+  assert.deepEqual(restoredWorld.progression.unlockedWeaponIds, [
+    'chrono_edge',
+    'pulsecaster',
+    'phase_rail',
+    'grav_breaker',
+  ]);
+  assert.equal(restoredWorld.progression.equippedUpgrades.phase_rail, 'rail_null_aperture');
+  assert.equal(restoredWorld.progression.equippedUpgrades.grav_breaker, 'breaker_singularity_coil');
+});
+
+test('Phase 21.2: Aegis Sentinel and Null Weaver enemy archetype configurations and combat behaviors', () => {
+  assert.equal(GAME_CONFIG.enemies.aegis_sentinel.archetype, 'aegis_sentinel');
+  assert.equal(GAME_CONFIG.enemies.aegis_sentinel.maxHp, 135);
+  assert.ok(GAME_CONFIG.enemies.aegis_sentinel.frontGuardArc > 0);
+  assert.equal(GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightDamageMult, 0.18);
+
+  assert.equal(GAME_CONFIG.enemies.null_weaver.archetype, 'null_weaver');
+  assert.equal(GAME_CONFIG.enemies.null_weaver.maxHp, 80);
+  assert.ok(GAME_CONFIG.enemies.null_weaver.attackRange >= 7.0);
+  assert.equal(GAME_CONFIG.enemies.null_weaver.fluxDrainOnHit, 18);
+  assert.equal(GAME_CONFIG.enemies.null_weaver.fluxDampenDuration, 3.5);
+  assert.equal(GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult, 0.5);
+
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  unlockPlayerWeapon(world, 'grav_breaker');
+
+  for (const e of world.enemies) {
+    e.x = -12;
+    e.z = -12;
+    e.cooldownTimer = 99;
+  }
+
+  // 1. Aegis Sentinel: 82% frontal barrier mitigation (0.18x damage) vs Chrono Edge, 85% penetration vs Grav-Breaker, 100% rear flank
+  const sentinel = world.enemies[0];
+  sentinel.id = 'test-aegis-sentinel';
+  sentinel.archetype = 'aegis_sentinel';
+  sentinel.hp = 135;
+  sentinel.maxHp = 135;
+  sentinel.x = 0;
+  sentinel.z = 5.0;
+  sentinel.rotationY = 0; // facing +Z (toward player at z = 6.6)
+  sentinel.aiState = 'idle';
+  sentinel.cooldownTimer = 99;
+
+  world.player.x = 0;
+  world.player.z = 6.6;
+  world.player.rotationY = Math.PI; // facing -Z (frontal attack against sentinel)
+  world.player.equippedWeaponId = 'chrono_edge';
+
+  const edgeHit = createEmptyInput(Math.PI);
+  edgeHit.lightAttackJustPressed = true;
+  stepWorld(world, edgeHit, 0.02);
+  for (let i = 0; i < 12; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  const frontalEdgeDamage = 135 - sentinel.hp;
+  assert.ok(
+    frontalEdgeDamage > 0 && frontalEdgeDamage <= 6,
+    `Aegis Sentinel frontal barrier must mitigate 82% of standard frontal melee damage (dealt ${frontalEdgeDamage})`
+  );
+
+  // Rear flank attack with Chrono Edge deals unmitigated full damage
+  sentinel.hp = 135;
+  sentinel.rotationY = 0; // still facing +Z
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.hitstopTimer = 0;
+  world.player.x = 0;
+  world.player.z = 3.4; // behind sentinel
+  world.player.rotationY = 0; // facing +Z into sentinel's back
+  const rearHit = createEmptyInput(0);
+  rearHit.lightAttackJustPressed = true;
+  stepWorld(world, rearHit, 0.02);
+  for (let i = 0; i < 12; i++) stepWorld(world, createEmptyInput(0), 0.02);
+  const rearEdgeDamage = 135 - sentinel.hp;
+  assert.ok(
+    rearEdgeDamage >= 18,
+    `Flanking Aegis Sentinel from behind must deal unmitigated damage (dealt ${rearEdgeDamage})`
+  );
+
+  // Grav-Breaker Maul frontal strike penetrates 85% of Aegis Sentinel frontal barrier (24 * 0.85 = 20 damage)
+  sentinel.hp = 135;
+  sentinel.x = 0;
+  sentinel.z = 5.0;
+  sentinel.rotationY = 0;
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.player.weaponSwitchCooldownTimer = 0;
+  world.hitstopTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'grav_breaker'), true);
+  world.player.x = 0;
+  world.player.z = 6.8;
+  world.player.rotationY = Math.PI;
+  const breakerHit = createEmptyInput(Math.PI);
+  breakerHit.lightAttackJustPressed = true;
+  stepWorld(world, breakerHit, 0.02);
+  for (let i = 0; i < 15; i++) stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  const frontalBreakerDamage = 135 - sentinel.hp;
+  assert.ok(
+    frontalBreakerDamage >= 20,
+    `Grav-Breaker Maul must penetrate 85% of Aegis Sentinel frontal shield (dealt ${frontalBreakerDamage})`
+  );
+
+  // 2. Null Weaver: suppression bolt drains 18 Flux, applies 3.5s Flux dampening (50% regen), and recovers cleanly
+  sentinel.x = -12;
+  sentinel.z = -12;
+  const weaver = world.enemies[1];
+  weaver.id = 'test-null-weaver';
+  weaver.archetype = 'null_weaver';
+  weaver.hp = 80;
+  weaver.maxHp = 80;
+  weaver.x = 0;
+  weaver.z = 2.0;
+  weaver.rotationY = 0;
+  weaver.aiState = 'telegraph';
+  weaver.stateTimer = 0.02;
+  weaver.cooldownTimer = 0;
+
+  world.player.x = 0;
+  world.player.z = 6.0;
+  world.player.actionState = 'idle';
+  world.player.flux = 60;
+  world.player.fluxDampenedTimer = 0;
+
+  // Step world so Null Weaver fires suppression bolt and hits player
+  for (let i = 0; i < 25; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+    if ((world.player.fluxDampenedTimer ?? 0) > 0) break;
+  }
+  assert.ok(
+    (world.player.fluxDampenedTimer ?? 0) > 3.0,
+    `Null Weaver suppression bolt must apply 3.5s Flux dampening (timer=${world.player.fluxDampenedTimer})`
+  );
+  assert.ok(
+    world.player.flux <= 43,
+    `Null Weaver suppression bolt must drain 18 Flux on hit (flux=${world.player.flux})`
+  );
+
+  // Measure dampened passive Flux regeneration over 1.0s (should be 50% of base regenRate)
+  weaver.cooldownTimer = 99;
+  weaver.aiState = 'idle';
+  const fluxBeforeDampenedRegen = world.player.flux;
+  for (let i = 0; i < 20; i++) stepWorld(world, createEmptyInput(Math.PI), 0.05);
+  const dampenedRegenGain = world.player.flux - fluxBeforeDampenedRegen;
+  const expectedHalfRegen = GAME_CONFIG.player.fluxRegenPerSec * 0.5;
+  assert.ok(
+    Math.abs(dampenedRegenGain - expectedHalfRegen) < 0.8,
+    `Dampened Flux regeneration must run at 50% rate (gained ${dampenedRegenGain}, expected ~${expectedHalfRegen})`
+  );
+
+  // Advance past remaining dampening duration and verify full recovery
+  for (let i = 0; i < 60; i++) stepWorld(world, createEmptyInput(Math.PI), 0.05);
+  assert.equal(world.player.fluxDampenedTimer, 0, 'Flux dampening timer must expire cleanly to 0');
+});
+
+test('Phase 21.3: WARDEN PRIME (warden-prime) boss encounter, attacks, Phase II transition, and Chapter V Chronicle Loom integration', () => {
+  // 1. Practice Boss encounter with warden-prime
+  const world = createBossWorld('playing', true, 'warden-prime');
+  assert.equal(world.boss?.id, 'warden-prime');
+  assert.equal(world.boss?.name, 'WARDEN PRIME');
+  assert.equal(world.boss?.maxHp, GAME_CONFIG.wardenPrime.maxHp);
+  assert.equal(world.boss?.phase, 1);
+
+  // Verify all 3 Warden Prime attacks telegraph and execute cleanly
+  for (const atk of [
+    'directive_lance',
+    'temporal_convergence_grid',
+    'sovereign_purge_wave',
+  ] as const) {
+    forceBossAttack(world, atk);
+    assert.equal(world.boss?.aiState, 'telegraph');
+    assert.equal(world.boss?.activeAttack, atk);
+    stepWorld(world, createEmptyInput(0), 0.05);
+  }
+
+  // Verify Phase I -> Phase II transition at <= 50% HP
+  const wardenEnemy = world.enemies.find((e) => e.id === 'warden-prime')!;
+  const thresholdHp = GAME_CONFIG.wardenPrime.phase2HpThreshold - 10;
+  wardenEnemy.hp = thresholdHp;
+  world.boss!.hp = thresholdHp;
+  world.boss!.aiState = 'pursue';
+  world.player.x = wardenEnemy.x;
+  world.player.z = wardenEnemy.z - 2.0;
+  world.player.rotationY = 0;
+  const hitToPhase2 = createEmptyInput(0);
+  hitToPhase2.lightAttackJustPressed = true;
+  stepWorld(world, hitToPhase2, 0.02);
+  for (let i = 0; i < 10; i++) stepWorld(world, createEmptyInput(0), 0.02);
+  assert.equal(world.boss?.aiState, 'phase_transition', 'Warden Prime must enter phase_transition at <= 220 HP');
+
+  for (let i = 0; i < 35; i++) {
+    stepWorld(world, createEmptyInput(0), 0.05);
+  }
+  assert.equal(world.boss?.phase, 2, 'Warden Prime must advance to Phase 2 after transition completes');
+
+  // 2. Chapter V Path A: Skip WARDEN PRIME and choose Chronicle Loom ending directly
+  const pathAWorld = createInitialWorld('playing');
+  startCampaignRun(pathAWorld, true);
+  pathAWorld.run.unlockedChapters.push('chapter_5_loom');
+  assert.equal(startCampaignChapterSelect(pathAWorld, 'chapter_5_loom', true), true);
+  assert.equal(pathAWorld.run.chapter, 'chapter_5_loom');
+  assert.equal(pathAWorld.run.stage, 'chronicle_loom');
+  assert.equal(selectChronicleLoomEnding(pathAWorld, 'silence'), true);
+  assert.equal(pathAWorld.outcome, 'victory');
+  assert.equal(pathAWorld.run.selectedEnding, 'silence');
+
+  // 3. Chapter V Path B: Engage WARDEN PRIME, test player defeat & checkpoint retry, then defeat WARDEN PRIME and choose ending
+  const campWorld = createInitialWorld('playing');
+  startCampaignRun(campWorld, true);
+  campWorld.run.unlockedChapters.push('chapter_5_loom');
+  assert.equal(startCampaignChapterSelect(campWorld, 'chapter_5_loom', true), true);
+  assert.equal(campWorld.run.chapter, 'chapter_5_loom');
+  assert.equal(campWorld.run.stage, 'chronicle_loom');
+
+  // Engage WARDEN PRIME in Chapter V
+  assert.equal(engageWardenPrimeInLoom(campWorld, true), true);
+  assert.equal(campWorld.encounterMode, 'boss');
+  assert.equal(campWorld.boss?.id, 'warden-prime');
+  assert.equal(campWorld.run.stage, 'boss_fight');
+
+  // Simulate player death during Chapter V Warden Prime fight and retry from boss checkpoint
+  campWorld.outcome = 'defeat';
+  campWorld.player.integrity = 0;
+  retryBossFromCheckpoint(campWorld, true);
+  assert.equal(campWorld.outcome, 'none');
+  assert.equal(campWorld.encounterMode, 'boss');
+  assert.equal(campWorld.boss?.id, 'warden-prime');
+  assert.equal(campWorld.run.stage, 'boss_fight');
+  assert.ok(campWorld.player.integrity > 0, 'Retrying Warden Prime checkpoint must restore player Integrity');
+
+  // Defeat WARDEN PRIME in Chapter V -> returns to Chronicle Loom terminal so player can choose their ending
+  const campWarden = campWorld.enemies.find((e) => e.id === 'warden-prime')!;
+  campWorld.boss!.coreExposed = true;
+  campWarden.hp = 5;
+  campWorld.boss!.hp = 5;
+  campWorld.player.x = campWarden.x;
+  campWorld.player.z = campWarden.z - 2.0;
+  campWorld.player.rotationY = 0;
+  const finalStrike = createEmptyInput(0);
+  finalStrike.lightAttackJustPressed = true;
+  stepWorld(campWorld, finalStrike, 0.02);
+  for (let i = 0; i < 10; i++) stepWorld(campWorld, createEmptyInput(0), 0.02);
+
+  assert.equal(campWorld.run.stage, 'chronicle_loom', 'Defeating Warden Prime in Chapter V must return Sera to the Chronicle Loom terminal');
+  assert.equal(campWorld.loom.active, true);
+  assert.equal(campWorld.outcome, 'none', 'Returning to Chronicle Loom keeps run active so player can choose their ending');
+
+  // Player can now choose their final Chronicle Loom directive
+  assert.equal(selectChronicleLoomEnding(campWorld, 'witness'), true);
+  assert.equal(campWorld.outcome, 'victory');
+  assert.equal(campWorld.run.selectedEnding, 'witness');
+});

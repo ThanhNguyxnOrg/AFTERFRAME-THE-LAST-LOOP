@@ -7,9 +7,12 @@ import type {
   CampaignChapterId,
   ChronicleLoomEndingId,
   EncounterCompositionId,
+  HudWeaponProgressionSnapshot,
+  WeaponProgressionState,
+  WorldExplorationState,
 } from '../game/types.ts';
 
-type ActiveTitleDrawer = 'none' | 'chapters' | 'practice' | 'controls';
+type ActiveTitleDrawer = 'none' | 'chapters' | 'practice' | 'archive' | 'controls';
 
 interface TitleScreenProps {
   onStartCampaign: () => void;
@@ -31,6 +34,8 @@ interface TitleScreenProps {
   onToggleTutorial?: () => void;
   cameraSettings?: CameraSettings;
   onUpdateCameraSettings?: (settings: Partial<CameraSettings>) => void;
+  progression?: WeaponProgressionState | HudWeaponProgressionSnapshot;
+  exploration?: WorldExplorationState;
 }
 
 const CHAPTER_METADATA: Array<{
@@ -185,6 +190,14 @@ const PRACTICE_ENCOUNTERS: Array<{
     focus: 'Siphon Flux defense, Chrono Sever evasion, and Echo Collapse [X] detonation.',
     accentClass: 'border-rose-500/50 hover:border-rose-400 text-rose-300',
   },
+  {
+    testId: 'title-btn-boss-warden-prime',
+    bossId: 'warden-prime',
+    code: 'WARDEN 05',
+    title: 'WARDEN PRIME',
+    focus: 'Sovereign Loom Architect: Directive Lance, Convergence Grid, and Purge Wave.',
+    accentClass: 'border-emerald-500/50 hover:border-emerald-400 text-emerald-300',
+  },
 ];
 
 function getChapterShortName(chapter: CampaignChapterId | null | undefined): string {
@@ -212,6 +225,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onToggleTutorial,
   cameraSettings,
   onUpdateCameraSettings,
+  progression,
+  exploration,
 }) => {
   const [activeDrawer, setActiveDrawer] = useState<ActiveTitleDrawer>('none');
 
@@ -222,6 +237,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const unlockedCount = CHAPTER_METADATA.filter((ch) =>
     unlockedChapters.includes(ch.id)
   ).length;
+  const unlockedWeaponIds = progression?.unlockedWeaponIds ?? ['chrono_edge', 'pulsecaster'];
+  const codexCount = exploration?.discoveredCodexIds?.length ?? 0;
+  const secretCount = exploration?.discoveredSecretIds?.length ?? 0;
 
   return (
     <div
@@ -427,10 +445,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </button>
           </div>
 
-          {/* Secondary Mode Switcher Bar: Chapter Select, Practice Arena, Controls & Settings */}
+          {/* Secondary Mode Switcher Bar: Chapter Select, Practice Arena, Arsenal & Codex, Controls */}
           <nav
             aria-label="Secondary Game Modes and Configuration"
-            className="w-full max-w-md grid grid-cols-3 gap-2 pt-3 border-t border-slate-800/90"
+            className="w-full max-w-md grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-slate-800/90"
           >
             <button
               type="button"
@@ -440,7 +458,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 e.currentTarget.blur();
                 toggleDrawer('chapters');
               }}
-              className={`px-3 py-2.5 text-left border transition-colors cursor-pointer ${
+              className={`px-2.5 py-2.5 text-left border transition-colors cursor-pointer ${
                 activeDrawer === 'chapters'
                   ? 'bg-[#132338] border-cyan-400 text-cyan-200'
                   : 'bg-[#0b121d]/90 hover:bg-[#131e30] border-slate-700/80 text-slate-300'
@@ -462,7 +480,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 e.currentTarget.blur();
                 toggleDrawer('practice');
               }}
-              className={`px-3 py-2.5 text-left border transition-colors cursor-pointer ${
+              className={`px-2.5 py-2.5 text-left border transition-colors cursor-pointer ${
                 activeDrawer === 'practice'
                   ? 'bg-[#1f1912] border-amber-400 text-amber-200'
                   : 'bg-[#0b121d]/90 hover:bg-[#131e30] border-slate-700/80 text-slate-300'
@@ -478,13 +496,35 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
             <button
               type="button"
+              data-testid="title-nav-archive"
+              aria-expanded={activeDrawer === 'archive'}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                toggleDrawer('archive');
+              }}
+              className={`px-2.5 py-2.5 text-left border transition-colors cursor-pointer ${
+                activeDrawer === 'archive'
+                  ? 'bg-[#1a1428] border-violet-400 text-violet-200'
+                  : 'bg-[#0b121d]/90 hover:bg-[#131e30] border-slate-700/80 text-slate-300'
+              }`}
+            >
+              <div className="text-[10px] font-mono-tabular uppercase tracking-widest text-violet-400">
+                ARMORY · LORE
+              </div>
+              <div className="text-xs font-display font-bold uppercase tracking-wider mt-0.5">
+                ARSENAL & CODEX
+              </div>
+            </button>
+
+            <button
+              type="button"
               data-testid="title-btn-controls"
               aria-expanded={activeDrawer === 'controls'}
               onClick={(e) => {
                 e.currentTarget.blur();
                 toggleDrawer('controls');
               }}
-              className={`px-3 py-2.5 text-left border transition-colors cursor-pointer ${
+              className={`px-2.5 py-2.5 text-left border transition-colors cursor-pointer ${
                 activeDrawer === 'controls'
                   ? 'bg-[#132338] border-cyan-400 text-cyan-200'
                   : 'bg-[#0b121d]/90 hover:bg-[#131e30] border-slate-700/80 text-slate-300'
@@ -763,6 +803,120 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
           </div>
 
+          {/* Drawer 2.5: Arsenal & Codex Archive */}
+          {activeDrawer === 'archive' && (
+            <div
+              data-testid="title-archive-panel"
+              className="w-full max-w-lg bg-[#090e17]/95 border border-violet-500/50 p-4 text-xs font-mono-tabular text-slate-300 shadow-[0_16px_48px_rgba(0,0,0,0.85)]"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-violet-400">
+                    CHRONO RIG ARMORY · {unlockedWeaponIds.length}/4 WEAPONS · {codexCount}/8 CODEX
+                  </div>
+                  <h2 className="text-sm sm:text-base font-display font-bold uppercase tracking-wider text-white">
+                    ARSENAL & CODEX ARCHIVE
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  data-testid="title-drawer-close-archive"
+                  onClick={() => setActiveDrawer('none')}
+                  className="px-2.5 py-1 text-xs font-mono-tabular uppercase bg-[#111a29] hover:bg-[#1b2940] border border-slate-700 text-slate-300 cursor-pointer"
+                >
+                  ← Close
+                </button>
+              </div>
+
+              <div className="space-y-1.5 mb-3">
+                {(
+                  [
+                    {
+                      id: 'chrono_edge',
+                      slot: '[1]',
+                      title: 'CHRONO EDGE',
+                      role: 'Close-Combat Phase Blade · 3-Hit Combo & Breaker Cleave',
+                      unlockHint: 'Default Chrono Rig Sidearm',
+                    },
+                    {
+                      id: 'pulsecaster',
+                      slot: '[2]',
+                      title: 'PULSECASTER',
+                      role: 'Mid-Range Phase Projector · Rapid Bolts & Piercing Lance',
+                      unlockHint: 'Default Chrono Rig Projector',
+                    },
+                    {
+                      id: 'phase_rail',
+                      slot: '[3]',
+                      title: 'NULL-POINT RAIL LANCE',
+                      role: 'Long-Range Precision Lance · 1.75x Exposed-Core Multiplier',
+                      unlockHint: 'Unlock: Complete Prologue or discover Marshal Armory Cache',
+                    },
+                    {
+                      id: 'grav_breaker',
+                      slot: '[4]',
+                      title: 'GRAV-BREAKER MAUL',
+                      role: 'Heavy Armor-Shatter Maul · 85% Shield Pierce & Seismic Slam',
+                      unlockHint: 'Unlock: Defeat HELIX-04 or discover Hydroponic / Archive Vault',
+                    },
+                  ] as const
+                ).map((w) => {
+                  const unlocked = unlockedWeaponIds.includes(w.id);
+                  const equippedUpgrade = progression?.equippedUpgrades?.[w.id] ?? null;
+                  return (
+                    <div
+                      key={w.id}
+                      data-testid={`title-arsenal-weapon-${w.id}`}
+                      data-unlocked={unlocked ? 'true' : 'false'}
+                      className={`p-2.5 border ${
+                        unlocked
+                          ? 'bg-[#0e1626] border-violet-500/40 text-slate-200'
+                          : 'bg-[#070b12] border-slate-800 text-slate-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <span className="font-display font-bold text-xs uppercase tracking-wider text-white">
+                          <span className="text-cyan-400 mr-1.5">{w.slot}</span>
+                          {w.title}
+                        </span>
+                        <span
+                          className={`text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 border ${
+                            unlocked
+                              ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+                              : 'bg-slate-900 border-slate-800 text-slate-500'
+                          }`}
+                        >
+                          {unlocked
+                            ? equippedUpgrade
+                              ? `MOD: ${GAME_CONFIG.weapons.upgrades[equippedUpgrade]?.shortLabel ?? equippedUpgrade}`
+                              : 'UNLOCKED'
+                            : 'LOCKED'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-300">
+                        {unlocked ? w.role : w.unlockHint}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="border-t border-slate-800 pt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+                <span>
+                  FRAGMENTS:{' '}
+                  <strong className="text-amber-300">
+                    {progression?.memoryFragments ?? 0} AVAIL
+                  </strong>{' '}
+                  ({unlockedWeaponIds.length}/4 ARSENAL)
+                </span>
+                <span>
+                  SECRETS: <strong className="text-cyan-300">{secretCount}/4</strong> · CODEX:{' '}
+                  <strong className="text-violet-300">{codexCount}/8</strong>
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Drawer 3: Controls & Settings */}
           {activeDrawer === 'controls' && (
             <div
@@ -791,21 +945,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px] leading-relaxed mb-4">
                 <div className="bg-[#0d1422] border border-slate-800 p-2.5">
                   <div className="text-white font-semibold mb-1 uppercase tracking-wider">
-                    MOVEMENT & COMBAT
+                    MOVEMENT & ARSENAL
                   </div>
                   <div className="space-y-1 text-slate-300">
                     <div>
                       <span className="text-cyan-300">[WASD]</span> Move ·{' '}
-                      <span className="text-cyan-300">[Mouse / Arrows / CAM ORBIT]</span> Aim
+                      <span className="text-cyan-300">[Mouse / Arrows]</span> Aim
                     </div>
                     <div>
-                      <span className="text-sky-300">[Tab / Z / 1-2]</span> Switch Weapon (Chrono Edge / Pulsecaster)
+                      <span className="text-sky-300">[1-4 / Tab / Z]</span> Arsenal Select (Edge · Pulse · Rail · Breaker)
                     </div>
                     <div>
-                      <span className="text-cyan-300">[Tap LMB / F / J]</span> Light Combo / Pulse Bolt
+                      <span className="text-cyan-300">[Tap LMB / F / J]</span> Light Strike / Bolt / Dart / Slam
                     </div>
                     <div>
-                      <span className="text-amber-300">[Hold LMB / J] Charge + Release · [E / K / RMB]</span> Heavy / Charged Lance
+                      <span className="text-amber-300">[Hold LMB / E / RMB]</span> Heavy / Lance / Singularity Crush
                     </div>
                     <div>
                       <span className="text-cyan-300">[Space / Shift]</span> Dodge ·{' '}
@@ -833,7 +987,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     </div>
                     <div>
                       <span className="text-slate-200">[P / Esc]</span> Pause ·{' '}
-                      <span className="text-slate-200">[R]</span> Restart ·{' '}
+                      <span className="text-slate-200">[M]</span> Map ·{' '}
                       <span className="text-slate-200">[H]</span> Hints
                     </div>
                   </div>
@@ -841,9 +995,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               </div>
 
               {/* Live Settings Controls */}
-              <div className="border-t border-slate-800 pt-3 space-y-2.5">
+              <div className="border-t border-slate-800 pt-3 space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
                 <div className="text-[10px] uppercase tracking-widest text-slate-400">
-                  PREFERENCES (SAVED AUTOMATICALLY)
+                  AUDIO, CAMERA & ACCESSIBILITY PREFERENCES
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -880,7 +1034,53 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                 {cameraSettings && onUpdateCameraSettings && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    <label className="flex flex-col gap-1 bg-[#0d1522] border border-slate-800 px-3 py-2">
+                    <label className="flex flex-col gap-1 bg-[#0d1522] border border-slate-800 px-3 py-1.5">
+                      <div className="flex justify-between text-[11px]">
+                        <span>Master Volume</span>
+                        <span className="text-cyan-300">
+                          {Math.round((cameraSettings.masterVolume ?? 0.85) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        data-testid="title-setting-master-volume"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={cameraSettings.masterVolume ?? 0.85}
+                        onChange={(e) =>
+                          onUpdateCameraSettings({
+                            masterVolume: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full accent-cyan-400 cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1 bg-[#0d1522] border border-slate-800 px-3 py-1.5">
+                      <div className="flex justify-between text-[11px]">
+                        <span>SFX / Combat Bus</span>
+                        <span className="text-cyan-300">
+                          {Math.round((cameraSettings.sfxVolume ?? 0.9) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        data-testid="title-setting-sfx-volume"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={cameraSettings.sfxVolume ?? 0.9}
+                        onChange={(e) =>
+                          onUpdateCameraSettings({
+                            sfxVolume: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full accent-cyan-400 cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1 bg-[#0d1522] border border-slate-800 px-3 py-1.5">
                       <div className="flex justify-between text-[11px]">
                         <span>Camera Sensitivity</span>
                         <span className="text-cyan-300">
@@ -918,6 +1118,51 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         {cameraSettings.invertY ? 'INVERTED' : 'STANDARD'}
                       </span>
                     </button>
+
+                    <button
+                      type="button"
+                      data-testid="title-setting-camera-shake"
+                      onClick={() =>
+                        onUpdateCameraSettings({
+                          cameraShake: !(cameraSettings.cameraShake ?? true),
+                        })
+                      }
+                      className="flex items-center justify-between px-3 py-2 bg-[#0d1522] hover:bg-[#162236] border border-slate-800 text-[11px] cursor-pointer"
+                    >
+                      <span>Camera Shake</span>
+                      <span
+                        className={
+                          (cameraSettings.cameraShake ?? true)
+                            ? 'text-cyan-300 font-bold'
+                            : 'text-slate-500'
+                        }
+                      >
+                        {(cameraSettings.cameraShake ?? true) ? 'ON' : 'OFF'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      data-testid="title-setting-subtitles"
+                      onClick={() =>
+                        onUpdateCameraSettings({
+                          subtitlesEnabled: !(cameraSettings.subtitlesEnabled ?? true),
+                        })
+                      }
+                      className="flex items-center justify-between px-3 py-2 bg-[#0d1522] hover:bg-[#162236] border border-slate-800 text-[11px] cursor-pointer"
+                    >
+                      <span>Comms Subtitles</span>
+                      <span
+                        className={
+                          (cameraSettings.subtitlesEnabled ?? true)
+                            ? 'text-cyan-300 font-bold'
+                            : 'text-slate-500'
+                        }
+                      >
+                        {(cameraSettings.subtitlesEnabled ?? true) ? 'ON' : 'OFF'}
+                      </span>
+                    </button>
+
                     <div className="sm:col-span-2 space-y-1">
                       <button
                         type="button"
