@@ -69,18 +69,18 @@ Real in-engine captures from the Three.js `ArenaSceneRenderer` and Phase 12 Blen
 ## ⚔️ Core Gameplay Pillars
 
 ### 1. ⏱️ Chrono Rig Recording, Echo Replay & Temporal Relay
-- **Record (`[T]`)**: Capture a timestamped sequence (`up to 5.0s`) of Sera's movement, dodges, parries, and attacks across all four weapons (`light`, `heavy`, `pulse_shot`, `pulse_charged_shot`, `rail_shot`, `rail_charged_shot`, `breaker_slam`, `breaker_charged_slam`).
-- **Spawn Echo (`[Y]`)**: Manifest an independent cyan **Echo** (`up to 8.0s` lifetime) that replays your recorded actions while you execute a new live line of attack. Echo replay never duplicates currencies, collectibles, or recursive Echoes.
-- **Temporal Relay (`[V]`)**: Spend `25` Flux (`3.5s` cooldown) to warp instantaneously to your active Echo's position while the Echo continues its replay trajectory—enabling instant flanking behind directional shields (`bastion`, `aegis_sentinel`) or escaping boss hazard zones.
-- **Tactical Skills (`[G]` / `[X]`)**: Deploy **Gravity Pin** (`[G]`, `30` Flux) to immobilize enemies in a `3.8m` singularity well, or detonate an active Echo via **Echo Collapse** (`[X]`, `35` Flux) for `55` radial blast damage and stagger.
+- **Record (`[T]`)**: Capture a timestamped sequence (`0.35s – 8.0s`, up to `500` samples at `60 Hz`) of Sera's movement, dodges, parries, and attacks across all four weapons (`light`, `heavy`, `pulse_shot`, `pulse_charged_shot`, `rail_shot`, `rail_charged_shot`, `breaker_slam`, `breaker_charged_slam`).
+- **Spawn Echo (`[Y]`)**: Manifest an independent cyan **Echo** that replays your recorded actions with exact frame timing while you execute a new live line of attack. Echo replay never duplicates currencies, collectibles, or recursive Echoes.
+- **Temporal Relay (`[V]`)**: Spend `25` Flux (`1.0s` cooldown, `8.0m` max range) to warp instantaneously to your active Echo's position while the Echo continues its replay trajectory—enabling instant flanking behind directional shields (`bastion`, `aegis_sentinel`) or escaping boss hazard zones.
+- **Tactical Skills (`[G]` / `[X]`)**: Deploy **Gravity Pin** (`[G]`, `30` Flux, `6.5s` cooldown) to immobilize enemies in a `4.2m` singularity well for `3.2s`, or detonate an active Echo via **Echo Collapse** (`[X]`, `25` Flux, `5.5s` cooldown) for `68` radial blast damage and `90` posture stagger within `4.6m`.
 
 ### 2. ⚡ Resonance & Convergence
-- **Resonance Priming**: When an Echo lands a Heavy attack (`heavy`, `pulse_charged_shot`, `rail_charged_shot`, or `breaker_charged_slam`), it primes a `3.0s` **Resonance Window** on the target without dealing direct HP damage.
-- **Convergence Strike**: Following up with a live Player Heavy attack within the `3.0s` window triggers **Resonance Convergence**—dealing `48` bonus damage (`68` with `edge_harmonic_conductor`), interrupting boss telegraphs, shattering armor, and exposing boss weakpoints (`1.5x` damage taken for `4.0s`, or `1.75x–2.0x` with the **Null-Point Rail Lance**).
+- **Resonance Priming**: When an Echo lands a Heavy attack (`heavy`, `pulse_charged_shot`, `rail_charged_shot`, or `breaker_charged_slam`), it primes a `1.1s` **Resonance Window** (`2.2s` with `edge_harmonic_conductor`) on the target without dealing direct HP damage.
+- **Convergence Strike**: Following up with a live Player Heavy attack within the Resonance window (`15` Flux, `1.25s` cooldown; `10` Flux with `edge_harmonic_conductor`) triggers **Resonance Convergence**—inflicting `+22` bonus posture stagger (`+32` with `edge_harmonic_conductor`), interrupting boss telegraphs, shattering armor, and exposing the target (`1.35s` exposure window at `1.45x` boss / `1.50x` standard damage, or `1.75x–2.00x` with the **Null-Point Rail Lance**).
 
 ### 3. 🛡️ Deliberate Combat & Counterplay
-- **Parry (`[Q]` / `[L]`)**: A `0.24s` active deflection window (`0.85s` cooldown) that negates incoming melee or reconstructed trace strikes, staggers the attacker for `1.8s`, and restores `+35` Flux.
-- **Phase Dash (`[Space]` / `[Shift]`)**: A `0.28s` dodge (`0.22s` i-frames, `0.65s` cooldown) that repositions Sera and cancels recovery windows.
+- **Parry (`[Q]` / `[L]`)**: A `0.28s` active deflection window (`0.60s` cooldown) that negates incoming melee or reconstructed trace strikes, staggers standard attackers (`+34` posture stagger & `1.15s` core exposure against bosses), and restores `+35` Flux.
+- **Phase Dash (`[Space]` / `[Shift]`)**: A `0.28s` dodge (`0.25s` i-frames, `0.52s` cooldown, `15.5m/s` burst speed) that repositions Sera and cancels recovery windows.
 
 ---
 
@@ -90,20 +90,20 @@ Real in-engine captures from the Three.js `ArenaSceneRenderer` and Phase 12 Blen
 
 | Action | Primary Key / Input | Alternate Key | Resource / Cooldown |
 | :--- | :--- | :--- | :--- |
-| **Move** | `W` `A` `S` `D` | Arrow Keys (Movement/Camera) | Continuous |
+| **Move** | `W` `A` `S` `D` | Arrow Keys (Movement/Camera) | Continuous (`6.8m/s`) |
 | **Camera Aim / Orbit** | Mouse Move / Drag | `ArrowLeft` `ArrowRight` `ArrowUp` `ArrowDown` | Respects `Sensitivity` & `Invert Y` |
-| **Light Attack / Fire** | `Left Mouse Button` | `F` / `J` | Generates Flux on melee hit |
+| **Light Attack / Fire** | `Left Mouse Button` | `F` / `J` | Generates Flux on hit |
 | **Heavy / Charged Attack** | Hold `Right Mouse Button` | Hold `E` / `K` | Triggers Convergence on primed targets |
-| **Dodge / Phase Dash** | `Space` | `Left Shift` | `0.22s` i-frames · `0.65s` cooldown |
-| **Deflect Parry** | `Q` | `L` | `0.24s` window · `+35` Flux on deflect |
+| **Dodge / Phase Dash** | `Space` | `Left Shift` | `0.25s` i-frames · `0.52s` cooldown |
+| **Deflect Parry** | `Q` | `L` | `0.28s` window · `0.60s` cooldown · `+35` Flux |
 | **Switch Weapon (Direct)** | `1` · `2` · `3` · `4` | — | Unlocked weapons in Campaign; all 4 in Practice |
 | **Cycle Weapon** | `Tab` | `Z` | Toggles starter pair or cycles 4-weapon arsenal |
-| **Record Echo Track** | `T` | — | Up to `5.0s` recording window |
-| **Spawn Echo** | `Y` | — | Replays recorded track (`8.0s` lifetime) |
-| **Temporal Relay** | `V` | — | `25` Flux · `3.5s` cooldown |
+| **Record Echo Track** | `T` | — | `0.35s – 8.0s` recording window (`60 Hz`) |
+| **Spawn Echo** | `Y` | — | Replays recorded track |
+| **Temporal Relay** | `V` | — | `25` Flux · `1.0s` cooldown · `8.0m` range |
 | **Clear Echo / Track** | `C` | — | Immediate cleanup |
-| **Gravity Pin** | `G` | — | `30` Flux · `8.0s` cooldown |
-| **Echo Collapse** | `X` | — | `35` Flux · `10.0s` cooldown (`55` AoE damage) |
+| **Gravity Pin** | `G` | — | `30` Flux · `6.5s` cooldown (`4.2m` radius, `3.2s` pin) |
+| **Echo Collapse** | `X` | — | `25` Flux · `5.5s` cooldown (`68` AoE dmg, `90` stagger) |
 | **Interact / Terminal / Vault** | `I` | — | Context-sensitive interactables & Chronicle Loom |
 | **Upgrade Bench (Armory)** | `U` | — | Spend Memory Fragments on 8 weapon upgrades |
 | **Sector Map & Codex** | `M` | — | View objectives, secrets, and lore logs |
@@ -118,31 +118,31 @@ Real in-engine captures from the Three.js `ArenaSceneRenderer` and Phase 12 Blen
 
 ## 🔫 Weapons and Upgrade Matrix
 
-A fresh campaign begins with **Chrono Edge** (`chrono_edge`) and **Pulsecaster** (`pulsecaster`). **Null-Point Rail Lance** (`phase_rail`) and **Grav-Breaker Maul** (`grav_breaker`) are unlocked by discovering secret vaults in **Chapter II** (`ch2_choir_secret_vault`) and **Chapter IV** (`ch4_matron_secret_vault`), or are immediately available in **Practice Mode**.
+A fresh campaign begins with **Chrono Edge** (`chrono_edge`) and **Pulsecaster** (`pulsecaster`). **Null-Point Rail Lance** (`phase_rail`) and **Grav-Breaker Maul** (`grav_breaker`) are unlocked through secret-vault discovery or campaign chapter progression (and are immediately selectable in **Practice Mode**).
 
 ### Four-Weapon Arsenal (`src/game/config.ts`)
 
-| Weapon | ID | Unlock Source | Light Attack Damage | Heavy / Charged Damage | Signature Tactical Property |
+| Weapon | ID | Unlock Source | Light Attack Damage | Heavy / Empowered Damage | Signature Tactical Property |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Chrono Edge** | `chrono_edge` | Starter Loadout | `16 -> 20 -> 28` (3-hit combo) | `42` (`3.8m` cleave) | Balanced melee blade; generates `12 / 15 / 20` Flux on combo hits (`25` on Heavy) |
-| **Pulsecaster** | `pulsecaster` | Starter Loadout | `14` (`18m` range, `22` heat) | `36` (`22m` piercing lance, `55` heat) | Rapid energy sidearm with thermal venting (`32/s` cool rate, `1.6s` overheat lockout) |
-| **Null-Point Rail Lance** | `phase_rail` | Chapter II Secret Vault (`ch2_choir_secret_vault`) | `22` (`26m` range, `34` heat) | `54` (`30m` piercing aperture lance, `72` heat) | **`1.75x` weakpoint multiplier** against exposed boss cores (`2.0x` with `rail_null_aperture`) |
-| **Grav-Breaker Maul** | `grav_breaker` | Chapter IV Secret Vault (`ch4_matron_secret_vault`) | `24 -> 30 -> 40` (3-step slam) | `62` (`4.2m` seismic slam) | **`85%` light / `95%` heavy frontal shield penetration** against `bastion` and `aegis_sentinel` |
+| **Chrono Edge** | `chrono_edge` | Starter Loadout | `16 -> 20 -> 28` (3-hit combo) | `46` base / `64` empowered (`3.6m` cleave) | Balanced melee blade; generates `10` Flux on light hits (`22` on Heavy) |
+| **Pulsecaster** | `pulsecaster` | Starter Loadout | `12` (`17m` range, `18` heat) | `28` base / `40` empowered (`20m` lance, `36` heat) | Rapid energy sidearm with thermal venting (`26/s` cool rate, `1.6s` overheat lockout) |
+| **Null-Point Rail Lance** | `phase_rail` | Prologue/Ch.I Secret Vault (`secret_prologue_calibration_alcove` / `secret_ch1_marshal_armory_cache`) or `chapter_1_helix` | `22` (`22m` range, `28` heat) | `48` base / `68` empowered (`24m` piercing lance, `52` heat) | **`1.75x` weakpoint multiplier** against exposed boss cores (`2.0x` with `rail_null_aperture`) |
+| **Grav-Breaker Maul** | `grav_breaker` | Ch.II/III Secret Vault (`secret_ch2_hydroponic_echo_sanctum` / `secret_ch3_lysa_unedited_vault`) or `chapter_2_choir` | `24 -> 30 -> 40` (3-step slam) | `58` base / `80` empowered (`4.2m` seismic slam) | **`85%` light / `95%` heavy frontal shield penetration** against `bastion` and `aegis_sentinel` |
 
 ### Eight Modular Weapon Upgrades (18-Fragment Campaign Economy)
 
-Upgrades cost `2` Memory Fragments each (`16` Fragments total across all `8` upgrades; `18` deterministic Memory Fragments are recoverable across the 6-chapter campaign: `6` chapter completions + `6` secret areas + `6` environmental caches):
+Upgrades cost `2` or `3` Memory Fragments each (`18` Fragments total across all `8` upgrades, matching the `18` deterministic Memory Fragments earned across the campaign: `6` in Prologue + `3` per boss across Chapters I–IV):
 
 | Upgrade ID | Weapon | Cost | Mechanical Effect (`GAME_CONFIG.weapons.upgrades`) |
 | :--- | :--- | :---: | :--- |
-| `edge_breaker_cleave` | Chrono Edge | `2` | `+20%` melee damage (`1.20x`) and `+0.45m` heavy cleave radius |
-| `edge_harmonic_conductor` | Chrono Edge | `2` | `+35%` melee Flux gain (`1.35x`) and `+20` bonus Resonance Convergence damage (`48 -> 68`) |
-| `pulse_thermal_sink` | Pulsecaster | `2` | `-28%` heat per shot (`0.72x`) and `+35%` passive cooling speed (`1.35x`) |
-| `pulse_overcharge_condenser` | Pulsecaster | `2` | `+25%` ranged damage (`1.25x`) and `+1` additional enemy pierce on charged lances |
-| `rail_null_aperture` | Null-Point Rail Lance | `2` | Increases exposed-core weakpoint multiplier from `1.75x` to **`2.00x`**, `+1` heavy pierce, `0.42s` heavy recovery |
-| `rail_phase_capacitor` | Null-Point Rail Lance | `2` | `-25%` heat generation (`0.75x`) and `+35%` thermal cooling rate (`1.35x`) |
-| `breaker_seismic_core` | Grav-Breaker Maul | `2` | **`100%` frontal shield penetration** (`1.00x`), `+15%` damage (`1.15x`), and `+25%` stagger buildup |
-| `breaker_singularity_coil` | Grav-Breaker Maul | `2` | Expands heavy slam to a **`360°` radial shockwave**, `+0.6m` heavy range (`4.8m`), and `1.1s` micro-pin |
+| `edge_breaker_cleave` | Chrono Edge | `2` | `+30%` posture stagger (`1.30x`), `+25%` frontal guard stagger bonus, `-12%` HP damage (`0.88x`), `+0.06s` heavy recovery |
+| `edge_harmonic_conductor` | Chrono Edge | `3` | `+1.1s` Echo Resonance window (`2.2s`), `+10` Convergence posture damage, `-5` Convergence Flux cost, `+3` Flux per light hit |
+| `pulse_thermal_sink` | Pulsecaster | `2` | `-33%` Pulse Bolt heat cost (`12 vs 18`) and `+30%` passive cooling speed (`1.30x`); light damage `10` |
+| `pulse_overcharge_condenser` | Pulsecaster | `3` | `+25%` Charged Lance damage (`35` base / `50` empowered) and `+31%` posture stagger (`42` / `58`); `48` heat cost |
+| `rail_null_aperture` | Null-Point Rail Lance | `2` | Increases exposed-core weakpoint multiplier from `1.75x` to **`2.00x`** and heavy damage to `60` / `84` (`0.42s` recovery) |
+| `rail_phase_capacitor` | Null-Point Rail Lance | `2` | `-28%` Rail Dart heat cost (`20 vs 28`), `+35%` thermal cooling rate (`1.35x`), and `+4` bonus Flux per hit |
+| `breaker_seismic_core` | Grav-Breaker Maul | `2` | **`100%` frontal shield penetration** (`1.00x`), `+28%` posture stagger (`1.28x`), and `+0.06s` recovery |
+| `breaker_singularity_coil` | Grav-Breaker Maul | `2` | Expands heavy slam to a **`360°` radial shockwave**, `+0.6m` heavy range (`4.8m`), `+12%` heavy damage, and `1.1s` micro-pin |
 
 ---
 
@@ -150,39 +150,39 @@ Upgrades cost `2` Memory Fragments each (`16` Fragments total across all `8` upg
 
 ### 7 Standard Enemy Archetypes + 1 Archive Decoy (`31` Validated Entities in `design/registry/entities.yaml`)
 
-| Archetype ID | Designation | HP | Attack Damage | Windup / Recovery | Tactical Behavior & Counterplay |
+| Archetype ID | Designation | HP | Attack Damage | Telegraph / Recovery | Tactical Behavior & Counterplay |
 | :--- | :--- | :---: | :---: | :---: | :--- |
-| `bastion` | **BASTION-09 · Heavy Enforcer** | `160` | `25` | `0.95s` / `1.10s` | Directional frontal shield mitigates `70%` of standard frontal light attacks; flank with **Relay** (`[V]`) or shatter with **Grav-Breaker Maul** |
-| `scrapper` | **SCRAPPER-X2 · Agile Striker** | `85` | `14` | `0.45s` / `0.65s` | High-speed digitigrade melee rusher; vulnerable to timed **Parry** (`[Q]`/`[L]`) and cleave combos |
-| `scout` | **SCOUT-07 · Ranged Recon Drone** | `65` | `12` | `0.75s` / `0.80s` | Hovering perimeter drone firing laser-telegraphed energy bolts; eliminate with **Pulsecaster** or **Rail Lance** |
-| `siphon` | **SIPHON-03 · Temporal Extractor** | `75` | `15` | `0.65s` / `0.90s` | Drains `22` Flux on hit; prioritize with ranged bursts or **Gravity Pin** (`[G]`) |
-| `eraser` | **ERASER-K9 · Track Purger** | `85` | `16` | `0.85s` / `1.00s` | Emits a `5.5m` anti-Echo disruption pulse that suppresses active Echo tracks for `2.2s` |
-| `aegis_sentinel` | **AEGIS-12 · Phalanx Sentinel** | `135` | `22` | `0.88s` / `1.05s` | Heavy directional barrier mitigates **`82%`** of frontal light attacks (`0.18x` damage); countered by **Grav-Breaker Maul** (`85%–100%` penetration) or Echo Relay pincers |
-| `null_weaver` | **WEAVER-06 · Phase Suppressor** | `80` | `14` | `0.82s` / `0.95s` | Fires phase-suppression bolts that drain `18` Flux and inflict a `3.5s` **DAMPENED** debuff (`0.50x` Flux gain) |
-| `curator_decoy` | **FALSE ECHO — ARCHIVE DECOY** | `45` | `10` | `0.50s` / `0.70s` | Holographic projection spawned during **THE CURATOR** (Chapter III) to obscure the true boss core |
+| `bastion` | **BASTION-09 · Heavy Enforcer** | `150` | `28` | `0.68s` / `1.70s` | Directional frontal shield mitigates `58%` of standard frontal light attacks (`0.42x` mult); flank with **Relay** (`[V]`) or shatter with **Grav-Breaker Maul** |
+| `scrapper` | **SCRAPPER-X2 · Assault Stalker** | `85` | `18` | `0.48s` / `1.30s` | High-speed digitigrade melee rusher (`11.8m/s` lunge); vulnerable to timed **Parry** (`[Q]`/`[L]`) and cleave combos |
+| `scout` | **SCOUT-D4 · Pulse Recon Drone** | `65` | `15` | `0.62s` / `1.45s` | Hovering perimeter drone firing laser-telegraphed energy bolts (`8.8m` range); eliminate with **Pulsecaster** or **Rail Lance** |
+| `siphon` | **SIPHON-07 · Flux Extractor Unit** | `75` | `14` | `0.58s` / `1.35s` | Drains `22` Flux on hit; prioritize with ranged bursts or **Gravity Pin** (`[G]`) |
+| `eraser` | **ERASER-11 · Temporal Suppressor** | `85` | `16` | `0.66s` / `1.40s` | Emits a `5.5m` anti-Echo disruption pulse that suppresses active Echo tracks for `2.2s` |
+| `aegis_sentinel` | **AEGIS-S4 · Phalanx Sentinel** | `135` | `24` | `0.64s` / `1.55s` | Heavy directional barrier mitigates **`82%`** of frontal light attacks (`0.18x` damage); countered by **Grav-Breaker Maul** (`85%–100%` penetration) or Echo Relay pincers |
+| `null_weaver` | **WEAVER-N8 · Phase Suppressor** | `80` | `17` | `0.60s` / `1.40s` | Fires phase-suppression bolts that drain `18` Flux and inflict a `3.5s` **DAMPENED** debuff (`0.50x` Flux gain) |
+| `curator_decoy` | **FALSE ECHO — ARCHIVE DECOY** | `45` | `14` | `0.54s` / `1.20s` | Holographic projection (`30` stagger) spawned during **THE CURATOR** (Chapter III) to obscure the true boss core |
 
 ### 5 Multi-Phase Sovereign Bosses (`50%` HP Phase II Threshold Across All Encounters)
 
 | Boss ID | Chapter | Designation | Max HP | Phase II Threshold (`50%`) | Signature Mechanics & Counterplay |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| `helix-04` | Chapter I | **HELIX-04, Security Marshal** | `360` | `180 HP` | Sweeping cleave, line slam, and radial shockwave (`5.6m` Phase I / `6.8m` Phase II); teaches telegraph reading and Resonance armor breaks |
-| `the-choir` | Chapter II | **THE CHOIR, Harmonic Core** | `380` | `190 HP` | Protected by 3 harmonic perimeter nodes (`NODE-ALPHA`, `NODE-BETA`, `NODE-GAMMA`) that must be synchronized within `6.5s` (`5.0s` in Phase II) |
-| `the-curator` | Chapter III | **THE CURATOR, Archive Sovereign** | `400` | `200 HP` | Teleports between 4 archive anchors, deploys `curator_decoy` holograms, and projects parryable Reconstructed Traces |
-| `matron-v` | Chapter IV | **MATRON-V, The Surgeon** | `420` | `210 HP` | Deploys quarantine tether fields and **Sever Sweeps** that actively purge active Echo tracks inside a `6.5m` radius |
-| `warden-prime` | Chapter V | **WARDEN PRIME, Loom Architect** | `440` | `220 HP` | Optional final confrontation in Chapter V; combines `directive_lance`, `temporal_convergence_grid`, `sovereign_purge_wave` (`7.4m` Phase II), and adaptive Phase II Reconstructed Traces |
+| `helix-04` | `chapter_1_helix` | **HELIX-04 — Security Marshal** | `360` | `180 HP` | Sweeping cleave, line charge, and Anchor Slam shockwave (`6.2m` Phase I / `7.0m` Phase II); teaches telegraph reading and Resonance armor breaks |
+| `the-choir` | `chapter_2_choir` | **THE CHOIR — Harmonic Array** | `380` | `190 HP` | Protected by 3 harmonic perimeter nodes that must be synchronized using Echoes and live strikes across the Hydroponic Basilica |
+| `the-curator` | `chapter_3_curator` | **THE CURATOR — Archive Guardian** | `400` | `200 HP` | Teleports between archive anchors, deploys `curator_decoy` holograms, and projects parryable Reconstructed Traces |
+| `matron-v` | `chapter_4_matron` | **MATRON-V — The Surgeon** | `420` | `210 HP` | Deploys quarantine hazards and Echo-suppression sweeps; rewards tactical **Echo Collapse** (`[X]`) detonations |
+| `warden-prime` | `chapter_5_loom` | **WARDEN PRIME — Sovereign Loom Architect** | `440` | `220 HP` | Optional final confrontation in Chapter V; combines `directive_lance`, `temporal_convergence_grid`, `sovereign_purge_wave` (`7.4m` Phase II), and adaptive Phase II Reconstructed Traces |
 
 ---
 
 ## 📖 Campaign Chapters and Ending Paths
 
-| Chapter ID | Title | Location | Primary Objective & Boss | Secret Vault / Unlock |
+| Chapter ID | Title | Location | Primary Objective & Boss | Secret Vault / Progression Unlock |
 | :--- | :--- | :--- | :--- | :--- |
-| `prologue` | **Prologue: Wake** | Calibration Bay 04 | Calibrate Chrono Rig movement, Echo recording, dual pressure plates, and Relay | `prologue_calibration_alcove` (+1 Fragment) |
-| `chapter-1` | **Chapter I: A Place That Remembers** | Containment Ring Alpha | Clear containment waves and defeat **HELIX-04** (`helix-04`) | `ch1_helix_maintenance_bay` (+1 Fragment) |
-| `chapter-2` | **Chapter II: The Garden of Repeated Days** | Hydroponic Basilica | Synchronize harmonic nodes and defeat **THE CHOIR** (`the-choir`) | `ch2_choir_secret_vault` (**Unlocks `phase_rail`** + 1 Fragment) |
-| `chapter-3` | **Chapter III: The Archive That Answers** | Memory Vaults | Purge archive decoys, deflect reconstructed traces, and defeat **THE CURATOR** (`the-curator`) | `ch3_curator_forbidden_stacks` (+1 Fragment) |
-| `chapter-4` | **Chapter IV: A System That Wants You Dead** | Quarantine Ward | Survive Echo-purge fields and defeat **MATRON-V** (`matron-v`) | `ch4_matron_secret_vault` (**Unlocks `grav_breaker`** + 1 Fragment) |
-| `chapter-5` | **Chapter V: The Last Loop** | The Chronicle Loom | Stabilize Loom conduits, optionally confront **WARDEN PRIME** (`warden-prime`), and select final directive | `ch5_loom_architect_sanctum` (+1 Fragment) |
+| `prologue` | **Prologue: Wake** | Calibration Bay 04 | Calibrate Chrono Rig movement, Echo recording, dual pressure plates, and Relay (`+6` Fragments) | `secret_prologue_calibration_alcove` (Unlocks `phase_rail`) |
+| `chapter_1_helix` | **Chapter I: A Place That Remembers** | Containment Ring Alpha | Clear containment waves and defeat **HELIX-04** (`helix-04`, `+3` Fragments) | `secret_ch1_marshal_armory_cache` (Unlocks `phase_rail`) |
+| `chapter_2_choir` | **Chapter II: The Garden of Repeated Days** | Hydroponic Basilica | Synchronize harmonic nodes and defeat **THE CHOIR** (`the-choir`, `+3` Fragments) | `secret_ch2_hydroponic_echo_sanctum` (Unlocks `grav_breaker`) |
+| `chapter_3_curator` | **Chapter III: The Archive That Answers** | Deep Memory Vaults | Purge archive decoys, deflect reconstructed traces, and defeat **THE CURATOR** (`the-curator`, `+3` Fragments) | `secret_ch3_lysa_unedited_vault` (Unlocks `grav_breaker`) |
+| `chapter_4_matron` | **Chapter IV: A System That Wants You Dead** | Surgical Quarantine Ward | Survive Echo-purge fields and defeat **MATRON-V** (`matron-v`, `+3` Fragments) | Unlocks **Echo Collapse** (`[X]`) & Chapter V access |
+| `chapter_5_loom` | **Chapter V: The Last Loop** | The Chronicle Loom | Stabilize Loom conduits, optionally confront **WARDEN PRIME** (`warden-prime`), and select final directive | All weapons & tactical skills unlocked |
 
 ### Three Chronicle Loom Endings (Chapter V)
 In Chapter V, players may either proceed **directly to the Chronicle Loom terminal** after clearing the chamber waves, or **challenge WARDEN PRIME** (`warden-prime`) first (with full Boss Checkpoint retry support) before choosing one of three canonical endings:

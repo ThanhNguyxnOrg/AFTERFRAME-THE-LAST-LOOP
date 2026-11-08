@@ -1,23 +1,23 @@
 # Active Session State — AFTERFRAME: THE LAST LOOP
 
 <!-- STATUS -->
-Epic: Phase 23.4.1 Final Release Closure, Repository Refactoring, Documentation Consolidation & External Acceptance
-Feature: Git Recovery Disclosure, Save V2 Non-Mutating Validation, 10-Cycle Renderer Soak, Repository Hygiene Cleanup & Markdown Visual Design System
+Epic: Phase 23.4.2 Final Release Reconciliation, Git Provenance & Complete Bundle Handoff
+Feature: Authoritative Git Graph & Authorship Audit, Save V2 vs V4 Reconciliation, GAME_CONFIG/Registry Exact Parity & Self-Contained Git Bundle Handoff
 Task: Autonomous Execution & Verification Complete
 <!-- /STATUS -->
 
 <!-- CHECKPOINT -->
 **Branch:** `main`
-**Stage:** `Production` (Release Candidate `0.23.4` — Phase 23.4.1 Final Release Closure Complete; Verdict: `🟠 CONDITIONALLY READY`)
+**Stage:** `Production` (Release Candidate `0.23.4` — Phase 23.4.2 Final Reconciliation & Bundle Handoff Complete; Verdict: `🟠 CONDITIONALLY READY`)
 **Baseline (`origin/main`):** `9c79d11024eb9f135d1ca31051a8dca9c1306edf`
 **Test Suite:** `234 / 234` passing (`simulation.test.ts`: 159, `campaign-release.test.ts`: 23, `reduced-motion.test.ts`: 40, `asset-lifecycle.test.ts`: 12)
 **TypeScript:** `"strict": true` enabled (`bun run lint` = `0` errors)
 **CCGS Registries:** `bash .claude/scripts/registry.sh validate` = `0` errors (`entities.yaml`: 31, `tr-registry.yaml`: 4, `architecture.yaml`: 9)
-**Next Step:** Owner execution of Hardware GPU (`4.1`), Cross-Browser/Physical Device (`5.1`), and Root `LICENSE` (`7.3`) external acceptance gates.
+**Next Step:** Owner imports `/tmp/afterframe-final-handoff/AFTERFRAME-v0.23.4.1-final.bundle` via PowerShell (`IMPORT_AND_PUSH.md`) and completes Hardware GPU (`4.1`), Cross-Browser/Physical Device (`5.1`), and Root `LICENSE` (`10.4`) external acceptance gates.
 <!-- /CHECKPOINT -->
 
 ## Current Phase
-- **Phase:** `Production` / `Release` (`0.23.4` — Phase 23.4.1 Final Release Closure, Repository Refactoring, Documentation Consolidation & External Acceptance)
+- **Phase:** `Production` / `Release` (`0.23.4` — Phase 23.4.2 Final Release Reconciliation, Git Provenance & Complete Bundle Handoff)
 - **Engine:** Three.js `0.186.1` + React `19.2.5` + TypeScript `7.0.0-dev` (`"strict": true`) + Vite `8.3.4`
 - **Published GitHub Baseline (`origin/main`):** `9c79d11024eb9f135d1ca31051a8dca9c1306edf`
 
@@ -54,7 +54,7 @@ Task: Autonomous Execution & Verification Complete
   - Fixed stale `EnemyRig` accumulation across encounter/wave/boss transitions in `reconcileEnemyRigs` and KO pose reset in `syncEnemyRigs`, cleared `enemyRigs` on `dispose()`, skipped `scene.environment` PMREM assignment on software WebGL, and added `getDiagnostics()` (`window.__afterframeTest.getRendererDiagnostics`) (`Phase 23.4-C1`).
   - Added missing `aria-pressed` attributes on `StatusModal` `modal-setting-mute` and `modal-setting-hints` buttons and aligned `[Q / L] Parry (+35 Flux)` in `TitleScreen` (`Phase 23.4-A1`).
   - Reconciled `design/registry/entities.yaml` (`31` entries) with canonical `GAME_CONFIG` weapon damages, all 8 `WeaponUpgradeId`s, all 8 enemy/decoy entries, and all 5 boss HP/Phase II thresholds (`Phase 23.4-E1`), and synchronized `package.json`, `project.yaml`, `CLAUDE.md`, `.claude/docs/technical-preferences.md`, `docs/engine-reference/threejs/VERSION.md`, `design/gdd/game-concept.md`, and `README.md`.
-- **Phase 23.4.1 Final Release Closure, Repository Refactoring, Documentation Consolidation & External Acceptance:**
+- **Phase 23.4.1 & 23.4.2 Final Release Closure, Reconciliation & Bundle Handoff (`25c66d9` + Phase 23.4.2 commit):**
   - Verified non-mutating Save V2 rejection of `version: 3`, `4`, `0`, `-1`, `'2'`, `null` and V1 `activeCampaign.chapter` weapon-unlock inference (`234 / 234` tests passing).
-  - Removed `109` temporary/debug/duplicate files (`public/assets/aistudio/*`, `public/phase11_1_audit/*`, `80` debug screenshots/traces, `4` obsolete Phase 13 scripts, `.superpowers/` scratchpads, and `2` duplicate plan files) and archived `4` intermediate Phase 23.1/23.3 Superpowers plans to `docs/archive/superpowers/`.
-  - Authored `docs/PHASE_23_4_1_RELEASE_CLOSURE.md`, `docs/REPOSITORY_HYGIENE_REPORT.md`, `docs/MARKDOWN_STYLE_GUIDE.md`, `docs/README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`, and upgraded root `README.md` with the emoji/badge visual design system and chapter screenshot gallery.
+  - Removed `109` temporary/debug/duplicate files (`public/assets/aistudio/*`, `public/phase11_1_audit/*`, `80` debug screenshots/traces, `4` obsolete Phase 13 scripts, `.superpowers/` scratchpads, and `2` duplicate plan files) and archived `4` intermediate Phase 23.1/23.3 Superpowers plans to `docs/archive/superpowers/` (`683 -> 581` tracked files).
+  - Reconciled exact `GAME_CONFIG` values across `design/registry/entities.yaml`, `README.md`, `design/gdd/game-concept.md`, `docs/REPOSITORY_HYGIENE_REPORT.md`, `docs/PHASE_23_4_RELEASE_CANDIDATE_ACCEPTANCE_REPORT.md`, and `docs/PHASE_23_4_1_RELEASE_CLOSURE.md`, and generated the verified self-contained Git bundle (`AFTERFRAME-v0.23.4.1-final.bundle`) + sidecar handoff files (`SHA256SUMS.txt`, `IMPORT_AND_PUSH.md`, `RELEASE_MANIFEST.md`).

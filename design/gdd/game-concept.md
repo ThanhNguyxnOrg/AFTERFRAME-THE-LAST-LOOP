@@ -11,8 +11,8 @@ Outsmarting an omniscient predictive AI by turning your own recorded past into a
 - **Arsenal (4 Weapons, 8 Upgrades)**:
   - `chrono_edge`: 3-hit melee combo + charged heavy cleave (`edge_breaker_cleave`, `edge_harmonic_conductor`).
   - `pulsecaster`: Rapid energy bolts + piercing heavy lance (`pulse_thermal_sink`, `pulse_overcharge_condenser`).
-  - `phase_rail`: Long-range precision dart + multi-target aperture lance with `1.75x` exposed-core multiplier (`rail_null_aperture`: `2.0x` exposed-core multiplier, `+1` pierce, `0.42s` heavy recovery; `rail_phase_capacitor`: `-25%` heat, `1.35x` cool rate).
-  - `grav_breaker`: Heavy 3-step armor-shattering maul with `85%` light / `95%` heavy base frontal shield penetration (`breaker_seismic_core`: `100%` frontal guard penetration, `+15%` damage, `+25%` stagger, `+0.06s` recovery; `breaker_singularity_coil`: `360°` radial heavy slam, `1.1s` micro-pin, `+0.6m` heavy range).
+  - `phase_rail`: Long-range precision dart + multi-target aperture lance with `1.75x` exposed-core multiplier (`rail_null_aperture`: `2.0x` exposed-core multiplier, `60/84` heavy damage, `0.42s` heavy recovery; `rail_phase_capacitor`: `-28%` heat (`20 vs 28`), `1.35x` cool rate, `+4` Flux per hit).
+  - `grav_breaker`: Heavy 3-step armor-shattering maul with `85%` light / `95%` heavy base frontal shield penetration (`breaker_seismic_core`: `100%` frontal guard penetration, `+28%` stagger (`1.28x`), `+0.06s` recovery; `breaker_singularity_coil`: `360°` radial heavy slam, `+12%` heavy damage, `1.1s` micro-pin, `+0.6m` heavy range).
 - **Campaign Structure (6 Chapters & 3 Endings)**:
   - Prologue: Wake (Calibration Bay 04)
   - Chapter I: A Place That Remembers (`helix-04`)

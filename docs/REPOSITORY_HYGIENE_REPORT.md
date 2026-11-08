@@ -77,7 +77,7 @@ Four historical Superpowers design specifications and implementation plans from 
 | Directory | Retained File Count | Role & Source-of-Truth Classification |
 | :--- | :---: | :--- |
 | **`src/`** | `17` | **Authoritative Runtime & Test Code**: `types.ts`, `config.ts`, `simulation.ts`, `renderer.ts`, `models.ts`, `audio.ts`, `input.ts`, `App.tsx`, `components/{TitleScreen,GameHud,StatusModal,TutorialOverlay}.tsx`, and 4 test suites (`234` tests). |
-| **`public/assets/blender/phase12/`** | `4` | **Runtime 3D GLB Landmarks**: `helix_gate.glb`, `choir_organ.glb`, `curator_archive.glb`, `matron_pod.glb` (loaded by `ArenaSceneRenderer.loadChapterAssets()`). |
+| **`public/assets/blender/phase12/`** | `4` | **Runtime 3D GLB Landmarks**: `helix_containment_gate.glb`, `choir_acoustic_organ.glb`, `curator_archive_monolith.glb`, `matron_surgical_pod.glb` (loaded by `ArenaSceneRenderer.loadChapterAssets()`). |
 | **`assets/branding/`** | `1` | **Project Emblem**: `afterframe-mark.svg` (embedded in root `README.md`). |
 | **`screenshots/`** | `6` | **Canonical Chapter Captures**: `00-prologue-desktop.png`, `ch1-helix-gate-desktop.png`, `ch2-choir-organ-desktop.png`, `ch3-curator-archive-desktop.png`, `ch4-matron-pod-desktop.png`, `05-loom-desktop.png` (embedded in `README.md` Visual Gallery). |
 | **`scripts/blender/`** | `1` | **Asset Pipeline Generator**: `create_phase12_assets.py` (reproducible Blender headless script that generates the 4 runtime GLBs). |
@@ -98,7 +98,7 @@ All `435` files inside `.claude/` (Claude Code Game Studios `v1.2.0`) were audit
 
 ## 6. 🖼️ Asset and Screenshot Hygiene (`~41 MB` Bloat Removed)
 
-- **Production Bundle (`dist/`) Impact**: Removing `public/phase11_1_audit/` (`5.82 MB`) and `public/assets/aistudio/` (`227 KB`) reduced the static assets copied into `dist/` by **`6.05 MB`**, leaving only the `4` required `.glb` files (`1.03 MB` total) in `dist/assets/blender/phase12/`.
+- **Production Bundle (`dist/`) Impact**: Removing `public/phase11_1_audit/` (`5.82 MB`) and `public/assets/aistudio/` (`227 KB`) reduced the static assets copied into `dist/` by **`6.05 MB`**, leaving only the `4` required `.glb` files (`2,229,596` bytes / `2.23 MB` total) in `dist/assets/blender/phase12/`.
 - **Repository Clone Footprint Impact**: Removing `80` redundant debug screenshots and `.trace.json.gz` archives reduced `screenshots/` from `86` files (`~38.2 MB`) to the `6` canonical chapter captures (`~3.1 MB`) showcased in root `README.md`.
 
 ---

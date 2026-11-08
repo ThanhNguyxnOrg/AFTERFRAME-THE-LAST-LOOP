@@ -13,9 +13,9 @@ entries:
     gdd_ref: "design/gdd/game-concept.md"
     integrity_max: 100
     flux_max: 100
-    move_speed: 6.2
-    dodge_speed: 14.2
-    parry_window: 0.22
+    move_speed: 6.8
+    dodge_speed: 15.5
+    parry_window: 0.28
 
   # ===========================================================================
   # WEAPONS (4)
@@ -27,8 +27,8 @@ entries:
     gdd_ref: "design/gdd/game-concept.md"
     availability: starter
     light_combo_damage: [16, 20, 28]
-    heavy_damage: 44
-    empowered_heavy_damage: 62
+    heavy_damage: 46
+    empowered_heavy_damage: 64
 
   - id: pulsecaster
     type: weapon
@@ -79,7 +79,7 @@ entries:
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     weapon_id: chrono_edge
-    cost_fragments: 2
+    cost_fragments: 3
 
   - id: pulse_thermal_sink
     type: weapon_upgrade
@@ -111,7 +111,7 @@ entries:
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     weapon_id: phase_rail
-    cost_fragments: 3
+    cost_fragments: 2
 
   - id: breaker_seismic_core
     type: weapon_upgrade
@@ -137,12 +137,12 @@ entries:
     name: "BASTION-09 · Heavy Enforcer"
     status: active
     gdd_ref: "design/gdd/game-concept.md"
-    max_hp: 160
+    max_hp: 150
     max_stagger: 100
 
   - id: scrapper
     type: enemy
-    name: "SCRAPPER-X2 · Agile Striker"
+    name: "SCRAPPER-X2 · Assault Stalker"
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     max_hp: 85
@@ -150,7 +150,7 @@ entries:
 
   - id: scout
     type: enemy
-    name: "SCOUT-07 · Ranged Recon Drone"
+    name: "SCOUT-D4 · Pulse Recon Drone"
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     max_hp: 65
@@ -158,7 +158,7 @@ entries:
 
   - id: siphon
     type: enemy
-    name: "SIPHON-03 · Temporal Extractor"
+    name: "SIPHON-07 · Flux Extractor Unit"
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     max_hp: 75
@@ -166,7 +166,7 @@ entries:
 
   - id: eraser
     type: enemy
-    name: "ERASER-K9 · Track Purger"
+    name: "ERASER-11 · Temporal Suppressor"
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     max_hp: 85
@@ -174,7 +174,7 @@ entries:
 
   - id: aegis_sentinel
     type: enemy
-    name: "AEGIS-12 · Phalanx Sentinel"
+    name: "AEGIS-S4 · Phalanx Sentinel"
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     max_hp: 135
@@ -183,7 +183,7 @@ entries:
 
   - id: null_weaver
     type: enemy
-    name: "WEAVER-06 · Phase Suppressor"
+    name: "WEAVER-N8 · Phase Suppressor"
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     max_hp: 80
@@ -196,7 +196,7 @@ entries:
     status: active
     gdd_ref: "design/gdd/game-concept.md"
     max_hp: 45
-    max_stagger: 35
+    max_stagger: 30
 
   # ===========================================================================
   # BOSS ENCOUNTERS (5)

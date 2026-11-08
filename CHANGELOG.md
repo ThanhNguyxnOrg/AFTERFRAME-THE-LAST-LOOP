@@ -4,14 +4,14 @@ All notable milestones and release-hardening phases for **AFTERFRAME: THE LAST L
 
 ---
 
-## [`0.23.4`] — Phase 23.4 & 23.4.1 Final Release Closure (2026-11-08)
+## [`0.23.4`] — Phase 23.4, 23.4.1 & 23.4.2 Final Release Reconciliation & Closure (2026-11-08)
 
 ### 🛡️ Release Closure, Save V2 & Renderer Hardening
 - **Non-Mutating Save V2 Version Validation (`src/game/simulation.ts`, `src/game/simulation.test.ts`)**: Validated that `parseAndApplyCampaignProgress` checks schema version (`undefined`, `1`, or `2`) before mutating `world.run`, rejecting `version: 3`, `4`, `0`, `-1`, `'2'`, and `null` with zero state mutation, and inferring V1 vault weapon unlocks across `activeCampaign.chapter` and `pendingNextChapter` (`Phase 23.3-B1`).
 - **Stale Enemy Rig Disposal & 10-Cycle Soak (`src/game/renderer.ts`, `src/game/asset-lifecycle.test.ts`)**: `reconcileEnemyRigs(world)` disposes and deletes stale `EnemyRig` instances across wave, boss, and chapter transitions; verified flat resource plateau across a 10-cycle browser soak (`geometries: 384`, `textures: 13`, `programs: 10`, `activeEnemyRigCount: 3`) (`Phase 23.4-C1`).
 - **Accessibility & HUD Parity (`src/components/StatusModal.tsx`, `src/components/TitleScreen.tsx`)**: Added `aria-pressed` to `modal-setting-mute` and `modal-setting-hints` toggles and aligned `[Q / L] Parry (+35 Flux)` in `TitleScreen` (`Phase 23.4-A1`).
-- **CCGS Registry Reconciliation (`design/registry/entities.yaml`)**: Synchronized all `31` canonical entities (`1` player, `4` weapons, `8` upgrades, `7` standard enemies + `1` Archive Decoy, `5` bosses, `5` skills/interactables) with `GAME_CONFIG` (`Phase 23.4-E1`).
-- **Repository Hygiene & Documentation Consolidation**: Removed `109` temporary/debug/duplicate files, archived `4` intermediate plans to `docs/archive/superpowers/`, and published `docs/PHASE_23_4_1_RELEASE_CLOSURE.md`, `docs/REPOSITORY_HYGIENE_REPORT.md`, `docs/MARKDOWN_STYLE_GUIDE.md`, `docs/README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`.
+- **CCGS Registry & Documentation Reconciliation (`design/registry/entities.yaml`, `README.md`, `design/gdd/game-concept.md`)**: Synchronized all `31` canonical entities (`sera_venn` `6.8m/s` move / `0.28s` parry, `chrono_edge` `46/64` heavy damage, `edge_harmonic_conductor` `3` fragments, `rail_phase_capacitor` `2` fragments, `bastion` `150` HP, `curator_decoy` `30` stagger, enemy designations, and chapter IDs) with `GAME_CONFIG` (`Phase 23.4-E1`, `Phase 23.4.2`).
+- **Repository Hygiene & Documentation Consolidation**: Removed `109` temporary/debug/duplicate files (`683 -> 581` tracked files), archived `4` intermediate plans to `docs/archive/superpowers/`, and published `docs/PHASE_23_4_1_RELEASE_CLOSURE.md`, `docs/REPOSITORY_HYGIENE_REPORT.md`, `docs/MARKDOWN_STYLE_GUIDE.md`, `docs/README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`.
 
 ---
 
