@@ -11,8 +11,8 @@ Outsmarting an omniscient predictive AI by turning your own recorded past into a
 - **Arsenal (4 Weapons, 8 Upgrades)**:
   - `chrono_edge`: 3-hit melee combo + charged heavy cleave (`edge_breaker_cleave`, `edge_harmonic_conductor`).
   - `pulsecaster`: Rapid energy bolts + piercing heavy lance (`pulse_thermal_sink`, `pulse_overcharge_condenser`).
-  - `phase_rail`: Long-range precision dart + multi-target aperture lance with `1.75x` exposed-core multiplier (`rail_null_aperture`, `rail_phase_capacitor`).
-  - `grav_breaker`: Heavy armor-shattering maul with `85%` frontal shield penetration (`breaker_seismic_core`, `breaker_singularity_coil`).
+  - `phase_rail`: Long-range precision dart + multi-target aperture lance with `1.75x` exposed-core multiplier (`rail_null_aperture`: `2.0x` exposed-core multiplier, `+1` pierce, `0.42s` heavy recovery; `rail_phase_capacitor`: `-25%` heat, `1.35x` cool rate).
+  - `grav_breaker`: Heavy 3-step armor-shattering maul with `85%` light / `95%` heavy base frontal shield penetration (`breaker_seismic_core`: `100%` frontal guard penetration, `+15%` damage, `+25%` stagger, `+0.06s` recovery; `breaker_singularity_coil`: `360°` radial heavy slam, `1.1s` micro-pin, `+0.6m` heavy range).
 - **Campaign Structure (6 Chapters & 3 Endings)**:
   - Prologue: Wake (Calibration Bay 04)
   - Chapter I: A Place That Remembers (`helix-04`)
@@ -22,9 +22,9 @@ Outsmarting an omniscient predictive AI by turning your own recorded past into a
   - Chapter V: The Last Loop — Chronicle Loom (`warden-prime` optional confrontation + `silence`, `witness`, `continuity` endings)
 
 ## Formulas
-- **Aegis Sentinel Frontal Mitigation**: `finalDamage = round(baseDamage * 0.18)` (or `0.85` penetration when struck by `grav_breaker`).
-- **Null Weaver Suppression Bolt**: Drains `18` Flux on hit and sets `fluxDampenedTimer = 3.5s` (`0.5x` passive and combat Flux gain).
-- **Null-Point Rail Lance Weakpoint Multiplier**: `1.75x` base (`1.90x` with `rail_null_aperture`) against exposed Boss cores.
+- **Aegis Sentinel Frontal Mitigation**: `finalDamage = round(baseDamage * 0.18)` (`82%` frontal light mitigation; `0.85` light / `0.95` heavy penetration when struck by `grav_breaker`, `1.00` with `breaker_seismic_core`).
+- **Null Weaver Suppression Bolt**: Drains `18` Flux on hit and sets `fluxDampenedTimer = 3.5s` (`0.50x` passive and combat Flux gain).
+- **Null-Point Rail Lance Weakpoint Multiplier**: `1.75x` base (`2.00x` with `rail_null_aperture`) against exposed Boss cores.
 - **Boss Phase II Threshold Progression**: `phase2HpThreshold = 0.50 * maxHp` across all 5 bosses (`helix-04: 180/360`, `the-choir: 190/380`, `the-curator: 200/400`, `matron-v: 210/420`, `warden-prime: 220/440`), matching the `50%` segmented Phase II HUD divider in `src/components/GameHud.tsx`.
 
 ## Edge Cases
@@ -39,5 +39,5 @@ Outsmarting an omniscient predictive AI by turning your own recorded past into a
 - Defined in `GAME_CONFIG` (`src/game/config.ts`).
 
 ## Acceptance Criteria
-- All 209 deterministic unit/integration tests in `src/game/simulation.test.ts` pass (`npm test`).
-- TypeScript validation (`npm run lint`) and production bundle (`npm run build`) succeed with zero errors.
+- All `234` deterministic unit/integration tests across the 4 test suites (`simulation.test.ts`, `campaign-release.test.ts`, `reduced-motion.test.ts`, `asset-lifecycle.test.ts`) pass (`bun run test`).
+- TypeScript validation (`bun run lint`) and production bundle (`bun run build`) succeed with zero errors.

@@ -1599,8 +1599,44 @@ test('Phase 20.1 Full Legitimate Campaign Progression Chain: Prologue -> HELIX-0
   ]);
 });
 
+test('Phase 23.4-E1: design/registry/entities.yaml weapon upgrades, boss profiles, and enemy stats match canonical GAME_CONFIG values', async () => {
+  const { readFileSync } = await import('node:fs');
+  const entitiesYaml = readFileSync(
+    new URL('../../design/registry/entities.yaml', import.meta.url),
+    'utf8'
+  );
 
+  // Every canonical WeaponUpgradeId in GAME_CONFIG must appear in entities.yaml with its canonical cost
+  const canonicalUpgrades = GAME_CONFIG.weapons.upgrades;
+  for (const [upgradeId, def] of Object.entries(canonicalUpgrades)) {
+    const blockRegex = new RegExp(
+      `- id: ${upgradeId}[\\s\\S]*?weapon_id: ${def.weaponId}[\\s\\S]*?cost_fragments: ${def.cost}`,
+      'm'
+    );
+    assert.match(
+      entitiesYaml,
+      blockRegex,
+      `design/registry/entities.yaml must contain canonical upgrade ${upgradeId} (weapon: ${def.weaponId}, cost: ${def.cost})`
+    );
+  }
 
-
-
-
+  // Every canonical BossEncounterId in GAME_CONFIG must appear in entities.yaml with its exact maxHp, phase2HpThreshold, and maxStagger
+  const canonicalBosses = [
+    GAME_CONFIG.boss,
+    GAME_CONFIG.choir,
+    GAME_CONFIG.curator,
+    GAME_CONFIG.matron,
+    GAME_CONFIG.wardenPrime,
+  ];
+  for (const profile of canonicalBosses) {
+    const bossRegex = new RegExp(
+      `- id: ${profile.id}[\\s\\S]*?max_hp: ${profile.maxHp}[\\s\\S]*?phase2_threshold: ${profile.phase2HpThreshold}[\\s\\S]*?max_stagger: ${profile.maxStagger}`,
+      'm'
+    );
+    assert.match(
+      entitiesYaml,
+      bossRegex,
+      `design/registry/entities.yaml must match GAME_CONFIG for ${profile.id} (maxHp=${profile.maxHp}, phase2=${profile.phase2HpThreshold}, stagger=${profile.maxStagger})`
+    );
+  }
+});

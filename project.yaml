@@ -5,11 +5,11 @@ schema_version: 1
 
 framework:
   version: 1.2.0
-  last_upgraded: 2026-11-04
+  last_upgraded: 2026-11-05
 
 project:
   name: "AFTERFRAME: THE LAST LOOP"
-  version: "0.21.1"
+  version: "0.23.4"
   genre: "3D Sci-Fi Action-Puzzle RPG"
   kind: "3D"
   stage: "Production"
@@ -26,9 +26,10 @@ specialists:
   shader: "technical-artist"
   ui: "ui-programmer"
   additional:
-    - "combat-designer"
     - "systems-designer"
-    - "ai-Behavior-programmer"
+    - "ai-programmer"
+    - "narrative-director"
+    - "engine-programmer"
     - "qa-tester"
 
 naming:
@@ -48,6 +49,7 @@ platform:
     - "Keyboard/Mouse"
     - "Touch"
   online: false
+  multiplayer: false
   cert_tier: "none"
 
 performance:
@@ -61,13 +63,13 @@ accessibility:
   target: "standard"
 
 commands:
-  build: "npm run build"
-  test: "npm test"
-  run: "npm run dev"
-  smoke: "npm run lint"
+  build: "bun run build"
+  test: "bun run test"
+  run: "bun run dev"
+  smoke: "bun run lint"
 
 testing:
-  framework: "node:test (tsx --test src/game/simulation.test.ts) + playwright-cli"
+  framework: "node:test (tsx --test src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts) + playwright-cli"
   strict:
     logic: true
     integration: true
@@ -77,7 +79,7 @@ testing:
 
 modes:
   rigor: "standard"
-  automation: "collaborative"
+  automation: "collaborative_with_authorized_autonomous_phases"
 
 features:
   session_state: "on"

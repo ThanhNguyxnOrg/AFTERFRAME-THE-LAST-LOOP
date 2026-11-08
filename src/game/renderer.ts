@@ -26,18 +26,43 @@ const _lookAtTarget = new THREE.Vector3();
 const _dummyObj = new THREE.Object3D();
 const _color = new THREE.Color();
 
+const MATERIAL_TEXTURE_SLOTS = [
+  'map',
+  'bumpMap',
+  'roughnessMap',
+  'emissiveMap',
+  'alphaMap',
+  'normalMap',
+  'metalnessMap',
+  'aoMap',
+  'lightMap',
+] as const;
+
 function disposeMeshResources(root: THREE.Object3D): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
-    geometries.add(object.geometry);
+    if (object.geometry) geometries.add(object.geometry);
+    const collectMaterial = (material: THREE.Material | undefined) => {
+      if (!material) return;
+      materials.add(material);
+      const matRecord = material as unknown as Record<string, unknown>;
+      for (let i = 0; i < MATERIAL_TEXTURE_SLOTS.length; i++) {
+        const tex = matRecord[MATERIAL_TEXTURE_SLOTS[i]];
+        if (tex instanceof THREE.Texture) {
+          textures.add(tex);
+        }
+      }
+    };
     if (Array.isArray(object.material)) {
-      object.material.forEach((material) => materials.add(material));
+      object.material.forEach(collectMaterial);
     } else {
-      materials.add(object.material);
+      collectMaterial(object.material);
     }
   });
+  textures.forEach((texture) => texture.dispose());
   geometries.forEach((geometry) => geometry.dispose());
   materials.forEach((material) => material.dispose());
 }
@@ -252,7 +277,16 @@ const CHAPTER_LOOKS: Record<
 };
 
 export class ArenaSceneRenderer {
-  private renderer: THREE.WebGLRenderer;
+  private renderer: THREE.WebGLRenderer | null = null;
+  private webglAvailable = false;
+  private webglContextLost = false;
+  private readonly onContextLostBound = (e: Event) => {
+    e.preventDefault();
+    this.webglContextLost = true;
+  };
+  private readonly onContextRestoredBound = () => {
+    this.webglContextLost = false;
+  };
   private scene: THREE.Scene;
   private sceneFog: THREE.FogExp2;
   private camera: THREE.PerspectiveCamera;
@@ -407,6 +441,13 @@ export class ArenaSceneRenderer {
   private currentLookAt = new THREE.Vector3(0, 1.2, 8);
   private titleTourAngle = 0;
   private reducedMotion = false;
+  private cameraShakeEnabled = true;
+  private screenEffectsEnabled = true;
+  private isSoftwareGl = false;
+  private glVendor = '';
+  private glRenderer = '';
+  private fallbackEl: { remove?: () => void } | null = null;
+  private activeEnemyIdsSet = new Set<string>();
   private prevPlayerRotY = 0;
   private smoothedPlayerTurnRate = 0;
   private prevPlayerVx = 0;
@@ -420,11 +461,6 @@ export class ArenaSceneRenderer {
     this.isHeadless =
       Boolean(navigator.webdriver) || /HeadlessChrome/i.test(navigator.userAgent);
 
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isHeadless,
-      powerPreference: 'high-performance',
-    });
-
     const width = mountEl.clientWidth || window.innerWidth || 1280;
     const height = mountEl.clientHeight || window.innerHeight || 720;
 
@@ -432,21 +468,65 @@ export class ArenaSceneRenderer {
       ? 0.8
       : Math.min(window.devicePixelRatio || 1, GAME_CONFIG.camera.maxPixelRatio);
 
-    this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(this.appliedPixelRatio);
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.22;
-    this.renderer.shadowMap.enabled = !this.isHeadless;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
     mountEl.innerHTML = '';
-    mountEl.appendChild(this.renderer.domElement);
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: !this.isHeadless,
+        powerPreference: 'high-performance',
+      });
+      this.webglAvailable = true;
+      try {
+        const gl = this.renderer.getContext?.();
+        if (gl && typeof gl.getParameter === 'function') {
+          const debugExt = gl.getExtension?.('WEBGL_debug_renderer_info');
+          const vendorStr = String(
+            (debugExt ? gl.getParameter(debugExt.UNMASKED_VENDOR_WEBGL) : '') ||
+              gl.getParameter(gl.VENDOR) ||
+              ''
+          );
+          const rendererStr = String(
+            (debugExt ? gl.getParameter(debugExt.UNMASKED_RENDERER_WEBGL) : '') ||
+              gl.getParameter(gl.RENDERER) ||
+              ''
+          );
+          this.glVendor = vendorStr;
+          this.glRenderer = rendererStr;
+          if (/SwiftShader|llvmpipe|Software|Microsoft Basic Render/i.test(rendererStr)) {
+            this.isSoftwareGl = true;
+          }
+        }
+      } catch {
+        // Ignore GL renderer query errors
+      }
+      if (this.isSoftwareGl && !this.isHeadless) {
+        this.appliedPixelRatio = Math.min(this.appliedPixelRatio, 1.0);
+      }
+      this.renderer.setSize(width, height);
+      this.renderer.setPixelRatio(this.appliedPixelRatio);
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.22;
+      this.renderer.shadowMap.enabled = !this.isHeadless && !this.isSoftwareGl;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      mountEl.appendChild(this.renderer.domElement);
 
-    // WebGL context loss safety listeners
-    this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
-      e.preventDefault();
-    });
+      // WebGL context loss safety listeners
+      this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLostBound);
+      this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestoredBound);
+    } catch {
+      this.renderer = null;
+      this.webglAvailable = false;
+      const fallbackEl = document.createElement('div');
+      fallbackEl.dataset.testid = 'webgl-fallback-notice';
+      fallbackEl.setAttribute('data-testid', 'webgl-fallback-notice');
+      fallbackEl.setAttribute('role', 'status');
+      fallbackEl.className =
+        'w-full h-full flex items-center justify-center bg-[#07090d] text-slate-300 p-6 text-center font-mono text-xs uppercase tracking-widest';
+      fallbackEl.textContent =
+        '3D SCENE RENDERING DISABLED · WEBGL CONTEXT UNAVAILABLE — HUD & SIMULATION ONLY';
+      this.fallbackEl = fallbackEl;
+      mountEl.appendChild(fallbackEl);
+    }
 
     this.scene = new THREE.Scene();
     const bgHex = 0x080d16;
@@ -454,9 +534,9 @@ export class ArenaSceneRenderer {
     this.sceneFog = new THREE.FogExp2(bgHex, 0.0165);
     this.scene.fog = this.sceneFog;
 
-    // Equirectangular Studio Reflection Map (enabled on GPU; skipped on headless SwiftShader CPU to avoid per-pixel PMREM stalls)
+    // Equirectangular Studio Reflection Map (enabled on GPU; skipped on headless or software WebGL CPU to avoid per-pixel PMREM stalls)
     this.studioEnvTex = createStudioEnvironmentTexture();
-    if (!this.isHeadless) {
+    if (!this.isHeadless && !this.isSoftwareGl) {
       this.scene.environment = this.studioEnvTex;
     }
 
@@ -518,7 +598,9 @@ export class ArenaSceneRenderer {
     this.calLight = calLight;
 
     this.shadowTex = createRadialShadowTexture();
-    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+    const maxAniso = this.renderer
+      ? this.renderer.capabilities.getMaxAnisotropy()
+      : 1;
 
     const env = buildArenaEnvironment(
       this.scene,
@@ -1343,12 +1425,13 @@ export class ArenaSceneRenderer {
     this.loadChapterAssets();
 
     // Pre-warm shaders once after initialization on hardware GPU
-    if (!this.isHeadless) {
+    if (!this.isHeadless && this.renderer) {
       this.renderer.compile(this.scene, this.camera);
     }
   }
 
   private loadChapterAssets(): void {
+    if (!this.webglAvailable) return;
     const loader = new GLTFLoader();
     for (let i = 0; i < CHAPTER_IDS.length; i++) {
       const chapter = CHAPTER_IDS[i];
@@ -1387,8 +1470,67 @@ export class ArenaSceneRenderer {
     return this.isHeadless;
   }
 
+  public isWebGLAvailable(): boolean {
+    return this.webglAvailable;
+  }
+
   public getAppliedPixelRatio(): number {
     return this.appliedPixelRatio;
+  }
+
+  public getDiagnostics(): {
+    webglAvailable: boolean;
+    webglContextLost: boolean;
+    isHeadless: boolean;
+    isSoftwareGl: boolean;
+    glVendor: string;
+    glRenderer: string;
+    disposed: boolean;
+    appliedPixelRatio: number;
+    activeEnemyRigCount: number;
+    hydratedChapterAssets: CampaignChapterId[];
+    memory: {
+      geometries: number;
+      textures: number;
+      programs: number;
+    };
+    render: {
+      calls: number;
+      triangles: number;
+      frame: number;
+    };
+  } {
+    const hydratedChapterAssets: CampaignChapterId[] = [];
+    if (this.chapterEnvironments) {
+      for (const [chapter, env] of this.chapterEnvironments.entries()) {
+        if (env.group.children.length > 0) {
+          hydratedChapterAssets.push(chapter);
+        }
+      }
+    }
+    const info = this.renderer?.info;
+    return {
+      webglAvailable: Boolean(this.webglAvailable),
+      webglContextLost: Boolean(this.webglContextLost),
+      isHeadless: Boolean(this.isHeadless),
+      isSoftwareGl: Boolean(this.isSoftwareGl),
+      glVendor: this.glVendor ?? '',
+      glRenderer: this.glRenderer ?? '',
+      disposed: Boolean(this.disposed),
+      appliedPixelRatio: this.appliedPixelRatio ?? 1,
+      activeEnemyRigCount: this.enemyRigs?.size ?? 0,
+      hydratedChapterAssets,
+      memory: {
+        geometries: info?.memory?.geometries ?? 0,
+        textures: info?.memory?.textures ?? 0,
+        programs: Array.isArray(info?.programs) ? info.programs.length : 0,
+      },
+      render: {
+        calls: info?.render?.calls ?? 0,
+        triangles: info?.render?.triangles ?? 0,
+        frame: info?.render?.frame ?? 0,
+      },
+    };
   }
 
   public snapCameraToPlayer(world: WorldState, aimYaw: number, aimPitch: number): void {
@@ -1423,27 +1565,28 @@ export class ArenaSceneRenderer {
     this.clearEchoHistory();
     this.relayVfxTimer = 0;
     this.impactRingTimer = 0;
-    this.relayOriginPillarMesh.visible = false;
-    this.relayArrivalPillarMesh.visible = false;
-    this.impactRingMesh.visible = false;
+    if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
+    if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
+    if (this.impactRingMesh) this.impactRingMesh.visible = false;
+    this.reconcileEnemyRigs(world);
+    if (this.enemyRigs) {
+      for (const rig of this.enemyRigs.values()) {
+        rig.bodyGroup?.position.set(0, 0, 0);
+        rig.bodyGroup?.rotation.set(0, 0, 0);
+      }
+    }
+  }
 
-    const activeIds = new Set<string>();
+  public reconcileEnemyRigs(world: WorldState): void {
+    const activeIds = this.activeEnemyIdsSet ?? (this.activeEnemyIdsSet = new Set<string>());
+    activeIds.clear();
     for (let i = 0; i < world.enemies.length; i++) {
       const enemy = world.enemies[i];
       activeIds.add(enemy.id);
       let rig = this.enemyRigs.get(enemy.id);
       if (rig && rig.archetype !== enemy.archetype) {
         this.scene.remove(rig.root);
-        rig.root.traverse((obj) => {
-          if (obj instanceof THREE.Mesh) {
-            obj.geometry?.dispose();
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach((m) => m.dispose());
-            } else {
-              obj.material?.dispose();
-            }
-          }
-        });
+        disposeMeshResources(rig.root);
         this.enemyRigs.delete(enemy.id);
         rig = undefined;
       }
@@ -1452,7 +1595,7 @@ export class ArenaSceneRenderer {
           enemy.id,
           enemy.archetype,
           this.shadowTex,
-          !this.isHeadless
+          !this.isHeadless && !this.isSoftwareGl
         );
         this.scene.add(rig.root);
         this.enemyRigs.set(enemy.id, rig);
@@ -1462,20 +1605,26 @@ export class ArenaSceneRenderer {
 
     for (const [id, rig] of this.enemyRigs.entries()) {
       if (!activeIds.has(id)) {
-        rig.root.visible = false;
-        this.enemyGuardRecoilTimers.delete(id);
+        this.scene.remove(rig.root);
+        disposeMeshResources(rig.root);
+        this.enemyRigs.delete(id);
+        this.enemyGuardRecoilTimers?.delete(id);
       }
     }
   }
 
   private clearEchoHistory(): void {
-    for (let i = 0; i < ECHO_HISTORY_SIZE; i++) {
-      this.echoHistory[i].valid = false;
+    if (this.echoHistory) {
+      for (let i = 0; i < this.echoHistory.length; i++) {
+        this.echoHistory[i].valid = false;
+      }
     }
     this.echoHistoryHead = 0;
     this.echoSampleTimer = 0;
-    for (let i = 0; i < this.echoGhosts.length; i++) {
-      this.echoGhosts[i].root.visible = false;
+    if (this.echoGhosts) {
+      for (let i = 0; i < this.echoGhosts.length; i++) {
+        this.echoGhosts[i].root.visible = false;
+      }
     }
   }
 
@@ -1486,6 +1635,7 @@ export class ArenaSceneRenderer {
     hexColor: number,
     duration = 0.26
   ): void {
+    if (this.screenEffectsEnabled === false) return;
     this.impactRingMesh.position.set(x, y, z);
     this.impactRingMesh.scale.setScalar(0.5);
     this.impactRingMat.color.setHex(hexColor);
@@ -1683,13 +1833,17 @@ export class ArenaSceneRenderer {
         case 'echo_relay_success':
           if (typeof ev.originX === 'number' && typeof ev.originZ === 'number') {
             this.spawnBurst(ev.originX, 1.0, ev.originZ, 18, 0x38bdf8, 6.8);
-            this.relayOriginPillarMesh.position.set(ev.originX, 1.4, ev.originZ);
-            this.relayOriginPillarMesh.visible = true;
+            if (this.screenEffectsEnabled !== false) {
+              this.relayOriginPillarMesh.position.set(ev.originX, 1.4, ev.originZ);
+              this.relayOriginPillarMesh.visible = true;
+            }
           }
           this.spawnBurst(ev.x, 1.0, ev.z, 24, 0xe0f2fe, 7.6);
-          this.relayArrivalPillarMesh.position.set(ev.x, 1.4, ev.z);
-          this.relayArrivalPillarMesh.visible = true;
-          this.relayVfxTimer = 0.32;
+          if (this.screenEffectsEnabled !== false) {
+            this.relayArrivalPillarMesh.position.set(ev.x, 1.4, ev.z);
+            this.relayArrivalPillarMesh.visible = true;
+            this.relayVfxTimer = 0.32;
+          }
           this.triggerImpactRing(ev.x, 0.14, ev.z, 0xe0f2fe, 0.32);
           break;
         case 'echo_relay_rejected':
@@ -1891,7 +2045,22 @@ export class ArenaSceneRenderer {
   }
 
   public setReducedMotion(enabled: boolean): void {
-    this.reducedMotion = enabled;
+    this.reducedMotion = Boolean(enabled);
+  }
+
+  public setCameraShake(enabled: boolean): void {
+    this.cameraShakeEnabled = Boolean(enabled);
+  }
+
+  public setScreenEffects(enabled: boolean): void {
+    this.screenEffectsEnabled = Boolean(enabled);
+    if (!this.screenEffectsEnabled) {
+      this.relayVfxTimer = 0;
+      this.impactRingTimer = 0;
+      if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
+      if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
+      if (this.impactRingMesh) this.impactRingMesh.visible = false;
+    }
   }
 
   private updateEnvironmentPresentation(world: WorldState, dt: number): void {
@@ -3795,7 +3964,7 @@ export class ArenaSceneRenderer {
     // =========================================================================
     // 4. ENEMY & BOSS VISUAL RIGS: BASTION, SCRAPPER, SCOUT & HELIX-04 MOTION
     // =========================================================================
-    this.syncEnemyRigs(world);
+    this.reconcileEnemyRigs(world);
 
     for (let i = 0; i < world.enemies.length; i++) {
       const enemy = world.enemies[i];
@@ -4511,7 +4680,7 @@ export class ArenaSceneRenderer {
 
     this.updateCameraPresentation(world, aimYaw, aimPitch, dt);
 
-    if (shouldRender) {
+    if (shouldRender && this.renderer && !this.webglContextLost) {
       this.renderer.render(this.scene, this.camera);
     }
   }
@@ -4585,7 +4754,8 @@ export class ArenaSceneRenderer {
     }
 
     // Apply decaying trauma * trauma camera shake
-    const shakeMag = this.reducedMotion ? 0 : world.cameraTrauma * world.cameraTrauma * 0.34;
+    const shakeAllowed = !this.reducedMotion && this.cameraShakeEnabled !== false;
+    const shakeMag = shakeAllowed ? world.cameraTrauma * world.cameraTrauma * 0.34 : 0;
     const shakeX = shakeMag > 0.001 ? (Math.random() * 2 - 1) * shakeMag : 0;
     const shakeY = shakeMag > 0.001 ? (Math.random() * 2 - 1) * shakeMag : 0;
 
@@ -4602,14 +4772,29 @@ export class ArenaSceneRenderer {
     this.camera.aspect = width / height;
     this.camera.fov = this.camera.aspect < 0.75 ? 60 : 52;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
+    this.renderer?.setSize(width, height);
   }
 
   public dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
+    if (this.renderer?.domElement) {
+      this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLostBound);
+      this.renderer.domElement.removeEventListener(
+        'webglcontextrestored',
+        this.onContextRestoredBound
+      );
+      this.renderer.domElement.remove?.();
+    }
+    if (this.fallbackEl) {
+      this.fallbackEl.remove?.();
+      this.fallbackEl = null;
+    }
     disposeMeshResources(this.scene);
+    this.enemyRigs?.clear();
+    this.enemyGuardRecoilTimers?.clear();
     this.shadowTex.dispose();
     this.studioEnvTex.dispose();
-    this.renderer.dispose();
+    this.renderer?.dispose();
   }
 }

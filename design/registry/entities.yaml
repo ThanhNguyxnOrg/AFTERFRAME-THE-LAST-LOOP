@@ -1,63 +1,273 @@
-# Canonical Entity Registry — AFTERFRAME: THE LAST LOOP
-schema_version: 1
-entities:
+# Design Entity Registry
+# Schema: id (required), type (required), name (required), status (required), gdd_ref (optional)
+# Validated by: .claude/scripts/registry.sh validate
+
+entries:
+  # ===========================================================================
+  # PROTAGONIST (1)
+  # ===========================================================================
   - id: sera_venn
-    type: character
+    type: protagonist
     name: "Sera Venn"
     status: active
-    source: "src/game/simulation.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    integrity_max: 100
+    flux_max: 100
+    move_speed: 6.2
+    dodge_speed: 14.2
+    parry_window: 0.22
+
+  # ===========================================================================
+  # WEAPONS (4)
+  # ===========================================================================
   - id: chrono_edge
     type: weapon
     name: "Chrono Edge"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    availability: starter
+    light_combo_damage: [16, 20, 28]
+    heavy_damage: 44
+    empowered_heavy_damage: 62
+
   - id: pulsecaster
     type: weapon
     name: "Pulsecaster"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    availability: starter
+    shot_damage: 12
+    heavy_shot_damage: 28
+    empowered_shot_damage: 40
+
   - id: phase_rail
     type: weapon
     name: "Null-Point Rail Lance"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    availability: chapter_1_secret_vault
+    shot_damage: 22
+    heavy_shot_damage: 48
+    empowered_shot_damage: 68
+    weakpoint_multiplier: 1.75
+
   - id: grav_breaker
     type: weapon
     name: "Grav-Breaker Maul"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    availability: chapter_2_secret_vault
+    light_combo_damage: [24, 30, 40]
+    heavy_damage: 58
+    empowered_heavy_damage: 80
+    shield_penetration: 0.85
+
+  # ===========================================================================
+  # WEAPON UPGRADES (8)
+  # ===========================================================================
+  - id: edge_breaker_cleave
+    type: weapon_upgrade
+    name: "Breaker Cleave"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: chrono_edge
+    cost_fragments: 2
+
+  - id: edge_harmonic_conductor
+    type: weapon_upgrade
+    name: "Harmonic Conductor"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: chrono_edge
+    cost_fragments: 2
+
+  - id: pulse_thermal_sink
+    type: weapon_upgrade
+    name: "Thermal Sink"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: pulsecaster
+    cost_fragments: 2
+
+  - id: pulse_overcharge_condenser
+    type: weapon_upgrade
+    name: "Overcharge Condenser"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: pulsecaster
+    cost_fragments: 3
+
+  - id: rail_null_aperture
+    type: weapon_upgrade
+    name: "Null Aperture"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: phase_rail
+    cost_fragments: 2
+
+  - id: rail_phase_capacitor
+    type: weapon_upgrade
+    name: "Phase Capacitor"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: phase_rail
+    cost_fragments: 3
+
+  - id: breaker_seismic_core
+    type: weapon_upgrade
+    name: "Seismic Core"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: grav_breaker
+    cost_fragments: 2
+
+  - id: breaker_singularity_coil
+    type: weapon_upgrade
+    name: "Singularity Coil"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    weapon_id: grav_breaker
+    cost_fragments: 2
+
+  # ===========================================================================
+  # ENEMY ARCHETYPES (7 Standard + 1 Archive Decoy = 8)
+  # ===========================================================================
+  - id: bastion
+    type: enemy
+    name: "BASTION-09 · Heavy Enforcer"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 160
+    max_stagger: 100
+
+  - id: scrapper
+    type: enemy
+    name: "SCRAPPER-X2 · Agile Striker"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 85
+    max_stagger: 65
+
+  - id: scout
+    type: enemy
+    name: "SCOUT-07 · Ranged Recon Drone"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 65
+    max_stagger: 45
+
+  - id: siphon
+    type: enemy
+    name: "SIPHON-03 · Temporal Extractor"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 75
+    max_stagger: 50
+
+  - id: eraser
+    type: enemy
+    name: "ERASER-K9 · Track Purger"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 85
+    max_stagger: 55
+
   - id: aegis_sentinel
     type: enemy
-    name: "Aegis Sentinel"
+    name: "AEGIS-12 · Phalanx Sentinel"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 135
+    max_stagger: 95
+    frontal_guard_mitigation: 0.82
+
   - id: null_weaver
     type: enemy
-    name: "Null Weaver"
+    name: "WEAVER-06 · Phase Suppressor"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 80
+    max_stagger: 55
+    flux_drain_on_hit: 18
+
+  - id: curator_decoy
+    type: enemy
+    name: "FALSE ECHO — ARCHIVE DECOY"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+    max_hp: 45
+    max_stagger: 35
+
+  # ===========================================================================
+  # BOSS ENCOUNTERS (5)
+  # ===========================================================================
   - id: helix-04
     type: boss
-    name: "Marshal HELIX-04"
+    name: "HELIX-04 — Security Marshal"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    chapter: chapter_1_helix
+    max_hp: 360
+    phase2_threshold: 180
+    max_stagger: 140
+
   - id: the-choir
     type: boss
-    name: "THE CHOIR"
+    name: "THE CHOIR — Harmonic Array"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    chapter: chapter_2_choir
+    max_hp: 380
+    phase2_threshold: 190
+    max_stagger: 140
+
   - id: the-curator
     type: boss
-    name: "THE CURATOR"
+    name: "THE CURATOR — Archive Guardian"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    chapter: chapter_3_curator
+    max_hp: 400
+    phase2_threshold: 200
+    max_stagger: 145
+
   - id: matron-v
     type: boss
-    name: "MATRON-V, The Surgeon"
+    name: "MATRON-V — The Surgeon"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    chapter: chapter_4_matron
+    max_hp: 420
+    phase2_threshold: 210
+    max_stagger: 150
+
   - id: warden-prime
     type: boss
-    name: "WARDEN PRIME"
+    name: "WARDEN PRIME — Sovereign Loom Architect"
     status: active
-    source: "src/game/config.ts"
+    gdd_ref: "design/gdd/game-concept.md"
+    chapter: chapter_5_loom
+    max_hp: 440
+    phase2_threshold: 220
+    max_stagger: 160
+
+  # ===========================================================================
+  # CHRONICLE LOOM ENDINGS (3)
+  # ===========================================================================
+  - id: ending_silence
+    type: narrative_ending
+    name: "SILENCE — Sever the Loom"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+
+  - id: ending_witness
+    type: narrative_ending
+    name: "WITNESS — Broadcast the Unedited Truth"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"
+
+  - id: ending_continuity
+    type: narrative_ending
+    name: "CONTINUITY — Quarantine the Archive"
+    status: active
+    gdd_ref: "design/gdd/game-concept.md"

@@ -1,6 +1,6 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { Color, Vector3 } from 'three';
+import { Color, Mesh, Vector3 } from 'three';
 import { GAME_CONFIG } from './config.ts';
 import { InputController } from './input.ts';
 import { ArenaSceneRenderer } from './renderer.ts';
@@ -51,6 +51,8 @@ function rendererFixture(reducedMotion: boolean) {
     updateEnvironmentPresentation(world: WorldState, dt: number): void;
   }, {
     reducedMotion: false,
+    cameraShakeEnabled: true,
+    screenEffectsEnabled: true,
     titleTourAngle: 0,
     camAnchor: new Vector3(0, GAME_CONFIG.camera.anchorHeight, 0),
     currentCamPos: new Vector3(0, 8, 20),
@@ -374,4 +376,280 @@ test('deterministic world stepping and input frames are identical across motion 
   }
   assert.ok(worlds[0].elapsedTime > initial.elapsedTime);
   assert.notDeepEqual(worlds[0].player, initial.player, 'The simulation actually advances');
+});
+
+test('Phase 23.1-B: KeyL keyboard parry shortcut triggers parryJustPressed identically to KeyQ', (t) => {
+  stubBrowser(t);
+  stubGlobal(t, 'document', { body: { dataset: { state: 'playing' } } });
+  for (const code of ['KeyQ', 'KeyL']) {
+    const input = new InputController() as unknown as {
+      handleKeyDown(event: KeyboardEvent): void;
+      consumeFrameInput(dt: number): { parryJustPressed: boolean };
+    };
+    input.handleKeyDown({
+      code,
+      target: { closest: () => null },
+      preventDefault: () => {},
+    } as unknown as KeyboardEvent);
+    const frame = input.consumeFrameInput(1 / 60);
+    assert.equal(
+      frame.parryJustPressed,
+      true,
+      `Expected ${code} to trigger parryJustPressed`
+    );
+  }
+});
+
+test('Phase 23.1-C: SoundEngine routes all synth nodes through masterGain and supports clean dispose()', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { SoundEngine } = await import('./audio.ts');
+  const audioSource = readFileSync(new URL('./audio.ts', import.meta.url), 'utf8');
+  const directDestinationMatches = [...audioSource.matchAll(/\.connect\(\s*ctx\.destination\s*\)/g)];
+  assert.equal(
+    directDestinationMatches.length,
+    1,
+    `Expected exactly 1 ctx.destination connection (inside masterGain setup), found ${directDestinationMatches.length}`
+  );
+  const sound = new SoundEngine();
+  assert.equal(typeof (sound as { dispose?: unknown }).dispose, 'function');
+  (sound as { dispose(): void }).dispose();
+});
+
+test('Phase 23.2-D: SoundEngine routes SFX and musical stingers through independent sfxGain and musicGain buses under masterGain and supports idempotent dispose()', async (t) => {
+  const { SoundEngine } = await import('./audio.ts');
+  const createdGains: Array<{
+    gain: { value: number; setValueAtTime: (v: number, t: number) => void; exponentialRampToValueAtTime: () => void; linearRampToValueAtTime: () => void };
+    connectedTo: unknown[];
+    disconnected: boolean;
+  }> = [];
+  let ctxClosedCount = 0;
+
+  class MockAudioContext {
+    state = 'running';
+    currentTime = 1.0;
+    sampleRate = 44100;
+    destination = { id: 'destination' };
+    resume() {
+      return Promise.resolve();
+    }
+    close() {
+      ctxClosedCount += 1;
+      this.state = 'closed';
+      return Promise.resolve();
+    }
+    createGain() {
+      const node = {
+        gain: {
+          value: 1,
+          setValueAtTime(v: number) {
+            this.value = v;
+          },
+          exponentialRampToValueAtTime() {},
+          linearRampToValueAtTime() {},
+        },
+        connectedTo: [] as unknown[],
+        disconnected: false,
+        connect(target: unknown) {
+          this.connectedTo.push(target);
+        },
+        disconnect() {
+          this.disconnected = true;
+        },
+      };
+      createdGains.push(node);
+      return node;
+    }
+    createOscillator() {
+      return {
+        type: 'sine',
+        frequency: {
+          value: 440,
+          setValueAtTime() {},
+          exponentialRampToValueAtTime() {},
+          linearRampToValueAtTime() {},
+        },
+        connect() {},
+        start() {},
+        stop() {},
+      };
+    }
+    createBiquadFilter() {
+      return {
+        type: 'lowpass',
+        frequency: { value: 1000, setValueAtTime() {}, exponentialRampToValueAtTime() {} },
+        Q: { value: 1 },
+        connect() {},
+      };
+    }
+    createBuffer(_channels: number, length: number) {
+      return {
+        getChannelData: () => new Float32Array(length),
+      };
+    }
+    createBufferSource() {
+      return {
+        buffer: null,
+        connect() {},
+        start() {},
+        stop() {},
+      };
+    }
+  }
+
+  stubGlobal(t, 'window', { AudioContext: MockAudioContext });
+
+  const sound = new SoundEngine();
+  // Mute SFX (0), keep Music (0.65) and Master (0.8) active -> musical stingers must still play and scale by musicVolume!
+  sound.setVolumeSettings({ masterVolume: 0.8, musicVolume: 0.65, sfxVolume: 0 });
+  sound.playEvents([{ type: 'boss_activated', enemyId: 'helix-04', x: 0, z: 0 }]);
+
+  const masterGain = createdGains.find((g) =>
+    g.connectedTo.some((target) => (target as { id?: string })?.id === 'destination')
+  );
+  assert.ok(masterGain, 'Expected masterGain connected to ctx.destination');
+  assert.ok(
+    Math.abs(masterGain!.gain.value - 0.8) < 1e-6,
+    `Expected masterGain.gain.value === 0.8, got ${masterGain!.gain.value}`
+  );
+
+  const busGains = createdGains.filter((g) => g.connectedTo.includes(masterGain));
+  assert.equal(
+    busGains.length,
+    2,
+    'Expected both sfxGain and musicGain buses connected to masterGain'
+  );
+  const musicBus = busGains.find((g) => Math.abs(g.gain.value - 0.65) < 1e-6);
+  const sfxBus = busGains.find((g) => Math.abs(g.gain.value - 0) < 1e-6);
+  assert.ok(musicBus, 'Expected musicGain bus to reflect musicVolume (0.65)');
+  assert.ok(sfxBus, 'Expected sfxGain bus to reflect sfxVolume (0)');
+
+  // Update musicVolume to 0.25 and verify live bus gain update
+  sound.setVolumeSettings({ musicVolume: 0.25 });
+  assert.ok(
+    Math.abs(musicBus!.gain.value - 0.25) < 1e-6,
+    `Expected musicGain bus to update to 0.25, got ${musicBus!.gain.value}`
+  );
+
+  // Idempotent dispose()
+  sound.dispose();
+  sound.dispose();
+  assert.equal(ctxClosedCount, 1, 'Repeated dispose() calls must close AudioContext at most once');
+  assert.equal(masterGain!.disconnected, true);
+  assert.equal(musicBus!.disconnected, true);
+  assert.equal(sfxBus!.disconnected, true);
+
+  // Calling synthesis methods after dispose() must never allocate a new AudioContext or new GainNodes
+  const gainsBeforePostDispose = createdGains.length;
+  sound.playEvents([{ type: 'player_light_swing', x: 0, z: 0 }]);
+  assert.equal(
+    createdGains.length,
+    gainsBeforePostDispose,
+    'Calling playEvents after dispose() must not create a new AudioContext or GainNodes'
+  );
+});
+
+test('Phase 23.3-E1: setCameraShake(false) zeroes camera trauma shake without enabling reducedMotion, and setScreenEffects(false) suppresses transient screen flash meshes', () => {
+  const world = createInitialWorld('playing');
+  world.cameraTrauma = 0.85;
+  const renderer = rendererFixture(false) as ReturnType<typeof rendererFixture> & {
+    cameraShakeEnabled?: boolean;
+    screenEffectsEnabled?: boolean;
+    relayVfxTimer: number;
+    impactRingTimer: number;
+    relayOriginPillarMesh: Mesh;
+    relayArrivalPillarMesh: Mesh;
+    impactRingMesh: Mesh;
+    setCameraShake(enabled: boolean): void;
+    setScreenEffects(enabled: boolean): void;
+  };
+  renderer.relayVfxTimer = 0.2;
+  renderer.impactRingTimer = 0.2;
+  renderer.relayOriginPillarMesh = new Mesh();
+  renderer.relayArrivalPillarMesh = new Mesh();
+  renderer.impactRingMesh = new Mesh();
+  renderer.relayOriginPillarMesh.visible = true;
+  renderer.relayArrivalPillarMesh.visible = true;
+  renderer.impactRingMesh.visible = true;
+
+  renderer.setCameraShake(false);
+  assert.equal(renderer.cameraShakeEnabled, false);
+  assert.equal(
+    renderer.reducedMotion,
+    false,
+    'Disabling cameraShake must not force reducedMotion to true'
+  );
+
+  // Compare camera position with cameraTrauma > 0 vs cameraTrauma === 0 when cameraShake is false
+  const noShakeWorld = createInitialWorld('playing');
+  const baselineRenderer = rendererFixture(false) as typeof renderer;
+  baselineRenderer.setCameraShake(false);
+  renderer.updateCameraPresentation(world, 0, 0.28, 1 / 60);
+  baselineRenderer.updateCameraPresentation(noShakeWorld, 0, 0.28, 1 / 60);
+  assert.deepEqual(
+    renderer.camera.position,
+    baselineRenderer.camera.position,
+    'With setCameraShake(false), world.cameraTrauma must produce zero camera displacement'
+  );
+
+  renderer.setScreenEffects(false);
+  assert.equal(renderer.screenEffectsEnabled, false);
+  assert.equal(renderer.relayOriginPillarMesh.visible, false);
+  assert.equal(renderer.relayArrivalPillarMesh.visible, false);
+  assert.equal(renderer.impactRingMesh.visible, false);
+});
+
+test('Phase 23.3-E2: InputController keyboard ArrowUp/ArrowDown camera pitch honors invertY setting', (t) => {
+  stubBrowser(t);
+  stubGlobal(t, 'document', { body: { dataset: { state: 'playing' } } });
+
+  const inputNormal = new InputController() as unknown as {
+    setCameraSettings(s: { invertY?: boolean; sensitivity?: number }): void;
+    handleKeyDown(e: KeyboardEvent): void;
+    handleKeyUp(e: KeyboardEvent): void;
+    consumeFrameInput(dt: number): { aimPitch?: number };
+  };
+  const baselinePitch = inputNormal.consumeFrameInput(1 / 60).aimPitch!;
+
+  inputNormal.setCameraSettings({ invertY: false, sensitivity: 1.0 });
+  inputNormal.handleKeyDown({
+    code: 'ArrowUp',
+    target: { closest: () => null },
+    preventDefault: () => {},
+  } as unknown as KeyboardEvent);
+  const pitchNormal = inputNormal.consumeFrameInput(1 / 60).aimPitch!;
+  inputNormal.handleKeyUp({ code: 'ArrowUp' } as unknown as KeyboardEvent);
+  assert.ok(pitchNormal < baselinePitch, 'With invertY=false, ArrowUp decreases aimPitch');
+
+  const inputInverted = new InputController() as unknown as typeof inputNormal;
+  inputInverted.setCameraSettings({ invertY: true, sensitivity: 1.0 });
+  inputInverted.handleKeyDown({
+    code: 'ArrowUp',
+    target: { closest: () => null },
+    preventDefault: () => {},
+  } as unknown as KeyboardEvent);
+  const pitchInverted = inputInverted.consumeFrameInput(1 / 60).aimPitch!;
+  inputInverted.handleKeyUp({ code: 'ArrowUp' } as unknown as KeyboardEvent);
+  assert.ok(pitchInverted > baselinePitch, 'With invertY=true, ArrowUp increases aimPitch');
+});
+
+test('Phase 23.4-A1: StatusModal mute/hints toggle buttons expose aria-pressed and TitleScreen control legend documents [Q / L] Parry', async () => {
+  const { readFileSync } = await import('node:fs');
+  const modalSource = readFileSync(new URL('../components/StatusModal.tsx', import.meta.url), 'utf8');
+  const titleSource = readFileSync(new URL('../components/TitleScreen.tsx', import.meta.url), 'utf8');
+
+  assert.match(
+    modalSource,
+    /data-testid="modal-setting-mute"[\s\S]{0,200}aria-pressed=\{isMuted\}/,
+    'StatusModal modal-setting-mute button must include aria-pressed={isMuted}'
+  );
+  assert.match(
+    modalSource,
+    /data-testid="modal-setting-hints"[\s\S]{0,200}aria-pressed=\{tutorialEnabled\}/,
+    'StatusModal modal-setting-hints button must include aria-pressed={tutorialEnabled}'
+  );
+  assert.match(
+    titleSource,
+    /\[Q \/ L\]<\/span>\s*Parry \(\+35 Flux\)/,
+    'TitleScreen control legend must document [Q / L] Parry (+35 Flux)'
+  );
 });

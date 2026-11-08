@@ -90,6 +90,10 @@ import {
   getUnlockedWeaponIds,
   unlockPlayerWeapon,
   engageWardenPrimeInLoom,
+  enterChronicleLoomChapter,
+  saveCampaignProgressToStorage,
+  loadCampaignProgressFromStorage,
+  MAX_SAVE_JSON_BYTES,
 } from './simulation.ts';
 import { InputController } from './input.ts';
 import {
@@ -11582,4 +11586,962 @@ test('Phase 21.3: WARDEN PRIME (warden-prime) boss encounter, attacks, Phase II 
   assert.equal(selectChronicleLoomEnding(campWorld, 'witness'), true);
   assert.equal(campWorld.outcome, 'victory');
   assert.equal(campWorld.run.selectedEnding, 'witness');
+});
+
+test('Phase 22-A: Tactical Temporal Disruption encounter spawns Aegis Sentinel and Null Weaver with valid coordinates', () => {
+  const world = createInitialWorld('playing');
+  startAuthoredEncounter(world, 'tactical_temporal_disruption');
+  const aegis = world.enemies.find((e) => e.archetype === 'aegis_sentinel');
+  const weaver = world.enemies.find((e) => e.archetype === 'null_weaver');
+  assert.ok(aegis, 'tactical_temporal_disruption must spawn an aegis_sentinel');
+  assert.ok(weaver, 'tactical_temporal_disruption must spawn a null_weaver');
+  assert.equal(aegis.maxHp, GAME_CONFIG.enemies.aegis_sentinel.maxHp);
+  assert.equal(weaver.maxHp, GAME_CONFIG.enemies.null_weaver.maxHp);
+});
+
+test('Phase 22-B: Grav-Breaker 3-step light slam combo, Flux gains, breaker_seismic_core 100% guard penetration, and breaker_singularity_coil 360-deg radial micro-pin', () => {
+  const world = createInitialWorld('playing');
+  unlockPlayerWeapon(world, 'phase_rail');
+  unlockPlayerWeapon(world, 'grav_breaker');
+  world.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'grav_breaker'), true);
+
+  // Isolate a high-HP unguarded target for 3-step combo & Flux gain verification
+  const target = world.enemies[0]!;
+  for (let i = 1; i < world.enemies.length; i++) {
+    world.enemies[i]!.hp = 0;
+    world.enemies[i]!.aiState = 'ko';
+  }
+  target.archetype = 'scrapper';
+  target.hp = 500;
+  target.maxHp = 500;
+  target.maxStagger = 9999;
+  target.stagger = 0;
+  target.aiState = 'idle';
+  target.cooldownTimer = 99;
+  target.x = 0;
+  target.z = 2.0;
+
+  world.player.x = 0;
+  world.player.z = 0;
+  world.player.rotationY = 0;
+  world.player.flux = 0;
+
+  // Step 1 slam (index 0 -> 24 dmg, +14 Flux)
+  const light1 = createEmptyInput(0);
+  light1.lightAttackJustPressed = true;
+  stepWorld(world, light1, 0.02);
+  assert.equal(world.player.comboIndex, 0);
+  for (let i = 0; i < 40 && world.player.actionState !== 'idle'; i++) {
+    world.player.x = 0;
+    world.player.z = 0;
+    target.x = 0;
+    target.z = 2.0;
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  assert.equal(target.hp, 500 - 24, 'Grav-Breaker step 1 must deal 24 damage');
+  assert.ok(
+    world.player.flux >= 14,
+    `Grav-Breaker light hit must grant >= 14 Flux (got ${world.player.flux})`
+  );
+  assert.ok(world.player.comboWindowTimer > 0, 'Combo window must remain open after step 1');
+
+  // Step 2 slam (index 1 -> 30 dmg)
+  const light2 = createEmptyInput(0);
+  light2.lightAttackJustPressed = true;
+  stepWorld(world, light2, 0.02);
+  assert.equal(world.player.comboIndex, 1);
+  for (let i = 0; i < 45 && world.player.actionState !== 'idle'; i++) {
+    world.player.x = 0;
+    world.player.z = 0;
+    target.x = 0;
+    target.z = 2.0;
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  assert.equal(target.hp, 500 - 24 - 30, 'Grav-Breaker step 2 must deal 30 damage');
+  assert.ok(world.player.comboWindowTimer > 0, 'Combo window must remain open after step 2');
+
+  // Step 3 finisher slam (index 2 -> 40 dmg)
+  const light3 = createEmptyInput(0);
+  light3.lightAttackJustPressed = true;
+  stepWorld(world, light3, 0.02);
+  assert.equal(world.player.comboIndex, 2);
+  const hudDuringCombo3 = extractHudSnapshot(world);
+  assert.equal(hudDuringCombo3.weapon.statusLabel, 'SLAM 3/3');
+  for (let i = 0; i < 50 && world.player.actionState !== 'idle'; i++) {
+    world.player.x = 0;
+    world.player.z = 0;
+    target.x = 0;
+    target.z = 2.0;
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  assert.equal(
+    target.hp,
+    500 - 24 - 30 - 40,
+    'Grav-Breaker step 3 finisher must deal 40 damage'
+  );
+
+  // Purchase & equip breaker_seismic_core -> verify 100% frontal guard penetration (1.0x)
+  world.progression.memoryFragments = 20;
+  assert.equal(purchaseWeaponUpgrade(world, 'breaker_seismic_core').outcome, 'purchased');
+  assert.equal(purchaseWeaponUpgrade(world, 'breaker_singularity_coil').outcome, 'purchased');
+  assert.equal(
+    equipWeaponUpgrade(world, 'grav_breaker', 'breaker_seismic_core').outcome,
+    'equipped'
+  );
+
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboWindowTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.player.comboIndex = 0;
+  world.player.x = 0;
+  world.player.z = 0;
+  world.player.rotationY = 0;
+  world.hitstopTimer = 0;
+
+  target.archetype = 'aegis_sentinel';
+  target.hp = 200;
+  target.maxHp = 200;
+  target.aiState = 'idle';
+  target.cooldownTimer = 99;
+  target.x = 0;
+  target.z = 2.0;
+  target.rotationY = Math.PI; // Facing directly toward player at (0,0)
+
+  const guardedStrike = createEmptyInput(0);
+  guardedStrike.lightAttackJustPressed = true;
+  stepWorld(world, guardedStrike, 0.02);
+  for (let i = 0; i < 20; i++) {
+    world.player.x = 0;
+    world.player.z = 0;
+    target.x = 0;
+    target.z = 2.0;
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  const expectedSeismicLightDmg = Math.round(
+    24 * GAME_CONFIG.weapons.upgrades.breaker_seismic_core.damageMultiplier * 1.0
+  );
+  assert.equal(
+    target.hp,
+    200 - expectedSeismicLightDmg,
+    'breaker_seismic_core must achieve 100% frontal guard penetration (1.0x) against Aegis Sentinel'
+  );
+
+  // Equip breaker_singularity_coil -> verify 360-deg radial heavy slam hits enemy behind player and applies 1.1s micro-pin
+  world.player.actionState = 'idle';
+  world.player.stateTimer = 0;
+  world.player.comboWindowTimer = 0;
+  world.player.comboCooldownTimer = 0;
+  world.hitstopTimer = 0;
+  assert.equal(
+    equipWeaponUpgrade(world, 'grav_breaker', 'breaker_singularity_coil').outcome,
+    'equipped'
+  );
+  world.player.x = 0;
+  world.player.z = 5.0;
+  world.player.rotationY = 0; // Facing +Z
+
+  target.archetype = 'scrapper';
+  target.hp = 200;
+  target.pinnedTimer = 0;
+  target.x = 0;
+  target.z = 2.8; // 2.2m directly behind player (180 degrees from +Z facing) in open lane!
+
+  const heavyBehind = createEmptyInput(0);
+  heavyBehind.heavyAttackJustPressed = true;
+  stepWorld(world, heavyBehind, 0.02);
+  for (let i = 0; i < 20; i++) {
+    world.player.x = 0;
+    world.player.z = 5.0;
+    world.player.rotationY = 0;
+    target.x = 0;
+    target.z = 2.8;
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  assert.ok(
+    target.hp < 200,
+    'breaker_singularity_coil heavy slam must hit enemies 180 degrees behind Sera via 360-deg fullRadialArc'
+  );
+  assert.ok(
+    (target.pinnedTimer ?? 0) > 0.7,
+    `breaker_singularity_coil heavy slam must apply 1.1s micro-pin (got ${target.pinnedTimer})`
+  );
+});
+
+test('Phase 22-C: Phase Rail thermal cooling rate, overheat lockout duration, and rail_null_aperture heavy recovery tradeoff', () => {
+  const world = createInitialWorld('playing');
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i]!;
+    if (i === 0) {
+      e.x = -12;
+      e.z = -12;
+      e.cooldownTimer = 99;
+      e.aiState = 'idle';
+    } else {
+      e.hp = 0;
+      e.aiState = 'ko';
+    }
+  }
+  unlockPlayerWeapon(world, 'phase_rail');
+  world.progression.memoryFragments = 20;
+  assert.equal(purchaseWeaponUpgrade(world, 'rail_null_aperture').outcome, 'purchased');
+  assert.equal(purchaseWeaponUpgrade(world, 'rail_phase_capacitor').outcome, 'purchased');
+  world.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'phase_rail'), true);
+  assert.equal(equipWeaponUpgrade(world, 'phase_rail', null).outcome, 'unequipped');
+
+  // Passive cooling uses phase_rail.heatCoolRatePerSec (22/s)
+  world.player.weaponHeat = 50;
+  for (let i = 0; i < 20; i++) {
+    stepWorld(world, createEmptyInput(0), 0.05);
+  }
+  assert.ok(
+    Math.abs(world.player.weaponHeat - 28) < 0.6,
+    `Phase Rail base cooling must reduce heat by 22/sec (got ${world.player.weaponHeat})`
+  );
+
+  // Equip rail_null_aperture and verify heavy_recovery uses 0.42s
+  world.player.actionState = 'idle';
+  assert.equal(
+    equipWeaponUpgrade(world, 'phase_rail', 'rail_null_aperture').outcome,
+    'equipped'
+  );
+  world.player.weaponHeat = 0;
+  world.player.weaponShotCooldownTimer = 0;
+  world.player.actionState = 'idle';
+
+  const heavyRail = createEmptyInput(0);
+  heavyRail.heavyAttackJustPressed = true;
+  stepWorld(world, heavyRail, 0.02);
+  // Step through windup + active into the first frame of heavy_recovery
+  for (
+    let i = 0;
+    i < 50 &&
+    (String(world.player.actionState) === 'heavy_windup' ||
+      String(world.player.actionState) === 'heavy_active');
+    i++
+  ) {
+    stepWorld(world, createEmptyInput(0), 0.01);
+  }
+  assert.equal(world.player.actionState, 'heavy_recovery');
+  assert.ok(
+    world.player.stateTimer > 0.38,
+    `rail_null_aperture heavy recovery must start at 0.42s instead of base 0.34s (remaining ${world.player.stateTimer})`
+  );
+});
+
+test('Phase 22-D: WARDEN PRIME uses configured attack recovery durations and spawns Phase II adaptive reconstructed traces', () => {
+  const world = createBossWorld('playing', true, 'warden-prime');
+  const boss = world.boss!;
+  const bossEnemy = world.enemies.find((e) => e.id === 'warden-prime')!;
+
+  // Trigger Phase II at <= 220 HP
+  bossEnemy.hp = 215;
+  boss.hp = 215;
+  boss.aiState = 'pursue';
+  world.player.x = bossEnemy.x;
+  world.player.z = bossEnemy.z - 2.0;
+  world.player.rotationY = 0;
+  const hitInp = createEmptyInput(0);
+  hitInp.lightAttackJustPressed = true;
+  stepWorld(world, hitInp, 0.02);
+  for (let i = 0; i < 45; i++) {
+    stepWorld(world, createEmptyInput(0), 0.05);
+  }
+  assert.equal(boss.phase, 2);
+  assert.equal(
+    boss.shockwaveMaxRadius,
+    GAME_CONFIG.wardenPrime.attacks.sovereign_purge_wave.outerRadiusP2,
+    'Warden Prime Phase II shockwaveMaxRadius must match sovereign_purge_wave.outerRadiusP2 (7.4)'
+  );
+
+  // Force a Phase II telegraph of directive_lance
+  world.curator.traces = [];
+  forceBossAttack(world, 'directive_lance');
+  assert.equal(boss.aiState, 'telegraph');
+  assert.equal(boss.activeAttack, 'directive_lance');
+  assert.ok(
+    world.curator.traces.length >= 1,
+    'Warden Prime Phase II directive_lance must spawn an adaptive reconstructed Archive Lance trace'
+  );
+
+  // Advance through telegraph + attack into recovery and verify recoveryDurationP2 (0.62s)
+  for (let i = 0; i < 200 && (boss.aiState === 'telegraph' || boss.aiState === 'attack'); i++) {
+    world.player.x = -12;
+    world.player.z = 12;
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  assert.equal(boss.aiState, 'recovery');
+  assert.equal(
+    boss.stateDuration,
+    GAME_CONFIG.wardenPrime.attacks.directive_lance.recoveryDurationP2,
+    'Warden Prime directive_lance Phase II recovery duration must use wardenPrime config (0.62s)'
+  );
+});
+
+test('Phase 23-A: Echo breaker_charged_slam with breaker_singularity_coil primes Resonance across 360-degree radial arc and +0.6m bonus range', () => {
+  const world = createInitialWorld('playing');
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i]!;
+    if (i === 0) {
+      e.id = 'target-behind-echo';
+      e.hp = 120;
+      e.maxHp = 120;
+      e.aiState = 'idle';
+      e.cooldownTimer = 99;
+      // Place enemy 4.65m directly behind the Echo (180 degrees off facing, and beyond base 4.2m heavySlam range)
+      e.x = 0;
+      e.z = -4.65;
+    } else {
+      e.hp = 0;
+      e.aiState = 'ko';
+    }
+  }
+  world.obstacles = [];
+
+  // Without breaker_singularity_coil, target at z=-4.65 (behind attacker facing 0) is out_of_range
+  const baseQuery = queryEchoResonanceTarget(
+    world,
+    0,
+    0,
+    0,
+    false,
+    'breaker_charged_slam',
+    null
+  );
+  assert.equal(
+    baseQuery.target,
+    null,
+    'Base breaker_charged_slam must not prime target at 4.65m / 180 deg behind Echo'
+  );
+  assert.equal(baseQuery.outcome, 'out_of_range');
+
+  // With breaker_singularity_coil (+0.6m -> 4.8m range, 360 deg fullRadialArc), target is found
+  const coilQuery = queryEchoResonanceTarget(
+    world,
+    0,
+    0,
+    0,
+    false,
+    'breaker_charged_slam',
+    'breaker_singularity_coil'
+  );
+  assert.ok(
+    coilQuery.target !== null && coilQuery.target.id === 'target-behind-echo',
+    'breaker_singularity_coil Echo heavy slam must prime Resonance at 4.65m / 180 deg behind Echo'
+  );
+  assert.equal(coilQuery.outcome, 'found');
+});
+
+test('Phase 23-B: Choir Harmonic Nodes honor grav_breaker + breaker_singularity_coil live and Echo melee envelopes', () => {
+  const world = createBossWorld('playing', true, 'the-choir');
+  unlockPlayerWeapon(world, 'grav_breaker');
+  world.progression.memoryFragments = 20;
+  assert.equal(
+    purchaseWeaponUpgrade(world, 'breaker_singularity_coil').outcome,
+    'purchased'
+  );
+  world.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'grav_breaker'), true);
+  assert.equal(
+    equipWeaponUpgrade(world, 'grav_breaker', 'breaker_singularity_coil').outcome,
+    'equipped'
+  );
+
+  // Move boss out of the way
+  const bossEnemy = world.enemies.find((e) => e.id === 'the-choir')!;
+  bossEnemy.x = 0;
+  bossEnemy.z = 11;
+  world.boss!.x = 0;
+  world.boss!.z = 11;
+  world.boss!.cooldownTimer = 99;
+
+  const nodeA = world.choir.nodes[0]!;
+  const nodeB = world.choir.nodes[1]!;
+
+  // 1. Prime nodeA via an Echo recorded with breaker_charged_slam + breaker_singularity_coil at 4.5m distance
+  nodeA.status = 'inactive';
+  nodeB.status = 'inactive';
+  world.echo.state = 'playback';
+  world.echo.playbackTime = 0;
+  world.echo.nextEventIndex = 0;
+  world.echo.processedContactEventIds = [];
+  world.choir.processedNodeEventIds = [];
+  world.echo.clip = {
+    id: 501,
+    duration: 1.2,
+    samples: [
+      {
+        t: 0,
+        x: nodeA.x,
+        z: nodeA.z - 4.5,
+        rotationY: 0,
+        actionState: 'heavy_windup',
+        gaitPhase: 0,
+        comboIndex: 0,
+        chargeRatio: 1,
+        isEmpoweredHeavy: false,
+        weaponId: 'grav_breaker',
+        equippedUpgradeId: 'breaker_singularity_coil',
+      },
+      {
+        t: 1.2,
+        x: nodeA.x,
+        z: nodeA.z - 4.5,
+        rotationY: 0,
+        actionState: 'idle',
+        gaitPhase: 0,
+        comboIndex: 0,
+        chargeRatio: 0,
+        isEmpoweredHeavy: false,
+        weaponId: 'grav_breaker',
+        equippedUpgradeId: 'breaker_singularity_coil',
+      },
+    ],
+    events: [
+      {
+        id: 'evt-coil-choir',
+        t: 0.05,
+        action: 'breaker_charged_slam',
+        x: nodeA.x,
+        z: nodeA.z - 4.5,
+        rotationY: 0,
+        comboIndex: 0,
+        weaponId: 'grav_breaker',
+        equippedUpgradeId: 'breaker_singularity_coil',
+      },
+    ],
+  };
+  world.echo.activeActor = {
+    id: 'echo-actor-501',
+    clipId: 501,
+    x: nodeA.x,
+    z: nodeA.z - 4.5,
+    rotationY: 0,
+    radius: GAME_CONFIG.player.radius,
+    actionState: 'heavy_windup',
+    gaitPhase: 0,
+    comboIndex: 0,
+    chargeRatio: 1,
+    isEmpoweredHeavy: false,
+    weaponId: 'grav_breaker',
+    equippedUpgradeId: 'breaker_singularity_coil',
+    elapsed: 0,
+    duration: 1.2,
+  };
+
+  for (let i = 0; i < 20; i++) {
+    stepWorld(world, createEmptyInput(0), 0.02);
+  }
+  assert.equal(
+    nodeA.status,
+    'primed',
+    'Echo breaker_charged_slam + breaker_singularity_coil at 4.5m must prime Choir Harmonic Node'
+  );
+
+  // 2. Live Sera stands 4.4m away from nodeB facing 180 degrees AWAY from nodeB and performs heavy slam
+  world.player.x = nodeB.x;
+  world.player.z = nodeB.z - 4.4;
+  world.player.rotationY = Math.PI; // facing away from nodeB (+z)
+  world.player.actionState = 'idle';
+
+  const heavyInp = createEmptyInput(Math.PI);
+  heavyInp.heavyAttackJustPressed = true;
+  stepWorld(world, heavyInp, 0.02);
+  for (let i = 0; i < 25; i++) {
+    world.player.x = nodeB.x;
+    world.player.z = nodeB.z - 4.4;
+    world.player.rotationY = Math.PI;
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+
+  assert.equal(
+    nodeB.status,
+    'synchronized',
+    'Live Sera grav_breaker + breaker_singularity_coil heavy slam at 4.4m facing 180 deg away must synchronize Choir Node B'
+  );
+});
+
+test('Phase 23-C: Phase Rail projectiles and Grav-Breaker melee emit accurate weaponId in combat & obstacle telemetry events', () => {
+  const world = createInitialWorld('playing');
+  const target = world.enemies[0]!;
+  for (let i = 1; i < world.enemies.length; i++) {
+    world.enemies[i]!.hp = 0;
+    world.enemies[i]!.aiState = 'ko';
+  }
+  world.obstacles = [];
+  target.hp = 300;
+  target.maxHp = 300;
+  target.aiState = 'idle';
+  target.cooldownTimer = 99;
+  target.x = 0;
+  target.z = 5.0;
+
+  unlockPlayerWeapon(world, 'phase_rail');
+  unlockPlayerWeapon(world, 'grav_breaker');
+  world.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(world, 'phase_rail'), true);
+
+  world.player.x = 0;
+  world.player.z = 0;
+  world.player.rotationY = 0;
+  world.events = [];
+
+  const railEvents: typeof world.events = [];
+  const shotInp = createEmptyInput(0);
+  shotInp.lightAttackJustPressed = true;
+  stepWorld(world, shotInp, 0.02);
+  railEvents.push(...world.events);
+  for (let i = 0; i < 30; i++) {
+    stepWorld(world, createEmptyInput(0), 0.02);
+    railEvents.push(...world.events);
+  }
+
+  const railHitEvt = railEvents.find((ev) => ev.type === 'player_hit_enemy');
+  assert.ok(railHitEvt, 'Phase Rail shot must emit player_hit_enemy event');
+  assert.equal(
+    railHitEvt!.weaponId,
+    'phase_rail',
+    'Phase Rail hit event must carry weaponId="phase_rail" instead of "pulsecaster"'
+  );
+
+  // Switch to grav_breaker and verify melee hit carries weaponId="grav_breaker"
+  world.player.weaponSwitchCooldownTimer = 0;
+  world.player.actionState = 'idle';
+  assert.equal(switchPlayerWeapon(world, 'grav_breaker'), true);
+  world.player.x = 0;
+  world.player.z = 2.6;
+  world.player.rotationY = 0;
+
+  const breakerEvents: typeof world.events = [];
+  const slamInp = createEmptyInput(0);
+  slamInp.lightAttackJustPressed = true;
+  stepWorld(world, slamInp, 0.02);
+  breakerEvents.push(...world.events);
+  for (let i = 0; i < 20; i++) {
+    stepWorld(world, createEmptyInput(0), 0.02);
+    breakerEvents.push(...world.events);
+  }
+
+  const breakerHitEvt = breakerEvents.find((ev) => ev.type === 'player_hit_enemy');
+  assert.ok(breakerHitEvt, 'Grav-Breaker slam must emit player_hit_enemy event');
+  assert.equal(
+    breakerHitEvt!.weaponId,
+    'grav_breaker',
+    'Grav-Breaker melee hit event must carry weaponId="grav_breaker"'
+  );
+});
+
+test('Phase 23-D: WARDEN PRIME Phase II reconstructed trace hit/parry attributes to warden-prime and applies parry stagger', () => {
+  const world = createBossWorld('playing', true, 'warden-prime');
+  const boss = world.boss!;
+  const bossEnemy = world.enemies.find((e) => e.id === 'warden-prime')!;
+
+  // Move boss out of direct melee range while spawning a Phase II reconstructed trace across Sera
+  boss.phase = 2;
+  boss.aiState = 'pursue';
+  boss.cooldownTimer = 99;
+  bossEnemy.x = 0;
+  bossEnemy.z = 8.0;
+  boss.x = 0;
+  boss.z = 8.0;
+  bossEnemy.stagger = 0;
+  boss.stagger = 0;
+
+  world.player.x = 0;
+  world.player.z = 0;
+  world.player.rotationY = 0;
+  world.player.actionState = 'parry_active';
+  world.player.stateTimer = 0.25;
+
+  world.curator.active = true;
+  world.curator.traces = [
+    {
+      id: 'trace-wp-test',
+      attackId: 'archive_lance',
+      label: 'ARCHIVAL LANCE',
+      state: 'executing',
+      originX: 0,
+      originZ: -1.0,
+      dirX: 0,
+      dirZ: 1.0,
+      rotationY: 0,
+      length: 4.0,
+      width: 1.4,
+      radius: 4.0,
+      arcRadians: Math.PI,
+      timer: 0.18,
+      warningDuration: 0.48,
+      commitDuration: 0.2,
+      activeDuration: 0.22,
+      residueDuration: 0.65,
+      damage: 24,
+      isHarmlessResidue: false,
+      hitApplied: false,
+    },
+  ];
+  world.events = [];
+
+  stepWorld(world, createEmptyInput(0), 0.02);
+
+  const parryEvt = world.events.find((ev) => ev.type === 'player_parry_success');
+  assert.ok(
+    parryEvt,
+    'Parrying a reconstructed trace during Warden Prime Phase II must trigger player_parry_success'
+  );
+  assert.equal(
+    parryEvt!.enemyId,
+    'warden-prime',
+    'Parried reconstructed trace during Warden Prime Phase II must attribute enemyId to warden-prime'
+  );
+  assert.ok(
+    bossEnemy.stagger > 0,
+    `Parrying Warden Prime Phase II reconstructed trace must apply parry posture stagger to warden-prime (got ${bossEnemy.stagger})`
+  );
+});
+
+test('Phase 23.1-A: switchPlayerWeapon unconditionally clears stale chargeTime and isEmpoweredHeavy across non-charging states', () => {
+  const world = createInitialWorld('playing');
+  world.progression.unlockedWeaponIds = [
+    'chrono_edge',
+    'pulsecaster',
+    'grav_breaker',
+    'phase_rail',
+  ];
+  world.player.equippedWeaponId = 'chrono_edge';
+  world.player.actionState = 'heavy_recovery';
+  world.player.stateTimer = 0.14;
+  world.player.chargeTime = 0.32;
+  world.player.isEmpoweredHeavy = true;
+  world.player.comboIndex = 2;
+  world.player.comboWindowTimer = 0.25;
+
+  const switched = switchPlayerWeapon(world, 'grav_breaker');
+  assert.equal(switched, true);
+  assert.equal(world.player.equippedWeaponId, 'grav_breaker');
+  assert.equal(
+    world.player.chargeTime,
+    0,
+    'Weapon switch must clear any residual chargeTime even when not in charging_heavy state'
+  );
+  assert.equal(
+    world.player.isEmpoweredHeavy,
+    false,
+    'Weapon switch must clear stale isEmpoweredHeavy flag so it cannot carry over to the newly equipped weapon'
+  );
+  assert.equal(world.player.comboIndex, 0);
+  assert.equal(world.player.comboWindowTimer, 0);
+});
+
+test('Phase 23.2-A: switchPlayerWeapon(world) advances phase_rail -> grav_breaker -> chrono_edge in Practice mode and cycles all 4 unlocked weapons in canonical order', () => {
+  // 1. Practice Boss Sandbox mode: selecting phase_rail via [3] and pressing [Tab]/[Z] (switchPlayerWeapon(world))
+  //    advances to grav_breaker instead of snapping back to chrono_edge.
+  const practiceWorld = createInitialWorld('title');
+  startPracticeBossRun(practiceWorld, true, 'helix-04');
+  assert.equal(practiceWorld.run.mode, 'practice_boss');
+  assert.equal(switchPlayerWeapon(practiceWorld, 'phase_rail'), true);
+  assert.equal(practiceWorld.player.equippedWeaponId, 'phase_rail');
+
+  practiceWorld.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(practiceWorld), true);
+  assert.equal(
+    practiceWorld.player.equippedWeaponId,
+    'grav_breaker',
+    'Pressing [Tab]/[Z] while holding phase_rail in Practice mode must advance to grav_breaker'
+  );
+
+  practiceWorld.player.weaponSwitchCooldownTimer = 0;
+  assert.equal(switchPlayerWeapon(practiceWorld), true);
+  assert.equal(
+    practiceWorld.player.equippedWeaponId,
+    'chrono_edge',
+    'Pressing [Tab]/[Z] while holding grav_breaker in Practice mode must wrap to chrono_edge'
+  );
+
+  // 2. When all 4 weapons are unlocked in progression, cycling with no targetWeaponId visits all 4 in order
+  unlockPlayerWeapon(practiceWorld, 'phase_rail');
+  unlockPlayerWeapon(practiceWorld, 'grav_breaker');
+  const seenFullCycle: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    practiceWorld.player.weaponSwitchCooldownTimer = 0;
+    practiceWorld.player.actionState = 'idle';
+    assert.equal(switchPlayerWeapon(practiceWorld), true);
+    seenFullCycle.push(practiceWorld.player.equippedWeaponId);
+  }
+  assert.deepEqual(
+    seenFullCycle,
+    ['pulsecaster', 'phase_rail', 'grav_breaker', 'chrono_edge'],
+    'Cycling with all 4 weapons unlocked must visit pulsecaster -> phase_rail -> grav_breaker -> chrono_edge'
+  );
+});
+
+test('Phase 23.2-B: Save V2 rejects ununlocked equippedWeaponId in activeCampaign/bossCheckpoint, bounds oversized arrays, and rejects oversized JSON strings', () => {
+  const world = createInitialWorld('title');
+
+  // 1. Oversized raw JSON string (> 262,144 chars) must be rejected cleanly in O(1)
+  const hugeJson = '{"version":2,"pad":"' + 'x'.repeat(300_000) + '"}';
+  assert.equal(
+    parseAndApplyCampaignProgress(world, hugeJson),
+    false,
+    'Save parser must reject oversized raw JSON strings > 256 KB'
+  );
+
+  // 2. Tampered Save V2 where activeCampaign.equippedWeaponId and bossCheckpoint.equippedWeaponId
+  //    reference 'grav_breaker', while progression.unlockedWeaponIds only has ['chrono_edge', 'pulsecaster'],
+  //    plus a 1,000-element garbage array and cross-weapon upgrade assignment.
+  const tamperedPayload = JSON.stringify({
+    version: 2,
+    unlockedChapters: ['prologue', 'chapter_1_helix', ...Array(600).fill('invalid_chapter')],
+    completedChapters: ['prologue'],
+    recoveredLogs: Array(600).fill('log_fake'),
+    completedEndings: ['invalid_ending'],
+    progression: {
+      memoryFragments: 15,
+      claimedRewardIds: [],
+      unlockedWeaponIds: ['chrono_edge', 'pulsecaster'],
+      purchasedUpgrades: ['edge_lumen_overcharge', 'rail_harmonic_pierce'],
+      equippedUpgrades: {
+        chrono_edge: 'rail_harmonic_pierce', // wrong weapon!
+        pulsecaster: 'edge_lumen_overcharge', // wrong weapon!
+        phase_rail: 'rail_harmonic_pierce',
+        grav_breaker: null,
+      },
+    },
+    activeCampaign: {
+      chapter: 'chapter_1_helix',
+      stage: 'boss_fight',
+      pendingNextChapter: null,
+      equippedWeaponId: 'grav_breaker', // locked weapon!
+      bossCheckpoint: {
+        chapter: 'chapter_1_helix',
+        bossId: 'helix-04',
+        equippedWeaponId: 'grav_breaker', // locked weapon!
+        integrity: 85,
+        maxIntegrity: 100,
+        flux: 50,
+        maxFlux: 100,
+        replenishedIntegrity: 0,
+        elapsedTimeAtCheckpoint: 42.5,
+        statsAtCheckpoint: {
+          damageDealt: 120,
+          damageTaken: 15,
+          parriesLanded: 2,
+          vulnerableHits: 3,
+          convergencesTriggered: 1,
+          relaysUsed: 1,
+        },
+      },
+    },
+  });
+
+  assert.equal(parseAndApplyCampaignProgress(world, tamperedPayload), true);
+  assert.equal(world.progression.equippedUpgrades.chrono_edge, null);
+  assert.equal(world.progression.equippedUpgrades.pulsecaster, null);
+  assert.equal(
+    world.run.savedCampaignSnapshot?.equippedWeaponId,
+    'chrono_edge',
+    'Saved campaign snapshot must fall back to chrono_edge when tampered equippedWeaponId is not unlocked'
+  );
+  assert.equal(
+    world.run.savedCampaignSnapshot?.bossCheckpoint?.equippedWeaponId,
+    'chrono_edge',
+    'Boss checkpoint must fall back to chrono_edge when tampered equippedWeaponId is not unlocked'
+  );
+
+  assert.equal(restoreSavedCampaignProgress(world), true);
+  assert.equal(
+    world.player.equippedWeaponId,
+    'chrono_edge',
+    'Restoring campaign progress must never equip a locked weapon'
+  );
+});
+
+test('Phase 23.3-B1: Save V2 enforces exact UTF-8 byte ceiling (MAX_SAVE_JSON_BYTES = 262,144) on multi-byte payloads and handles V1->V2 migration idempotently', () => {
+  assert.equal(MAX_SAVE_JSON_BYTES, 262_144);
+  const world = createInitialWorld('title');
+
+  // A string of 100,000 3-byte UTF-8 characters ('€') has rawJson.length (~100,025 UTF-16 code units <= 262,144),
+  // but its UTF-8 byte length is > 300,000 bytes (> 262,144 bytes).
+  const multiBytePayload = JSON.stringify({
+    version: 2,
+    pad: '€'.repeat(100_000),
+  });
+  assert.ok(
+    multiBytePayload.length < MAX_SAVE_JSON_BYTES,
+    'Multi-byte payload has fewer than 262,144 UTF-16 code units'
+  );
+  assert.ok(
+    new TextEncoder().encode(multiBytePayload).byteLength > MAX_SAVE_JSON_BYTES,
+    'Multi-byte payload exceeds 262,144 UTF-8 bytes'
+  );
+  assert.equal(
+    parseAndApplyCampaignProgress(world, multiBytePayload),
+    false,
+    'parseAndApplyCampaignProgress must reject payloads whose UTF-8 byte length exceeds MAX_SAVE_JSON_BYTES even when UTF-16 length is under 262,144'
+  );
+
+  // Unsupported schema versions (v3, v4, v0, negative, string) must be rejected without mutating world state
+  for (const badVersion of [0, -1, 3, 4, 99, '2', null]) {
+    const preSnapshot = serializeCampaignProgress(world);
+    assert.equal(
+      parseAndApplyCampaignProgress(
+        world,
+        JSON.stringify({
+          version: badVersion,
+          unlockedChapters: ['prologue', 'chapter_1_helix', 'chapter_2_choir'],
+          completedChapters: ['prologue', 'chapter_1_helix'],
+        })
+      ),
+      false,
+      `Schema version ${String(badVersion)} must be rejected`
+    );
+    assert.equal(
+      serializeCampaignProgress(world),
+      preSnapshot,
+      `Rejected schema version ${String(badVersion)} must not mutate world state`
+    );
+  }
+
+  // V1 -> V2 migration + activeCampaign chapter weapon-unlock inference + repeated load/save cycle idempotency
+  const v1Save = JSON.stringify({
+    version: 1,
+    unlockedChapters: ['prologue'],
+    completedChapters: ['prologue', 'chapter_1_helix'],
+    recoveredLogs: ['LOG-00', 'LOG-01'],
+    completedEndings: ['silence'],
+    tutorialHintsEnabled: false,
+    activeCampaign: {
+      chapter: 'chapter_2_choir',
+      stage: 'boss_fight',
+      pendingNextChapter: null,
+      bossCheckpoint: null,
+      equippedWeaponId: 'grav_breaker',
+    },
+  });
+
+  const migratedWorld = createInitialWorld('title');
+  assert.equal(parseAndApplyCampaignProgress(migratedWorld, v1Save), true);
+  // Completing chapter_1_helix / activeCampaign in chapter_2_choir auto-unlocks phase_rail and grav_breaker during V1->V2 migration
+  assert.ok(migratedWorld.progression.unlockedWeaponIds.includes('phase_rail'));
+  assert.ok(migratedWorld.progression.unlockedWeaponIds.includes('grav_breaker'));
+  assert.deepEqual(migratedWorld.run.recoveredLogs, ['LOG-00', 'LOG-01']);
+  assert.equal(
+    migratedWorld.run.savedCampaignSnapshot?.chapter,
+    'chapter_2_choir'
+  );
+  assert.equal(
+    migratedWorld.run.savedCampaignSnapshot?.equippedWeaponId,
+    'grav_breaker'
+  );
+  assert.equal(migratedWorld.tutorial.enabled, false);
+
+  // Also verify a V1 save where chapter_2_choir is only specified in activeCampaign.chapter
+  const v1ActiveOnlyWorld = createInitialWorld('title');
+  assert.equal(
+    parseAndApplyCampaignProgress(
+      v1ActiveOnlyWorld,
+      JSON.stringify({
+        version: 1,
+        unlockedChapters: ['prologue'],
+        completedChapters: [],
+        activeCampaign: {
+          chapter: 'chapter_2_choir',
+          stage: 'boss_fight',
+          pendingNextChapter: null,
+          bossCheckpoint: null,
+          equippedWeaponId: 'grav_breaker',
+        },
+      })
+    ),
+    true
+  );
+  assert.ok(v1ActiveOnlyWorld.progression.unlockedWeaponIds.includes('phase_rail'));
+  assert.ok(v1ActiveOnlyWorld.progression.unlockedWeaponIds.includes('grav_breaker'));
+  assert.equal(
+    v1ActiveOnlyWorld.run.savedCampaignSnapshot?.equippedWeaponId,
+    'grav_breaker',
+    'V1 migration must infer weapon unlocks from activeCampaign.chapter before validating activeCampaign.equippedWeaponId'
+  );
+
+  const v2JsonFirst = serializeCampaignProgress(migratedWorld);
+  for (let cycle = 0; cycle < 5; cycle++) {
+    const roundtripWorld = createInitialWorld('title');
+    assert.equal(parseAndApplyCampaignProgress(roundtripWorld, v2JsonFirst), true);
+    assert.equal(
+      serializeCampaignProgress(roundtripWorld),
+      v2JsonFirst,
+      `Save/load cycle ${cycle + 1} must be strictly idempotent`
+    );
+  }
+});
+
+test('Phase 23.3-B2: Campaign transitions, Loom entry, checkpoint retries, and storage helpers enforce weapon unlock ownership and survive storage quota errors', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  // In Campaign mode before unlocking grav_breaker or phase_rail, only chrono_edge & pulsecaster are unlocked.
+  assert.deepEqual(getUnlockedWeaponIds(world), ['chrono_edge', 'pulsecaster']);
+
+  // Force a locked weapon ('grav_breaker') onto world.player.equippedWeaponId before transitioning to Chapter 1
+  world.player.equippedWeaponId = 'grav_breaker';
+  transitionCampaignToBoss(world, true, 'chapter_1_helix');
+  assert.equal(
+    world.player.equippedWeaponId,
+    'chrono_edge',
+    'transitionCampaignToBoss must sanitize locked equippedWeaponId back to chrono_edge'
+  );
+  assert.equal(
+    world.run.bossCheckpoint?.equippedWeaponId,
+    'chrono_edge',
+    'transitionCampaignToBoss checkpoint must never record a locked weapon'
+  );
+
+  // Tamper checkpoint in memory with a weapon locked in chapter_1_helix ('grav_breaker') and retry from checkpoint
+  world.run.bossCheckpoint!.equippedWeaponId = 'grav_breaker';
+  world.appState = 'gameover';
+  world.outcome = 'defeat';
+  assert.equal(retryBossFromCheckpoint(world), true);
+  assert.equal(
+    world.player.equippedWeaponId,
+    'chrono_edge',
+    'retryBossFromCheckpoint must sanitize locked checkpoint weapon back to chrono_edge'
+  );
+
+  // Force locked weapon ('grav_breaker') before entering Chronicle Loom in replay mode and engaging Warden Prime
+  world.run.bossCheckpoint!.equippedWeaponId = 'grav_breaker';
+  world.player.equippedWeaponId = 'grav_breaker';
+  enterChronicleLoomChapter(world, true);
+  assert.equal(
+    world.player.equippedWeaponId,
+    'chrono_edge',
+    'enterChronicleLoomChapter must sanitize locked equippedWeaponId back to chrono_edge'
+  );
+
+  world.player.equippedWeaponId = 'grav_breaker';
+  engageWardenPrimeInLoom(world, true);
+  assert.equal(
+    world.player.equippedWeaponId,
+    'chrono_edge',
+    'engageWardenPrimeInLoom must sanitize locked equippedWeaponId back to chrono_edge'
+  );
+
+  // Verify localStorage quota failure and corrupted storage resilience
+  const prevWindow = globalThis.window;
+  try {
+    globalThis.window = {
+      localStorage: {
+        getItem: () => '{corrupted json',
+        setItem: () => {
+          throw new Error('QuotaExceededError');
+        },
+      },
+    } as unknown as Window & typeof globalThis;
+
+    assert.doesNotThrow(() => {
+      saveCampaignProgressToStorage(world);
+    });
+    assert.equal(loadCampaignProgressFromStorage(world), false);
+  } finally {
+    globalThis.window = prevWindow;
+  }
 });

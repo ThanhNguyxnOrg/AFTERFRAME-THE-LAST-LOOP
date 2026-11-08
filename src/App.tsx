@@ -540,6 +540,7 @@ export default function App() {
   const handleUpdateCameraSettings = useCallback((next: Partial<CameraSettings>) => {
     if (!inputRef.current) return;
     const updated = inputRef.current.setCameraSettings(next);
+    soundRef.current?.setVolumeSettings(updated);
     setCameraSettings(updated);
   }, []);
 
@@ -694,7 +695,11 @@ export default function App() {
     document.body.dataset.runMode = world.run.mode;
 
     const sceneRenderer = new ArenaSceneRenderer(mountEl, world);
-    sceneRenderer.setReducedMotion(input.getCameraSettings().reducedMotion);
+    const initialCamSettings = input.getCameraSettings();
+    sceneRenderer.setReducedMotion(initialCamSettings.reducedMotion);
+    sceneRenderer.setCameraShake(initialCamSettings.cameraShake ?? true);
+    sceneRenderer.setScreenEffects(initialCamSettings.screenEffects ?? true);
+    soundRef.current?.setVolumeSettings(initialCamSettings);
     rendererRef.current = sceneRenderer;
 
     input.attach(mountEl, {
@@ -1062,6 +1067,7 @@ export default function App() {
         discoverSecret: (secretId: SecretAreaId) => boolean;
         triggerNarrativeEvent: (eventId: NarrativeEventId) => boolean;
         getExplorationState: () => WorldExplorationState;
+        getRendererDiagnostics: () => ReturnType<ArenaSceneRenderer['getDiagnostics']>;
       };
     };
 
@@ -1351,6 +1357,7 @@ export default function App() {
       },
       setCameraSettings: (s: Partial<CameraSettings>) => {
         const updated = input.setCameraSettings(s);
+        soundRef.current?.setVolumeSettings(updated);
         setCameraSettings(updated);
         return updated;
       },
@@ -1406,6 +1413,7 @@ export default function App() {
         return res;
       },
       getExplorationState: () => world.exploration,
+      getRendererDiagnostics: () => sceneRenderer.getDiagnostics(),
     };
     }
 
@@ -1420,6 +1428,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisibilityResume);
       input.detach();
       sceneRenderer.dispose();
+      soundRef.current?.dispose();
       rendererRef.current = null;
     };
   }, [
@@ -1438,21 +1447,24 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    const effectiveReducedMotion =
-      cameraSettings.reducedMotion || cameraSettings.cameraShake === false;
-    rendererRef.current?.setReducedMotion(effectiveReducedMotion);
+    rendererRef.current?.setReducedMotion(cameraSettings.reducedMotion);
+    rendererRef.current?.setCameraShake(cameraSettings.cameraShake ?? true);
+    rendererRef.current?.setScreenEffects(cameraSettings.screenEffects ?? true);
     soundRef.current?.setVolumeSettings({
       masterVolume: cameraSettings.masterVolume,
       musicVolume: cameraSettings.musicVolume,
       sfxVolume: cameraSettings.sfxVolume,
     });
     document.body.dataset.reducedMotion = String(cameraSettings.reducedMotion);
+    document.body.dataset.screenEffects = String(cameraSettings.screenEffects ?? true);
     return () => {
       delete document.body.dataset.reducedMotion;
+      delete document.body.dataset.screenEffects;
     };
   }, [
     cameraSettings.reducedMotion,
     cameraSettings.cameraShake,
+    cameraSettings.screenEffects,
     cameraSettings.masterVolume,
     cameraSettings.musicVolume,
     cameraSettings.sfxVolume,

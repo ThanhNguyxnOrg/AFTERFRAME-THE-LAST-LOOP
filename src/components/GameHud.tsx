@@ -252,8 +252,9 @@ export const GameHud: React.FC<GameHudProps> = ({
   return (
     <div className="fixed inset-0 z-10 pointer-events-none select-none overflow-hidden">
       {/* Subtle Peripheral Low-Integrity Vignette */}
-      {isLowHp && (
+      {isLowHp && (cameraSettings?.screenEffects ?? true) && (
         <div
+          data-testid="low-integrity-vignette"
           className="fixed inset-0 pointer-events-none"
           style={{
             boxShadow: 'inset 0 0 90px rgba(239, 68, 68, 0.42)',
@@ -310,19 +311,33 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
 
             {/* Chrono Flux */}
-            <div>
+            <div data-flux-dampened={(hud.fluxDampenedTimer ?? 0) > 0 ? 'true' : 'false'}>
               <div className="flex items-baseline justify-between mb-0.5">
-                <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-amber-400 font-semibold">
-                  FLUX
+                <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1">
+                  <span>FLUX</span>
+                  {(hud.fluxDampenedTimer ?? 0) > 0 && (
+                    <span
+                      data-testid="hud-flux-dampened-badge"
+                      className="px-1 py-0.2 text-[8px] font-mono-tabular bg-fuchsia-950/90 border border-fuchsia-500/60 text-fuchsia-300 animate-pulse"
+                    >
+                      DAMPENED {(hud.fluxDampenedTimer ?? 0).toFixed(1)}s
+                    </span>
+                  )}
                 </span>
                 <span className="text-xs sm:text-sm font-mono-tabular font-bold text-amber-300 leading-none">
                   {hud.flux}
                   <span className="text-[9px] text-slate-500 font-normal">/{hud.maxFlux}</span>
                 </span>
               </div>
-              <div className="relative h-1.5 sm:h-2 w-full bg-[#05080c] border border-slate-800 overflow-hidden">
+              <div
+                className={`relative h-1.5 sm:h-2 w-full bg-[#05080c] border overflow-hidden ${
+                  (hud.fluxDampenedTimer ?? 0) > 0 ? 'border-fuchsia-500/70' : 'border-slate-800'
+                }`}
+              >
                 <div
-                  className="absolute inset-y-0 left-0 bg-amber-400 transition-all duration-75"
+                  className={`absolute inset-y-0 left-0 transition-all duration-75 ${
+                    (hud.fluxDampenedTimer ?? 0) > 0 ? 'bg-fuchsia-400' : 'bg-amber-400'
+                  }`}
                   style={{ width: `${fluxPct}%` }}
                 />
               </div>

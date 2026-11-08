@@ -1776,7 +1776,7 @@ export const GAME_CONFIG = {
         chapterContext: 'chapter_4_matron' as const,
         pacingTier: 'combine' as const,
         tacticalFocus:
-          'COMBINE · Flux Siphon and Trace Eraser pressure Chrono Flux economy and active Echo tracks simultaneously alongside an Aegis Bastion.',
+          'COMBINE · Flux Siphon, Null Weaver, Trace Eraser, and Aegis Sentinel pressure Chrono Flux economy, guarded lanes, and active Echo tracks simultaneously.',
         recommendedWeaponId: 'chrono_edge' as const,
         recommendedUpgradeIds: ['edge_harmonic_conductor', 'pulse_overcharge_condenser'] as const,
         maxConcurrentAttackers: 2,
@@ -1785,11 +1785,13 @@ export const GAME_CONFIG = {
             waveIndex: 1,
             label: 'WAVE 1 · QUARANTINE EXCISION SQUAD',
             tacticalDirective:
-              'Protect your active Echo from the Trace Eraser or trigger Echo Collapse [X] before severing, and counter the Flux Siphon.',
+              'Counter the Flux Siphon and Null Weaver suppression bolts, protect your Echo from the Trace Eraser, and breach the Aegis Sentinel and Quarantine Bastion shields.',
             units: [
               { id: 'enemy-siphon-1', archetype: 'siphon' as const, name: 'Flux Siphon', x: -5.2, z: 2.2 },
               { id: 'enemy-eraser-1', archetype: 'eraser' as const, name: 'Trace Eraser', x: 5.2, z: 2.2 },
               { id: 'enemy-bastion-1', archetype: 'bastion' as const, name: 'Quarantine Bastion', x: 0, z: -6.2 },
+              { id: 'enemy-aegis-sentinel-1', archetype: 'aegis_sentinel' as const, name: 'Aegis Sentinel', x: 3.4, z: -2.8 },
+              { id: 'enemy-null-weaver-1', archetype: 'null_weaver' as const, name: 'Null Weaver', x: -3.4, z: -2.8 },
             ],
           },
         ],

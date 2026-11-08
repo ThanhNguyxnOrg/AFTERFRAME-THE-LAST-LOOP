@@ -1265,6 +1265,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                 <button
                   type="button"
                   data-testid="modal-setting-mute"
+                  aria-pressed={isMuted}
                   onClick={onToggleMute}
                   className="flex items-center justify-between px-3 py-2 bg-[#0b1018] hover:bg-[#131d2d] border border-slate-700 text-[11px] font-mono-tabular cursor-pointer"
                 >
@@ -1283,6 +1284,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                 <button
                   type="button"
                   data-testid="modal-setting-hints"
+                  aria-pressed={tutorialEnabled}
                   onClick={onToggleTutorial}
                   className="flex items-center justify-between px-3 py-2 bg-[#0b1018] hover:bg-[#131d2d] border border-slate-700 text-[11px] font-mono-tabular cursor-pointer"
                 >
@@ -1332,6 +1334,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
               </span>
               <button
                 type="button"
+                data-testid="modal-setting-invert-y"
                 aria-pressed={cameraSettings.invertY}
                 onClick={() =>
                   onUpdateCameraSettings({ invertY: !cameraSettings.invertY })
@@ -1345,8 +1348,8 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                 {cameraSettings.invertY ? 'INVERTED' : 'STANDARD'}
               </button>
             </div>
-            {/* Master & SFX Volume Sliders */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            {/* Master, SFX & Music Volume Sliders */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <label
@@ -1400,13 +1403,41 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   className="w-full accent-cyan-400 cursor-pointer"
                 />
               </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label
+                    htmlFor="modal-music-volume-slider"
+                    className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-300"
+                  >
+                    MUSIC / STINGER BUS
+                  </label>
+                  <span className="text-[11px] font-mono-tabular font-bold text-cyan-400">
+                    {Math.round((cameraSettings.musicVolume ?? 0.7) * 100)}%
+                  </span>
+                </div>
+                <input
+                  id="modal-music-volume-slider"
+                  data-testid="modal-setting-music-volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={cameraSettings.musicVolume ?? 0.7}
+                  onChange={(e) =>
+                    onUpdateCameraSettings({ musicVolume: parseFloat(e.target.value) })
+                  }
+                  className="w-full accent-cyan-400 cursor-pointer"
+                />
+              </div>
             </div>
 
-            {/* Camera Shake & Subtitles Toggles */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            {/* Camera Shake, Screen Effects & Subtitles Toggles */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
               <button
                 type="button"
                 data-testid="modal-setting-camera-shake"
+                aria-pressed={cameraSettings.cameraShake ?? true}
                 onClick={() =>
                   onUpdateCameraSettings({
                     cameraShake: !(cameraSettings.cameraShake ?? true),
@@ -1428,7 +1459,31 @@ export const StatusModal: React.FC<StatusModalProps> = ({
 
               <button
                 type="button"
+                data-testid="modal-setting-screen-effects"
+                aria-pressed={cameraSettings.screenEffects ?? true}
+                onClick={() =>
+                  onUpdateCameraSettings({
+                    screenEffects: !(cameraSettings.screenEffects ?? true),
+                  })
+                }
+                className="flex items-center justify-between px-3 py-1.5 bg-[#0b1018] hover:bg-[#131d2d] border border-slate-700 text-[10px] font-mono-tabular cursor-pointer"
+              >
+                <span className="text-slate-300">SCREEN EFFECTS</span>
+                <span
+                  className={
+                    (cameraSettings.screenEffects ?? true)
+                      ? 'text-cyan-300 font-bold'
+                      : 'text-slate-500 font-bold'
+                  }
+                >
+                  {(cameraSettings.screenEffects ?? true) ? 'ON' : 'OFF'}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 data-testid="modal-setting-subtitles"
+                aria-pressed={cameraSettings.subtitlesEnabled ?? true}
                 onClick={() =>
                   onUpdateCameraSettings({
                     subtitlesEnabled: !(cameraSettings.subtitlesEnabled ?? true),

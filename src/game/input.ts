@@ -552,6 +552,7 @@ export class InputController {
   public consumeFrameInput(dt: number): PlayerInputFrame {
     // Allow Arrow keys to smoothly orbit camera yaw & pitch
     const keyTurn = GAME_CONFIG.camera.keyboardTurnSpeed * this.settings.sensitivity;
+    const invertSign = this.settings.invertY ? -1 : 1;
     if (this.heldKeys.has('ArrowLeft')) {
       this.aimYaw = wrapAngle(this.aimYaw + keyTurn * dt);
     }
@@ -561,13 +562,19 @@ export class InputController {
     if (this.heldKeys.has('ArrowUp')) {
       this.aimPitch = Math.max(
         GAME_CONFIG.camera.minPitch,
-        Math.min(GAME_CONFIG.camera.maxPitch, this.aimPitch - keyTurn * 0.65 * dt)
+        Math.min(
+          GAME_CONFIG.camera.maxPitch,
+          this.aimPitch - keyTurn * 0.65 * dt * invertSign
+        )
       );
     }
     if (this.heldKeys.has('ArrowDown')) {
       this.aimPitch = Math.max(
         GAME_CONFIG.camera.minPitch,
-        Math.min(GAME_CONFIG.camera.maxPitch, this.aimPitch + keyTurn * 0.65 * dt)
+        Math.min(
+          GAME_CONFIG.camera.maxPitch,
+          this.aimPitch + keyTurn * 0.65 * dt * invertSign
+        )
       );
     }
 
@@ -616,7 +623,8 @@ export class InputController {
       this.justPressedKeys.has('ShiftLeft') ||
       this.justPressedKeys.has('ShiftRight');
 
-    const parryJustPressed = this.justPressedKeys.has('KeyQ');
+    const parryJustPressed =
+      this.justPressedKeys.has('KeyQ') || this.justPressedKeys.has('KeyL');
     const switchWeaponJustPressed =
       this.justPressedKeys.has('Tab') || this.justPressedKeys.has('KeyZ');
     const selectWeaponId: WeaponId | null =

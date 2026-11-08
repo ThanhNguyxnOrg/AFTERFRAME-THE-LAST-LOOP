@@ -1,0 +1,43 @@
+name: AFTERFRAME CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, Test, Build & CCGS Gate (Bun 1.4.4)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Strict TypeScript typecheck
+        run: bun run lint
+
+      - name: Deterministic simulation & lifecycle test suites
+        run: bun run test
+
+      - name: Production Vite bundle build
+        run: bun run build
+
+      - name: CCGS registry, coherence & skill lint gates
+        run: |
+          bash .claude/scripts/registry.sh validate
+          bash .claude/scripts/project-coherence.sh
+          bash .claude/scripts/skill-lint.sh code-review

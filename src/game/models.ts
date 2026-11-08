@@ -109,33 +109,34 @@ export function createStudioEnvironmentTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    // Base vertical sky-to-deck gradient
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0.0, '#1e3a5f');
+    bgGrad.addColorStop(0.28, '#2b4c73');
+    bgGrad.addColorStop(0.48, '#476b94');
+    bgGrad.addColorStop(0.52, '#1a2738');
+    bgGrad.addColorStop(0.75, '#0f1726');
+    bgGrad.addColorStop(1.0, '#070b12');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
 
-  // Base vertical sky-to-deck gradient
-  const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-  bgGrad.addColorStop(0.0, '#1e3a5f');
-  bgGrad.addColorStop(0.28, '#2b4c73');
-  bgGrad.addColorStop(0.48, '#476b94');
-  bgGrad.addColorStop(0.52, '#1a2738');
-  bgGrad.addColorStop(0.75, '#0f1726');
-  bgGrad.addColorStop(1.0, '#070b12');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, width, height);
+    // Overhead warm studio light softboxes (for crisp specular armor highlights)
+    ctx.fillStyle = 'rgba(255, 251, 235, 0.85)';
+    ctx.fillRect(32, 14, 56, 16);
+    ctx.fillRect(156, 18, 64, 14);
 
-  // Overhead warm studio light softboxes (for crisp specular armor highlights)
-  ctx.fillStyle = 'rgba(255, 251, 235, 0.85)';
-  ctx.fillRect(32, 14, 56, 16);
-  ctx.fillRect(156, 18, 64, 14);
+    // Cool cyan orbital rim light strips
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.78)';
+    ctx.fillRect(16, 42, 84, 8);
+    ctx.fillRect(140, 44, 92, 8);
 
-  // Cool cyan orbital rim light strips
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.78)';
-  ctx.fillRect(16, 42, 84, 8);
-  ctx.fillRect(140, 44, 92, 8);
-
-  // Subtle warm amber industrial horizon reflections
-  ctx.fillStyle = 'rgba(245, 158, 11, 0.52)';
-  ctx.fillRect(68, 60, 42, 6);
-  ctx.fillRect(188, 60, 38, 6);
+    // Subtle warm amber industrial horizon reflections
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.52)';
+    ctx.fillRect(68, 60, 42, 6);
+    ctx.fillRect(188, 60, 38, 6);
+  }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -147,13 +148,15 @@ export function createRadialShadowTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 128;
-  const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 60);
-  grad.addColorStop(0, 'rgba(2, 4, 8, 0.78)');
-  grad.addColorStop(0.5, 'rgba(4, 8, 16, 0.38)');
-  grad.addColorStop(1, 'rgba(4, 8, 16, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 128, 128);
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 60);
+    grad.addColorStop(0, 'rgba(2, 4, 8, 0.78)');
+    grad.addColorStop(0.5, 'rgba(4, 8, 16, 0.38)');
+    grad.addColorStop(1, 'rgba(4, 8, 16, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+  }
   return new THREE.CanvasTexture(canvas);
 }
 
@@ -161,19 +164,21 @@ export function createSlashArcTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
-  const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, 256, 256);
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, 256, 256);
 
-  // Radial energy falloff from outer cutting edge to inner trail
-  const radGrad = ctx.createRadialGradient(128, 128, 42, 128, 128, 126);
-  radGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-  radGrad.addColorStop(0.42, 'rgba(34, 211, 238, 0.16)');
-  radGrad.addColorStop(0.76, 'rgba(56, 189, 248, 0.78)');
-  radGrad.addColorStop(0.93, 'rgba(255, 255, 255, 0.98)');
-  radGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    // Radial energy falloff from outer cutting edge to inner trail
+    const radGrad = ctx.createRadialGradient(128, 128, 42, 128, 128, 126);
+    radGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    radGrad.addColorStop(0.42, 'rgba(34, 211, 238, 0.16)');
+    radGrad.addColorStop(0.76, 'rgba(56, 189, 248, 0.78)');
+    radGrad.addColorStop(0.93, 'rgba(255, 255, 255, 0.98)');
+    radGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
-  ctx.fillStyle = radGrad;
-  ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = radGrad;
+    ctx.fillRect(0, 0, 256, 256);
+  }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -185,23 +190,24 @@ export function createTemporalScanlineTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#164e63';
+    ctx.fillRect(0, 0, size, size);
 
-  ctx.fillStyle = '#164e63';
-  ctx.fillRect(0, 0, size, size);
+    for (let y = 0; y < size; y += 4) {
+      ctx.fillStyle = y % 8 === 0 ? '#67e8f9' : '#0891b2';
+      ctx.fillRect(0, y, size, 2);
+    }
 
-  for (let y = 0; y < size; y += 4) {
-    ctx.fillStyle = y % 8 === 0 ? '#67e8f9' : '#0891b2';
-    ctx.fillRect(0, y, size, 2);
+    // Bright phase band
+    const bandGrad = ctx.createLinearGradient(0, 24, 0, 72);
+    bandGrad.addColorStop(0, 'rgba(224, 242, 254, 0)');
+    bandGrad.addColorStop(0.5, 'rgba(224, 242, 254, 0.92)');
+    bandGrad.addColorStop(1, 'rgba(224, 242, 254, 0)');
+    ctx.fillStyle = bandGrad;
+    ctx.fillRect(0, 24, size, 48);
   }
-
-  // Bright phase band
-  const bandGrad = ctx.createLinearGradient(0, 24, 0, 72);
-  bandGrad.addColorStop(0, 'rgba(224, 242, 254, 0)');
-  bandGrad.addColorStop(0.5, 'rgba(224, 242, 254, 0.92)');
-  bandGrad.addColorStop(1, 'rgba(224, 242, 254, 0)');
-  ctx.fillStyle = bandGrad;
-  ctx.fillRect(0, 24, size, 48);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
@@ -219,25 +225,26 @@ function createFacilitySignTexture(
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 96;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#07111e';
+    ctx.fillRect(0, 0, 256, 96);
 
-  ctx.fillStyle = '#07111e';
-  ctx.fillRect(0, 0, 256, 96);
+    ctx.strokeStyle = accentHex;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(4, 4, 248, 88);
 
-  ctx.strokeStyle = accentHex;
-  ctx.lineWidth = 3;
-  ctx.strokeRect(4, 4, 248, 88);
+    ctx.fillStyle = accentHex;
+    ctx.fillRect(12, 14, 8, 68);
 
-  ctx.fillStyle = accentHex;
-  ctx.fillRect(12, 14, 8, 68);
+    ctx.font = 'bold 24px monospace';
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillText(code, 30, 44);
 
-  ctx.font = 'bold 24px monospace';
-  ctx.fillStyle = '#f1f5f9';
-  ctx.fillText(code, 30, 44);
-
-  ctx.font = 'bold 14px monospace';
-  ctx.fillStyle = accentHex;
-  ctx.fillText(subtitle, 30, 70);
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = accentHex;
+    ctx.fillText(subtitle, 30, 70);
+  }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -249,42 +256,43 @@ export function createArmorDetailBumpTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, size, size);
 
-  ctx.fillStyle = '#808080';
-  ctx.fillRect(0, 0, size, size);
+    // Subtle brushed micro-grain and panel seam lines
+    ctx.strokeStyle = '#686868';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < size; y += 4) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(size, y);
+      ctx.stroke();
+    }
 
-  // Subtle brushed micro-grain and panel seam lines
-  ctx.strokeStyle = '#686868';
-  ctx.lineWidth = 1;
-  for (let y = 0; y < size; y += 4) {
+    ctx.strokeStyle = '#383838';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, size - 20, size - 20);
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(size, y);
+    ctx.moveTo(10, size * 0.5);
+    ctx.lineTo(size - 10, size * 0.5);
+    ctx.moveTo(size * 0.5, 10);
+    ctx.lineTo(size * 0.5, size - 10);
     ctx.stroke();
-  }
 
-  ctx.strokeStyle = '#383838';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(10, 10, size - 20, size - 20);
-  ctx.beginPath();
-  ctx.moveTo(10, size * 0.5);
-  ctx.lineTo(size - 10, size * 0.5);
-  ctx.moveTo(size * 0.5, 10);
-  ctx.lineTo(size * 0.5, size - 10);
-  ctx.stroke();
-
-  // Corner rivet indentations
-  ctx.fillStyle = '#484848';
-  for (const [rx, ry] of [
-    [20, 20],
-    [size - 20, 20],
-    [20, size - 20],
-    [size - 20, size - 20],
-  ]) {
-    ctx.beginPath();
-    ctx.arc(rx, ry, 4, 0, Math.PI * 2);
-    ctx.fill();
+    // Corner rivet indentations
+    ctx.fillStyle = '#484848';
+    for (const [rx, ry] of [
+      [20, 20],
+      [size - 20, 20],
+      [20, size - 20],
+      [size - 20, size - 20],
+    ]) {
+      ctx.beginPath();
+      ctx.arc(rx, ry, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   const tex = new THREE.CanvasTexture(canvas);
@@ -299,99 +307,101 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
   roughnessMap: THREE.CanvasTexture;
 } {
   const size = 512;
+  const tile = 128;
   const colorCanvas = document.createElement('canvas');
   colorCanvas.width = size;
   colorCanvas.height = size;
-  const cCtx = colorCanvas.getContext('2d')!;
+  const cCtx = colorCanvas.getContext('2d');
 
-  // Deep blue-black base seam background
-  cCtx.fillStyle = '#070b12';
-  cCtx.fillRect(0, 0, size, size);
+  if (cCtx) {
+    // Deep blue-black base seam background
+    cCtx.fillStyle = '#070b12';
+    cCtx.fillRect(0, 0, size, size);
 
-  const tile = 128;
-  const palette = ['#141f2e', '#182538', '#111a28', '#1b293d'];
+    const palette = ['#141f2e', '#182538', '#111a28', '#1b293d'];
 
-  for (let y = 0; y < size; y += tile) {
-    for (let x = 0; x < size; x += tile) {
-      const tx = x / tile;
-      const ty = y / tile;
-      const idx = (tx + ty * 2) % palette.length;
-      cCtx.fillStyle = palette[idx];
-      cCtx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
+    for (let y = 0; y < size; y += tile) {
+      for (let x = 0; x < size; x += tile) {
+        const tx = x / tile;
+        const ty = y / tile;
+        const idx = (tx + ty * 2) % palette.length;
+        cCtx.fillStyle = palette[idx];
+        cCtx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
 
-      // Outer beveled steel-blue frame
-      cCtx.strokeStyle = '#2c405c';
-      cCtx.lineWidth = 2;
-      cCtx.strokeRect(x + 7, y + 7, tile - 14, tile - 14);
-
-      // Inner structural seam line
-      cCtx.strokeStyle = '#1e2c40';
-      cCtx.lineWidth = 1;
-      cCtx.strokeRect(x + 15, y + 15, tile - 30, tile - 30);
-
-      // Recessed sub-panel or ventilation grating on alternating tiles
-      if ((tx + ty) % 4 === 2) {
-        cCtx.fillStyle = '#090e17';
-        cCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
-        cCtx.strokeStyle = '#24354d';
+        // Outer beveled steel-blue frame
+        cCtx.strokeStyle = '#2c405c';
         cCtx.lineWidth = 2;
-        for (let gy = y + 28; gy < y + tile - 24; gy += 7) {
+        cCtx.strokeRect(x + 7, y + 7, tile - 14, tile - 14);
+
+        // Inner structural seam line
+        cCtx.strokeStyle = '#1e2c40';
+        cCtx.lineWidth = 1;
+        cCtx.strokeRect(x + 15, y + 15, tile - 30, tile - 30);
+
+        // Recessed sub-panel or ventilation grating on alternating tiles
+        if ((tx + ty) % 4 === 2) {
+          cCtx.fillStyle = '#090e17';
+          cCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
+          cCtx.strokeStyle = '#24354d';
+          cCtx.lineWidth = 2;
+          for (let gy = y + 28; gy < y + tile - 24; gy += 7) {
+            cCtx.beginPath();
+            cCtx.moveTo(x + 26, gy);
+            cCtx.lineTo(x + tile - 26, gy);
+            cCtx.stroke();
+          }
+        } else if ((tx + ty) % 3 === 1) {
+          // Subtle hazard striping strip along the top edge of select deck plates
+          cCtx.save();
           cCtx.beginPath();
-          cCtx.moveTo(x + 26, gy);
-          cCtx.lineTo(x + tile - 26, gy);
-          cCtx.stroke();
+          cCtx.rect(x + 16, y + 12, tile - 32, 7);
+          cCtx.clip();
+          cCtx.fillStyle = 'rgba(245, 158, 11, 0.34)';
+          for (let hx = x - 16; hx < x + tile + 16; hx += 12) {
+            cCtx.beginPath();
+            cCtx.moveTo(hx, y + 19);
+            cCtx.lineTo(hx + 6, y + 12);
+            cCtx.lineTo(hx + 11, y + 12);
+            cCtx.lineTo(hx + 5, y + 19);
+            cCtx.closePath();
+            cCtx.fill();
+          }
+          cCtx.restore();
         }
-      } else if ((tx + ty) % 3 === 1) {
-        // Subtle hazard striping strip along the top edge of select deck plates
-        cCtx.save();
+
+        // Subtle Diagonal Wear, Boot Scuffs & Machined Cross-ribs
+        cCtx.strokeStyle = 'rgba(148, 163, 184, 0.11)';
+        cCtx.lineWidth = 1.2;
         cCtx.beginPath();
-        cCtx.rect(x + 16, y + 12, tile - 32, 7);
-        cCtx.clip();
-        cCtx.fillStyle = 'rgba(245, 158, 11, 0.34)';
-        for (let hx = x - 16; hx < x + tile + 16; hx += 12) {
+        cCtx.moveTo(x + 18, y + 26);
+        cCtx.lineTo(x + 54, y + 18);
+        cCtx.moveTo(x + tile - 44, y + tile - 22);
+        cCtx.lineTo(x + tile - 16, y + tile - 34);
+        cCtx.stroke();
+
+        // Recessed corner fastener sockets
+        cCtx.fillStyle = '#080c14';
+        const sockets = [
+          [x + 13, y + 13],
+          [x + tile - 13, y + 13],
+          [x + 13, y + tile - 13],
+          [x + tile - 13, y + tile - 13],
+        ];
+        for (const [sx, sy] of sockets) {
           cCtx.beginPath();
-          cCtx.moveTo(hx, y + 19);
-          cCtx.lineTo(hx + 6, y + 12);
-          cCtx.lineTo(hx + 11, y + 12);
-          cCtx.lineTo(hx + 5, y + 19);
-          cCtx.closePath();
+          cCtx.arc(sx, sy, 3, 0, Math.PI * 2);
           cCtx.fill();
         }
-        cCtx.restore();
-      }
 
-      // Subtle Diagonal Wear, Boot Scuffs & Machined Cross-ribs
-      cCtx.strokeStyle = 'rgba(148, 163, 184, 0.11)';
-      cCtx.lineWidth = 1.2;
-      cCtx.beginPath();
-      cCtx.moveTo(x + 18, y + 26);
-      cCtx.lineTo(x + 54, y + 18);
-      cCtx.moveTo(x + tile - 44, y + tile - 22);
-      cCtx.lineTo(x + tile - 16, y + tile - 34);
-      cCtx.stroke();
-
-      // Recessed corner fastener sockets
-      cCtx.fillStyle = '#080c14';
-      const sockets = [
-        [x + 13, y + 13],
-        [x + tile - 13, y + 13],
-        [x + 13, y + tile - 13],
-        [x + tile - 13, y + tile - 13],
-      ];
-      for (const [sx, sy] of sockets) {
-        cCtx.beginPath();
-        cCtx.arc(sx, sy, 3, 0, Math.PI * 2);
-        cCtx.fill();
-      }
-
-      // Small amber/cyan technical stencil markings on select tiles
-      if ((tx + ty) % 3 === 0) {
-        cCtx.fillStyle = 'rgba(56, 189, 248, 0.32)';
-        cCtx.fillRect(x + 22, y + tile - 18, 26, 3);
-        cCtx.fillRect(x + 52, y + tile - 18, 8, 3);
-      } else if ((tx + ty) % 4 === 1) {
-        cCtx.fillStyle = 'rgba(245, 158, 11, 0.32)';
-        cCtx.fillRect(x + tile - 46, y + tile - 18, 22, 3);
+        // Small amber/cyan technical stencil markings on select tiles
+        if ((tx + ty) % 3 === 0) {
+          cCtx.fillStyle = 'rgba(56, 189, 248, 0.32)';
+          cCtx.fillRect(x + 22, y + tile - 18, 26, 3);
+          cCtx.fillRect(x + 52, y + tile - 18, 8, 3);
+        } else if ((tx + ty) % 4 === 1) {
+          cCtx.fillStyle = 'rgba(245, 158, 11, 0.32)';
+          cCtx.fillRect(x + tile - 46, y + tile - 18, 22, 3);
+        }
       }
     }
   }
@@ -407,25 +417,27 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
   const bumpCanvas = document.createElement('canvas');
   bumpCanvas.width = size;
   bumpCanvas.height = size;
-  const bCtx = bumpCanvas.getContext('2d')!;
-  bCtx.fillStyle = '#909090';
-  bCtx.fillRect(0, 0, size, size);
+  const bCtx = bumpCanvas.getContext('2d');
+  if (bCtx) {
+    bCtx.fillStyle = '#909090';
+    bCtx.fillRect(0, 0, size, size);
 
-  for (let y = 0; y < size; y += tile) {
-    for (let x = 0; x < size; x += tile) {
-      const tx = x / tile;
-      const ty = y / tile;
-      bCtx.strokeStyle = '#1e1e1e';
-      bCtx.lineWidth = 6;
-      bCtx.strokeRect(x + 2, y + 2, tile - 4, tile - 4);
+    for (let y = 0; y < size; y += tile) {
+      for (let x = 0; x < size; x += tile) {
+        const tx = x / tile;
+        const ty = y / tile;
+        bCtx.strokeStyle = '#1e1e1e';
+        bCtx.lineWidth = 6;
+        bCtx.strokeRect(x + 2, y + 2, tile - 4, tile - 4);
 
-      bCtx.strokeStyle = '#c8c8c8';
-      bCtx.lineWidth = 2;
-      bCtx.strokeRect(x + 8, y + 8, tile - 16, tile - 16);
+        bCtx.strokeStyle = '#c8c8c8';
+        bCtx.lineWidth = 2;
+        bCtx.strokeRect(x + 8, y + 8, tile - 16, tile - 16);
 
-      if ((tx + ty) % 4 === 2) {
-        bCtx.fillStyle = '#424242';
-        bCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
+        if ((tx + ty) % 4 === 2) {
+          bCtx.fillStyle = '#424242';
+          bCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
+        }
       }
     }
   }
@@ -440,18 +452,20 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
   const roughCanvas = document.createElement('canvas');
   roughCanvas.width = size;
   roughCanvas.height = size;
-  const rCtx = roughCanvas.getContext('2d')!;
-  rCtx.fillStyle = '#b4b4b4';
-  rCtx.fillRect(0, 0, size, size);
-  for (let y = 0; y < size; y += tile) {
-    for (let x = 0; x < size; x += tile) {
-      const tx = x / tile;
-      const ty = y / tile;
-      rCtx.fillStyle = (tx + ty) % 2 === 0 ? '#6e6e6e' : '#868686';
-      rCtx.fillRect(x + 8, y + 8, tile - 16, tile - 16);
-      if ((tx + ty) % 4 === 2) {
-        rCtx.fillStyle = '#9e9e9e';
-        rCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
+  const rCtx = roughCanvas.getContext('2d');
+  if (rCtx) {
+    rCtx.fillStyle = '#b4b4b4';
+    rCtx.fillRect(0, 0, size, size);
+    for (let y = 0; y < size; y += tile) {
+      for (let x = 0; x < size; x += tile) {
+        const tx = x / tile;
+        const ty = y / tile;
+        rCtx.fillStyle = (tx + ty) % 2 === 0 ? '#6e6e6e' : '#868686';
+        rCtx.fillRect(x + 8, y + 8, tile - 16, tile - 16);
+        if ((tx + ty) % 4 === 2) {
+          rCtx.fillStyle = '#9e9e9e';
+          rCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
+        }
       }
     }
   }

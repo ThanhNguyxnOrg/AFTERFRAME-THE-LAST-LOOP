@@ -155,7 +155,7 @@ const PRACTICE_ENCOUNTERS: Array<{
     encounterId: 'tactical_temporal_disruption',
     code: 'COMBINE · 1 WAVE',
     title: 'Practice · Temporal Disruption',
-    focus: 'Siphon + Eraser + Bastion with Gravity Pin [G] and Echo Collapse [X] unlocked.',
+    focus: 'Siphon, Null Weaver, Eraser, Aegis Sentinel & Bastion with Gravity Pin [G] and Echo Collapse [X].',
     accentClass: 'border-purple-500/50 hover:border-purple-400 text-purple-200',
   },
   {
@@ -963,7 +963,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     </div>
                     <div>
                       <span className="text-cyan-300">[Space / Shift]</span> Dodge ·{' '}
-                      <span className="text-amber-300">[Q]</span> Parry (+35 Flux)
+                      <span className="text-amber-300">[Q / L]</span> Parry (+35 Flux)
                     </div>
                   </div>
                 </div>
@@ -987,7 +987,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     </div>
                     <div>
                       <span className="text-slate-200">[P / Esc]</span> Pause ·{' '}
-                      <span className="text-slate-200">[M]</span> Map ·{' '}
+                      <span className="text-slate-200">[N]</span> Map ·{' '}
+                      <span className="text-slate-200">[U]</span> Bench ·{' '}
+                      <span className="text-slate-200">[M]</span> Audio ·{' '}
                       <span className="text-slate-200">[H]</span> Hints
                     </div>
                   </div>
@@ -1004,6 +1006,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   <button
                     type="button"
                     data-testid="title-setting-mute"
+                    aria-pressed={isMuted}
                     onClick={onToggleMute}
                     className="flex items-center justify-between px-3 py-2 bg-[#0d1522] hover:bg-[#162236] border border-slate-700 text-[11px] cursor-pointer"
                   >
@@ -1017,6 +1020,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     <button
                       type="button"
                       data-testid="title-setting-hints"
+                      aria-pressed={tutorialEnabled}
                       onClick={onToggleTutorial}
                       className="flex items-center justify-between px-3 py-2 bg-[#0d1522] hover:bg-[#162236] border border-slate-700 text-[11px] cursor-pointer"
                     >
@@ -1082,6 +1086,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                     <label className="flex flex-col gap-1 bg-[#0d1522] border border-slate-800 px-3 py-1.5">
                       <div className="flex justify-between text-[11px]">
+                        <span>Music / Stinger Bus</span>
+                        <span className="text-cyan-300">
+                          {Math.round((cameraSettings.musicVolume ?? 0.7) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        data-testid="title-setting-music-volume"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={cameraSettings.musicVolume ?? 0.7}
+                        onChange={(e) =>
+                          onUpdateCameraSettings({
+                            musicVolume: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full accent-cyan-400 cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1 bg-[#0d1522] border border-slate-800 px-3 py-1.5">
+                      <div className="flex justify-between text-[11px]">
                         <span>Camera Sensitivity</span>
                         <span className="text-cyan-300">
                           {cameraSettings.sensitivity.toFixed(1)}x
@@ -1089,6 +1116,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </div>
                       <input
                         type="range"
+                        data-testid="title-setting-sensitivity"
                         min="0.3"
                         max="2.5"
                         step="0.1"
@@ -1104,6 +1132,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                     <button
                       type="button"
+                      data-testid="title-setting-invert-y"
+                      aria-pressed={cameraSettings.invertY}
                       onClick={() =>
                         onUpdateCameraSettings({ invertY: !cameraSettings.invertY })
                       }
@@ -1122,6 +1152,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     <button
                       type="button"
                       data-testid="title-setting-camera-shake"
+                      aria-pressed={cameraSettings.cameraShake ?? true}
                       onClick={() =>
                         onUpdateCameraSettings({
                           cameraShake: !(cameraSettings.cameraShake ?? true),
@@ -1143,7 +1174,31 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
                     <button
                       type="button"
+                      data-testid="title-setting-screen-effects"
+                      aria-pressed={cameraSettings.screenEffects ?? true}
+                      onClick={() =>
+                        onUpdateCameraSettings({
+                          screenEffects: !(cameraSettings.screenEffects ?? true),
+                        })
+                      }
+                      className="flex items-center justify-between px-3 py-2 bg-[#0d1522] hover:bg-[#162236] border border-slate-800 text-[11px] cursor-pointer"
+                    >
+                      <span>Screen Effects</span>
+                      <span
+                        className={
+                          (cameraSettings.screenEffects ?? true)
+                            ? 'text-cyan-300 font-bold'
+                            : 'text-slate-500'
+                        }
+                      >
+                        {(cameraSettings.screenEffects ?? true) ? 'ON' : 'OFF'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
                       data-testid="title-setting-subtitles"
+                      aria-pressed={cameraSettings.subtitlesEnabled ?? true}
                       onClick={() =>
                         onUpdateCameraSettings({
                           subtitlesEnabled: !(cameraSettings.subtitlesEnabled ?? true),
