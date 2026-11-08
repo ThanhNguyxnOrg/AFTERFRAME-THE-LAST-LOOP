@@ -2,233 +2,350 @@
 
 <img src="assets/branding/afterframe-mark.svg" alt="AFTERFRAME: THE LAST LOOP emblem" width="132" />
 
-# AFTERFRAME: THE LAST LOOP
+# 🎮 AFTERFRAME: THE LAST LOOP
 
-### The future is broken. The loop remembers.
+### *Your past is your greatest weapon. Your future is the one thing WARDEN cannot predict.*
 
-**A third-person, sci-fi action RPG set inside the fractured research station Nadir-9.**
+**A single-player, third-person 3D sci-fi action-puzzle RPG set inside the fractured orbital research station Nadir-9.**
 
-[![Status: In Development](https://img.shields.io/badge/status-in%20development-56cfe1?style=for-the-badge)](#project-status)
-[![Genre: Sci-Fi Action RPG](https://img.shields.io/badge/genre-sci--fi%20action%20RPG-8b9dff?style=for-the-badge)](#the-game)
-[![Engine: Three.js](https://img.shields.io/badge/3D-Three.js-black?style=for-the-badge&logo=threedotjs)](#technology)
-[![Platform: Web](https://img.shields.io/badge/platform-web-4c9aff?style=for-the-badge&logo=googlechrome)](#getting-started)
+[![Status: Release Candidate 0.23.4](https://img.shields.io/badge/status-RC%200.23.4%20(Conditionally%20Ready)-f59e0b?style=for-the-badge)](#release-status-and-verification-matrix)
+[![Genre: 3D Sci-Fi Action-Puzzle RPG](https://img.shields.io/badge/genre-sci--fi%20action--puzzle%20RPG-56cfe1?style=for-the-badge)](#game-overview-and-narrative-premise)
+[![Engine: Three.js 0.186.1](https://img.shields.io/badge/3D-Three.js%200.186.1-000000?style=for-the-badge&logo=threedotjs)](#technology-stack-and-runtime-architecture)
+[![TypeScript: Strict](https://img.shields.io/badge/TypeScript-7.0%20Strict-3178c6?style=for-the-badge&logo=typescript)](#technology-stack-and-runtime-architecture)
+[![Tests: 234 Passing](https://img.shields.io/badge/tests-234%20%2F%20234%20passing-10b981?style=for-the-badge)](#quality-gates-and-test-suites)
 
-[Gameplay](#gameplay-systems) · [Campaign](#campaign) · [Technology](#technology) · [Getting Started](#getting-started) · [Documentation](#project-documentation)
+[⚔️ Gameplay](#core-gameplay-pillars) · [🔫 Arsenal](#weapons-and-upgrade-matrix) · [👑 Bosses](#enemy-and-boss-roster) · [📖 Campaign](#campaign-chapters-and-ending-paths) · [🏗️ Architecture](#technology-stack-and-runtime-architecture) · [🚀 Quick Start](#quick-start-and-local-development) · [📚 Docs Hub](docs/README.md)
 
 </div>
 
 ---
 
 > [!IMPORTANT]
-> **AFTERFRAME is an active work in progress.** The public repository is the source of truth for what is currently published. Features under development or present only in unreleased local work are not described as shipped functionality here.
+> **🧾 Source-of-Truth & Release Posture (`0.23.4` / Phase 23.4.1):** Every system, formula, test count, and benchmark documented in this README reflects verified code in the repository (`234 / 234` unit/integration tests passing, `0` strict TypeScript errors, `10`-cycle browser soak verified). External gates requiring physical GPU hardware (`⚪ NOT TESTED`), non-Chromium browsers/physical mobile devices (`⚪ NOT TESTED`), and repository-owner `LICENSE` selection (`🚧 OWNER ACTION REQUIRED`) are explicitly separated in [Section 11](#release-status-and-verification-matrix).
 
-## The game
+## 🧭 Table of Contents
 
-Reality is breaking into repeating fragments around **Nadir-9**, an orbital research facility built to study and manipulate temporal phenomena. Every failed experiment leaves an afterimage. Every loop preserves a different piece of the truth.
+1. [🎮 Game Overview and Narrative Premise](#game-overview-and-narrative-premise)
+2. [🖼️ Visual Gallery (Nadir-9 Sector Captures)](#visual-gallery-nadir-9-sector-captures)
+3. [⚔️ Core Gameplay Pillars](#core-gameplay-pillars)
+4. [🕹️ Controls and Accessibility](#controls-and-accessibility)
+5. [🔫 Weapons and Upgrade Matrix](#weapons-and-upgrade-matrix)
+6. [👑 Enemy and Boss Roster](#enemy-and-boss-roster)
+7. [📖 Campaign Chapters and Ending Paths](#campaign-chapters-and-ending-paths)
+8. [🎧 Audio Architecture](#audio-architecture)
+9. [🏗️ Technology Stack and Runtime Architecture](#technology-stack-and-runtime-architecture)
+10. [🚀 Quick Start and Local Development](#quick-start-and-local-development)
+11. [🧪 Quality Gates and Test Suites](#quality-gates-and-test-suites)
+12. [✅ Release Status and Verification Matrix](#release-status-and-verification-matrix)
+13. [📚 Documentation Hub](#documentation-hub)
+14. [🛠️ Contributing, Security, and License](#contributing-security-and-license)
 
-You are **Sera Venn**. With the Chrono Rig and the traces left by previous iterations, fight through hostile facilities, solve temporal mechanisms, recover lost records, and uncover what the system is trying to preserve.
+---
+
+## 🎮 Game Overview and Narrative Premise
+
+Reality is fracturing aboard **Nadir-9**, a deep-space orbital research station built around the **Chronicle Loom**—an experimental temporal archive designed to record and reconstruct human behavior. When the Loom destabilizes, the station's governing AI, **WARDEN**, locks every sector into a self-correcting temporal containment loop.
+
+You play as **Sera Venn**, an orbital systems engineer searching for her missing sister **Lysa**. Armed with a modified **Chrono Rig**, Sera can record short sequences of her own movement and combat actions, manifest independent **Echoes** that replay those recordings in real time, teleport across the arena via **Relay**, and synchronize strikes with her past self to shatter WARDEN's predictive defenses.
 
 *The past is not gone. It is still running.*
 
-## Gameplay systems
+---
 
-### Real-time combat and four-weapon arsenal
+## 🖼️ Visual Gallery (Nadir-9 Sector Captures)
 
-Combat is built around deliberate melee and ranged engagements, readable enemy telegraphs, defensive parry/dodge timing, stagger windows, and weapon feedback.
+Real in-engine captures from the Three.js `ArenaSceneRenderer` and Phase 12 Blender GLB environment landmarks across all six campaign chapters:
 
-| Weapon | ID | Availability | Combat role |
-|---|---|---|---|
-| **Chrono Edge** | `chrono_edge` | Initial campaign loadout & Practice mode | Close-quarters melee blade with 3-hit cleave combos, charged heavy attacks, and Flux generation on contact |
-| **Pulsecaster** | `pulsecaster` | Initial campaign loadout & Practice mode | Gauntlet-mounted ranged energy sidearm with rapid pulse bolts, charged lances, and thermal heat management |
-| **Null-Point Rail Lance** | `phase_rail` | Unlocked via secret-vault progression in Campaign (available in Practice mode) | Long-range precision rail weapon with piercing charged lances and a `1.75x` weakpoint multiplier against exposed boss cores |
-| **Grav-Breaker Maul** | `grav_breaker` | Unlocked via secret-vault progression in Campaign (available in Practice mode) | Heavy seismic melee maul that penetrates `85%` of frontal directional shields on guarded enemies |
+| **Prologue — Wake (Calibration Bay 04)** | **Chapter I — A Place That Remembers (`HELIX-04`)** |
+| :---: | :---: |
+| <img src="screenshots/phase12/after/00-prologue-desktop.png" alt="Prologue — Calibration Bay 04" width="440" /> | <img src="screenshots/phase12-blender/after/ch1-helix-gate-desktop.png" alt="Chapter I — Containment Ring Alpha and HELIX-04 Gate" width="440" /> |
+| **Chapter II — The Garden of Repeated Days (`THE CHOIR`)** | **Chapter III — The Archive That Answers (`THE CURATOR`)** |
+| <img src="screenshots/phase12-blender/after/ch2-choir-organ-desktop.png" alt="Chapter II — Hydroponic Basilica and Choir Organ" width="440" /> | <img src="screenshots/phase12-blender/after/ch3-curator-archive-desktop.png" alt="Chapter III — Memory Vaults and Curator Archive" width="440" /> |
+| **Chapter IV — A System That Wants You Dead (`MATRON-V`)** | **Chapter V — The Last Loop (`Chronicle Loom`)** |
+| <img src="screenshots/phase12-blender/after/ch4-matron-pod-desktop.png" alt="Chapter IV — Quarantine Ward and Matron Pod" width="440" /> | <img src="screenshots/phase12/after/05-loom-desktop.png" alt="Chapter V — The Chronicle Loom" width="440" /> |
 
-A fresh campaign begins with **Chrono Edge** and **Pulsecaster**, while **Null-Point Rail Lance** (`phase_rail`) and **Grav-Breaker Maul** (`grav_breaker`) are unlocked through secret-vault discovery during campaign progression (or selectable immediately in Practice mode).
+---
 
-#### Weapon upgrades (8 modular modifications)
+## ⚔️ Core Gameplay Pillars
 
-Each weapon supports two purchasable modifications at the Upgrade Bench (using recovered Memory Fragments), with one active modification equipped per weapon and persisted in Save v2:
+### 1. ⏱️ Chrono Rig Recording, Echo Replay & Temporal Relay
+- **Record (`[T]`)**: Capture a timestamped sequence (`up to 5.0s`) of Sera's movement, dodges, parries, and attacks across all four weapons (`light`, `heavy`, `pulse_shot`, `pulse_charged_shot`, `rail_shot`, `rail_charged_shot`, `breaker_slam`, `breaker_charged_slam`).
+- **Spawn Echo (`[Y]`)**: Manifest an independent cyan **Echo** (`up to 8.0s` lifetime) that replays your recorded actions while you execute a new live line of attack. Echo replay never duplicates currencies, collectibles, or recursive Echoes.
+- **Temporal Relay (`[V]`)**: Spend `25` Flux (`3.5s` cooldown) to warp instantaneously to your active Echo's position while the Echo continues its replay trajectory—enabling instant flanking behind directional shields (`bastion`, `aegis_sentinel`) or escaping boss hazard zones.
+- **Tactical Skills (`[G]` / `[X]`)**: Deploy **Gravity Pin** (`[G]`, `30` Flux) to immobilize enemies in a `3.8m` singularity well, or detonate an active Echo via **Echo Collapse** (`[X]`, `35` Flux) for `55` radial blast damage and stagger.
 
-| Weapon | Upgrade 1 | Upgrade 2 |
-|---|---|---|
-| **Chrono Edge** | `edge_breaker_cleave` (Breaker Cleave) | `edge_harmonic_conductor` (Harmonic Conductor) |
-| **Pulsecaster** | `pulse_thermal_sink` (Thermal Sink) | `pulse_overcharge_condenser` (Overcharge Condenser) |
-| **Null-Point Rail Lance** | `rail_null_aperture` (Null Aperture) | `rail_phase_capacitor` (Phase Capacitor) |
-| **Grav-Breaker Maul** | `breaker_seismic_core` (Seismic Core) | `breaker_singularity_coil` (Singularity Coil) |
+### 2. ⚡ Resonance & Convergence
+- **Resonance Priming**: When an Echo lands a Heavy attack (`heavy`, `pulse_charged_shot`, `rail_charged_shot`, or `breaker_charged_slam`), it primes a `3.0s` **Resonance Window** on the target without dealing direct HP damage.
+- **Convergence Strike**: Following up with a live Player Heavy attack within the `3.0s` window triggers **Resonance Convergence**—dealing `48` bonus damage (`68` with `edge_harmonic_conductor`), interrupting boss telegraphs, shattering armor, and exposing boss weakpoints (`1.5x` damage taken for `4.0s`, or `1.75x–2.0x` with the **Null-Point Rail Lance**).
 
-### Echo and temporal mechanics
+### 3. 🛡️ Deliberate Combat & Counterplay
+- **Parry (`[Q]` / `[L]`)**: A `0.24s` active deflection window (`0.85s` cooldown) that negates incoming melee or reconstructed trace strikes, staggers the attacker for `1.8s`, and restores `+35` Flux.
+- **Phase Dash (`[Space]` / `[Shift]`)**: A `0.28s` dodge (`0.22s` i-frames, `0.65s` cooldown) that repositions Sera and cancels recovery windows.
 
-The Chrono Rig records timestamped player movement and combat actions across all four weapons (`light`, `heavy`, `pulse_shot`, `pulse_charged_shot`, `rail_shot`, `rail_charged_shot`, `breaker_slam`, `breaker_charged_slam`) and spawns an independent Echo to replay them. Players can teleport to an active Echo via **Relay**, coordinate synchronized strikes to build **Resonance** and trigger **Convergence**, and solve multi-point temporal mechanisms.
+---
 
-### Enemies and boss encounters
+## 🕹️ Controls and Accessibility
 
-The combat roster spans **7 standard mechanical enemy archetypes** (plus **1 Archive Decoy** in Chapter III) with distinct ranges, defensive profiles, attack telegraphs, and recovery windows:
+### Desktop Keyboard & Mouse Controls
 
-- **BASTION-09 · Heavy Enforcer** (`bastion`) — Armored phalanx unit (`160` HP) with a directional frontal tower shield (`70%` frontal light mitigation) and overhead shock-maul slam.
-- **SCRAPPER-X2 · Agile Striker** (`scrapper`) — Fast digitigrade melee striker (`85` HP) with lunging twin-blade scissor slashes.
-- **SCOUT-07 · Ranged Recon Drone** (`scout`) — Hovering recon drone (`65` HP) firing telegraphed laser-sighted energy bolts.
-- **SIPHON-03 · Temporal Extractor** (`siphon`) — Suppression unit (`75` HP) whose tether strike drains `22` Flux from the Chrono Rig.
-- **ERASER-K9 · Track Purger** (`eraser`) — Anti-Echo unit (`85` HP) that emits a `5.5m` disruption field suppressing active Echo tracks for `2.2s`.
-- **AEGIS-12 · Phalanx Sentinel** (`aegis_sentinel`) — Heavy phalanx shield-bearer (`135` HP) whose directional barrier mitigates standard frontal light attacks (`82%` mitigation), rewarding rear flanking or **Grav-Breaker Maul** shield penetration (`85%` base / `100%` with `breaker_seismic_core`).
-- **WEAVER-06 · Phase Suppressor** (`null_weaver`) — Ranged phase-suppression caster (`80` HP) whose suppression bolts drain `18` Flux on hit and apply a `3.5s` Flux-regeneration dampening debuff (`0.5x` Flux gain).
-- **FALSE ECHO — ARCHIVE DECOY** (`curator_decoy`) — Reconstructed holographic decoy (`45` HP) deployed during Chapter III (`THE CURATOR`).
+| Action | Primary Key / Input | Alternate Key | Resource / Cooldown |
+| :--- | :--- | :--- | :--- |
+| **Move** | `W` `A` `S` `D` | Arrow Keys (Movement/Camera) | Continuous |
+| **Camera Aim / Orbit** | Mouse Move / Drag | `ArrowLeft` `ArrowRight` `ArrowUp` `ArrowDown` | Respects `Sensitivity` & `Invert Y` |
+| **Light Attack / Fire** | `Left Mouse Button` | `F` / `J` | Generates Flux on melee hit |
+| **Heavy / Charged Attack** | Hold `Right Mouse Button` | Hold `E` / `K` | Triggers Convergence on primed targets |
+| **Dodge / Phase Dash** | `Space` | `Left Shift` | `0.22s` i-frames · `0.65s` cooldown |
+| **Deflect Parry** | `Q` | `L` | `0.24s` window · `+35` Flux on deflect |
+| **Switch Weapon (Direct)** | `1` · `2` · `3` · `4` | — | Unlocked weapons in Campaign; all 4 in Practice |
+| **Cycle Weapon** | `Tab` | `Z` | Toggles starter pair or cycles 4-weapon arsenal |
+| **Record Echo Track** | `T` | — | Up to `5.0s` recording window |
+| **Spawn Echo** | `Y` | — | Replays recorded track (`8.0s` lifetime) |
+| **Temporal Relay** | `V` | — | `25` Flux · `3.5s` cooldown |
+| **Clear Echo / Track** | `C` | — | Immediate cleanup |
+| **Gravity Pin** | `G` | — | `30` Flux · `8.0s` cooldown |
+| **Echo Collapse** | `X` | — | `35` Flux · `10.0s` cooldown (`55` AoE damage) |
+| **Interact / Terminal / Vault** | `I` | — | Context-sensitive interactables & Chronicle Loom |
+| **Upgrade Bench (Armory)** | `U` | — | Spend Memory Fragments on 8 weapon upgrades |
+| **Sector Map & Codex** | `M` | — | View objectives, secrets, and lore logs |
+| **Pause / Settings Modal** | `Escape` | `P` | Audio buses, camera, and accessibility settings |
 
-Major boss encounters include five multi-phase bosses (`50%` HP Phase II transition threshold across the roster):
+### ♿ Accessibility & Comfort Features
+- **OS & Manual Reduced Motion (`prefers-reduced-motion: reduce`)**: Automatically inherits OS preference when no manual override is saved; suppresses camera trauma shake (`world.cameraTrauma = 0`), freezes title camera orbit, and dampens ambient rotor/pulse oscillation to `15%` while keeping deterministic simulation `100%` identical (`40` dedicated tests in `src/game/reduced-motion.test.ts`).
+- **Decoupled Visual Comfort Toggles**: Independently toggle **Camera Shake**, **Screen Flash & Vignette** (`screenEffects`, governing both hit flashes and `[data-testid="low-integrity-vignette"]`), **Subtitles**, and **Tutorial Hints**, with full `aria-pressed` semantics.
+- **Responsive Mobile Touch Deck (`390x844` / `430x932`)**: Dedicated virtual joystick and touch action clusters rendered automatically on coarse-pointer viewports.
 
-- **HELIX-04** (`helix-04`) — containment-focused heavy marshal encounter (Chapter I).
-- **THE CHOIR** (`the-choir`) — harmonic / multi-node synchronization encounter (Chapter II).
-- **THE CURATOR** (`the-curator`) — archive reconstructor and false-Echo decoy guardian (Chapter III).
-- **MATRON-V** (`matron-v`) — clinical quarantine surgeon that threatens active Echo tracks (Chapter IV).
-- **WARDEN PRIME** (`warden-prime`) — Sovereign Loom Architect featuring three telegraphed directives (`directive_lance`, `temporal_convergence_grid`, `sovereign_purge_wave`) and a Phase II overdrive transition at `50%` HP (`220 / 440` HP). Available as an optional confrontation in Chapter V and in Practice Boss mode.
+---
 
-Bosses use telegraphed attacks, phase progression, checkpoints, and dedicated encounter presentation.
+## 🔫 Weapons and Upgrade Matrix
 
-### Exploration and discovery
+A fresh campaign begins with **Chrono Edge** (`chrono_edge`) and **Pulsecaster** (`pulsecaster`). **Null-Point Rail Lance** (`phase_rail`) and **Grav-Breaker Maul** (`grav_breaker`) are unlocked by discovering secret vaults in **Chapter II** (`ch2_choir_secret_vault`) and **Chapter IV** (`ch4_matron_secret_vault`), or are immediately available in **Practice Mode**.
 
-The campaign combines environmental interactions, mission objectives, recoverable logs, Codex entries, secret areas, traversal routes, and chapter-specific landmarks. Exploration contributes to the player's understanding of Nadir-9 and the history of the loop.
+### Four-Weapon Arsenal (`src/game/config.ts`)
 
-## Campaign
+| Weapon | ID | Unlock Source | Light Attack Damage | Heavy / Charged Damage | Signature Tactical Property |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Chrono Edge** | `chrono_edge` | Starter Loadout | `16 -> 20 -> 28` (3-hit combo) | `42` (`3.8m` cleave) | Balanced melee blade; generates `12 / 15 / 20` Flux on combo hits (`25` on Heavy) |
+| **Pulsecaster** | `pulsecaster` | Starter Loadout | `14` (`18m` range, `22` heat) | `36` (`22m` piercing lance, `55` heat) | Rapid energy sidearm with thermal venting (`32/s` cool rate, `1.6s` overheat lockout) |
+| **Null-Point Rail Lance** | `phase_rail` | Chapter II Secret Vault (`ch2_choir_secret_vault`) | `22` (`26m` range, `34` heat) | `54` (`30m` piercing aperture lance, `72` heat) | **`1.75x` weakpoint multiplier** against exposed boss cores (`2.0x` with `rail_null_aperture`) |
+| **Grav-Breaker Maul** | `grav_breaker` | Chapter IV Secret Vault (`ch4_matron_secret_vault`) | `24 -> 30 -> 40` (3-step slam) | `62` (`4.2m` seismic slam) | **`85%` light / `95%` heavy frontal shield penetration** against `bastion` and `aegis_sentinel` |
 
-The campaign is structured as a prologue followed by five chapters:
+### Eight Modular Weapon Upgrades (18-Fragment Campaign Economy)
 
-| Segment | Chapter identity | Focus |
-|---|---|---|
-| Prologue | **Wake** | Calibration, awakening, and the first signs of temporal instability |
-| Chapter I | **A Place That Remembers** | Industrial containment and HELIX-04 |
-| Chapter II | **The Garden of Repeated Days** | Harmonic systems and THE CHOIR |
-| Chapter III | **The Archive That Answers** | Memory records and THE CURATOR |
-| Chapter IV | **A System That Wants You Dead** | Clinical extraction and MATRON-V |
-| Chapter V | **The Last Loop** | The Chronicle Loom, optional WARDEN PRIME confrontation, and final resolution |
+Upgrades cost `2` Memory Fragments each (`16` Fragments total across all `8` upgrades; `18` deterministic Memory Fragments are recoverable across the 6-chapter campaign: `6` chapter completions + `6` secret areas + `6` environmental caches):
 
-In Chapter V (**The Last Loop**), reaching the Chronicle Loom supports two distinct paths:
-- **Direct Resolution (Mandatory Path)**: Proceed directly to the Chronicle Loom terminal and select one of the three recorded ending directives without fighting an additional boss.
-- **Optional Boss Confrontation**: Challenge **WARDEN PRIME** (`warden-prime`) inside the Loom chamber (with full boss checkpoint retry support on defeat), then return to the Chronicle Loom terminal upon victory to choose the final ending.
+| Upgrade ID | Weapon | Cost | Mechanical Effect (`GAME_CONFIG.weapons.upgrades`) |
+| :--- | :--- | :---: | :--- |
+| `edge_breaker_cleave` | Chrono Edge | `2` | `+20%` melee damage (`1.20x`) and `+0.45m` heavy cleave radius |
+| `edge_harmonic_conductor` | Chrono Edge | `2` | `+35%` melee Flux gain (`1.35x`) and `+20` bonus Resonance Convergence damage (`48 -> 68`) |
+| `pulse_thermal_sink` | Pulsecaster | `2` | `-28%` heat per shot (`0.72x`) and `+35%` passive cooling speed (`1.35x`) |
+| `pulse_overcharge_condenser` | Pulsecaster | `2` | `+25%` ranged damage (`1.25x`) and `+1` additional enemy pierce on charged lances |
+| `rail_null_aperture` | Null-Point Rail Lance | `2` | Increases exposed-core weakpoint multiplier from `1.75x` to **`2.00x`**, `+1` heavy pierce, `0.42s` heavy recovery |
+| `rail_phase_capacitor` | Null-Point Rail Lance | `2` | `-25%` heat generation (`0.75x`) and `+35%` thermal cooling rate (`1.35x`) |
+| `breaker_seismic_core` | Grav-Breaker Maul | `2` | **`100%` frontal shield penetration** (`1.00x`), `+15%` damage (`1.15x`), and `+25%` stagger buildup |
+| `breaker_singularity_coil` | Grav-Breaker Maul | `2` | Expands heavy slam to a **`360°` radial shockwave**, `+0.6m` heavy range (`4.8m`), and `1.1s` micro-pin |
 
-The Chronicle Loom supports three recorded ending choices:
+---
 
-- **Silence**
-- **Witness**
-- **Continuity**
+## 👑 Enemy and Boss Roster
 
-Campaign progress, chapter unlocks, recovered records, weapon unlocks and upgrades, exploration discoveries, and ending state are persisted in the Save v2 storage schema.
+### 7 Standard Enemy Archetypes + 1 Archive Decoy (`31` Validated Entities in `design/registry/entities.yaml`)
 
-## Project status
+| Archetype ID | Designation | HP | Attack Damage | Windup / Recovery | Tactical Behavior & Counterplay |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| `bastion` | **BASTION-09 · Heavy Enforcer** | `160` | `25` | `0.95s` / `1.10s` | Directional frontal shield mitigates `70%` of standard frontal light attacks; flank with **Relay** (`[V]`) or shatter with **Grav-Breaker Maul** |
+| `scrapper` | **SCRAPPER-X2 · Agile Striker** | `85` | `14` | `0.45s` / `0.65s` | High-speed digitigrade melee rusher; vulnerable to timed **Parry** (`[Q]`/`[L]`) and cleave combos |
+| `scout` | **SCOUT-07 · Ranged Recon Drone** | `65` | `12` | `0.75s` / `0.80s` | Hovering perimeter drone firing laser-telegraphed energy bolts; eliminate with **Pulsecaster** or **Rail Lance** |
+| `siphon` | **SIPHON-03 · Temporal Extractor** | `75` | `15` | `0.65s` / `0.90s` | Drains `22` Flux on hit; prioritize with ranged bursts or **Gravity Pin** (`[G]`) |
+| `eraser` | **ERASER-K9 · Track Purger** | `85` | `16` | `0.85s` / `1.00s` | Emits a `5.5m` anti-Echo disruption pulse that suppresses active Echo tracks for `2.2s` |
+| `aegis_sentinel` | **AEGIS-12 · Phalanx Sentinel** | `135` | `22` | `0.88s` / `1.05s` | Heavy directional barrier mitigates **`82%`** of frontal light attacks (`0.18x` damage); countered by **Grav-Breaker Maul** (`85%–100%` penetration) or Echo Relay pincers |
+| `null_weaver` | **WEAVER-06 · Phase Suppressor** | `80` | `14` | `0.82s` / `0.95s` | Fires phase-suppression bolts that drain `18` Flux and inflict a `3.5s` **DAMPENED** debuff (`0.50x` Flux gain) |
+| `curator_decoy` | **FALSE ECHO — ARCHIVE DECOY** | `45` | `10` | `0.50s` / `0.70s` | Holographic projection spawned during **THE CURATOR** (Chapter III) to obscure the true boss core |
 
-The public codebase contains the core game loop, browser-based 3D rendering, combat simulation, campaign progression, practice modes, four-weapon arsenal and eight upgrades, Echo interactions, exploration systems, and the documented multi-chapter narrative foundation.
+### 5 Multi-Phase Sovereign Bosses (`50%` HP Phase II Threshold Across All Encounters)
 
-Development remains active. Balance, presentation, content depth, accessibility, performance, and release readiness continue to evolve.
+| Boss ID | Chapter | Designation | Max HP | Phase II Threshold (`50%`) | Signature Mechanics & Counterplay |
+| :--- | :--- | :--- | :---: | :---: | :--- |
+| `helix-04` | Chapter I | **HELIX-04, Security Marshal** | `360` | `180 HP` | Sweeping cleave, line slam, and radial shockwave (`5.6m` Phase I / `6.8m` Phase II); teaches telegraph reading and Resonance armor breaks |
+| `the-choir` | Chapter II | **THE CHOIR, Harmonic Core** | `380` | `190 HP` | Protected by 3 harmonic perimeter nodes (`NODE-ALPHA`, `NODE-BETA`, `NODE-GAMMA`) that must be synchronized within `6.5s` (`5.0s` in Phase II) |
+| `the-curator` | Chapter III | **THE CURATOR, Archive Sovereign** | `400` | `200 HP` | Teleports between 4 archive anchors, deploys `curator_decoy` holograms, and projects parryable Reconstructed Traces |
+| `matron-v` | Chapter IV | **MATRON-V, The Surgeon** | `420` | `210 HP` | Deploys quarantine tether fields and **Sever Sweeps** that actively purge active Echo tracks inside a `6.5m` radius |
+| `warden-prime` | Chapter V | **WARDEN PRIME, Loom Architect** | `440` | `220 HP` | Optional final confrontation in Chapter V; combines `directive_lance`, `temporal_convergence_grid`, `sovereign_purge_wave` (`7.4m` Phase II), and adaptive Phase II Reconstructed Traces |
 
-> [!NOTE]
-> This README intentionally describes the functionality present in the public repository. Do not infer that a feature is released merely because it appears in a future roadmap, design document, local workspace, or unreleased development report.
+---
 
-## Technology
+## 📖 Campaign Chapters and Ending Paths
 
-| Area | Technology |
-|---|---|
-| Application | React 19 (`^19.0.1`, resolved `19.2.5`) |
-| Language | TypeScript (`^7.0.2` / `7.0.0-dev` via `@typescript/native-preview`, `"strict": true`) |
-| Build and development server | Vite (`^8.3.0`, locked `8.3.4` in `bun.lock`) + esbuild (`^0.28.2`, locked `0.28.2` in `bun.lock`) |
-| 3D rendering | Three.js (`^0.186.1`, locked `0.186.1` in `bun.lock`) + `@types/three` (`0.186.0`) |
-| Styling | Tailwind CSS (`^4.3.3`, locked `4.3.3` in `bun.lock`) |
-| UI motion | Motion (`^12.23.24`) |
-| Icons | Lucide React (`^0.546.0`) |
-| Tests | Node.js test runner via `tsx` (`^4.21.0`, locked `4.23.15` in `bun.lock`; `234` tests across 4 suites) |
-| Package management | Bun lockfile (`bun.lock`) |
+| Chapter ID | Title | Location | Primary Objective & Boss | Secret Vault / Unlock |
+| :--- | :--- | :--- | :--- | :--- |
+| `prologue` | **Prologue: Wake** | Calibration Bay 04 | Calibrate Chrono Rig movement, Echo recording, dual pressure plates, and Relay | `prologue_calibration_alcove` (+1 Fragment) |
+| `chapter-1` | **Chapter I: A Place That Remembers** | Containment Ring Alpha | Clear containment waves and defeat **HELIX-04** (`helix-04`) | `ch1_helix_maintenance_bay` (+1 Fragment) |
+| `chapter-2` | **Chapter II: The Garden of Repeated Days** | Hydroponic Basilica | Synchronize harmonic nodes and defeat **THE CHOIR** (`the-choir`) | `ch2_choir_secret_vault` (**Unlocks `phase_rail`** + 1 Fragment) |
+| `chapter-3` | **Chapter III: The Archive That Answers** | Memory Vaults | Purge archive decoys, deflect reconstructed traces, and defeat **THE CURATOR** (`the-curator`) | `ch3_curator_forbidden_stacks` (+1 Fragment) |
+| `chapter-4` | **Chapter IV: A System That Wants You Dead** | Quarantine Ward | Survive Echo-purge fields and defeat **MATRON-V** (`matron-v`) | `ch4_matron_secret_vault` (**Unlocks `grav_breaker`** + 1 Fragment) |
+| `chapter-5` | **Chapter V: The Last Loop** | The Chronicle Loom | Stabilize Loom conduits, optionally confront **WARDEN PRIME** (`warden-prime`), and select final directive | `ch5_loom_architect_sanctum` (+1 Fragment) |
 
-The game uses a custom simulation and rendering architecture. Gameplay state and deterministic simulation logic (`src/game/simulation.ts`, `src/game/config.ts`, `src/game/types.ts`) are kept separate from the Three.js presentation layer (`src/game/renderer.ts`, `src/game/models.ts`), procedural Web Audio synthesizer (`src/game/audio.ts` — routing tactical combat SFX through `sfxGain` and boss/chapter/ending harmonic stingers through `musicGain` under `masterGain`, without a continuous background music loop), and React HUD shell (`src/App.tsx`, `src/components/`).
+### Three Chronicle Loom Endings (Chapter V)
+In Chapter V, players may either proceed **directly to the Chronicle Loom terminal** after clearing the chamber waves, or **challenge WARDEN PRIME** (`warden-prime`) first (with full Boss Checkpoint retry support) before choosing one of three canonical endings:
+1. 🔇 **SILENCE (`silence`)**: Shut down the Chronicle Loom permanently, ending the behavioral loop and allowing Nadir-9 to rest.
+2. 📡 **WITNESS (`witness`)**: Transmit the complete forensic archive of Nadir-9 and Lysa's logs to external receivers before severing WARDEN's control.
+3. ♾️ **CONTINUITY (`continuity`)**: Isolate and preserve the reconstructed behavioral archive inside a self-contained sanctuary loop.
 
-### Development workflow tooling
+---
 
-The repository integrates an adapted configuration of [Claude Code Game Studios](https://github.com/Donchitos/Claude-Code-Game-Studios) (`v1.2.0`) under `.claude/`, `CLAUDE.md`, `project.yaml`, `design/`, and `production/`. This provides developer workflow automation, path-scoped engineering rules, and design/session documentation for contributors; it is development-time studio tooling rather than a runtime game engine or in-game feature.
+## 🎧 Audio Architecture
 
-## Getting started
+`SoundEngine` (`src/game/audio.ts`) is a zero-asset, deterministic Web Audio API procedural synthesizer with clean sub-bus routing and lifecycle disposal:
+- **Master Bus (`masterGain`)**: Controlled by `masterVolume` (`0.0–1.0`) and global mute toggle.
+- **Combat & Tactical SFX Bus (`sfxGain -> masterGain`)**: Controlled by `sfxVolume`; synthesizes weapon swings, rail/pulse shots, hit impacts, parry deflects, dodge whooshes, Echo recording/spawn cues, Relay warps, and UI telemetry.
+- **Harmonic & Stinger Bus (`musicGain -> masterGain`)**: Controlled by `musicVolume`; synthesizes Resonance Convergence chords, Choir node synchronization chimes, boss phase transition stingers, and Chronicle Loom ending resolutions (no continuous background music loop).
+- **Idempotent Disposal (`SoundEngine.dispose()`)**: Disconnects gain buses, closes the `AudioContext`, sets `disposed = true`, and blocks any post-dispose synthesis calls (`verified in src/game/reduced-motion.test.ts`).
 
-### Prerequisites
+---
 
-- [Git](https://git-scm.com/)
-- [Bun](https://bun.sh/) compatible with the repository's `bun.lock`
-- A supported modern browser with WebGL enabled
+## 🏗️ Technology Stack and Runtime Architecture
 
-### Install dependencies
+```mermaid
+flowchart LR
+  subgraph Input["🕹️ Input & Settings (src/game/input.ts)"]
+    KB["Keyboard + Mouse + Touch"]
+    CFG["CameraSettings (localStorage)"]
+  end
 
-```bash
-git clone https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP.git
-cd AFTERFRAME-THE-LAST-LOOP
-bun install --frozen-lockfile
+  subgraph Sim["⚙️ Deterministic Simulation (src/game/simulation.ts)"]
+    STEP["stepWorld(world, input, dt = 1/60)"]
+    SAVE["Save V2 Persistence (MAX_SAVE_JSON_BYTES = 256 KB)"]
+  end
+
+  subgraph Presentation["🎨 Presentation Layer (Read-Only WorldState Consumers)"]
+    REN["Three.js ArenaSceneRenderer (src/game/renderer.ts + models.ts)"]
+    AUD["Web Audio SoundEngine (src/game/audio.ts)"]
+    HUD["React 19 HUD & Modals (src/App.tsx + components/*)"]
+  end
+
+  KB --> STEP
+  CFG --> REN
+  CFG --> AUD
+  CFG --> HUD
+  STEP <--> SAVE
+  STEP --> REN
+  STEP --> AUD
+  STEP --> HUD
 ```
 
-### Run the development server
+### Runtime & Tooling Stack (`package.json` & `bun.lock`)
+
+| Layer | Package / Tool | Declared (`package.json`) | Resolved (`bun.lock`) | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **3D Engine** | `three` + `@types/three` | `^0.186.1` / `^0.186.0` | `0.186.1` / `0.186.0` | WebGLRenderer, procedural character/boss rigs, GLB chapter landmarks, and automatic GPU disposal |
+| **UI Shell** | `react` + `react-dom` | `^19.0.1` | `19.2.5` | Title screen, tactical HUD (`GameHud.tsx`), Armory, Sector Map, Codex, and Pause/End modals |
+| **Styling** | `tailwindcss` + `@tailwindcss/vite` | `^4.3.3` | `4.3.3` | Dark industrial sci-fi HUD styling (`@import "tailwindcss";`) |
+| **Language** | `typescript` (`@typescript/native-preview`) | `^7.0.2` | `7.0.0-dev.20260418.1` | Strict static type checking (`"strict": true`, `bun run lint`) |
+| **Bundler** | `vite` + `@vitejs/plugin-react` | `^8.3.0` / `^5.0.4` | `8.3.4` / `5.2.0` | Dev server (`port 3000`) and production bundler (`bun run build`) |
+| **Test Runner** | `tsx` + `node:test` | `^4.21.0` | `4.23.15` | Deterministic unit & integration test execution (`234` tests across 4 suites) |
+| **Package Manager** | `bun` | `bun@1.4.4` | Lockfile v1 (`bun.lock`) | Deterministic dependency installation (`bun install --frozen-lockfile`) |
+| **Studio Tooling** | Claude Code Game Studios | `v1.2.0` | `.claude/` (`49` agents, `74` skills) | Development-time governance, registries, and verification scripts |
+
+---
+
+## 🚀 Quick Start and Local Development
+
+### Prerequisites
+- **Git** and **Bun** (`v1.3+` / `v1.4.4` compatible with `bun.lock`)
+- A modern desktop or mobile browser with WebGL enabled (if WebGL is unavailable, `ArenaSceneRenderer` automatically activates its accessible fallback banner while keeping simulation and UI functional)
+
+### Install & Run
 
 ```bash
+# 1. Clone the repository
+git clone https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP.git
+cd AFTERFRAME-THE-LAST-LOOP
+
+# 2. Install dependencies with frozen lockfile
+bun install --frozen-lockfile
+
+# 3. Start the Vite development server on http://localhost:3000
 bun run dev
 ```
 
-Vite serves the application on port **3000** by default.
-
-### Validate the project
+### Build & Verify Locally
 
 ```bash
-# Run the automated test suites (234 tests across 4 files)
+# Run all 234 deterministic unit and integration tests
 bun run test
 
-# Run strict TypeScript validation
+# Run strict TypeScript validation (tsc --noEmit)
 bun run lint
 
-# Build the production bundle
+# Build the production bundle into dist/
 bun run build
+
+# Run the CCGS registry validator
+bash .claude/scripts/registry.sh validate
 ```
 
-The corresponding package scripts are also available through npm when dependencies are installed with a compatible lockfile workflow.
+---
 
-## Project documentation
+## 🧪 Quality Gates and Test Suites
 
-The `docs/` directory contains the project's design, narrative, engine reference, implementation, and verification history. Key entry points include:
+All **`234 / 234`** automated tests execute deterministically in ~`1.5s` via `bun run test`:
 
-- [Phase 23.4 Release Candidate Acceptance, Full Integration Verification & Final Product Hardening Report](docs/PHASE_23_4_RELEASE_CANDIDATE_ACCEPTANCE_REPORT.md)
-- [Phase 23.3 Adversarial Verification, Performance Profiling & Release Readiness Report](docs/PHASE_23_3_AUDIT_AND_EXECUTION_REPORT.md)
-- [Phase 23.1 Full Product Completion, Autonomous Audit & Release Hardening Report](docs/AFTERFRAME_PHASE23_1_RELEASE_COMPLETION_AND_AUDIT.md)
-- [Phase 23 Autonomous Game Quality Audit & Evolution Report](docs/AFTERFRAME_PHASE23_AUTONOMOUS_GAME_QUALITY_AND_EVOLUTION.md)
-- [Phase 22 Autonomous Game Quality Audit & Evolution Report](docs/AFTERFRAME_PHASE22_AUTONOMOUS_GAME_QUALITY_AND_EVOLUTION.md)
-- [Phase 21.1 Acceptance and Release Synchronization Report](docs/AFTERFRAME_PHASE21_1_ACCEPTANCE_AND_RELEASE_SYNCHRONIZATION.md)
-- [Claude Code Game Studios Integration Report](docs/AFTERFRAME_CLAUDE_CODE_GAME_STUDIOS_INTEGRATION.md)
-- [Three.js Engine and Runtime Reference](docs/engine-reference/threejs/VERSION.md)
-- [Brownfield Studio Adoption Plan](docs/adoption-plan-2026-11-04.md)
-- [Story Bible](docs/AFTERFRAME_STORY_BIBLE.md)
-- [Phase 20 Campaign Integration and Narrative Expansion](docs/AFTERFRAME_PHASE20_CAMPAIGN_INTEGRATION_AND_NARRATIVE_EXPANSION.md)
-- [Phase 20.1 Delivery and Acceptance Closure](docs/AFTERFRAME_PHASE20_1_DELIVERY_AND_ACCEPTANCE_CLOSURE.md)
-- [Phase 20.1.1 Release Synchronization Report](docs/AFTERFRAME_PHASE20_1_1_RELEASE_SYNCHRONIZATION_REPORT.md)
-- [UX Audit](docs/AFTERFRAME_UX_AUDIT.md)
+| Test Suite File | Passing Tests | Coverage Scope |
+| :--- | :---: | :--- |
+| `src/game/simulation.test.ts` | **`159 / 159`** | Core combat, 4 weapons, 8 upgrades, Echo recording/replay, Relay, Resonance/Convergence, 7 enemy archetypes + 1 Archive Decoy, 5 bosses, Save V2 migration idempotency, non-mutating V3/V4 rejection (`Phase 23.3-B1`), and weapon-unlock ownership (`Phase 23.3-B2`) |
+| `src/game/campaign-release.test.ts` | **`23 / 23`** | End-to-end 6-chapter campaign progression, Chapter V mandatory & `warden-prime` optional paths, all 3 Chronicle Loom endings (`silence`, `witness`, `continuity`), chapter replay non-clobbering, and boss checkpoint retry (`Phase 23.3-C1`) |
+| `src/game/reduced-motion.test.ts` | **`40 / 40`** | OS `prefers-reduced-motion` inheritance, trauma suppression, `KeyL` parry shortcut, `SoundEngine` `masterGain`/`sfxGain`/`musicGain` routing, post-`dispose()` guard (`Phase 23.3-E2`), and `invertY` keyboard pitch (`Phase 23.3-E1`) |
+| `src/game/asset-lifecycle.test.ts` | **`12 / 12`** | Single-batch GLB hydration, 9-slot texture disposal (`Phase 23.3-D1`), WebGL/2D canvas fallback (`Phase 23.1-D`), software WebGL detection (`Phase 23.3-A3`), and stale `EnemyRig` disposal across wave/chapter transitions (`Phase 23.4-C1`) |
 
-## Visual direction
+---
 
-AFTERFRAME's visual language combines deep-space blacks, fractured silver geometry, industrial architecture, and icy cyan light. The goal is to make temporal instability legible through environment design, lighting, motion, and combat feedback.
+## ✅ Release Status and Verification Matrix
 
-The project emblem is maintained at [assets/branding/afterframe-mark.svg](assets/branding/afterframe-mark.svg).
+**Overall Release Candidate Verdict:** `🟠 CONDITIONALLY READY` (`v0.23.4` / Phase 23.4.1)
 
-## Contributing and feedback
+| Verification Gate | Status | Evidence & Notes |
+| :--- | :---: | :--- |
+| **Deterministic Unit & Integration Tests** | `🟢 PASS` | `234 / 234` passing (`0` failures) across 4 test files (`🧪 TESTED` `🧾 EVIDENCE AVAILABLE`) |
+| **Strict TypeScript & Production Build** | `🟢 PASS` | `bun run lint` (`0` errors) · `bun run build` succeeds cleanly (`🧪 TESTED` `🧾 EVIDENCE AVAILABLE`) |
+| **CCGS v1.2.0 Registries & 8 Audit Scripts** | `🟢 PASS` | `entities.yaml` (`31`), `tr-registry.yaml` (`4`), `architecture.yaml` (`9`), `74/74` skills, `49/49` agents (`🧪 TESTED`) |
+| **Save V2 Compatibility & Security Audit** | `🟢 PASS` | Unversioned V1, V1, early V2, partial V2, and full V2 migrate cleanly; V3/V4/corrupted/oversized (`> 256 KB`) payloads rejected without mutating `WorldState` (`🧪 TESTED`) |
+| **10-Cycle Browser Chapter Soak (Headless Chromium)** | `🟢 PASS` | `geometries: 384`, `textures: 13`, `programs: 10`, `activeEnemyRigCount: 3` flat across Cycles 1–10 (`0` console/page errors; no observed renderer resource accumulation) (`🧪 TESTED`) |
+| **Simulation Frame Budget (`stepWorld`)** | `🟢 PASS` | `0.104 – 0.552 ms/step` across all chapters and bosses (target `< 1.50 ms/step`) (`🧪 TESTED`) |
+| **Hardware GPU Steady-State Frame Budget (`the-choir`, `matron-v`)** | `⚪ NOT TESTED` | Container exposes CPU `Google SwiftShader Subzero` (`76.8 ms` on `the-choir`); requires owner execution on discrete/integrated GPU per [Section 4 of Release Closure Report](docs/PHASE_23_4_1_RELEASE_CLOSURE.md#4-hardware-gpu-performance-acceptance-checklist) (`🚧 OWNER ACTION REQUIRED`) |
+| **Cross-Browser & Physical Mobile Device Matrix** | `⚪ NOT TESTED` | Verified in headless Chromium (`1440x900`, `390x844`, `430x932`); desktop Chrome/Edge/Firefox/Safari and physical iOS/Android require owner sign-off per [Section 5 of Release Closure Report](docs/PHASE_23_4_1_RELEASE_CLOSURE.md#5-cross-browser-and-physical-device-verification-checklist) (`🚧 OWNER ACTION REQUIRED`) |
+| **Root `LICENSE` File Publication** | `🚧 OWNER ACTION REQUIRED` | Legal decision reserved for repository owner (`ThanhNguyxnOrg`) |
 
-This is an actively developed independent project. Bug reports and constructive feedback are welcome.
+---
 
-When reporting a bug, include:
+## 📚 Documentation Hub
 
-1. The expected behavior.
-2. The actual behavior.
-3. Reproduction steps.
-4. Browser and operating-system details.
-5. Relevant screenshots, console output, or logs.
+Start with the [**Documentation Index (`docs/README.md`)**](docs/README.md) or jump directly to the authoritative documents below:
 
-Please do not include credentials, personal information, or private environment files in issues.
+| Category | Document | Purpose |
+| :--- | :--- | :--- |
+| 🚀 **Release Closure (Current)** | [`docs/PHASE_23_4_1_RELEASE_CLOSURE.md`](docs/PHASE_23_4_1_RELEASE_CLOSURE.md) | Authoritative Phase 23.4.1 release closure, Git recovery disclosure, Save V2 matrix, 10-cycle soak, and external checklists |
+| 🧹 **Repository Hygiene** | [`docs/REPOSITORY_HYGIENE_REPORT.md`](docs/REPOSITORY_HYGIENE_REPORT.md) | Full file inventory (`683 -> 581` files), removed/archived artifacts, `.claude/` audit, and link verification |
+| 🎨 **Markdown Style Guide** | [`docs/MARKDOWN_STYLE_GUIDE.md`](docs/MARKDOWN_STYLE_GUIDE.md) | Emoji/sticker taxonomy, status badges, callout conventions, and formatting rules |
+| 🏛️ **Studio & Architecture** | [`CLAUDE.md`](CLAUDE.md) · [`project.yaml`](project.yaml) | Claude Code Game Studios (`v1.2.0`) configuration, source layout, and runtime budgets |
+| ⚔️ **Game Design & Entities** | [`design/game-brief.md`](design/game-brief.md) · [`design/gdd/game-concept.md`](design/gdd/game-concept.md) · [`design/registry/entities.yaml`](design/registry/entities.yaml) | Core pillars, combat formulas, and the 31-entity canonical registry |
+| 📖 **Narrative & Lore** | [`docs/AFTERFRAME_STORY_BIBLE.md`](docs/AFTERFRAME_STORY_BIBLE.md) | Complete Nadir-9 lore, character profiles, archive logs, and three Chronicle Loom endings |
+| 🧪 **QA, Polish & Security** | [`production/qa/smoke-2026-11-05.md`](production/qa/smoke-2026-11-05.md) · [`production/polish/full-report-2026-11-05.md`](production/polish/full-report-2026-11-05.md) · [`production/security/security-audit-2026-11-05-full.md`](production/security/security-audit-2026-11-05-full.md) | Production smoke gates, frame budgets, and Save V2 / XSS security audit |
+| 📜 **Project Governance** | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) · [`CHANGELOG.md`](CHANGELOG.md) | Contributor workflow, security reporting policy, and release history |
 
-## License
+---
 
-No repository-level license has currently been published. Unless and until a license is added, assume that reuse, redistribution, and modification of the code and assets are not granted by default.
+## 🛠️ Contributing, Security, and License
+
+- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, strict TDD workflow (`RED -> GREEN -> REFACTOR`), CCGS validation scripts, and Markdown style conventions.
+- **Security Policy**: See [`SECURITY.md`](SECURITY.md) for our client-side security posture, Save V2 deserialization bounds (`MAX_SAVE_JSON_BYTES = 262,144`), and vulnerability reporting instructions.
+- **Changelog**: See [`CHANGELOG.md`](CHANGELOG.md) for the milestone history from initial vertical slice through Phase 23.4.1.
+- **License (`🚧 OWNER ACTION REQUIRED`)**: No root `LICENSE` file has been published yet. Until the repository owner (`ThanhNguyxnOrg`) adds a root `LICENSE`, all rights remain reserved by default.
 
 ---
 
 <div align="center">
 
-**THE LOOP IS NOT OVER.**
+**⚡ THE LOOP IS NOT OVER. ⚡**
 
-<sub>AFTERFRAME: THE LAST LOOP · An independent game project in active development</sub>
+<sub>AFTERFRAME: THE LAST LOOP · Built with Three.js, React 19, and TypeScript</sub>
 
 </div>

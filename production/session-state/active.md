@@ -1,23 +1,23 @@
 # Active Session State — AFTERFRAME: THE LAST LOOP
 
 <!-- STATUS -->
-Epic: Phase 23.4 Release Candidate Acceptance, Full Integration Verification & Final Product Hardening
-Feature: Priorities A-I End-to-End Browser Acceptance, GPU/Software-WebGL Profiling, Stale Enemy Rig Disposal, Config/Registry Reconciliation & Final Hardening
+Epic: Phase 23.4.1 Final Release Closure, Repository Refactoring, Documentation Consolidation & External Acceptance
+Feature: Git Recovery Disclosure, Save V2 Non-Mutating Validation, 10-Cycle Renderer Soak, Repository Hygiene Cleanup & Markdown Visual Design System
 Task: Autonomous Execution & Verification Complete
 <!-- /STATUS -->
 
 <!-- CHECKPOINT -->
 **Branch:** `main`
-**Stage:** `Production` (Release Candidate `0.23.4` — Phase 23.4 Release Candidate Acceptance Complete)
+**Stage:** `Production` (Release Candidate `0.23.4` — Phase 23.4.1 Final Release Closure Complete; Verdict: `🟠 CONDITIONALLY READY`)
 **Baseline (`origin/main`):** `9c79d11024eb9f135d1ca31051a8dca9c1306edf`
 **Test Suite:** `234 / 234` passing (`simulation.test.ts`: 159, `campaign-release.test.ts`: 23, `reduced-motion.test.ts`: 40, `asset-lifecycle.test.ts`: 12)
 **TypeScript:** `"strict": true` enabled (`bun run lint` = `0` errors)
 **CCGS Registries:** `bash .claude/scripts/registry.sh validate` = `0` errors (`entities.yaml`: 31, `tr-registry.yaml`: 4, `architecture.yaml`: 9)
-**Next Step:** Local commit on `main` ready for consolidated release when requested.
+**Next Step:** Owner execution of Hardware GPU (`4.1`), Cross-Browser/Physical Device (`5.1`), and Root `LICENSE` (`7.3`) external acceptance gates.
 <!-- /CHECKPOINT -->
 
 ## Current Phase
-- **Phase:** `Production` / `Release` (`0.23.4` — Phase 23.4 Release Candidate Acceptance, Full Integration Verification & Final Product Hardening)
+- **Phase:** `Production` / `Release` (`0.23.4` — Phase 23.4.1 Final Release Closure, Repository Refactoring, Documentation Consolidation & External Acceptance)
 - **Engine:** Three.js `0.186.1` + React `19.2.5` + TypeScript `7.0.0-dev` (`"strict": true`) + Vite `8.3.4`
 - **Published GitHub Baseline (`origin/main`):** `9c79d11024eb9f135d1ca31051a8dca9c1306edf`
 
@@ -37,7 +37,7 @@ Task: Autonomous Execution & Verification Complete
   - Wired accurate `weaponId` telemetry across `phase_rail`, `pulsecaster`, `chrono_edge`, and `grav_breaker` combat/obstacle events.
   - Added 4 Phase 23 test suites (`217/217` passing).
 - **Phase 23.1 Full Product Completion, Autonomous Audit & Release Hardening (`8ceb87e`):**
-  - Executed Superpowers Spec-Driven + TDD workflow (`docs/superpowers/specs/2026-11-05-afterframe-phase23-1-release-completion-design.md`, `docs/superpowers/plans/2026-11-05-afterframe-phase23-1-release-completion.md`, `.superpowers/sdd/afterframe-phase23-1-release-completion/progress.md`).
+  - Executed Superpowers Spec-Driven + TDD workflow (`docs/archive/superpowers/2026-11-05-afterframe-phase23-1-release-completion-design.md`, `docs/archive/superpowers/2026-11-05-afterframe-phase23-1-release-completion-plan.md`).
   - Fixed `switchPlayerWeapon` residual `chargeTime`/`isEmpoweredHeavy` state reset (`Phase 23.1-A`), added `KeyL` parry shortcut (`Phase 23.1-B`), routed remaining `playHitEnemy` and `playResonanceConvergence` synth nodes through `getOutputNode(ctx)` and added `SoundEngine.dispose()` (`Phase 23.1-C`), and added graceful WebGL context failure fallback in `ArenaSceneRenderer` (`Phase 23.1-D`).
   - Enabled `"strict": true` in `tsconfig.json`, aligned `package.json` (`0.23.1`), `project.yaml`, `.claude/docs/technical-preferences.md`, `.claude/skills/code-review/SKILL.md`, `metadata.json`, `index.html`, and added `.github/workflows/ci.yml`.
 - **Post-Phase 23.1 Deep Audit, Defect Elimination & Product Completion (Phase 23.2 / `7189dc5`):**
@@ -50,8 +50,11 @@ Task: Autonomous Execution & Verification Complete
   - Replaced per-frame `syncEnemyRigs(world)` in `ArenaSceneRenderer.updateAndRender` with allocation-free `reconcileEnemyRigs(world)`, preserving `echoHistory` afterimages and `relayVfxTimer`/`impactRingTimer` animations while detecting software WebGL (`SwiftShader`, `llvmpipe`) independently of `navigator.webdriver` (`Phase 23.3-A3`).
   - Enforced exact UTF-8 byte ceiling (`MAX_SAVE_JSON_BYTES = 262,144`), completed Save V1 -> V2 migration (`tutorialHintsEnabled`, `activeCampaign`, chapter-inferred weapon unlocks) with 5-cycle idempotency (`Phase 23.3-B1`), bounded `mergeUniqueChapters`/`mergeUniqueStrings` with `MAX_SAVE_ARRAY_SCAN`, and enforced weapon unlock ownership across all campaign transitions (`Phase 23.3-B2`).
   - Added post-`dispose()` guard in `SoundEngine` (`Phase 23.3-E2`), full 9-slot `THREE.Texture` disposal in `disposeMeshResources` (`Phase 23.3-D1`), fallback/canvas DOM cleanup (`Phase 23.3-D2`), decoupled `setCameraShake`/`setScreenEffects`/`setReducedMotion`, and wired `invertY` into keyboard `ArrowUp`/`ArrowDown` vertical pitch (`Phase 23.3-E1`).
-- **Phase 23.4 Release Candidate Acceptance, Full Integration Verification & Final Product Hardening:**
+- **Phase 23.4 Release Candidate Acceptance, Full Integration Verification & Final Product Hardening (`b7516ef`):**
   - Fixed stale `EnemyRig` accumulation across encounter/wave/boss transitions in `reconcileEnemyRigs` and KO pose reset in `syncEnemyRigs`, cleared `enemyRigs` on `dispose()`, skipped `scene.environment` PMREM assignment on software WebGL, and added `getDiagnostics()` (`window.__afterframeTest.getRendererDiagnostics`) (`Phase 23.4-C1`).
   - Added missing `aria-pressed` attributes on `StatusModal` `modal-setting-mute` and `modal-setting-hints` buttons and aligned `[Q / L] Parry (+35 Flux)` in `TitleScreen` (`Phase 23.4-A1`).
   - Reconciled `design/registry/entities.yaml` (`31` entries) with canonical `GAME_CONFIG` weapon damages, all 8 `WeaponUpgradeId`s, all 8 enemy/decoy entries, and all 5 boss HP/Phase II thresholds (`Phase 23.4-E1`), and synchronized `package.json`, `project.yaml`, `CLAUDE.md`, `.claude/docs/technical-preferences.md`, `docs/engine-reference/threejs/VERSION.md`, `design/gdd/game-concept.md`, and `README.md`.
-  - All `234 / 234` automated unit/integration tests and all 8 CCGS scripts passing.
+- **Phase 23.4.1 Final Release Closure, Repository Refactoring, Documentation Consolidation & External Acceptance:**
+  - Verified non-mutating Save V2 rejection of `version: 3`, `4`, `0`, `-1`, `'2'`, `null` and V1 `activeCampaign.chapter` weapon-unlock inference (`234 / 234` tests passing).
+  - Removed `109` temporary/debug/duplicate files (`public/assets/aistudio/*`, `public/phase11_1_audit/*`, `80` debug screenshots/traces, `4` obsolete Phase 13 scripts, `.superpowers/` scratchpads, and `2` duplicate plan files) and archived `4` intermediate Phase 23.1/23.3 Superpowers plans to `docs/archive/superpowers/`.
+  - Authored `docs/PHASE_23_4_1_RELEASE_CLOSURE.md`, `docs/REPOSITORY_HYGIENE_REPORT.md`, `docs/MARKDOWN_STYLE_GUIDE.md`, `docs/README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`, and upgraded root `README.md` with the emoji/badge visual design system and chapter screenshot gallery.

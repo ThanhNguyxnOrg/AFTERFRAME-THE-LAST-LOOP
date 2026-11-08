@@ -16,7 +16,7 @@
 ## Input & Platform
 
 - **Target Platforms**: Web (Desktop `1280x800+`, Mobile `390x844+`)
-- **Input Methods**: Keyboard/Mouse, Touch (`src/components/TouchControls.tsx`)
+- **Input Methods**: Keyboard/Mouse, Touch (`src/components/GameHud.tsx` + `src/game/input.ts`)
 - **Primary Input**: Keyboard/Mouse (`WASD` move, Mouse/Arrows aim, `LMB/F/J` light attack, `RMB/E/K` heavy attack, `Space/Shift` dodge, `Q/L` parry, `1–4` / `Tab/Z` weapon select, `T/Y/V/C` Chrono Rig Echo controls, `G` Gravity Pin, `X` Echo Collapse, `I` Interact, `U` Upgrade Bench)
 - **Gamepad Support**: None
 - **Touch Support**: Full (dedicated virtual D-pad, camera orbit drag, and combat/Echo buttons on mobile viewports)
@@ -56,7 +56,6 @@
 
 - `three` (`0.186.1`, `^0.186.1`) & `@types/three` (`0.186.0`, `^0.186.0`)
 - `react` (`19.2.5`, `^19.0.1`) & `react-dom` (`19.2.5`, `^19.0.1`)
-- `lucide-react` (`0.546.0`, `^0.546.0`)
 - `tailwindcss` (`4.3.3`, `^4.3.3`) & `@tailwindcss/vite` (`4.3.3`, `^4.3.3`)
 - `vite` (`8.3.4`, `^8.3.0`), `esbuild` (`0.28.2`, `^0.28.2`), `typescript` (`7.0.0-dev` / `^7.0.2`), `tsx` (`4.23.15`, `^4.21.0`)
 
@@ -69,6 +68,7 @@
 - See `docs/AFTERFRAME_PHASE23_1_RELEASE_COMPLETION_AND_AUDIT.md`
 - See `docs/PHASE_23_3_AUDIT_AND_EXECUTION_REPORT.md`
 - See `docs/PHASE_23_4_RELEASE_CANDIDATE_ACCEPTANCE_REPORT.md`
+- See `docs/PHASE_23_4_1_RELEASE_CLOSURE.md`
 - See `docs/AFTERFRAME_CLAUDE_CODE_GAME_STUDIOS_INTEGRATION.md`
 
 ## Engine Specialists
