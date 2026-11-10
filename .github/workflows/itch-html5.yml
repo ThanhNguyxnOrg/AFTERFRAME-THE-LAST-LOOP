@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: itch-html5-release-${ github.ref }}
+  group: itch-html5-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -141,11 +141,11 @@ jobs:
           retention-days: 14
 
       - name: Publish to itch.io with Butler
-        if: ${ github.event_name == 'push' || inputs.publish_to_itch }}
+        if: ${{ github.event_name == 'push' || inputs.publish_to_itch }}
         shell: bash
         env:
-          BUTLER_API_KEY: ${ secrets.BUTLER_API_KEY }}
-          ITCHIO_GAME: ${ vars.ITCHIO_GAME }}
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCHIO_GAME: ${{ vars.ITCHIO_GAME }}
         run: |
           set -euo pipefail
 
