@@ -8,11 +8,13 @@
 
 **A single-player, third-person 3D sci-fi action-puzzle RPG set inside the fractured orbital research station Nadir-9.**
 
-[![Status: Release 1.0.0](https://img.shields.io/badge/release-v1.0.0-10b981?style=for-the-badge)](#release-status-and-verification-matrix)
+[![Public HTML5 Playtest](https://img.shields.io/badge/itch.io-public%20HTML5%20playtest-fa5c5c?style=for-the-badge&logo=itchdotio&logoColor=white)](https://thanhnguyxn.itch.io/afterframe-the-last-loop) [![Version: 1.0.0](https://img.shields.io/badge/version-v1.0.0-10b981?style=for-the-badge)](#release-status-and-verification-matrix)
 [![Genre: 3D Sci-Fi Action-Puzzle RPG](https://img.shields.io/badge/genre-sci--fi%20action--puzzle%20RPG-56cfe1?style=for-the-badge)](#game-overview-and-narrative-premise)
 [![Engine: Three.js 0.186.1](https://img.shields.io/badge/3D-Three.js%200.186.1-000000?style=for-the-badge&logo=threedotjs)](#technology-stack-and-runtime-architecture)
 [![TypeScript: Strict](https://img.shields.io/badge/TypeScript-7.0%20Strict-3178c6?style=for-the-badge&logo=typescript)](#technology-stack-and-runtime-architecture)
 [![Tests: 234 Passing](https://img.shields.io/badge/tests-234%20%2F%20234%20passing-10b981?style=for-the-badge)](#quality-gates-and-test-suites)
+
+[▶ **PLAY THE LIVE HTML5 BUILD**](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · [itch.io page](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · [Gameplay guide](docs/GAMEPLAY_GUIDE.md) · [Screenshot gallery](#visual-gallery-nadir-9-sector-captures)
 
 [⚔️ Gameplay](#core-gameplay-pillars) · [🔫 Arsenal](#weapons-and-upgrade-matrix) · [👑 Bosses](#enemy-and-boss-roster) · [📖 Campaign](#campaign-chapters-and-ending-paths) · [🏗️ Architecture](#technology-stack-and-runtime-architecture) · [🚀 Quick Start](#quick-start-and-local-development) · [📚 Docs Hub](docs/README.md)
 
@@ -22,6 +24,8 @@
 
 > [!IMPORTANT]
 > **🧾 Source-of-Truth Verification (`v1.0.0`):** Every system, formula, entity stat, and test count documented in this repository is synchronized directly with `src/game/config.ts` (`234 / 234` unit/integration tests passing, `0` strict TypeScript errors).
+>
+> **🌐 Public browser build:** The HTML5 playtest is live on [itch.io](https://thanhnguyxn.itch.io/afterframe-the-last-loop) (storefront status: **In development**). The repository gallery below contains six in-engine chapter captures; the itch.io page still needs those captures uploaded separately as storefront screenshots.
 
 ## 🧭 Table of Contents
 
@@ -300,6 +304,7 @@ All **`234 / 234`** automated tests execute deterministically in ~`1.5s` via `bu
 
 | Verification Gate | Status | Evidence & Notes |
 | :--- | :---: | :--- |
+| **Public HTML5 Playtest** | `🟢 LIVE` | [Run in browser on itch.io](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · storefront status: `In development` |
 | **Deterministic Unit & Integration Tests** | `🟢 PASS` | `234 / 234` passing (`0` failures) across 4 test files |
 | **Strict TypeScript & Production Build** | `🟢 PASS` | `bun run lint` (`0` errors) · `bun run build` succeeds cleanly |
 | **Documentation & Config Parity Gate** | `🟢 PASS` | `docs/GAMEPLAY_GUIDE.md` and `README.md` verified against `GAME_CONFIG` in `campaign-release.test.ts` |
