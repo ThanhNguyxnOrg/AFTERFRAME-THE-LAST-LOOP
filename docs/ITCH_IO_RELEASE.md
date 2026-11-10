@@ -1,23 +1,45 @@
 # itch.io HTML5 Release
 
-AFTERFRAME is a static Vite browser game. The package workflow builds the game, runs checks, validates the four required GLB assets, creates a ZIP with `index.html` at the archive root, opens the exact ZIP in Chromium through HTTP, and retains the tested ZIP as a GitHub Actions artifact for 14 days.
+AFTERFRAME is a static Vite browser game. The package workflow type-checks the project, runs the test suite, builds the game, validates the four required GLB assets, creates a ZIP with `index.html` at the archive root, and runs Chromium against that exact ZIP over HTTP.
 
-## Current workflow
+## Build and verification
+
+Normal pushes to `main` that touch game source, public assets, build configuration, dependencies, packaging scripts, or this workflow run the package pipeline only. A manual **Run workflow** with `publish_to_itch` left unchecked also runs package and verification only.
+
+The package job verifies:
+- TypeScript type-check and the full test suite.
+- A production Vite build using relative asset URLs.
+- The four required Chapter GLB files, including their glTF 2.0 binary structure.
+- ZIP integrity and `index.html` at the archive root.
+- The actual packaged ZIP in Chromium over HTTP: React title screen, WebGL2 canvas, all four GLB responses, and the New Campaign transition into `playing`.
+- No failed same-origin asset requests, HTTP 4xx/5xx responses, uncaught page errors, or fatal game/WebGL console errors.
+
+The tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Actions artifact for 14 days. The workflow does not publish on ordinary pushes.
+
+## One-time itch.io setup
+
+1. Create the itch.io project page first. Butler cannot create the project page or configure its metadata.
+2. Set **Kind of project** to **HTML** on the itch.io edit page.
+3. In GitHub repository **Settings → Secrets and variables → Actions**, add:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| Actions secret | `BUTLER_API_KEY` | itch.io API key whose source is `wharf` |
+| Actions variable | `ITCHIO_GAME` | `account/project-slug` (lowercase; no URL scheme or `.itch.io` domain) |
+
+Never commit, print, or paste `BUTLER_API_KEY` into chat. The publish job receives it only at the upload step.
+
+After the first upload creates the `html5` channel, open the itch.io project's Edit page and tag that channel **HTML5 / Playable in browser**. Confirm the project kind remains **HTML**. Butler uploads the channel build; it does not change this itch.io page setting.
+
+## Publish a verified build
 
 1. Open **Actions → Package itch.io HTML5 build**.
-2. Select **Run workflow** on `main`, or let the workflow start when game source, public assets, build configuration, dependencies, packaging scripts, or the workflow itself change on `main`.
-3. Wait for install, type-check, tests, build, GLB validation, ZIP integrity validation, and the Chromium browser smoke test to finish successfully.
-4. Download the `AFTERFRAME-THE-LAST-LOOP-itch-html5` artifact from that run.
-5. Extract the artifact archive; upload the game ZIP inside it to the itch.io project.
+2. Select **Run workflow** on the `main` branch.
+3. Enable `publish_to_itch` only when you intend to upload this build.
+4. GitHub first runs the full package and browser verification job. Only if it succeeds does the publish job download the artifact from that same workflow run, validate the ZIP again, install the current stable Butler CLI from itch.io's official Broth distribution, and push the ZIP to `account/project-slug:html5`.
+5. The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, missing secret, or missing/invalid project variable prevents publication.
 
-The browser smoke test unpacks the game ZIP into a temporary folder and serves those exact files over HTTP. It verifies:
-- React mounts the actual title screen and the New Campaign control is visible.
-- Three.js creates a WebGL2 canvas with non-zero dimensions.
-- All four Chapter GLB assets return HTTP 200.
-- Clicking New Campaign transitions the app into `playing`.
-- No same-origin asset request fails, no HTTP 4xx/5xx is returned, and no uncaught browser runtime exception occurs.
-
-The workflow creates and tests ZIP artifacts; it does not publish to itch.io. Ordinary pushes to `main` never upload to an itch.io project.
+Publish is deliberately opt-in. A normal push to `main` never updates itch.io. The publish job is also restricted to workflow dispatches from `main`.
 
 ## Local testing
 
@@ -33,27 +55,6 @@ py -m http.server 4174 --directory $site
 
 Then open `http://127.0.0.1:4174/`. Stop the server with `Ctrl+C`.
 
-## itch.io project settings
+## Final itch.io verification
 
-- **Classification:** Games
-- **Kind of project:** HTML
-- **Release status:** In development during playtesting
-- **Pricing:** No payments for a free playtest
-- **Visibility:** Draft until the embedded build has been verified
-- **Upload:** ZIP containing `index.html` at its root
-- Mark the uploaded file as playable in the browser.
-
-Keep the project in Draft while testing the embed, controls, audio, WebGL rendering, and all required GLB model loads. The automated Chromium smoke test is not a substitute for a final check in the actual itch.io iframe. Only make the page Public after that iframe check.
-
-## Butler automation — not enabled yet
-
-Butler can update an existing itch.io project through its `html5` channel. It does not create the project or configure its page, visibility, screenshots, genres, tags, or embed settings.
-
-Do not configure a Butler secret or run a publishing workflow until the itch.io project has been created and its final account/project slug is known. The planned GitHub configuration is:
-
-| Type | Name | Value |
-| --- | --- | --- |
-| Actions secret | `BUTLER_API_KEY` | itch.io API key with source `wharf` |
-| Actions variable | `ITCHIO_GAME` | `account/project-slug`, without the URL scheme or domain |
-
-Never commit or expose the API key. The publishing workflow and tag-based release automation will be added and tested separately after the first package and Draft project exist.
+Keep the project in Draft while testing the actual itch.io iframe, controls, audio, WebGL rendering, and required GLB model loads. The automated Chromium smoke test and local HTTP test are not substitutes for checking the embedded build on itch.io. Only make the page Public after the iframe check succeeds.
