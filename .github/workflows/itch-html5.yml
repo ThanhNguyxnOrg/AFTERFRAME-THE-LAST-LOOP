@@ -2,6 +2,17 @@ name: Package itch.io HTML5 build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "assets/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/itch-html5.yml"
 
 permissions:
   contents: read
