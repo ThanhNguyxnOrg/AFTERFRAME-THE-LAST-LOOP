@@ -12,6 +12,7 @@ on:
       - "vite.config.ts"
       - "package.json"
       - "bun.lock"
+      - "scripts/**"
       - ".github/workflows/itch-html5.yml"
 
 permissions:
@@ -25,7 +26,7 @@ jobs:
   package:
     name: Verify and package browser game
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -131,6 +132,14 @@ jobs:
           print(f"Created {archive} ({archive.stat().st_size:,} bytes)")
           print(f"Packaged {len(files)} files; extracted size {total_size:,} bytes")
           PY
+
+      - name: Install browser smoke-test tooling
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+
+      - name: Run browser smoke test against the exact ZIP
+        run: node scripts/itch-browser-smoke.mjs
 
       - name: Upload itch.io package
         uses: actions/upload-artifact@v4
