@@ -23,13 +23,13 @@ The workflow creates and tests ZIP artifacts; it does not publish to itch.io. Or
 
 Do not double-click `index.html` from File Explorer. The production build uses ES modules and relative asset URLs and must be served over HTTP. To test the ZIP on Windows PowerShell:
 
-``@powershell
+```powershell
 $zip = "$env:USERPROFILE\Downloads\AFTERFRAME-THE-LAST-LOOP-itch-html5-verified.zip"
 $site = Join-Path $env:TEMP "afterframe-itch-html5"
 Remove-Item $site -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive -LiteralPath $zip -DestinationPath $site -Force
 py -m http.server 4174 --directory $site
-``@
+```
 
 Then open `http://127.0.0.1:4174/`. Stop the server with `Ctrl+C`.
 
