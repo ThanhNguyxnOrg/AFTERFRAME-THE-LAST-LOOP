@@ -48,6 +48,51 @@ For either trigger, GitHub first runs the full package and browser verification 
 
 The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, missing secret, unavailable organization-secret permission, or missing/invalid project variable prevents publication.
 
+## Public playtest and storefront media
+
+**Live project:** [AFTERFRAME: THE LAST LOOP on itch.io](https://thanhnguyxn.itch.io/afterframe-the-last-loop)
+
+The public page was checked on 2026-11-10:
+- The game page is publicly reachable and exposes **Run game**.
+- Platform: **HTML5**.
+- Storefront status: **In development** (this is a public development playtest, not a claim that the project is a final/released product).
+- The page description currently links the browser game and describes the Chrono Rig, Echoes, six campaign chapters, weapons, bosses, and endings.
+- The page currently shows its cover artwork but no gameplay screenshot gallery or trailer. Repository images do not automatically appear on the itch.io page; upload them separately in **Edit game → Screenshots**.
+
+### Existing gameplay captures to upload
+
+All six captures already exist in the repository and are referenced by the root README gallery:
+
+| Order | Capture | Repository file |
+| ---: | --- | --- |
+| 1 | Prologue — Calibration Bay 04 | [`screenshots/phase12/after/00-prologue-desktop.png`](../screenshots/phase12/after/00-prologue-desktop.png) |
+| 2 | Chapter I — HELIX-04 Containment Gate | [`screenshots/phase12-blender/after/ch1-helix-gate-desktop.png`](../screenshots/phase12-blender/after/ch1-helix-gate-desktop.png) |
+| 3 | Chapter II — The Choir / Hydroponic Basilica | [`screenshots/phase12-blender/after/ch2-choir-organ-desktop.png`](../screenshots/phase12-blender/after/ch2-choir-organ-desktop.png) |
+| 4 | Chapter III — The Curator / Memory Archive | [`screenshots/phase12-blender/after/ch3-curator-archive-desktop.png`](../screenshots/phase12-blender/after/ch3-curator-archive-desktop.png) |
+| 5 | Chapter IV — Matron-V / Quarantine Ward | [`screenshots/phase12-blender/after/ch4-matron-pod-desktop.png`](../screenshots/phase12-blender/after/ch4-matron-pod-desktop.png) |
+| 6 | Chapter V — Chronicle Loom | [`screenshots/phase12/after/05-loom-desktop.png`](../screenshots/phase12/after/05-loom-desktop.png) |
+
+Upload the original PNGs as itch.io screenshots in the order above. The root README already renders them as a six-sector gallery. Keep the existing cover as the cover; use the in-engine PNGs as separate screenshots. Do not label the repository captures as a video or as live gameplay footage.
+
+### Storefront metadata recommendations
+
+The page currently lists **Action** as its genre. Consider adding the closest available genres for the actual game loop: **Adventure**, **Role Playing**, and **Puzzle**. Suggested tags to prioritize:
+
+`Sci-Fi` · `Time Loop` · `Third Person` · `Action RPG` · `Puzzle` · `Singleplayer` · `Story Rich` · `Atmospheric` · `3D` · `Boss Battles`
+
+The description should keep the public-playtest status visible and point players to the [controls and combat guide](GAMEPLAY_GUIDE.md). Keep keyboard/mouse as the verified primary input; mention touch controls as supported only while testing the embedded build on actual mobile browsers.
+
+### Trailer recommendation (not yet present)
+
+There is no trailer/video asset in the repository at this time. A concise 30–45 second capture would be enough:
+1. Title screen and the Nadir-9 premise.
+2. Chrono Rig recording and Echo replay.
+3. Temporal Relay into a flank, followed by a weapon/combat beat.
+4. One recognizable boss or chapter environment.
+5. End card with the itch.io play link.
+
+Record this from the actual running browser build. Do not add a placeholder trailer link or claim that a video is available until the file has been captured and uploaded.
+
 ## Local testing
 
 Do not double-click `index.html` from File Explorer. The production build uses ES modules and relative asset URLs and must be served over HTTP. To test the ZIP on Windows PowerShell:
@@ -64,4 +109,4 @@ Then open `http://127.0.0.1:4174/`. Stop the server with `Ctrl+C`.
 
 ## Final itch.io verification
 
-Keep the project in Draft while testing the actual itch.io iframe, controls, audio, WebGL rendering, and required GLB model loads. The automated Chromium smoke test and local HTTP test are not substitutes for checking the embedded build on itch.io. Only make the page Public after the iframe check succeeds.
+The project page is currently public and marked **In development**. Keep that development status while the public playtest is being validated. Test the actual hosted iframe (not only the local ZIP) for controls, audio initialization, WebGL rendering, all required GLB models, page scaling, and browser-console errors. After changing the upload, refresh the public project page and repeat the embedded test before announcing the new build. Only change the project to **Released** when the game is genuinely ready for a final release; public availability alone does not imply that status.
