@@ -20,12 +20,17 @@ The tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Act
 
 1. Create the itch.io project page first. Butler cannot create the project page or configure its metadata.
 2. Set **Kind of project** to **HTML** on the itch.io edit page.
-3. In GitHub repository **Settings → Secrets and variables → Actions**, add:
+3. Add the shared itch.io publisher credential at the **organization** level:
+   - Open `ThanhNguyxnOrg → Settings → Secrets and variables → Actions → Secrets → New organization secret`.
+   - Name it `BUTLER_API_KEY`.
+   - Use the itch.io API key whose source is `wharf`.
+   - Choose **All repositories** only if every repository in the organization is trusted to access this publishing credential. Otherwise choose **Selected repositories** and grant access to the repositories that actually publish to itch.io. You can add more repositories to this same organization secret later; you do not need to recreate or copy the key into each repository.
+4. Keep the project destination as a **repository variable**, because each game/repository can have a different itch.io slug:
+   - In the AFTERFRAME repository, open **Settings → Secrets and variables → Actions → Variables → New repository variable**.
+   - Name it `ITCHIO_GAME`.
+   - Set it to `account/project-slug` (lowercase; no URL scheme or `.itch.io` domain).
 
-| Type | Name | Value |
-| --- | --- | --- |
-| Actions secret | `BUTLER_API_KEY` | itch.io API key whose source is `wharf` |
-| Actions variable | `ITCHIO_GAME` | `account/project-slug` (lowercase; no URL scheme or `.itch.io` domain) |
+The workflow already reads `secrets.BUTLER_API_KEY` and `vars.ITCHIO_GAME`; no YAML change is needed when `BUTLER_API_KEY` is stored as an organization secret. The organization secret must grant the repository access. The project-specific variable remains local to this repository.
 
 Never commit, print, or paste `BUTLER_API_KEY` into chat. The publish job receives it only at the upload step.
 
@@ -33,7 +38,7 @@ After the first upload creates the `html5` channel, open the itch.io project's E
 
 ## Publish a verified build
 
-1. Open **Actions → Package itch.io HTML5 build**.
+1. Open **Actions → Package and publish itch.io HTML5 build**.
 2. Select **Run workflow** on the `main` branch.
 3. Enable `publish_to_itch` only when you intend to upload this build.
 4. GitHub first runs the full package and browser verification job. Only if it succeeds does the publish job download the artifact from that same workflow run, validate the ZIP again, install the current stable Butler CLI from itch.io's official Broth distribution, and push the ZIP to `account/project-slug:html5`.
