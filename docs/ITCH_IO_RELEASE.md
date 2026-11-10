@@ -14,7 +14,7 @@ The package job verifies:
 - The actual packaged ZIP in Chromium over HTTP: React title screen, WebGL2 canvas, all four GLB responses, and the New Campaign transition into `playing`.
 - No failed same-origin asset requests, HTTP 4xx/5xx responses, uncaught page errors, or fatal game/WebGL console errors.
 
-The tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Actions artifact for 14 days. The workflow does not publish on ordinary pushes.
+The tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Actions artifact for 14 days. Ordinary pushes never publish.
 
 ## One-time itch.io setup
 
@@ -31,7 +31,7 @@ The tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Act
    - Set its value to `thanhnguyxn/afterframe-the-last-loop`.
    - For another game, set that repository's own `ITCHIO_GAME` value to its own lowercase `account/project-slug`.
 
-The workflow already reads `secrets.BUTLER_API_KEY` and `vars.ITCHIO_GAME`; no YAML change is needed when `BUTLER_API_KEY` is stored as an organization secret. The organization secret must grant the repository access. The project-specific variable remains local to this repository.
+The workflow reads `secrets.BUTLER_API_KEY` and `vars.ITCHIO_GAME`. Organization-level secret access must explicitly include the repository. The project-specific variable remains local to this repository.
 
 Never commit, print, or paste `BUTLER_API_KEY` into chat.
 
@@ -39,13 +39,14 @@ After the first upload creates the `html5` channel, open the itch.io project's E
 
 ## Publish a verified build
 
-1. Open **Actions → Package and publish itch.io HTML5 build**.
-2. Select **Run workflow** on the `main` branch.
-3. Enable `publish_to_itch` only when you intend to upload this build.
-4. GitHub first runs the full package and browser verification job. Only if it succeeds does the publish job download the artifact from that same workflow run, validate the ZIP again, install the current stable Butler CLI from itch.io's official Broth distribution, and push the ZIP to `thanhnguyxn/afterframe-the-last-loop:html5`.
-5. The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, missing secret, or missing/invalid project variable prevents publication.
+Publication can be deliberately triggered in either of two ways, always from `main`:
 
-Publish is deliberately opt-in. A normal push to `main` never updates itch.io. The publish job is also restricted to workflow dispatches from `main`.
+1. **Manual:** Open **Actions → Package and publish itch.io HTML5 build**, select **Run workflow**, and enable `publish_to_itch`.
+2. **Explicit release commit:** Include the exact marker `[publish-itch]` in a commit message on `main`. This is reserved for intentional releases; a normal commit never publishes.
+
+For either trigger, GitHub first runs the full package and browser verification job. Only if it succeeds does the publish job download the artifact from that same workflow run, validate the ZIP again, install the current stable Butler CLI from itch.io's official Broth distribution, and push the ZIP to `thanhnguyxn/afterframe-the-last-loop:html5`.
+
+The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, missing secret, unavailable organization-secret permission, or missing/invalid project variable prevents publication.
 
 ## Local testing
 
