@@ -1,7 +1,13 @@
-name: Package itch.io HTML5 build
+name: Package and publish itch.io HTML5 build
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_to_itch:
+        description: Publish the verified build to itch.io after all checks pass
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main]
     paths:
@@ -28,6 +34,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Require main branch when publication is requested
+        if: ${{ inputs.publish_to_itch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::itch.io publishing is only allowed from the main branch. Re-run this workflow on main."
+            exit 1
+          fi
+
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -148,3 +164,89 @@ jobs:
           path: AFTERFRAME-THE-LAST-LOOP-itch-html5.zip
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    name: Publish verified ZIP to itch.io
+    needs: package
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ITCHIO_GAME: ${{ vars.ITCHIO_GAME }}
+    steps:
+      - name: Validate itch.io publishing configuration
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${BUTLER_API_KEY:-}" ]]; then
+            echo "::error::Missing GitHub Actions secret BUTLER_API_KEY. Add the itch.io API key with source 'wharf' under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          if [[ -z "${ITCHIO_GAME:-}" ]]; then
+            echo "::error::Missing GitHub Actions variable ITCHIO_GAME. Set it to the lowercase account/project-slug (without https:// or .itch.io)."
+            exit 1
+          fi
+          if [[ "$ITCHIO_GAME" != "${ITCHIO_GAME,,}" || "$ITCHIO_GAME" != */* || "$ITCHIO_GAME" == */*/* || "$ITCHIO_GAME" == /* || "$ITCHIO_GAME" == */ || "$ITCHIO_GAME" =~ [[:space:]] || "$ITCHIO_GAME" == *://* ]]; then
+            echo "::error::Invalid ITCHIO_GAME. Expected lowercase account/project-slug, not a URL."
+            exit 1
+          fi
+          echo "itch.io target configuration is present (target value is intentionally not echoed)."
+
+      - name: Download the package artifact from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: AFTERFRAME-THE-LAST-LOOP-itch-html5
+          path: release-artifact
+
+      - name: Re-validate the exact ZIP before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          archive = Path("release-artifact/AFTERFRAME-THE-LAST-LOOP-itch-html5.zip")
+          if not archive.is_file() or archive.stat().st_size == 0:
+              raise SystemExit(f"Missing or empty verified artifact: {archive}")
+          with ZipFile(archive) as package:
+              if "index.html" not in package.namelist():
+                  raise SystemExit("Downloaded game ZIP is missing root index.html")
+              corrupt_entry = package.testzip()
+              if corrupt_entry is not None:
+                  raise SystemExit(f"Downloaded game ZIP is corrupt at {corrupt_entry}")
+          print(f"Re-validated {archive} ({archive.stat().st_size:,} bytes)")
+          PY
+
+      - name: Install official stable Butler CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/butler-linux-amd64.zip"
+          install_dir="$RUNNER_TEMP/butler"
+          mkdir -p "$install_dir"
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
+            https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default \
+            --output "$archive"
+          unzip -q "$archive" -d "$install_dir"
+          butler_bin="$(find "$install_dir" -type f -name butler -print -quit)"
+          if [[ -z "$butler_bin" ]]; then
+            echo "::error::The official Butler archive did not contain the butler executable."
+            exit 1
+          fi
+          chmod +x "$butler_bin"
+          "$butler_bin" version
+          echo "$(dirname "$butler_bin")" >> "$GITHUB_PATH"
+
+      - name: Publish verified HTML5 channel
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          set -euo pipefail
+          butler push \
+            release-artifact/AFTERFRAME-THE-LAST-LOOP-itch-html5.zip \
+            "${ITCHIO_GAME}:html5" \
+            --userversion "${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
