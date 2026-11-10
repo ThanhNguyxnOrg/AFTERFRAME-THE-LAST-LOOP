@@ -1,6 +1,0 @@
-{
-  "name": "AFTERFRAME: THE LAST LOOP",
-  "description": "A third-person 3D dark sci-fi action-puzzle RPG aboard orbital station Nadir-9. Record Chrono Rig Echoes, wield 4 weapons, defeat 5 bosses, and decide the Chronicle Loom's final directive.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

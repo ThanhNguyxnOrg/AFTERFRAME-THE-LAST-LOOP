@@ -27,3 +27,45 @@ jobs:
       lint_command: bun run lint
       test_command: bun run test
       build_command: bun run build
+      post_build_command: |
+        set -euo pipefail
+        test -s dist/index.html
+        node --input-type=module <<'NODE'
+        import { readFileSync } from 'node:fs';
+
+        const assets = [
+          'helix_containment_gate.glb',
+          'choir_acoustic_organ.glb',
+          'curator_archive_monolith.glb',
+          'matron_surgical_pod.glb',
+        ];
+
+        for (const asset of assets) {
+          const file = `dist/assets/blender/phase12/${asset}`;
+          const data = readFileSync(file);
+          if (data.length < 20 || data.toString('ascii', 0, 4) !== 'glTF') {
+            throw new Error(`Invalid or missing GLB header: ${file}`);
+          }
+          if (data.readUInt32LE(4) !== 2 || data.readUInt32LE(8) !== data.length) {
+            throw new Error(`Invalid GLB version or declared length: ${file}`);
+          }
+
+          let offset = 12;
+          let jsonChunk = null;
+          while (offset < data.length) {
+            if (offset + 8 > data.length) throw new Error(`Truncated GLB chunk header: ${file}`);
+            const chunkLength = data.readUInt32LE(offset);
+            const chunkType = data.readUInt32LE(offset + 4);
+            const chunkEnd = offset + 8 + chunkLength;
+            if (chunkEnd > data.length) throw new Error(`Truncated GLB chunk: ${file}`);
+            if (chunkType === 0x4e4f534a && jsonChunk === null) {
+              jsonChunk = data.subarray(offset + 8, chunkEnd);
+            }
+            offset = chunkEnd;
+          }
+          if (!jsonChunk) throw new Error(`Missing GLB JSON chunk: ${file}`);
+          const gltf = JSON.parse(jsonChunk.toString('utf8').trim());
+          if (gltf.asset?.version !== '2.0') throw new Error(`Unsupported glTF asset version: ${file}`);
+          console.log(`Validated ${file} (${data.length} bytes)`);
+        }
+        NODE
