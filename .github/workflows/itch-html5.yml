@@ -20,6 +20,8 @@ on:
       - "bun.lock"
       - "scripts/**"
       - ".github/workflows/itch-html5.yml"
+      - ".github/README.md"
+      - "docs/ITCH_IO_RELEASE.md"
 
 permissions:
   contents: read
@@ -35,7 +37,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Require main branch when publication is requested
-        if: ${{ inputs.publish_to_itch }}
+        # Explicit release trigger: opt-in workflow_dispatch input or [publish-itch] on a main-branch commit.
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-itch]')) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -168,7 +171,8 @@ jobs:
   publish:
     name: Publish verified ZIP to itch.io
     needs: package
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true && github.ref == 'refs/heads/main' }}
+    # A marked main-branch commit is an explicit one-shot release; ordinary pushes remain build-only.
+    if: ${{ github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-itch]'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Project destination is repository-specific; keep ITCHIO_GAME as a repository Actions variable.
