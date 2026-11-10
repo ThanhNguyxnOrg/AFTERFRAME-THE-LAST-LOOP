@@ -182,12 +182,11 @@ jobs:
       - name: Validate itch.io publishing configuration
         shell: bash
         env:
-          # BUTLER_API_KEY is an Organization Actions secret shared with explicitly selected repositories.
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: |
           set -euo pipefail
           if [[ -z "${BUTLER_API_KEY:-}" ]]; then
-            echo "::error::Missing Organization Actions secret BUTLER_API_KEY or this repository is not authorized to access it. Add the itch.io API key (source: wharf) under ThanhNguyxnOrg → Settings → Secrets and variables → Actions, and grant AFTERFRAME-THE-LAST-LOOP access."
+            echo "::error::Missing required itch.io publishing credential for this repository."
             exit 1
           fi
           if [[ -z "${ITCHIO_GAME:-}" ]]; then
