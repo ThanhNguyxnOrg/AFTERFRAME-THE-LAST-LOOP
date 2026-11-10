@@ -48,6 +48,16 @@ For either trigger, GitHub first runs the full package and browser verification 
 
 The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, missing secret, unavailable organization-secret permission, or missing/invalid project variable prevents publication.
 
+## Latest verified itch.io upload
+
+On **2026-11-10**, [GitHub Actions run #7](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/42835952704) completed successfully:
+- Package job: type-check, test suite, production build, ZIP/GLB validation, Chromium smoke test, and artifact upload all passed.
+- Publish job: Organization secret `BUTLER_API_KEY` and repository variable `ITCHIO_GAME` were available; the exact ZIP from this run was downloaded, revalidated, and pushed with Butler to `thanhnguyxn/afterframe-the-last-loop:html5`.
+- Butler confirmed the first build was pushed to the `html5` channel (13 files; 3.73 MiB transferred) and reported that itch.io was processing the build.
+- The live project page is [publicly reachable](https://thanhnguyxn.itch.io/afterframe-the-last-loop) and exposes **Run game**. Its storefront status remains **In development**.
+
+This records a successful Butler upload command and a live public project page; it does not certify that every mobile browser/GPU combination has been tested.
+
 ## Public playtest and storefront media
 
 **Live project:** [AFTERFRAME: THE LAST LOOP on itch.io](https://thanhnguyxn.itch.io/afterframe-the-last-loop)
