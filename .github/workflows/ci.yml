@@ -31,7 +31,16 @@ jobs:
         set -euo pipefail
         test -s dist/index.html
         node --input-type=module <<'NODE'
-        import { readFileSync } from 'node:fs';
+        import { readFileSync, readdirSync } from 'node:fs';
+
+        const html = readFileSync('dist/index.html', 'utf8');
+        if (!html.includes('./assets/')) {
+          throw new Error('HTML5 build must use relative ./assets/ URLs for itch.io hosting');
+        }
+        const bundleText = readdirSync('dist/assets')
+          .filter((name) => name.endsWith('.js'))
+          .map((name) => readFileSync(`dist/assets/${name}`, 'utf8'))
+          .join('\\n');
 
         const assets = [
           'helix_containment_gate.glb',
@@ -66,6 +75,9 @@ jobs:
           if (!jsonChunk) throw new Error(`Missing GLB JSON chunk: ${file}`);
           const gltf = JSON.parse(jsonChunk.toString('utf8').trim());
           if (gltf.asset?.version !== '2.0') throw new Error(`Unsupported glTF asset version: ${file}`);
+          if (!bundleText.includes(`assets/blender/phase12/${asset}`)) {
+            throw new Error(`Built JavaScript does not reference the relative GLB path: ${asset}`);
+          }
           console.log(`Validated ${file} (${data.length} bytes)`);
         }
         NODE
