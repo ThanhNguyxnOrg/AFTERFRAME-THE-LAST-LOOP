@@ -1,29 +1,20 @@
-name: Package and publish itch.io HTML5 build
+name: Package itch.io HTML5 build
 
 on:
   workflow_dispatch:
-    inputs:
-      publish_to_itch:
-        description: Upload the validated build to itch.io (requires BUTLER_API_KEY and ITCHIO_GAME)
-        required: true
-        type: boolean
-        default: false
-  push:
-    tags:
-      - "itch-v*"
 
 permissions:
   contents: read
 
 concurrency:
-  group: itch-html5-release-${{ github.ref }}
+  group: itch-html5-package
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Verify, package, and optionally publish
+  package:
+    name: Verify and package browser game
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -45,7 +36,7 @@ jobs:
       - name: Build portable HTML5 game
         run: bun run build
 
-      - name: Validate build and create fallback ZIP
+      - name: Validate and create itch.io ZIP
         shell: bash
         run: |
           set -euo pipefail
@@ -61,7 +52,7 @@ jobs:
               raise SystemExit("Missing or empty dist/index.html")
 
           html = index.read_text(encoding="utf-8")
-          if "./assets/" not in html:
+          if './assets/' not in html:
               raise SystemExit("Vite output does not use relative ./assets/ URLs")
 
           required_assets = [
@@ -84,7 +75,7 @@ jobs:
               data = asset.read_bytes()
               if len(data) < 20 or data[:4] != b"glTF":
                   raise SystemExit(f"Invalid GLB header: {asset}")
-              _, version, declared_length = struct.unpack_from("<4sII", data, 0)
+              magic, version, declared_length = struct.unpack_from("<4sII", data, 0)
               if version != 2 or declared_length != len(data):
                   raise SystemExit(f"Invalid GLB version/length: {asset}")
 
@@ -113,8 +104,6 @@ jobs:
               raise SystemExit(f"itch.io limit exceeded: {len(files)} files (maximum 1,000)")
           if total_size > 500 * 1024 * 1024:
               raise SystemExit(f"itch.io limit exceeded: {total_size:,} extracted bytes (maximum 500 MiB)")
-          if any(len(path.relative_to(dist).as_posix()) > 240 for path in files):
-              raise SystemExit("itch.io limit exceeded: a packaged path exceeds 240 characters")
 
           archive = Path("AFTERFRAME-THE-LAST-LOOP-itch-html5.zip")
           with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as output:
@@ -132,58 +121,10 @@ jobs:
           print(f"Packaged {len(files)} files; extracted size {total_size:,} bytes")
           PY
 
-      - name: Upload fallback HTML5 ZIP artifact
+      - name: Upload itch.io package
         uses: actions/upload-artifact@v4
         with:
           name: AFTERFRAME-THE-LAST-LOOP-itch-html5
           path: AFTERFRAME-THE-LAST-LOOP-itch-html5.zip
           if-no-files-found: error
           retention-days: 14
-
-      - name: Publish to itch.io with Butler
-        if: ${{ github.event_name == 'push' || inputs.publish_to_itch }}
-        shell: bash
-        env:
-          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-          ITCHIO_GAME: ${{ vars.ITCHIO_GAME }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${BUTLER_API_KEY:-}" ]]; then
-            echo "::error::Missing repository Actions secret BUTLER_API_KEY."
-            exit 1
-          fi
-          if [[ -z "${ITCHIO_GAME:-}" ]]; then
-            echo "::error::Missing repository Actions variable ITCHIO_GAME (expected account/project-slug)."
-            exit 1
-          fi
-          if [[ ! "$ITCHIO_GAME" =~ ^[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$ ]]; then
-            echo "::error::ITCHIO_GAME must use the format account/project-slug, with no URL or .itch.io domain."
-            exit 1
-          fi
-          ITCHIO_GAME="${ITCHIO_GAME,,}"
-
-          BUTLER_DIR="$RUNNER_TEMP/butler"
-          mkdir -p "$BUTLER_DIR"
-          curl --fail --location --retry 3 --retry-delay 2 \
-            https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default \
-            --output "$RUNNER_TEMP/butler.zip"
-          unzip -q "$RUNNER_TEMP/butler.zip" -d "$BUTLER_DIR"
-
-          BUTLER_BIN="$(find "$BUTLER_DIR" -type f -name butler -print -quit)"
-          if [[ -z "$BUTLER_BIN" ]]; then
-            echo "::error::Could not find the Butler executable in the official distribution archive."
-            exit 1
-          fi
-          chmod +x "$BUTLER_BIN"
-          "$BUTLER_BIN" version
-
-          TARGET="${ITCHIO_GAME}:html5"
-          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_NAME" == itch-v* ]]; then
-            USER_VERSION="${GITHUB_REF_NAME#itch-v}"
-            echo "Publishing release ${USER_VERSION} to ${TARGET}"
-            "$BUTLER_BIN" push dist "$TARGET" --userversion "$USER_VERSION"
-          else
-            echo "Publishing a manually approved playtest build to ${TARGET}"
-            "$BUTLER_BIN" push dist "$TARGET"
-          fi
