@@ -4,6 +4,8 @@ import path from 'node:path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // Relative URLs keep the production build portable inside itch.io's HTML5 iframe.
+  base: './',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
