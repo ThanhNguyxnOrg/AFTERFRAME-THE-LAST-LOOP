@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [`1.0.0`] — Official Release
 
+### 🌐 Public HTML5 Playtest
+- **Live browser build**: The public HTML5 playtest is available at [thanhnguyxn.itch.io/afterframe-the-last-loop](https://thanhnguyxn.itch.io/afterframe-the-last-loop). The itch.io storefront remains marked **In development**; public playtest availability is not presented as a final-release status.
+- **Storefront captures**: Six existing in-engine chapter screenshots cover the Prologue and Chapters I–V under `screenshots/`. They are documented for separate upload to the itch.io screenshot gallery; repository images do not automatically sync to the storefront.
+- **Player onboarding**: The public README links directly to the playable build and the detailed keyboard/mouse gameplay guide.
+
 ### ⚔️ Complete Campaign, Arsenal & Sovereign Bosses
 - **Six-Sector Story Campaign**: Full progression from **Prologue: Wake** (*Calibration Bay 04*) through **Chapter V: The Last Loop** (*The Chronicle Loom*) with three canonical endings (**Silence**, **Witness**, and **Continuity**).
 - **Four-Weapon Temporal Arsenal**:
