@@ -304,7 +304,7 @@ All **`234 / 234`** automated tests execute deterministically in ~`1.5s` via `bu
 
 | Verification Gate | Status | Evidence & Notes |
 | :--- | :---: | :--- |
-| **Public HTML5 Playtest** | `🟢 LIVE` | [Run in browser on itch.io](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · storefront status: `In development` |
+| **Public HTML5 Playtest** | `🟢 LIVE` | [Play on itch.io](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · [verified Butler upload (Actions run #7)](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/42835952704) · storefront status: `In development` |
 | **Deterministic Unit & Integration Tests** | `🟢 PASS` | `234 / 234` passing (`0` failures) across 4 test files |
 | **Strict TypeScript & Production Build** | `🟢 PASS` | `bun run lint` (`0` errors) · `bun run build` succeeds cleanly |
 | **Documentation & Config Parity Gate** | `🟢 PASS` | `docs/GAMEPLAY_GUIDE.md` and `README.md` verified against `GAME_CONFIG` in `campaign-release.test.ts` |
