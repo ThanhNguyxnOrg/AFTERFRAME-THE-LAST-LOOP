@@ -1,0 +1,130 @@
+name: Package itch.io HTML5 build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: itch-html5-package
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Verify and package browser game
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type-check
+        run: bun run lint
+
+      - name: Run test suite
+        run: bun run test
+
+      - name: Build portable HTML5 game
+        run: bun run build
+
+      - name: Validate and create itch.io ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import struct
+          import zipfile
+          from pathlib import Path
+
+          dist = Path("dist")
+          index = dist / "index.html"
+          if not index.is_file() or index.stat().st_size == 0:
+              raise SystemExit("Missing or empty dist/index.html")
+
+          html = index.read_text(encoding="utf-8")
+          if './assets/' not in html:
+              raise SystemExit("Vite output does not use relative ./assets/ URLs")
+
+          required_assets = [
+              "helix_containment_gate.glb",
+              "choir_acoustic_organ.glb",
+              "curator_archive_monolith.glb",
+              "matron_surgical_pod.glb",
+          ]
+          bundle_text = "\n".join(
+              path.read_text(encoding="utf-8")
+              for path in dist.rglob("*.js")
+          )
+          for name in required_assets:
+              asset = dist / "assets" / "blender" / "phase12" / name
+              if not asset.is_file():
+                  raise SystemExit(f"Missing built GLB asset: {asset}")
+              if f"assets/blender/phase12/{name}" not in bundle_text:
+                  raise SystemExit(f"Built JavaScript does not reference {name}")
+
+              data = asset.read_bytes()
+              if len(data) < 20 or data[:4] != b"glTF":
+                  raise SystemExit(f"Invalid GLB header: {asset}")
+              magic, version, declared_length = struct.unpack_from("<4sII", data, 0)
+              if version != 2 or declared_length != len(data):
+                  raise SystemExit(f"Invalid GLB version/length: {asset}")
+
+              offset = 12
+              json_chunk = None
+              while offset < len(data):
+                  if offset + 8 > len(data):
+                      raise SystemExit(f"Truncated GLB chunk header: {asset}")
+                  chunk_length, chunk_type = struct.unpack_from("<II", data, offset)
+                  end = offset + 8 + chunk_length
+                  if end > len(data):
+                      raise SystemExit(f"Truncated GLB chunk: {asset}")
+                  if chunk_type == 0x4E4F534A and json_chunk is None:
+                      json_chunk = data[offset + 8:end]
+                  offset = end
+              if json_chunk is None:
+                  raise SystemExit(f"Missing GLB JSON chunk: {asset}")
+              gltf = json.loads(json_chunk.decode("utf-8").rstrip(" \t\r\n\0"))
+              if gltf.get("asset", {}).get("version") != "2.0":
+                  raise SystemExit(f"Unsupported glTF version: {asset}")
+              print(f"Validated {asset} ({len(data):,} bytes)")
+
+          files = sorted(path for path in dist.rglob("*") if path.is_file())
+          total_size = sum(path.stat().st_size for path in files)
+          if len(files) > 1000:
+              raise SystemExit(f"itch.io limit exceeded: {len(files)} files (maximum 1,000)")
+          if total_size > 500 * 1024 * 1024:
+              raise SystemExit(f"itch.io limit exceeded: {total_size:,} extracted bytes (maximum 500 MiB)")
+
+          archive = Path("AFTERFRAME-THE-LAST-LOOP-itch-html5.zip")
+          with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as output:
+              for path in files:
+                  output.write(path, path.relative_to(dist).as_posix())
+
+          with zipfile.ZipFile(archive) as package:
+              names = package.namelist()
+              if "index.html" not in names:
+                  raise SystemExit("ZIP root must contain index.html")
+              if package.testzip() is not None:
+                  raise SystemExit("ZIP integrity check failed")
+
+          print(f"Created {archive} ({archive.stat().st_size:,} bytes)")
+          print(f"Packaged {len(files)} files; extracted size {total_size:,} bytes")
+          PY
+
+      - name: Upload itch.io package
+        uses: actions/upload-artifact@v4
+        with:
+          name: AFTERFRAME-THE-LAST-LOOP-itch-html5
+          path: AFTERFRAME-THE-LAST-LOOP-itch-html5.zip
+          if-no-files-found: error
+          retention-days: 14
