@@ -20,21 +20,13 @@ The tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Act
 
 1. The existing itch.io project is [AFTERFRAME: THE LAST LOOP](https://thanhnguyxn.itch.io/afterframe-the-last-loop). Its Butler target is `thanhnguyxn/afterframe-the-last-loop`.
 2. Confirm **Kind of project** is **HTML** on the itch.io edit page.
-3. Add the shared itch.io publisher credential at the **organization** level:
-   - Open `ThanhNguyxnOrg → Settings → Secrets and variables → Actions → Secrets → New organization secret`.
-   - Name it `BUTLER_API_KEY`.
-   - Use the itch.io API key whose source is `wharf`.
-   - Choose **All repositories** only if every repository in the organization is trusted to access this publishing credential. Otherwise choose **Selected repositories** and grant access to the repositories that actually publish to itch.io. You can add more repositories to this same organization secret later; you do not need to recreate or copy the key into each repository.
-4. Keep each project destination as a **repository variable**, because each game/repository can have a different itch.io slug:
+3. Keep the game destination as a **repository variable** (each game has its own itch.io slug):
    - In `ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP`, open **Settings → Secrets and variables → Actions → Variables → New repository variable**.
    - Name it `ITCHIO_GAME`.
    - Set its value to `thanhnguyxn/afterframe-the-last-loop`.
    - For another game, set that repository's own `ITCHIO_GAME` value to its own lowercase `account/project-slug`.
 
-The workflow reads `secrets.BUTLER_API_KEY` and `vars.ITCHIO_GAME`. Organization-level secret access must explicitly include the repository. The project-specific variable remains local to this repository.
-
-Never commit, print, or paste `BUTLER_API_KEY` into chat.
-
+The project-specific destination remains local to this repository.
 After the first upload creates the `html5` channel, open the itch.io project's Edit page and tag that channel **HTML5 / Playable in browser**. Confirm the project kind remains **HTML**. Butler uploads the channel build; it does not change this itch.io page setting.
 
 ## Publish a verified build
@@ -46,13 +38,13 @@ Publication can be deliberately triggered in either of two ways, always from `ma
 
 For either trigger, GitHub first runs the full package and browser verification job. Only if it succeeds does the publish job download the artifact from that same workflow run, validate the ZIP again, install the current stable Butler CLI from itch.io's official Broth distribution, and push the ZIP to `thanhnguyxn/afterframe-the-last-loop:html5`.
 
-The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, missing secret, unavailable organization-secret permission, or missing/invalid project variable prevents publication.
+The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, unavailable publishing credential, or missing/invalid project variable prevents publication.
 
 ## Latest verified itch.io upload
 
 On **2026-11-10**, [GitHub Actions run #7](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/42835952704) completed successfully:
 - Package job: type-check, test suite, production build, ZIP/GLB validation, Chromium smoke test, and artifact upload all passed.
-- Publish job: Organization secret `BUTLER_API_KEY` and repository variable `ITCHIO_GAME` were available; the exact ZIP from this run was downloaded, revalidated, and pushed with Butler to `thanhnguyxn/afterframe-the-last-loop:html5`.
+- Publish job: the exact ZIP from this run was downloaded, revalidated, and pushed with Butler to `thanhnguyxn/afterframe-the-last-loop:html5`.
 - Butler confirmed the first build was pushed to the `html5` channel (13 files; 3.73 MiB transferred) and reported that itch.io was processing the build.
 - The live project page is [publicly reachable](https://thanhnguyxn.itch.io/afterframe-the-last-loop) and exposes **Run game**. Its storefront status remains **In development**.
 
