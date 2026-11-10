@@ -195,32 +195,41 @@ const CHAPTER_IDS: CampaignChapterId[] = [
   'chapter_5_loom',
 ];
 
+const PUBLIC_ASSET_BASE = (() => {
+  try {
+    return import.meta.env.BASE_URL || '/';
+  } catch {
+    // The Node-based asset lifecycle tests execute outside Vite.
+    return '/';
+  }
+})();
+
 const BLENDER_CHAPTER_ASSETS: Partial<
   Record<CampaignChapterId, { url: string; x: number; z: number; scale: number; rotationY: number }>
 > = {
   chapter_1_helix: {
-    url: '/assets/blender/phase12/helix_containment_gate.glb',
+    url: `${PUBLIC_ASSET_BASE}assets/blender/phase12/helix_containment_gate.glb`,
     x: 0,
     z: -16.5,
     scale: 1,
     rotationY: 0,
   },
   chapter_2_choir: {
-    url: '/assets/blender/phase12/choir_acoustic_organ.glb',
+    url: `${PUBLIC_ASSET_BASE}assets/blender/phase12/choir_acoustic_organ.glb`,
     x: 0,
     z: -14.2,
     scale: 0.95,
     rotationY: 0,
   },
   chapter_3_curator: {
-    url: '/assets/blender/phase12/curator_archive_monolith.glb',
+    url: `${PUBLIC_ASSET_BASE}assets/blender/phase12/curator_archive_monolith.glb`,
     x: 0,
     z: -14.2,
     scale: 1.05,
     rotationY: 0,
   },
   chapter_4_matron: {
-    url: '/assets/blender/phase12/matron_surgical_pod.glb',
+    url: `${PUBLIC_ASSET_BASE}assets/blender/phase12/matron_surgical_pod.glb`,
     x: 0,
     z: -14,
     scale: 1,
