@@ -14,7 +14,7 @@
 [![TypeScript: Strict](https://img.shields.io/badge/TypeScript-7.0%20Strict-3178c6?style=for-the-badge&logo=typescript)](#technology-stack-and-runtime-architecture)
 [![Tests: 234 Passing](https://img.shields.io/badge/tests-234%20%2F%20234%20passing-10b981?style=for-the-badge)](#quality-gates-and-test-suites)
 
-[▶ **PLAY THE LIVE HTML5 BUILD**](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · [itch.io page](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · [Gameplay guide](docs/GAMEPLAY_GUIDE.md) · [Screenshot gallery](#visual-gallery-nadir-9-sector-captures)
+[▶ **PLAY THE LIVE HTML5 BUILD**](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · [itch.io page](https://thanhnguyxn.itch.io/afterframe-the-last-loop) · [Gameplay guide](docs/GAMEPLAY_GUIDE.md) · [Screenshot gallery](#visual-gallery-nadir-9-sector-captures) · [Storefront copy & media pack](docs/ITCH_IO_PAGE_COPY.md)
 
 [⚔️ Gameplay](#core-gameplay-pillars) · [🔫 Arsenal](#weapons-and-upgrade-matrix) · [👑 Bosses](#enemy-and-boss-roster) · [📖 Campaign](#campaign-chapters-and-ending-paths) · [🏗️ Architecture](#technology-stack-and-runtime-architecture) · [🚀 Quick Start](#quick-start-and-local-development) · [📚 Docs Hub](docs/README.md)
 
@@ -324,6 +324,7 @@ Start with the [**Documentation Index (`docs/README.md`)**](docs/README.md) or j
 | ⚔️ **Gameplay & Combat Guide** | [`docs/GAMEPLAY_GUIDE.md`](docs/GAMEPLAY_GUIDE.md) | Complete reference for Chrono Rig skills, 4 weapons, 8 upgrades (`18` Fragments), 8 enemy archetypes, and 5 Sovereign Bosses |
 | 📖 **Narrative & Lore Bible** | [`docs/STORY_BIBLE.md`](docs/STORY_BIBLE.md) | Complete Nadir-9 lore, character profiles, archive logs, and the three Chronicle Loom endings |
 | 🔒 **Security Policy** | [`SECURITY.md`](SECURITY.md) | Client-side security posture and Save V2 deserialization bounds (`256 KB`) |
+| 🌐 **Public Playtest & Storefront** | [`docs/ITCH_IO_RELEASE.md`](docs/ITCH_IO_RELEASE.md) · [`docs/ITCH_IO_PAGE_COPY.md`](docs/ITCH_IO_PAGE_COPY.md) | Live browser build, release pipeline, copy-ready itch.io description, suggested tags, screenshots, and trailer plan. |
 | 📜 **Project Governance** | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`CHANGELOG.md`](CHANGELOG.md) | Contributor workflow, verification gates, and release history |
 
 ---
