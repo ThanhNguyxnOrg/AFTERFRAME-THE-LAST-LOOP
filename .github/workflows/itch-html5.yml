@@ -171,21 +171,23 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Project destination is repository-specific; keep ITCHIO_GAME as a repository Actions variable.
     env:
       ITCHIO_GAME: ${{ vars.ITCHIO_GAME }}
     steps:
       - name: Validate itch.io publishing configuration
         shell: bash
         env:
+          # BUTLER_API_KEY is an Organization Actions secret shared with explicitly selected repositories.
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: |
           set -euo pipefail
           if [[ -z "${BUTLER_API_KEY:-}" ]]; then
-            echo "::error::Missing GitHub Actions secret BUTLER_API_KEY. Add the itch.io API key with source 'wharf' under Settings → Secrets and variables → Actions."
+            echo "::error::Missing Organization Actions secret BUTLER_API_KEY or this repository is not authorized to access it. Add the itch.io API key (source: wharf) under ThanhNguyxnOrg → Settings → Secrets and variables → Actions, and grant AFTERFRAME-THE-LAST-LOOP access."
             exit 1
           fi
           if [[ -z "${ITCHIO_GAME:-}" ]]; then
-            echo "::error::Missing GitHub Actions variable ITCHIO_GAME. Set it to the lowercase account/project-slug (without https:// or .itch.io)."
+            echo "::error::Missing repository Actions variable ITCHIO_GAME. Set it in AFTERFRAME-THE-LAST-LOOP → Settings → Secrets and variables → Actions → Variables to thanhnguyxn/afterframe-the-last-loop."
             exit 1
           fi
           if [[ "$ITCHIO_GAME" != "${ITCHIO_GAME,,}" || "$ITCHIO_GAME" != */* || "$ITCHIO_GAME" == */*/* || "$ITCHIO_GAME" == /* || "$ITCHIO_GAME" == */ || "$ITCHIO_GAME" =~ [[:space:]] || "$ITCHIO_GAME" == *://* ]]; then
