@@ -516,7 +516,7 @@ export class ArenaSceneRenderer {
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this.renderer.toneMappingExposure = 1.22;
       this.renderer.shadowMap.enabled = !this.isHeadless && !this.isSoftwareGl;
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.shadowMap.type = THREE.PCFShadowMap;
       mountEl.appendChild(this.renderer.domElement);
 
       // WebGL context loss safety listeners
