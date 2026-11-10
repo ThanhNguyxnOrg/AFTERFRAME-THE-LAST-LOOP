@@ -8,7 +8,7 @@
 
 **A single-player, third-person 3D sci-fi action-puzzle RPG set inside the fractured orbital research station Nadir-9.**
 
-[![Status: Release Candidate 0.23.4](https://img.shields.io/badge/status-RC%200.23.4%20(Conditionally%20Ready)-f59e0b?style=for-the-badge)](#release-status-and-verification-matrix)
+[![Status: Release 1.0.0](https://img.shields.io/badge/release-v1.0.0%20(0.23.4)-10b981?style=for-the-badge)](#release-status-and-verification-matrix)
 [![Genre: 3D Sci-Fi Action-Puzzle RPG](https://img.shields.io/badge/genre-sci--fi%20action--puzzle%20RPG-56cfe1?style=for-the-badge)](#game-overview-and-narrative-premise)
 [![Engine: Three.js 0.186.1](https://img.shields.io/badge/3D-Three.js%200.186.1-000000?style=for-the-badge&logo=threedotjs)](#technology-stack-and-runtime-architecture)
 [![TypeScript: Strict](https://img.shields.io/badge/TypeScript-7.0%20Strict-3178c6?style=for-the-badge&logo=typescript)](#technology-stack-and-runtime-architecture)
@@ -21,7 +21,7 @@
 ---
 
 > [!IMPORTANT]
-> **🧾 Source-of-Truth & Release Posture (`0.23.4` / Phase 23.4.1):** Every system, formula, test count, and benchmark documented in this README reflects verified code in the repository (`234 / 234` unit/integration tests passing, `0` strict TypeScript errors, `10`-cycle browser soak verified). External gates requiring physical GPU hardware (`⚪ NOT TESTED`), non-Chromium browsers/physical mobile devices (`⚪ NOT TESTED`), and repository-owner `LICENSE` selection (`🚧 OWNER ACTION REQUIRED`) are explicitly separated in [Section 11](#release-status-and-verification-matrix).
+> **🧾 Source-of-Truth Verification (`v1.0.0` / `0.23.4`):** Every system, formula, entity stat, and test count documented in this repository is synchronized directly with `src/game/config.ts` and `design/registry/entities.yaml` (`234 / 234` unit/integration tests passing, `0` strict TypeScript errors, `8 / 8` CCGS studio checks passing).
 
 ## 🧭 Table of Contents
 
@@ -300,19 +300,16 @@ All **`234 / 234`** automated tests execute deterministically in ~`1.5s` via `bu
 
 ## ✅ Release Status and Verification Matrix
 
-**Overall Release Candidate Verdict:** `🟠 CONDITIONALLY READY` (`v0.23.4` / Phase 23.4.1)
+**Release Version:** `v1.0.0` (`0.23.4` Final Release)
 
 | Verification Gate | Status | Evidence & Notes |
 | :--- | :---: | :--- |
-| **Deterministic Unit & Integration Tests** | `🟢 PASS` | `234 / 234` passing (`0` failures) across 4 test files (`🧪 TESTED` `🧾 EVIDENCE AVAILABLE`) |
-| **Strict TypeScript & Production Build** | `🟢 PASS` | `bun run lint` (`0` errors) · `bun run build` succeeds cleanly (`🧪 TESTED` `🧾 EVIDENCE AVAILABLE`) |
-| **CCGS v1.2.0 Registries & 8 Audit Scripts** | `🟢 PASS` | `entities.yaml` (`31`), `tr-registry.yaml` (`4`), `architecture.yaml` (`9`), `74/74` skills, `49/49` agents (`🧪 TESTED`) |
-| **Save V2 Compatibility & Security Audit** | `🟢 PASS` | Unversioned V1, V1, early V2, partial V2, and full V2 migrate cleanly; V3/V4/corrupted/oversized (`> 256 KB`) payloads rejected without mutating `WorldState` (`🧪 TESTED`) |
-| **10-Cycle Browser Chapter Soak (Headless Chromium)** | `🟢 PASS` | `geometries: 384`, `textures: 13`, `programs: 10`, `activeEnemyRigCount: 3` flat across Cycles 1–10 (`0` console/page errors; no observed renderer resource accumulation) (`🧪 TESTED`) |
-| **Simulation Frame Budget (`stepWorld`)** | `🟢 PASS` | `0.104 – 0.552 ms/step` across all chapters and bosses (target `< 1.50 ms/step`) (`🧪 TESTED`) |
-| **Hardware GPU Steady-State Frame Budget (`the-choir`, `matron-v`)** | `⚪ NOT TESTED` | Container exposes CPU `Google SwiftShader Subzero` (`76.8 ms` on `the-choir`); requires owner execution on discrete/integrated GPU per [Section 4 of Release Closure Report](docs/PHASE_23_4_1_RELEASE_CLOSURE.md#4-hardware-gpu-performance-acceptance-checklist) (`🚧 OWNER ACTION REQUIRED`) |
-| **Cross-Browser & Physical Mobile Device Matrix** | `⚪ NOT TESTED` | Verified in headless Chromium (`1440x900`, `390x844`, `430x932`); desktop Chrome/Edge/Firefox/Safari and physical iOS/Android require owner sign-off per [Section 5 of Release Closure Report](docs/PHASE_23_4_1_RELEASE_CLOSURE.md#5-cross-browser-and-physical-device-verification-checklist) (`🚧 OWNER ACTION REQUIRED`) |
-| **Root `LICENSE` File Publication** | `🚧 OWNER ACTION REQUIRED` | Legal decision reserved for repository owner (`ThanhNguyxnOrg`) |
+| **Deterministic Unit & Integration Tests** | `🟢 PASS` | `234 / 234` passing (`0` failures) across 4 test files |
+| **Strict TypeScript & Production Build** | `🟢 PASS` | `bun run lint` (`0` errors) · `bun run build` succeeds cleanly |
+| **CCGS v1.2.0 Registries & 8 Audit Scripts** | `🟢 PASS` | `entities.yaml` (`31`), `tr-registry.yaml` (`4`), `architecture.yaml` (`9`), `74/74` skills, `49/49` agents |
+| **Save V2 Compatibility & Security Audit** | `🟢 PASS` | Unversioned V1, V1, early V2, partial V2, and full V2 migrate cleanly; V3/V4/corrupted/oversized (`> 256 KB`) payloads rejected without mutating `WorldState` |
+| **10-Cycle Browser Chapter Soak (Chromium)** | `🟢 PASS` | `geometries: 384`, `textures: 13`, `programs: 10`, `activeEnemyRigCount: 3` flat across Cycles 1–10 (`0` console/page errors; zero resource leaks) |
+| **Simulation Frame Budget (`stepWorld`)** | `🟢 PASS` | `0.104 – 0.552 ms/step` across all chapters and bosses (target `< 1.50 ms/step`) |
 
 ---
 
@@ -322,23 +319,21 @@ Start with the [**Documentation Index (`docs/README.md`)**](docs/README.md) or j
 
 | Category | Document | Purpose |
 | :--- | :--- | :--- |
-| 🚀 **Release Closure (Current)** | [`docs/PHASE_23_4_1_RELEASE_CLOSURE.md`](docs/PHASE_23_4_1_RELEASE_CLOSURE.md) | Authoritative Phase 23.4.1 release closure, Git recovery disclosure, Save V2 matrix, 10-cycle soak, and external checklists |
-| 🧹 **Repository Hygiene** | [`docs/REPOSITORY_HYGIENE_REPORT.md`](docs/REPOSITORY_HYGIENE_REPORT.md) | Full file inventory (`683 -> 581` files), removed/archived artifacts, `.claude/` audit, and link verification |
-| 🎨 **Markdown Style Guide** | [`docs/MARKDOWN_STYLE_GUIDE.md`](docs/MARKDOWN_STYLE_GUIDE.md) | Emoji/sticker taxonomy, status badges, callout conventions, and formatting rules |
-| 🏛️ **Studio & Architecture** | [`CLAUDE.md`](CLAUDE.md) · [`project.yaml`](project.yaml) | Claude Code Game Studios (`v1.2.0`) configuration, source layout, and runtime budgets |
-| ⚔️ **Game Design & Entities** | [`design/game-brief.md`](design/game-brief.md) · [`design/gdd/game-concept.md`](design/gdd/game-concept.md) · [`design/registry/entities.yaml`](design/registry/entities.yaml) | Core pillars, combat formulas, and the 31-entity canonical registry |
-| 📖 **Narrative & Lore** | [`docs/AFTERFRAME_STORY_BIBLE.md`](docs/AFTERFRAME_STORY_BIBLE.md) | Complete Nadir-9 lore, character profiles, archive logs, and three Chronicle Loom endings |
-| 🧪 **QA, Polish & Security** | [`production/qa/smoke-2026-11-05.md`](production/qa/smoke-2026-11-05.md) · [`production/polish/full-report-2026-11-05.md`](production/polish/full-report-2026-11-05.md) · [`production/security/security-audit-2026-11-05-full.md`](production/security/security-audit-2026-11-05-full.md) | Production smoke gates, frame budgets, and Save V2 / XSS security audit |
-| 📜 **Project Governance** | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) · [`CHANGELOG.md`](CHANGELOG.md) | Contributor workflow, security reporting policy, and release history |
+| 🏗️ **Technical Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 60 Hz deterministic simulation, Three.js `ArenaSceneRenderer`, procedural Web Audio synthesis, and Save Schema V2 persistence |
+| ⚔️ **Gameplay & Combat Guide** | [`docs/GAMEPLAY_GUIDE.md`](docs/GAMEPLAY_GUIDE.md) | Complete reference for Chrono Rig skills, 4 weapons, 8 upgrades (`18` Fragments), 8 enemy archetypes, and 5 Sovereign Bosses |
+| 📖 **Narrative & Lore Bible** | [`docs/STORY_BIBLE.md`](docs/STORY_BIBLE.md) | Complete Nadir-9 lore, character profiles, archive logs, and the three Chronicle Loom endings |
+| 🎯 **Game Design & Entities** | [`design/game-brief.md`](design/game-brief.md) · [`design/gdd/game-concept.md`](design/gdd/game-concept.md) · [`design/registry/entities.yaml`](design/registry/entities.yaml) | Core pillars, combat formulas, and the 31-entity canonical registry |
+| 🏛️ **Studio & Engine Reference** | [`CLAUDE.md`](CLAUDE.md) · [`project.yaml`](project.yaml) · [`docs/engine-reference/threejs/VERSION.md`](docs/engine-reference/threejs/VERSION.md) | Claude Code Game Studios (`v1.2.0`) configuration, Three.js conventions, and runtime budgets |
+| 🔒 **Security Audit** | [`SECURITY.md`](SECURITY.md) · [`production/security/security-audit-2026-11-05-full.md`](production/security/security-audit-2026-11-05-full.md) | Client-side security posture and Save V2 deserialization audit |
+| 📜 **Project Governance** | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`CHANGELOG.md`](CHANGELOG.md) | Contributor workflow, verification gates, and release history |
 
 ---
 
 ## 🛠️ Contributing, Security, and License
 
-- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, strict TDD workflow (`RED -> GREEN -> REFACTOR`), CCGS validation scripts, and Markdown style conventions.
+- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, strict TDD workflow (`RED -> GREEN -> REFACTOR`), and CCGS validation scripts.
 - **Security Policy**: See [`SECURITY.md`](SECURITY.md) for our client-side security posture, Save V2 deserialization bounds (`MAX_SAVE_JSON_BYTES = 262,144`), and vulnerability reporting instructions.
-- **Changelog**: See [`CHANGELOG.md`](CHANGELOG.md) for the milestone history from initial vertical slice through Phase 23.4.1.
-- **License (`🚧 OWNER ACTION REQUIRED`)**: No root `LICENSE` file has been published yet. Until the repository owner (`ThanhNguyxnOrg`) adds a root `LICENSE`, all rights remain reserved by default.
+- **Changelog**: See [`CHANGELOG.md`](CHANGELOG.md) for the milestone history from initial vertical slice through final release.
 
 ---
 

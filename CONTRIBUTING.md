@@ -43,7 +43,6 @@ Every code, configuration, or documentation change must pass the following verif
 
 ## 📝 Documentation & Style Conventions
 
-All Markdown files follow [`docs/MARKDOWN_STYLE_GUIDE.md`](docs/MARKDOWN_STYLE_GUIDE.md):
-- Use the standardized status badges (`🟢 PASS`, `🟠 CONDITIONAL`, `🔴 FAIL`, `⚪ NOT TESTED`, `🧪 TESTED`, `🧾 EVIDENCE AVAILABLE`, `🚧 OWNER ACTION REQUIRED`).
+All Markdown files are indexed in [`docs/README.md`](docs/README.md):
 - Verify that every relative Markdown link and image path resolves to an existing file in the repository.
-- When modifying weapon, upgrade, enemy, or boss numbers in `src/game/config.ts`, synchronize `design/registry/entities.yaml`, `design/gdd/game-concept.md`, and `README.md` in the same commit.
+- When modifying weapon, upgrade, enemy, or boss numbers in `src/game/config.ts`, synchronize `design/registry/entities.yaml`, `design/gdd/game-concept.md`, `docs/GAMEPLAY_GUIDE.md`, and `README.md` in the same commit.
