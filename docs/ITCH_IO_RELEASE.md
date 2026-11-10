@@ -10,7 +10,7 @@ AFTERFRAME is a static Vite browser game. The package workflow builds the game, 
 4. Download the \`AFTERFRAME-THE-LAST-LOOP-itch-html5\` artifact from that run.
 5. Extract the artifact archive; upload the game ZIP inside it to the itch.io project.
 
-The workflow is manual-only. Ordinary pushes to \`main\` do not create packages or publish to itch.io.
+The workflow can be run manually, and also creates a fresh ZIP artifact when game source, public assets, build configuration, dependencies, or the workflow itself change on \`main\`. It does not publish to itch.io.
 
 ## itch.io project settings
 
