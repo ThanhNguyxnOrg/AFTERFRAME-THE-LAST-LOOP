@@ -8,7 +8,7 @@
 
 **A single-player, third-person 3D sci-fi action-puzzle RPG set inside the fractured orbital research station Nadir-9.**
 
-[![Status: Release 1.0.0](https://img.shields.io/badge/release-v1.0.0%20(0.23.4)-10b981?style=for-the-badge)](#release-status-and-verification-matrix)
+[![Status: Release 1.0.0](https://img.shields.io/badge/release-v1.0.0-10b981?style=for-the-badge)](#release-status-and-verification-matrix)
 [![Genre: 3D Sci-Fi Action-Puzzle RPG](https://img.shields.io/badge/genre-sci--fi%20action--puzzle%20RPG-56cfe1?style=for-the-badge)](#game-overview-and-narrative-premise)
 [![Engine: Three.js 0.186.1](https://img.shields.io/badge/3D-Three.js%200.186.1-000000?style=for-the-badge&logo=threedotjs)](#technology-stack-and-runtime-architecture)
 [![TypeScript: Strict](https://img.shields.io/badge/TypeScript-7.0%20Strict-3178c6?style=for-the-badge&logo=typescript)](#technology-stack-and-runtime-architecture)
@@ -21,7 +21,7 @@
 ---
 
 > [!IMPORTANT]
-> **🧾 Source-of-Truth Verification (`v1.0.0` / `0.23.4`):** Every system, formula, entity stat, and test count documented in this repository is synchronized directly with `src/game/config.ts` and `design/registry/entities.yaml` (`234 / 234` unit/integration tests passing, `0` strict TypeScript errors, `8 / 8` CCGS studio checks passing).
+> **🧾 Source-of-Truth Verification (`v1.0.0`):** Every system, formula, entity stat, and test count documented in this repository is synchronized directly with `src/game/config.ts` (`234 / 234` unit/integration tests passing, `0` strict TypeScript errors).
 
 ## 🧭 Table of Contents
 
@@ -54,7 +54,7 @@ You play as **Sera Venn**, an orbital systems engineer searching for her missing
 
 ## 🖼️ Visual Gallery (Nadir-9 Sector Captures)
 
-Real in-engine captures from the Three.js `ArenaSceneRenderer` and Phase 12 Blender GLB environment landmarks across all six campaign chapters:
+Real in-engine captures from the Three.js `ArenaSceneRenderer` and custom Blender GLB environment landmarks across all six campaign chapters:
 
 | **Prologue — Wake (Calibration Bay 04)** | **Chapter I — A Place That Remembers (`HELIX-04`)** |
 | :---: | :---: |
@@ -148,7 +148,7 @@ Upgrades cost `2` or `3` Memory Fragments each (`18` Fragments total across all 
 
 ## 👑 Enemy and Boss Roster
 
-### 7 Standard Enemy Archetypes + 1 Archive Decoy (`31` Validated Entities in `design/registry/entities.yaml`)
+### 7 Standard Enemy Archetypes + 1 Archive Decoy (`src/game/config.ts`)
 
 | Archetype ID | Designation | HP | Attack Damage | Telegraph / Recovery | Tactical Behavior & Counterplay |
 | :--- | :--- | :---: | :---: | :---: | :--- |
@@ -243,7 +243,6 @@ flowchart LR
 | **Bundler** | `vite` + `@vitejs/plugin-react` | `^8.3.0` / `^5.0.4` | `8.3.4` / `5.2.0` | Dev server (`port 3000`) and production bundler (`bun run build`) |
 | **Test Runner** | `tsx` + `node:test` | `^4.21.0` | `4.23.15` | Deterministic unit & integration test execution (`234` tests across 4 suites) |
 | **Package Manager** | `bun` | `bun@1.4.4` | Lockfile v1 (`bun.lock`) | Deterministic dependency installation (`bun install --frozen-lockfile`) |
-| **Studio Tooling** | Claude Code Game Studios | `v1.2.0` | `.claude/` (`49` agents, `74` skills) | Development-time governance, registries, and verification scripts |
 
 ---
 
@@ -278,9 +277,6 @@ bun run lint
 
 # Build the production bundle into dist/
 bun run build
-
-# Run the CCGS registry validator
-bash .claude/scripts/registry.sh validate
 ```
 
 ---
@@ -291,22 +287,22 @@ All **`234 / 234`** automated tests execute deterministically in ~`1.5s` via `bu
 
 | Test Suite File | Passing Tests | Coverage Scope |
 | :--- | :---: | :--- |
-| `src/game/simulation.test.ts` | **`159 / 159`** | Core combat, 4 weapons, 8 upgrades, Echo recording/replay, Relay, Resonance/Convergence, 7 enemy archetypes + 1 Archive Decoy, 5 bosses, Save V2 migration idempotency, non-mutating V3/V4 rejection (`Phase 23.3-B1`), and weapon-unlock ownership (`Phase 23.3-B2`) |
-| `src/game/campaign-release.test.ts` | **`23 / 23`** | End-to-end 6-chapter campaign progression, Chapter V mandatory & `warden-prime` optional paths, all 3 Chronicle Loom endings (`silence`, `witness`, `continuity`), chapter replay non-clobbering, and boss checkpoint retry (`Phase 23.3-C1`) |
-| `src/game/reduced-motion.test.ts` | **`40 / 40`** | OS `prefers-reduced-motion` inheritance, trauma suppression, `KeyL` parry shortcut, `SoundEngine` `masterGain`/`sfxGain`/`musicGain` routing, post-`dispose()` guard (`Phase 23.3-E2`), and `invertY` keyboard pitch (`Phase 23.3-E1`) |
-| `src/game/asset-lifecycle.test.ts` | **`12 / 12`** | Single-batch GLB hydration, 9-slot texture disposal (`Phase 23.3-D1`), WebGL/2D canvas fallback (`Phase 23.1-D`), software WebGL detection (`Phase 23.3-A3`), and stale `EnemyRig` disposal across wave/chapter transitions (`Phase 23.4-C1`) |
+| `src/game/simulation.test.ts` | **`159 / 159`** | Core combat, 4 weapons, 8 upgrades, Echo recording/replay, Relay, Resonance/Convergence, 7 enemy archetypes + 1 Archive Decoy, 5 bosses, Save V2 migration idempotency, non-mutating schema validation, and weapon-unlock ownership |
+| `src/game/campaign-release.test.ts` | **`23 / 23`** | End-to-end 6-chapter campaign progression, Chapter V mandatory & `warden-prime` optional paths, all 3 Chronicle Loom endings (`silence`, `witness`, `continuity`), chapter replay non-clobbering, boss checkpoint retry, and documentation parity |
+| `src/game/reduced-motion.test.ts` | **`40 / 40`** | OS `prefers-reduced-motion` inheritance, trauma suppression, `KeyL` parry shortcut, `SoundEngine` `masterGain`/`sfxGain`/`musicGain` routing, post-`dispose()` guard, and `invertY` keyboard pitch |
+| `src/game/asset-lifecycle.test.ts` | **`12 / 12`** | Single-batch GLB hydration, 9-slot texture disposal, WebGL/2D canvas fallback, software WebGL detection, and stale `EnemyRig` disposal across wave/chapter transitions |
 
 ---
 
 ## ✅ Release Status and Verification Matrix
 
-**Release Version:** `v1.0.0` (`0.23.4` Final Release)
+**Release Version:** `v1.0.0`
 
 | Verification Gate | Status | Evidence & Notes |
 | :--- | :---: | :--- |
 | **Deterministic Unit & Integration Tests** | `🟢 PASS` | `234 / 234` passing (`0` failures) across 4 test files |
 | **Strict TypeScript & Production Build** | `🟢 PASS` | `bun run lint` (`0` errors) · `bun run build` succeeds cleanly |
-| **CCGS v1.2.0 Registries & 8 Audit Scripts** | `🟢 PASS` | `entities.yaml` (`31`), `tr-registry.yaml` (`4`), `architecture.yaml` (`9`), `74/74` skills, `49/49` agents |
+| **Documentation & Config Parity Gate** | `🟢 PASS` | `docs/GAMEPLAY_GUIDE.md` and `README.md` verified against `GAME_CONFIG` in `campaign-release.test.ts` |
 | **Save V2 Compatibility & Security Audit** | `🟢 PASS` | Unversioned V1, V1, early V2, partial V2, and full V2 migrate cleanly; V3/V4/corrupted/oversized (`> 256 KB`) payloads rejected without mutating `WorldState` |
 | **10-Cycle Browser Chapter Soak (Chromium)** | `🟢 PASS` | `geometries: 384`, `textures: 13`, `programs: 10`, `activeEnemyRigCount: 3` flat across Cycles 1–10 (`0` console/page errors; zero resource leaks) |
 | **Simulation Frame Budget (`stepWorld`)** | `🟢 PASS` | `0.104 – 0.552 ms/step` across all chapters and bosses (target `< 1.50 ms/step`) |
@@ -322,16 +318,14 @@ Start with the [**Documentation Index (`docs/README.md`)**](docs/README.md) or j
 | 🏗️ **Technical Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 60 Hz deterministic simulation, Three.js `ArenaSceneRenderer`, procedural Web Audio synthesis, and Save Schema V2 persistence |
 | ⚔️ **Gameplay & Combat Guide** | [`docs/GAMEPLAY_GUIDE.md`](docs/GAMEPLAY_GUIDE.md) | Complete reference for Chrono Rig skills, 4 weapons, 8 upgrades (`18` Fragments), 8 enemy archetypes, and 5 Sovereign Bosses |
 | 📖 **Narrative & Lore Bible** | [`docs/STORY_BIBLE.md`](docs/STORY_BIBLE.md) | Complete Nadir-9 lore, character profiles, archive logs, and the three Chronicle Loom endings |
-| 🎯 **Game Design & Entities** | [`design/game-brief.md`](design/game-brief.md) · [`design/gdd/game-concept.md`](design/gdd/game-concept.md) · [`design/registry/entities.yaml`](design/registry/entities.yaml) | Core pillars, combat formulas, and the 31-entity canonical registry |
-| 🏛️ **Studio & Engine Reference** | [`CLAUDE.md`](CLAUDE.md) · [`project.yaml`](project.yaml) · [`docs/engine-reference/threejs/VERSION.md`](docs/engine-reference/threejs/VERSION.md) | Claude Code Game Studios (`v1.2.0`) configuration, Three.js conventions, and runtime budgets |
-| 🔒 **Security Audit** | [`SECURITY.md`](SECURITY.md) · [`production/security/security-audit-2026-11-05-full.md`](production/security/security-audit-2026-11-05-full.md) | Client-side security posture and Save V2 deserialization audit |
+| 🔒 **Security Policy** | [`SECURITY.md`](SECURITY.md) | Client-side security posture and Save V2 deserialization bounds (`256 KB`) |
 | 📜 **Project Governance** | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`CHANGELOG.md`](CHANGELOG.md) | Contributor workflow, verification gates, and release history |
 
 ---
 
 ## 🛠️ Contributing, Security, and License
 
-- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, strict TDD workflow (`RED -> GREEN -> REFACTOR`), and CCGS validation scripts.
+- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, strict TDD workflow (`RED -> GREEN -> REFACTOR`), and pre-submission quality gates.
 - **Security Policy**: See [`SECURITY.md`](SECURITY.md) for our client-side security posture, Save V2 deserialization bounds (`MAX_SAVE_JSON_BYTES = 262,144`), and vulnerability reporting instructions.
 - **Changelog**: See [`CHANGELOG.md`](CHANGELOG.md) for the milestone history from initial vertical slice through final release.
 

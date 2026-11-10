@@ -1,30 +1,26 @@
 # 📜 Changelog — AFTERFRAME: THE LAST LOOP
 
-All notable milestones and releases for **AFTERFRAME: THE LAST LOOP** are documented in this file.
+All notable changes and official releases for **AFTERFRAME: THE LAST LOOP** are documented in this file.
+This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [`1.0.0` / `0.23.4`] — Final Release & Documentation Consolidation (2026-11-10)
+## [`1.0.0`] — Official Release
 
-### 🧹 Final Repository Cleanup & Documentation Suite
-- **Purged Internal Phase Audit & Unused Engine Files**: Removed `78` internal development audit logs (`docs/AFTERFRAME_PHASE11..23_*.md`, `docs/archive/`, `production/polish/`, `production/qa/`) and unused engine reference templates (`docs/engine-reference/godot/`, `unity/`, `unreal/`), keeping only the active Three.js reference (`docs/engine-reference/threejs/VERSION.md`) and canonical product documentation.
-- **Unified Product Documentation Suite (`docs/`)**: Published clean, authoritative technical and gameplay references in [`docs/README.md`](docs/README.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/GAMEPLAY_GUIDE.md`](docs/GAMEPLAY_GUIDE.md), and [`docs/STORY_BIBLE.md`](docs/STORY_BIBLE.md), 100% synchronized with `src/game/config.ts` and `design/registry/entities.yaml`.
+### ⚔️ Complete Campaign, Arsenal & Sovereign Bosses
+- **Six-Sector Story Campaign**: Full progression from **Prologue: Wake** (*Calibration Bay 04*) through **Chapter V: The Last Loop** (*The Chronicle Loom*) with three canonical endings (**Silence**, **Witness**, and **Continuity**).
+- **Four-Weapon Temporal Arsenal**:
+  - **Chrono Edge** (`chrono_edge`) — Balanced 3-hit melee blade with cleave and Resonance Convergence strike.
+  - **Pulsecaster** (`pulsecaster`) — Rapid energy sidearm with active thermal dissipation.
+  - **Null-Point Rail Lance** (`phase_rail`) — High-velocity piercing lance with `1.75x–2.00x` exposed boss core multiplier.
+  - **Grav-Breaker Maul** (`grav_breaker`) — Heavy seismic maul with `85%–100%` frontal shield penetration.
+- **Eight Modular Weapon Upgrades**: Deterministic `18`-Fragment campaign economy across sector bosses and hidden vaults.
+- **Chrono Rig & Tactical Skills**: 60 Hz trajectory recording (`[T]`), autonomous **Echo** manifestation (`[Y]`), **Temporal Relay** warp (`[V]`), **Gravity Pin** singularity (`[G]`), and **Echo Collapse** detonation (`[X]`).
+- **Eight Enemy Archetypes & Five Multi-Phase Sovereign Bosses**: **HELIX-04**, **THE CHOIR**, **THE CURATOR**, **MATRON-V**, and **WARDEN PRIME**.
 
-### 🛡️ Save V2, Renderer Lifecycle & Accessibility Hardening
-- **Non-Mutating Save V2 Validation (`src/game/simulation.ts`, `src/game/simulation.test.ts`)**: Enforced `MAX_SAVE_JSON_BYTES = 262_144` (`256 KB`) UTF-8 byte ceiling via `TextEncoder`, validated schema versions (`undefined`, `1`, or `2`) before mutating `world.run`, ensured 5-cycle V1 -> V2 migration idempotency, and enforced weapon unlock ownership across all campaign states.
-- **Stale Enemy Rig Disposal & 10-Cycle Soak (`src/game/renderer.ts`, `src/game/asset-lifecycle.test.ts`)**: `reconcileEnemyRigs(world)` disposes and deletes stale `EnemyRig` instances and all 9 texture slots (`disposeMeshResources`) across wave, boss, and chapter transitions; verified flat GPU resource counters across a 10-cycle browser soak (`geometries: 384`, `textures: 13`, `programs: 10`, `activeEnemyRigCount: 3`).
-- **Accessibility & Audio Bus Hardening (`src/game/audio.ts`, `src/game/reduced-motion.test.ts`, `src/components/StatusModal.tsx`)**: Added `sfxGain` and `musicGain` sub-buses feeding `masterGain`, post-`dispose()` synthesis guards, OS `prefers-reduced-motion` inheritance, `KeyL` parry shortcut, `invertY` keyboard pitch, and `aria-pressed` semantics across all modal toggles.
-
----
-
-## [`0.23.0`] — Arsenal Expansion, Enemy Roster & Warden Prime (2026-11-04)
-
-- Expanded arsenal to **4 weapons** (`chrono_edge`, `pulsecaster`, `phase_rail`, `grav_breaker`) and **8 modular upgrades** backed by a deterministic `18`-Fragment campaign economy.
-- Added **AEGIS-S4 · Phalanx Sentinel** (`aegis_sentinel`), **WEAVER-N8 · Phase Suppressor** (`null_weaver`), and Chapter V optional Sovereign boss **WARDEN PRIME** (`warden-prime`, `440 HP`).
-- Integrated **Claude Code Game Studios (`v1.2.0`)** under `.claude/`, `CLAUDE.md`, and `project.yaml`.
-
----
-
-## [`0.20.1`] — Core Campaign, Chrono Echo Rig & Three Endings (2026-11-03)
-
-- Built the deterministic `60 Hz` simulation (`src/game/simulation.ts`), Three.js `ArenaSceneRenderer` + Phase 12 Blender GLB landmarks, 6-chapter campaign (`prologue` through `chapter_5_loom`), 4 sector bosses (`helix-04`, `the-choir`, `the-curator`, `matron-v`), and 3 Chronicle Loom endings (`silence`, `witness`, `continuity`).
+### 🎨 Engine, Audio, Persistence & Accessibility
+- **Deterministic 60 Hz Simulation (`src/game/simulation.ts`)**: Strict separation between pure gameplay simulation and read-only presentation layers (`Three.js`, `Web Audio API`, and `React 19`).
+- **Hybrid 3D Rendering (`src/game/renderer.ts`, `src/game/models.ts`)**: Articulated procedural character/boss rigs paired with bespoke Blender GLB architectural landmarks, automatic GPU resource disposal, and graceful WebGL/Canvas2D fallback.
+- **Procedural Web Audio Synthesizer (`src/game/audio.ts`)**: Zero-asset real-time sound synthesis with dedicated `masterGain`, `sfxGain`, and `musicGain` sub-buses.
+- **Hardened Save Schema V2 (`localStorage`)**: Automatic V1 -> V2 migration, strict `256 KB` UTF-8 payload guard, weapon ownership validation, and chapter checkpoint persistence.
+- **Accessibility & Multi-Input Support**: OS `prefers-reduced-motion` integration, independent camera shake and screen-flash toggles, full keyboard/mouse remapping support, and responsive mobile touch controls.

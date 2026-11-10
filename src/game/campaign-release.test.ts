@@ -1599,28 +1599,37 @@ test('Phase 20.1 Full Legitimate Campaign Progression Chain: Prologue -> HELIX-0
   ]);
 });
 
-test('Phase 23.4-E1: design/registry/entities.yaml weapon upgrades, boss profiles, and enemy stats match canonical GAME_CONFIG values', async () => {
+test('Release Documentation Parity: docs/GAMEPLAY_GUIDE.md and README.md weapon upgrades, boss profiles, and enemy stats match canonical GAME_CONFIG values', async () => {
   const { readFileSync } = await import('node:fs');
-  const entitiesYaml = readFileSync(
-    new URL('../../design/registry/entities.yaml', import.meta.url),
+  const gameplayGuide = readFileSync(
+    new URL('../../docs/GAMEPLAY_GUIDE.md', import.meta.url),
+    'utf8'
+  );
+  const readme = readFileSync(
+    new URL('../../README.md', import.meta.url),
     'utf8'
   );
 
-  // Every canonical WeaponUpgradeId in GAME_CONFIG must appear in entities.yaml with its canonical cost
+  // Every canonical WeaponUpgradeId in GAME_CONFIG must be documented in docs/GAMEPLAY_GUIDE.md and README.md with its canonical cost
   const canonicalUpgrades = GAME_CONFIG.weapons.upgrades;
   for (const [upgradeId, def] of Object.entries(canonicalUpgrades)) {
-    const blockRegex = new RegExp(
-      `- id: ${upgradeId}[\\s\\S]*?weapon_id: ${def.weaponId}[\\s\\S]*?cost_fragments: ${def.cost}`,
+    const rowRegex = new RegExp(
+      `\\|\\s*\`${upgradeId}\`\\s*\\|[^|]+\\|\\s*\`${def.cost}\`\\s*\\|`,
       'm'
     );
     assert.match(
-      entitiesYaml,
-      blockRegex,
-      `design/registry/entities.yaml must contain canonical upgrade ${upgradeId} (weapon: ${def.weaponId}, cost: ${def.cost})`
+      gameplayGuide,
+      rowRegex,
+      `docs/GAMEPLAY_GUIDE.md must document canonical upgrade ${upgradeId} with cost ${def.cost}`
+    );
+    assert.match(
+      readme,
+      rowRegex,
+      `README.md must document canonical upgrade ${upgradeId} with cost ${def.cost}`
     );
   }
 
-  // Every canonical BossEncounterId in GAME_CONFIG must appear in entities.yaml with its exact maxHp, phase2HpThreshold, and maxStagger
+  // Every canonical BossEncounterId in GAME_CONFIG must appear in docs/GAMEPLAY_GUIDE.md and README.md with its exact maxHp and phase2HpThreshold
   const canonicalBosses = [
     GAME_CONFIG.boss,
     GAME_CONFIG.choir,
@@ -1629,14 +1638,20 @@ test('Phase 23.4-E1: design/registry/entities.yaml weapon upgrades, boss profile
     GAME_CONFIG.wardenPrime,
   ];
   for (const profile of canonicalBosses) {
-    const bossRegex = new RegExp(
-      `- id: ${profile.id}[\\s\\S]*?max_hp: ${profile.maxHp}[\\s\\S]*?phase2_threshold: ${profile.phase2HpThreshold}[\\s\\S]*?max_stagger: ${profile.maxStagger}`,
+    const bossRowRegex = new RegExp(
+      `\\|\\s*\`${profile.id}\`\\s*\\|[^|]+\\|[^|]+\\|\\s*\`${profile.maxHp}\`\\s*\\|\\s*\`${profile.phase2HpThreshold} HP\`\\s*\\|`,
       'm'
     );
     assert.match(
-      entitiesYaml,
-      bossRegex,
-      `design/registry/entities.yaml must match GAME_CONFIG for ${profile.id} (maxHp=${profile.maxHp}, phase2=${profile.phase2HpThreshold}, stagger=${profile.maxStagger})`
+      gameplayGuide,
+      bossRowRegex,
+      `docs/GAMEPLAY_GUIDE.md must match GAME_CONFIG for ${profile.id} (maxHp=${profile.maxHp}, phase2=${profile.phase2HpThreshold})`
+    );
+    assert.match(
+      readme,
+      bossRowRegex,
+      `README.md must match GAME_CONFIG for ${profile.id} (maxHp=${profile.maxHp}, phase2=${profile.phase2HpThreshold})`
     );
   }
 });
+

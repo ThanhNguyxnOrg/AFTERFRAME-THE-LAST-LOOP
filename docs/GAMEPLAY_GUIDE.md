@@ -1,6 +1,6 @@
 # ⚔️ AFTERFRAME: THE LAST LOOP — Complete Gameplay & Combat Guide
 
-This guide is the authoritative gameplay reference for **AFTERFRAME: THE LAST LOOP**, synchronized directly with `GAME_CONFIG` (`src/game/config.ts`) and `design/registry/entities.yaml` (`31` validated canonical entities).
+This guide is the authoritative gameplay reference for **AFTERFRAME: THE LAST LOOP**, synchronized directly with `GAME_CONFIG` (`src/game/config.ts`).
 
 ---
 
@@ -19,7 +19,7 @@ This guide is the authoritative gameplay reference for **AFTERFRAME: THE LAST LO
 ## 2. Chrono Rig, Echo Replay & Tactical Skills
 
 | Input | Ability | Flux Cost | Cooldown | Tactical Function |
-| :---: | :--- | :---: | :---: | :--- |
+| :---: | :--- | :---: | :--- | :--- |
 | **`[T]`** | **Record Echo Track** | `0` Flux | — | Records `0.35s – 8.0s` (up to `500` samples at `60 Hz`) of movement, dodges, parries, and attacks across all 4 weapons. |
 | **`[Y]`** | **Spawn Echo** | `0` Flux | — | Manifests an independent cyan **Echo** that replays your recorded actions. Echo Heavy hits prime a `1.1s` **Resonance Window** (`2.2s` with `edge_harmonic_conductor`). |
 | **`[V]`** | **Temporal Relay** | `25` Flux | `1.0s` | Warps Sera instantaneously to the active Echo (`8.0m` max range) while the Echo continues its replay trajectory. |

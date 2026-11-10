@@ -12,7 +12,7 @@ Thank you for your interest in contributing to **AFTERFRAME: THE LAST LOOP**. Th
 2. **Echo Non-Duplication Rule**:
    - Echo replay contacts prime Resonance, activate pressure plates/harmonic nodes, and serve as Relay/Collapse anchors, but never deal direct HP damage, grant Flux, or duplicate Memory Fragments/unlocks.
 3. **Zero Runtime Network Dependencies**:
-   - The game operates `100%` offline/client-side after initial bundle load (`platform.online: false`, `platform.multiplayer: false`). Never introduce external API keys or telemetry beacons.
+   - The game operates `100%` offline/client-side after initial bundle load. Never introduce external API keys or telemetry beacons.
 
 ---
 
@@ -33,16 +33,15 @@ Every code, configuration, or documentation change must pass the following verif
 
 | Gate | Command | Requirement |
 | :--- | :--- | :--- |
-| **1. Unit & Integration Tests** | `bun run test` | All `234+` tests across `simulation.test.ts`, `campaign-release.test.ts`, `reduced-motion.test.ts`, and `asset-lifecycle.test.ts` must pass (`🟢 PASS`) |
+| **1. Unit & Integration Tests** | `bun run test` | All `234` tests across `simulation.test.ts`, `campaign-release.test.ts`, `reduced-motion.test.ts`, and `asset-lifecycle.test.ts` must pass (`🟢 PASS`) |
 | **2. Strict TypeScript Check** | `bun run lint` | `tsc --noEmit` with `"strict": true` must exit with `0` errors (`🟢 PASS`) |
 | **3. Production Build** | `bun run build` | `vite build` must complete cleanly without unresolved imports (`🟢 PASS`) |
-| **4. CCGS Registry Validation** | `bash .claude/scripts/registry.sh validate` | `entities.yaml`, `tr-registry.yaml`, and `architecture.yaml` must validate with `0` errors (`🟢 PASS`) |
-| **5. Whitespace & Formatting** | `git diff --check` | Zero trailing whitespace, conflict markers, or EOF blank lines (`🟢 PASS`) |
+| **4. Whitespace & Formatting** | `git diff --check` | Zero trailing whitespace, conflict markers, or EOF blank lines (`🟢 PASS`) |
 
 ---
 
-## 📝 Documentation & Style Conventions
+## 📝 Documentation Conventions
 
 All Markdown files are indexed in [`docs/README.md`](docs/README.md):
 - Verify that every relative Markdown link and image path resolves to an existing file in the repository.
-- When modifying weapon, upgrade, enemy, or boss numbers in `src/game/config.ts`, synchronize `design/registry/entities.yaml`, `design/gdd/game-concept.md`, `docs/GAMEPLAY_GUIDE.md`, and `README.md` in the same commit.
+- When modifying weapon, upgrade, enemy, or boss numbers in `src/game/config.ts`, synchronize [`docs/GAMEPLAY_GUIDE.md`](docs/GAMEPLAY_GUIDE.md) and [`README.md`](README.md) in the same commit (`verified automatically by src/game/campaign-release.test.ts`).

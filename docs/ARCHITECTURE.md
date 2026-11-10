@@ -48,7 +48,7 @@ src/
 - **WebGL & Canvas2D Fallback (`ArenaSceneRenderer`):** Initializes a hardware-accelerated `THREE.WebGLRenderer` with automatic fallback to an accessible 2D tactical canvas and software-renderer (`SwiftShader`/`llvmpipe`) telemetry detection.
 - **Hybrid Procedural + Blender GLB Pipeline:**
   - **Procedural Articulated Rigs (`src/game/models.ts`):** Sera Venn, Chrono Echoes, all 8 enemy archetypes, and all 5 Sovereign Bosses are constructed from articulated `THREE.Group` hierarchies with real-time telegraph shaders and phase animations.
-  - **Phase 12 Blender GLB Landmarks (`public/assets/blender/phase12/*.glb`):** Asynchronous `GLTFLoader` hydrates 4 bespoke architectural centerpieces (`helix_containment_gate.glb`, `choir_acoustic_organ.glb`, `curator_archive_monolith.glb`, `matron_surgical_pod.glb`, totaling `2.23 MB`).
+  - **Blender GLB Sector Landmarks (`public/assets/blender/phase12/*.glb`):** Asynchronous `GLTFLoader` hydrates 4 bespoke architectural centerpieces (`helix_containment_gate.glb`, `choir_acoustic_organ.glb`, `curator_archive_monolith.glb`, `matron_surgical_pod.glb`, totaling `2.23 MB`).
 - **Allocation-Free Frame Loop & Disposal:**
   - `reconcileEnemyRigs(world)` reconciles active enemies each frame and immediately disposes stale `EnemyRig` geometries, materials, and 9 texture slots (`disposeMeshResources`) across wave and chapter transitions.
   - Verified across a 10-cycle browser chapter soak with flat renderer counters (`geometries: 384`, `textures: 13`, `programs: 10`, `activeEnemyRigCount: 3`).

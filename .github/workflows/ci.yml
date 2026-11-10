@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   verify:
-    name: Typecheck, Test, Build & CCGS Gate (Bun 1.4.4)
+    name: Typecheck, Test, Build & Asset Integrity (Bun 1.4.4)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -33,11 +33,11 @@ jobs:
       - name: Deterministic simulation & lifecycle test suites
         run: bun run test
 
-      - name: Production Vite bundle build
-        run: bun run build
-
-      - name: CCGS registry, coherence & skill lint gates
+      - name: Production Vite bundle build & GLB asset verification
         run: |
-          bash .claude/scripts/registry.sh validate
-          bash .claude/scripts/project-coherence.sh
-          bash .claude/scripts/skill-lint.sh code-review
+          bun run build
+          test -f dist/index.html
+          test -f dist/assets/blender/phase12/helix_containment_gate.glb
+          test -f dist/assets/blender/phase12/choir_acoustic_organ.glb
+          test -f dist/assets/blender/phase12/curator_archive_monolith.glb
+          test -f dist/assets/blender/phase12/matron_surgical_pod.glb

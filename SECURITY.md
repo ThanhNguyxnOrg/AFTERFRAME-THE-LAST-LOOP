@@ -2,7 +2,7 @@
 
 ## 🛡️ Application Security Posture
 
-**AFTERFRAME: THE LAST LOOP** is a deterministic, client-side single-player 3D browser game (`platform.online: false`, `platform.multiplayer: false`).
+**AFTERFRAME: THE LAST LOOP** is a deterministic, client-side single-player 3D browser game with zero backend dependencies.
 
 | Security Domain | Status | Implementation & Verification |
 | :--- | :---: | :--- |
@@ -11,8 +11,6 @@
 | **Settings Storage (`src/game/input.ts`)** | `🟢 PASS` | Validates numeric bounds (`sensitivity` in `[0.25, 2.5]`, volumes in `[0.0, 1.0]`) and boolean types, and catches `SecurityError` / `QuotaExceededError` |
 | **DOM & XSS Surface (`src/`)** | `🟢 PASS` | Zero uses of `eval`, `new Function`, `dangerouslySetInnerHTML`, `document.write`, `window.open`, or `window.alert` |
 | **CI Workflow Permissions (`.github/workflows/ci.yml`)** | `🟢 PASS` | Enforces least-privilege `permissions: contents: read` and `bun install --frozen-lockfile` |
-
-For the full line-by-line security audit report, see [`production/security/security-audit-2026-11-05-full.md`](production/security/security-audit-2026-11-05-full.md).
 
 ---
 

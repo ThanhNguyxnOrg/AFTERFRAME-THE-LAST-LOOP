@@ -1,6 +1,6 @@
 # 📚 AFTERFRAME: THE LAST LOOP — Documentation Hub
 
-Welcome to the official technical, gameplay, design, and narrative documentation for **AFTERFRAME: THE LAST LOOP**.
+Welcome to the official technical, gameplay, and narrative documentation for **AFTERFRAME: THE LAST LOOP**.
 
 ---
 
@@ -15,18 +15,3 @@ Welcome to the official technical, gameplay, design, and narrative documentation
 | [**`CHANGELOG.md`**](../CHANGELOG.md) | Complete release history and milestone log. |
 | [**`CONTRIBUTING.md`**](../CONTRIBUTING.md) | Contributor workflow, architectural invariants, and mandatory verification gates. |
 | [**`SECURITY.md`**](../SECURITY.md) | Client-side security posture, Save V2 deserialization bounds (`256 KB`), and vulnerability reporting policy. |
-
----
-
-## 🏛️ Game Design & Studio Registries
-
-| Document | Purpose |
-| :--- | :--- |
-| [**`design/game-brief.md`**](../design/game-brief.md) | Executive creative brief, core pillars, and target player experience. |
-| [**`design/gdd/game-concept.md`**](../design/gdd/game-concept.md) | Complete Game Design Document (GDD) synchronized with `src/game/config.ts`. |
-| [**`design/gdd/systems-index.md`**](../design/gdd/systems-index.md) | Master index of all approved core gameplay systems. |
-| [**`design/registry/entities.yaml`**](../design/registry/entities.yaml) | Machine-validated canonical entity registry (`31` entities across characters, weapons, upgrades, enemies, bosses, and chapters). |
-| [**`docs/architecture/tr-registry.yaml`**](./architecture/tr-registry.yaml) | Technical requirement registry (`TR-001` through `TR-004`). |
-| [**`docs/registry/architecture.yaml`**](./registry/architecture.yaml) | Module ownership and dependency boundary specification (`9` runtime & test modules). |
-| [**`docs/engine-reference/threejs/VERSION.md`**](./engine-reference/threejs/VERSION.md) | Three.js `0.186.1` + TypeScript `7.0` runtime conventions and GPU disposal invariants. |
-| [**`production/security/security-audit-2026-11-05-full.md`**](../production/security/security-audit-2026-11-05-full.md) | Line-by-line client-side security and Save V2 deserialization audit. |
