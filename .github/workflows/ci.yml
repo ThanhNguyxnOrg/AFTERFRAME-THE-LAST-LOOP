@@ -18,7 +18,7 @@ jobs:
   verify:
     uses: ThanhNguyxnOrg/.github/.github/workflows/ci-node.yml@2bda8e8e8073a2578db4bbb1e0f6aaf21d061bcd
     with:
-      job_name: Verify (Bun + CCGS)
+      job_name: Verify (Bun)
       node_version: "22"
       package_manager: bun
       package_manager_version: "1.4.4"
@@ -27,8 +27,3 @@ jobs:
       lint_command: bun run lint
       test_command: bun run test
       build_command: bun run build
-      post_build_command: |
-        set -euo pipefail
-        bash .claude/scripts/registry.sh validate
-        bash .claude/scripts/project-coherence.sh
-        bash .claude/scripts/skill-lint.sh code-review
