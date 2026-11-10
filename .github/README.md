@@ -33,7 +33,11 @@ For another itch.io game, configure that repository's own `ITCHIO_GAME` as lower
 
 Workflow: [Package and publish itch.io HTML5 build](workflows/itch-html5.yml)
 
-The workflow runs build, tests, ZIP validation, and Chromium smoke verification before the publish job can run. Publication is opt-in through the workflow's `publish_to_itch` input, on `main` only. The publish job downloads the exact artifact created by the same run and uploads it to the `html5` channel with Butler.
+The workflow runs build, tests, ZIP validation, and Chromium smoke verification before the publish job can run. Publication is opt-in, on `main` only, through either:
+- Manual **Run workflow** with `publish_to_itch=true`.
+- A deliberate `main` commit whose commit message contains the exact marker `[publish-itch]`.
+
+Ordinary commits never publish. The publish job downloads the exact artifact created by the same run and uploads it to the `html5` channel with Butler.
 
 Configuration checklist:
 - [ ] Organization Actions secret `BUTLER_API_KEY` exists and grants access to `AFTERFRAME-THE-LAST-LOOP`.
