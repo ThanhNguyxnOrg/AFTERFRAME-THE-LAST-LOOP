@@ -37,6 +37,10 @@ import {
   type CombatCalloutTone,
 } from './tactical-hud.ts';
 import { resolveActiveLockOnTarget } from './lock-on.ts';
+import {
+  computeBossTelegraphVisuals,
+  computeEnemyDeRezState,
+} from './combat-vfx.ts';
 import type {
   CameraSettings,
   CampaignChapterId,
@@ -5564,20 +5568,29 @@ export class ArenaSceneRenderer {
       }
 
       if (rig.ramLaneGroup) rig.ramLaneGroup.visible = false;
+      if (rig.ramLaneShaderMat) rig.ramLaneShaderMat.uniforms.uOpacity.value = 0;
       if (rig.sweepSectorGroup) rig.sweepSectorGroup.visible = false;
+      if (rig.sweepSectorShaderMat) rig.sweepSectorShaderMat.uniforms.uOpacity.value = 0;
       if (rig.slamShockwaveRing) rig.slamShockwaveRing.visible = false;
       this.syncTelegraphShader(rig, false, 0, 0xf59e0b, 0, world.elapsedTime);
 
-      // KO topple transition
+      // KO Temporal De-Rez Collapse transition
       if (enemy.aiState === 'ko') {
-        rig.bodyGroup.rotation.x = -enemy.koProgress * (Math.PI * 0.46);
-        rig.bodyGroup.position.y = -enemy.koProgress * 0.35;
+        const deRez = computeEnemyDeRezState(enemy.koProgress, this.reducedMotion);
+        rig.bodyGroup.rotation.x = deRez.toppleAngle;
+        rig.bodyGroup.position.y = deRez.sinkY;
+        rig.bodyGroup.scale.set(
+          deRez.horizontalScale,
+          deRez.verticalScale,
+          deRez.horizontalScale
+        );
         rig.telegraphDiscMaterial.opacity = 0;
         rig.telegraphRingMaterial.opacity = 0;
-        rig.coreRimMaterial.opacity = 0;
+        rig.coreRimMaterial.opacity = deRez.pulseStrength * 0.65;
         if (rig.laserSightMaterial) rig.laserSightMaterial.opacity = 0;
-        rig.coreMaterial.color.setHex(0x334155);
-        rig.coreMaterial.emissive.setHex(0x0f172a);
+        rig.coreMaterial.color.setHex(deRez.opacityFade > 0.25 ? deRez.emissiveHex : 0x334155);
+        rig.coreMaterial.emissive.setHex(deRez.emissiveHex);
+        rig.coreMaterial.emissiveIntensity = deRez.emissiveIntensity * deRez.opacityFade;
         continue;
       }
 
@@ -5752,13 +5765,28 @@ export class ArenaSceneRenderer {
           const teleColor = locked ? 0xef4444 : 0xf59e0b;
 
           if (bAttack === 'vector_ram') {
+            const tv = computeBossTelegraphVisuals(
+              bAttack,
+              progress,
+              locked,
+              this.reducedMotion
+            );
             if (rig.ramLaneGroup && rig.ramLaneFillMat && rig.ramLaneBorderMat) {
               rig.ramLaneGroup.visible = true;
               rig.ramLaneGroup.position.set(0, 0.028, 0);
-              rig.ramLaneFillMat.color.setHex(teleColor);
-              rig.ramLaneFillMat.opacity = 0.18 + progress * 0.32;
-              rig.ramLaneBorderMat.color.setHex(locked ? 0xffffff : 0xef4444);
-              rig.ramLaneBorderMat.opacity = 0.65 + progress * 0.35;
+              rig.ramLaneFillMat.color.setHex(tv.primaryHex);
+              rig.ramLaneFillMat.opacity = 0.14 + tv.progress * 0.2;
+              rig.ramLaneBorderMat.color.setHex(tv.edgeHex);
+              rig.ramLaneBorderMat.opacity = tv.borderOpacity;
+            }
+            if (rig.ramLaneShaderMat) {
+              rig.ramLaneShaderMat.uniforms.uProgress.value = tv.progress;
+              rig.ramLaneShaderMat.uniforms.uTime.value = world.elapsedTime;
+              rig.ramLaneShaderMat.uniforms.uOpacity.value = tv.fillOpacity;
+              rig.ramLaneShaderMat.uniforms.uLocked.value = tv.locked ? 1 : 0;
+              rig.ramLaneShaderMat.uniforms.uChevronSpeed.value = tv.chevronSpeed;
+              rig.ramLaneShaderMat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
+              (rig.ramLaneShaderMat.uniforms.uColor.value as THREE.Color).setHex(tv.primaryHex);
             }
             rig.bodyGroup.position.y = -0.1 * progress;
             rig.bodyGroup.rotation.set(0.24 * progress, 0, 0);
@@ -5768,12 +5796,26 @@ export class ArenaSceneRenderer {
             rig.weaponPivot.rotation.set(0.45 * progress, 0.25 * progress, -0.15 * progress);
             rig.secondaryPivot.rotation.set(-0.45 * progress, -0.35 * progress, 0.2 * progress);
           } else if (bAttack === 'helical_sweep') {
+            const tv = computeBossTelegraphVisuals(
+              bAttack,
+              progress,
+              locked,
+              this.reducedMotion
+            );
             if (rig.sweepSectorGroup && rig.sweepSectorFillMat && rig.sweepSectorRimMat) {
               rig.sweepSectorGroup.visible = true;
-              rig.sweepSectorFillMat.color.setHex(teleColor);
-              rig.sweepSectorFillMat.opacity = 0.18 + progress * 0.3;
-              rig.sweepSectorRimMat.color.setHex(locked ? 0xffffff : 0xef4444);
-              rig.sweepSectorRimMat.opacity = 0.68 + progress * 0.32;
+              rig.sweepSectorFillMat.color.setHex(tv.primaryHex);
+              rig.sweepSectorFillMat.opacity = 0.14 + tv.progress * 0.18;
+              rig.sweepSectorRimMat.color.setHex(tv.edgeHex);
+              rig.sweepSectorRimMat.opacity = tv.borderOpacity;
+            }
+            if (rig.sweepSectorShaderMat) {
+              rig.sweepSectorShaderMat.uniforms.uProgress.value = tv.progress;
+              rig.sweepSectorShaderMat.uniforms.uTime.value = world.elapsedTime;
+              rig.sweepSectorShaderMat.uniforms.uOpacity.value = tv.fillOpacity;
+              rig.sweepSectorShaderMat.uniforms.uLocked.value = tv.locked ? 1 : 0;
+              rig.sweepSectorShaderMat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
+              (rig.sweepSectorShaderMat.uniforms.uColor.value as THREE.Color).setHex(tv.primaryHex);
             }
             rig.bodyGroup.position.y = -0.06 * progress;
             rig.bodyGroup.rotation.set(0.08 * progress, 0, -0.08 * progress);
@@ -5823,9 +5865,17 @@ export class ArenaSceneRenderer {
               rig.ramLaneGroup.visible = true;
               rig.ramLaneGroup.position.set(0, 0.028, -traveled);
               rig.ramLaneFillMat.color.setHex(0xef4444);
-              rig.ramLaneFillMat.opacity = 0.36 * (1 - progress * 0.6);
+              rig.ramLaneFillMat.opacity = 0.24 * (1 - progress * 0.6);
               rig.ramLaneBorderMat.color.setHex(0xffffff);
               rig.ramLaneBorderMat.opacity = 0.85 * (1 - progress * 0.5);
+            }
+            if (rig.ramLaneShaderMat) {
+              rig.ramLaneShaderMat.uniforms.uProgress.value = 1;
+              rig.ramLaneShaderMat.uniforms.uTime.value = world.elapsedTime;
+              rig.ramLaneShaderMat.uniforms.uOpacity.value = 0.85 * (1 - progress * 0.55);
+              rig.ramLaneShaderMat.uniforms.uLocked.value = 1;
+              rig.ramLaneShaderMat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
+              (rig.ramLaneShaderMat.uniforms.uColor.value as THREE.Color).setHex(0xef4444);
             }
             rig.bodyGroup.position.y = -0.06;
             rig.bodyGroup.rotation.set(0.34, 0, 0);
@@ -5838,9 +5888,17 @@ export class ArenaSceneRenderer {
             if (rig.sweepSectorGroup && rig.sweepSectorFillMat && rig.sweepSectorRimMat) {
               rig.sweepSectorGroup.visible = true;
               rig.sweepSectorFillMat.color.setHex(0xef4444);
-              rig.sweepSectorFillMat.opacity = 0.45 * (1 - progress * 0.5);
+              rig.sweepSectorFillMat.opacity = 0.28 * (1 - progress * 0.5);
               rig.sweepSectorRimMat.color.setHex(0xffffff);
               rig.sweepSectorRimMat.opacity = 0.92 * (1 - progress * 0.4);
+            }
+            if (rig.sweepSectorShaderMat) {
+              rig.sweepSectorShaderMat.uniforms.uProgress.value = 1;
+              rig.sweepSectorShaderMat.uniforms.uTime.value = world.elapsedTime;
+              rig.sweepSectorShaderMat.uniforms.uOpacity.value = 0.88 * (1 - progress * 0.5);
+              rig.sweepSectorShaderMat.uniforms.uLocked.value = 1;
+              rig.sweepSectorShaderMat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
+              (rig.sweepSectorShaderMat.uniforms.uColor.value as THREE.Color).setHex(0xef4444);
             }
             const sweepRatio = Math.min(1, progress * 1.35);
             rig.bodyGroup.position.y = -0.04;

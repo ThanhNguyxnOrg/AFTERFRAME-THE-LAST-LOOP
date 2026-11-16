@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pollGamepadInput, type GamepadLike } from './gamepad.ts';
+import {
+  pollGamepadInput,
+  computeHapticImpulseForEvents,
+  type GamepadLike,
+} from './gamepad.ts';
 
 function makePad(overrides: Partial<GamepadLike> = {}): GamepadLike {
   return {
@@ -64,3 +68,42 @@ test('pollGamepadInput emits single-frame edge triggers for combat/echo buttons 
   assert.equal(disconnected.connected, false);
   assert.equal(disconnected.nextButtonsMask, 0);
 });
+
+test('computeHapticImpulseForEvents prioritizes finishers/boss beats and clamps for reducedMotion', () => {
+  assert.equal(computeHapticImpulseForEvents([], false), null);
+  assert.equal(computeHapticImpulseForEvents(null, false), null);
+  assert.equal(
+    computeHapticImpulseForEvents([{ type: 'player_light_swing', x: 0, z: 0 }], false),
+    null
+  );
+
+  const mixed = computeHapticImpulseForEvents(
+    [
+      { type: 'player_damaged', x: 0, z: 0 },
+      { type: 'player_parry_success', x: 1, z: 1 },
+      { type: 'chrono_execution_finisher', x: 2, z: 2 },
+    ],
+    false
+  );
+  assert.ok(mixed !== null);
+  assert.ok(mixed.strongMagnitude >= 0.85 && mixed.strongMagnitude <= 1);
+  assert.ok(mixed.weakMagnitude >= 0.65 && mixed.weakMagnitude <= 1);
+  assert.ok(mixed.durationMs >= 160);
+
+  const parry = computeHapticImpulseForEvents(
+    [{ type: 'player_parry_success', x: 0, z: 0 }],
+    false
+  );
+  assert.ok(parry !== null);
+  assert.ok(parry.strongMagnitude < mixed.strongMagnitude);
+
+  const reduced = computeHapticImpulseForEvents(
+    [{ type: 'boss_defeated', x: 0, z: 0 }],
+    true
+  );
+  assert.ok(reduced !== null);
+  assert.ok(reduced.strongMagnitude <= 0.35);
+  assert.ok(reduced.weakMagnitude <= 0.25);
+  assert.ok(reduced.durationMs <= 90);
+});
+

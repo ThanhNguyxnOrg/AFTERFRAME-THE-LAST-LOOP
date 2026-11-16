@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  computeCommsCodecProfile,
   computePeripheralThreats,
   computeRelativeBearingDeg,
   computeTacticalRadarSnapshot,
@@ -12,8 +13,10 @@ import {
   applyDamageToDestructibleObstacle,
   buildObstaclesForChapter,
   createInitialWorld,
+  dismissActiveTransmission,
   startBossEncounter,
   stepWorld,
+  triggerNarrativeTransmission,
 } from './simulation.ts';
 import type { PlayerInputFrame } from './types.ts';
 
@@ -239,4 +242,40 @@ test('Kinetic boost pads grant 1.6s surge (+24% speed), trim dodge cooldown, rew
   const baseSpeed = Math.hypot(world.player.vx, world.player.vz);
   assert.ok(surgedSpeed > baseSpeed * 1.2, `Expected surged speed (${surgedSpeed}) > base*1.2 (${baseSpeed * 1.2})`);
 });
+
+test('computeCommsCodecProfile derives speaker channel, glyph, frequency & reduced-motion waveform', () => {
+  const lysa = computeCommsCodecProfile('LYSA VENN · BAY 04 BEACON', 'RECORDED LOG', 4.2, 8.0, false);
+  assert.equal(lysa.glyph, 'lysa');
+  assert.equal(lysa.channelCode, 'CH-04');
+  assert.equal(lysa.frequencyLabel, '142.8 MHz');
+  assert.equal(lysa.bars.length, 7);
+  assert.ok(lysa.bars.every((b) => b >= 0.2 && b <= 1.0));
+
+  const warden = computeCommsCodecProfile('WARDEN // MARSHAL HELIX-04', 'LIVE WARDEN DIRECTIVE', 3.0, 6.0, false);
+  assert.equal(warden.glyph, 'warden');
+  assert.equal(warden.channelCode, 'SYS-00');
+  assert.equal(warden.frequencyLabel, 'OVR // 00.0');
+
+  const sera = computeCommsCodecProfile('SERA VENN', 'LIVE NEURAL TRACE', 2.0, 5.0, true);
+  assert.equal(sera.glyph, 'sera');
+  assert.equal(sera.channelCode, 'RIG-01');
+  assert.ok(sera.bars.every((b) => Math.abs(b - 0.45) < 0.001));
+});
+
+test('triggerNarrativeTransmission and dismissActiveTransmission tag comms_transmission_started with speaker & classification', () => {
+  const world = createInitialWorld('playing');
+  world.events = [];
+  triggerNarrativeTransmission(world, 'prologue_step1_teach', true);
+  const firstEvent = world.events.find((e) => e.type === 'comms_transmission_started');
+  assert.ok(firstEvent?.commsSpeaker?.includes('LYSA'));
+  assert.equal(firstEvent?.commsClassification, 'RECORDED LOG');
+
+  triggerNarrativeTransmission(world, 'prologue_step2_test', false);
+  world.events = [];
+  dismissActiveTransmission(world);
+  const promotedEvent = world.events.find((e) => e.type === 'comms_transmission_started');
+  assert.ok(promotedEvent?.commsSpeaker?.includes('WARDEN'));
+  assert.equal(promotedEvent?.commsClassification, 'LIVE WARDEN DIRECTIVE');
+});
+
 

@@ -340,7 +340,7 @@ export class SoundEngine {
           this.playLoomEndingSelected();
           break;
         case 'comms_transmission_started':
-          this.playCommsTransmission();
+          this.playCommsTransmission(ev.commsSpeaker, ev.commsClassification);
           break;
         case 'weapon_switched':
           this.playWeaponSwitch(
@@ -1657,23 +1657,70 @@ export class SoundEngine {
     });
   }
 
-  private playCommsTransmission(): void {
+  public playArchiveLogSample(speaker?: string, classification?: string): void {
+    if (this.muted) return;
+    this.playCommsTransmission(speaker, classification);
+  }
+
+  private playCommsTransmission(speaker?: string, classification?: string): void {
     try {
       const ctx = this.ensureContext();
       if (!ctx) return;
       const now = ctx.currentTime;
-      const tones = [740, 987.77];
+      const spk = (speaker ?? '').toUpperCase();
+      const cls = (classification ?? '').toUpperCase();
+      const isWarden = cls === 'LIVE WARDEN DIRECTIVE' || (spk.includes('WARDEN') && !spk.includes('PRIME'));
+      const isLysa = spk.includes('LYSA');
+
+      // Subtle radio squelch burst to anchor diegetic transmission onset
+      const bufferSize = Math.floor(ctx.sampleRate * 0.06);
+      const noiseBuf = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(isWarden ? 950 : 1850, now);
+      bp.Q.setValueAtTime(2.6, now);
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.032, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      noise.connect(bp);
+      bp.connect(nGain);
+      nGain.connect(this.getOutputNode(ctx));
+      noise.start(now);
+
+      const tones = isWarden
+        ? [392.0, 293.66, 220.0]
+        : isLysa
+          ? [523.25, 659.25, 783.99]
+          : [740, 987.77];
+
       tones.forEach((freq, idx) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.055);
-        gain.gain.setValueAtTime(0.055, now + idx * 0.055);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.14);
-        osc.connect(gain);
+        osc.type = isWarden ? 'sawtooth' : 'sine';
+        const step = isWarden ? 0.065 : 0.055;
+        osc.frequency.setValueAtTime(freq, now + idx * step);
+        if (isWarden) {
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(1100, now + idx * step);
+          gain.gain.setValueAtTime(0.042, now + idx * step);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * step + 0.16);
+          osc.connect(filter);
+          filter.connect(gain);
+        } else {
+          gain.gain.setValueAtTime(0.052, now + idx * step);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * step + 0.14);
+          osc.connect(gain);
+        }
         gain.connect(this.getOutputNode(ctx));
-        osc.start(now + idx * 0.055);
-        osc.stop(now + idx * 0.055 + 0.15);
+        osc.start(now + idx * step);
+        osc.stop(now + idx * step + 0.18);
       });
     } catch {
       // Never block gameplay if Web Audio scheduling fails

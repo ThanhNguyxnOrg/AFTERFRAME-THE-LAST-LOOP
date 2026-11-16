@@ -13,10 +13,15 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 700,
     rolldownOptions: {
       output: {
         codeSplitting: {
           groups: [
+            {
+              name: 'vendor-three-addons',
+              test: /node_modules[\\/]three[\\/]examples/,
+            },
             {
               name: 'vendor-three',
               test: /node_modules[\\/]three/,
@@ -31,11 +36,11 @@ export default defineConfig({
             },
             {
               name: 'game-renderer',
-              test: /src[\\/]game[\\/](renderer|models)\.ts$/,
+              test: /src[\\/]game[\\/](renderer|models|combat-vfx)\.ts$/,
             },
             {
               name: 'game-io',
-              test: /src[\\/]game[\\/](audio|input)\.ts$/,
+              test: /src[\\/]game[\\/](audio|input|gamepad)\.ts$/,
             },
           ],
         },

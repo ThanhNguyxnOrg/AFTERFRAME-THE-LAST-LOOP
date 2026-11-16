@@ -532,3 +532,85 @@ export function computeTacticalRadarSnapshot(
   };
 }
 
+export type CommsSpeakerGlyph = 'lysa' | 'warden' | 'sera' | 'boss';
+
+export interface CommsCodecProfile {
+  glyph: CommsSpeakerGlyph;
+  channelCode: string;
+  frequencyLabel: string;
+  accentHex: string;
+  bars: number[];
+}
+
+export function computeCommsCodecProfile(
+  speaker: string,
+  classification: string,
+  remainingTime: number,
+  maxDuration: number,
+  reducedMotion = false
+): CommsCodecProfile {
+  const spk = (speaker || '').toUpperCase();
+  const cls = (classification || '').toUpperCase();
+
+  let glyph: CommsSpeakerGlyph = 'boss';
+  let channelCode = 'TRC-09';
+  let frequencyLabel = 'SIG // 88.4';
+  let accentHex = '#fbbf24';
+  let cadence = 11.5;
+
+  if (spk.includes('LYSA')) {
+    glyph = 'lysa';
+    channelCode = 'CH-04';
+    frequencyLabel = '142.8 MHz';
+    accentHex = '#22d3ee';
+    cadence = 10.2;
+  } else if (spk.includes('WARDEN') && !spk.includes('PRIME')) {
+    glyph = 'warden';
+    channelCode = 'SYS-00';
+    frequencyLabel = 'OVR // 00.0';
+    accentHex = '#f87171';
+    cadence = 15.8;
+  } else if (cls === 'LIVE WARDEN DIRECTIVE') {
+    glyph = 'warden';
+    channelCode = 'SYS-00';
+    frequencyLabel = 'OVR // 00.0';
+    accentHex = '#f87171';
+    cadence = 15.8;
+  } else if (spk.includes('SERA')) {
+    glyph = 'sera';
+    channelCode = 'RIG-01';
+    frequencyLabel = 'SYNC // 01';
+    accentHex = '#34d399';
+    cadence = 12.6;
+  }
+
+  if (reducedMotion) {
+    return {
+      glyph,
+      channelCode,
+      frequencyLabel,
+      accentHex,
+      bars: [0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45],
+    };
+  }
+
+  const elapsed = Math.max(0, (maxDuration || 6) - Math.max(0, remainingTime || 0));
+  const bars: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const waveA = Math.sin(elapsed * cadence + i * 1.15) * 0.5 + 0.5;
+    const waveB = Math.cos(elapsed * (cadence * 0.57) - i * 0.85) * 0.5 + 0.5;
+    const bell = 1 - Math.abs(i - 3) * 0.14;
+    const val = Math.max(0.22, Math.min(0.98, (0.28 + 0.7 * (waveA * 0.62 + waveB * 0.38)) * bell));
+    bars.push(Number(val.toFixed(3)));
+  }
+
+  return {
+    glyph,
+    channelCode,
+    frequencyLabel,
+    accentHex,
+    bars,
+  };
+}
+
+

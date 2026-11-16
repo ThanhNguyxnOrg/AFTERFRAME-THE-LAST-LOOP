@@ -4731,6 +4731,8 @@ export function triggerNarrativeTransmission(
       type: 'comms_transmission_started',
       x: world.player?.x ?? 0,
       z: world.player?.z ?? 0,
+      commsSpeaker: transmission.speaker,
+      commsClassification: transmission.classification,
     });
   } else {
     world.comms.queue.push(transmission);
@@ -4748,6 +4750,8 @@ export function dismissActiveTransmission(world: WorldState): boolean {
         type: 'comms_transmission_started',
         x: world.player?.x ?? 0,
         z: world.player?.z ?? 0,
+        commsSpeaker: world.comms.active.speaker,
+        commsClassification: world.comms.active.classification,
       });
     }
   } else {

@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/game/combat-flow.test.ts src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts src/game/performance.test.ts src/game/tactical-hud.test.ts src/game/gamepad.test.ts src/game/adrenaline.test.ts src/game/lock-on.test.ts"
+    "test": "tsx --test src/game/combat-flow.test.ts src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts src/game/performance.test.ts src/game/tactical-hud.test.ts src/game/gamepad.test.ts src/game/adrenaline.test.ts src/game/lock-on.test.ts src/game/combat-vfx.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

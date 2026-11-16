@@ -244,29 +244,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onEquipUpgrade,
 }) => {
   const [activeDrawer, setActiveDrawer] = useState<ActiveTitleDrawer>('none');
-  const [bundleDownloadStatus, setBundleDownloadStatus] = useState<'idle' | 'downloading' | 'saved' | 'error'>('idle');
+  const [bundleDownloadStatus, setBundleDownloadStatus] = useState<'idle' | 'saved'>('idle');
 
-  const handleDownloadBundle = async () => {
-    if (bundleDownloadStatus === 'downloading') return;
-    setBundleDownloadStatus('downloading');
-    try {
-      const res = await fetch('/AFTERFRAME-v1.5.0-orbital-upgrade.bundle');
-      if (!res.ok) throw new Error('Bundle fetch failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'AFTERFRAME-v1.5.0-orbital-upgrade.bundle';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-      setBundleDownloadStatus('saved');
-      setTimeout(() => setBundleDownloadStatus('idle'), 3000);
-    } catch {
-      setBundleDownloadStatus('error');
-      setTimeout(() => setBundleDownloadStatus('idle'), 3000);
-    }
+  const handleMarkBundleDownloaded = () => {
+    setBundleDownloadStatus('saved');
+    setTimeout(() => setBundleDownloadStatus('idle'), 3000);
   };
 
   const toggleDrawer = (drawer: Exclude<ActiveTitleDrawer, 'none'>) => {
@@ -1614,23 +1596,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           <strong className="text-slate-300">[M]</strong> AUDIO
         </span>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+          <a
             data-testid="title-download-bundle"
+            href="./AFTERFRAME-v1.6.0-chronicle-complete.bundle"
+            download="AFTERFRAME-v1.6.0-chronicle-complete.bundle"
             onClick={(e) => {
               e.currentTarget.blur();
-              void handleDownloadBundle();
+              handleMarkBundleDownloaded();
             }}
-            className="pointer-events-auto px-2.5 py-1 bg-[#0b1320] hover:bg-cyan-950/70 active:bg-cyan-900/80 border border-cyan-500/60 text-cyan-300 font-bold tracking-wider uppercase transition-colors cursor-pointer"
+            className="pointer-events-auto inline-block px-2.5 py-1 bg-[#0b1320] hover:bg-cyan-950/70 active:bg-cyan-900/80 border border-cyan-500/60 text-cyan-300 font-bold tracking-wider uppercase transition-colors cursor-pointer no-underline"
           >
-            {bundleDownloadStatus === 'downloading'
-              ? 'PACKING .BUNDLE...'
-              : bundleDownloadStatus === 'saved'
-                ? 'SAVED .BUNDLE ✓'
-                : bundleDownloadStatus === 'error'
-                  ? 'RETRY .BUNDLE'
-                  : 'DOWNLOAD v1.5.0 .BUNDLE'}
-          </button>
+            {bundleDownloadStatus === 'saved'
+              ? 'SAVED .BUNDLE ✓'
+              : 'DOWNLOAD v1.6.0 .BUNDLE (16 KB)'}
+          </a>
           <span className="hidden md:inline text-slate-500">
             CHRONO RIG TELEMETRY · DETERMINISTIC LOCAL SIMULATION
           </span>

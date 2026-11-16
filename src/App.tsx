@@ -8,6 +8,8 @@ import { GameHud } from './components/GameHud.tsx';
 import { StatusModal } from './components/StatusModal.tsx';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { SoundEngine } from './game/audio.ts';
+import { computeScreenFlashTint } from './game/combat-vfx.ts';
+import { triggerGamepadHaptics } from './game/gamepad.ts';
 import { InputController } from './game/input.ts';
 import {
   computeLockedCameraYaw,
@@ -128,6 +130,8 @@ export default function App() {
   const lockOnReticleRef = useRef<HTMLDivElement | null>(null);
   const perfOverlayRef = useRef<HTMLDivElement | null>(null);
   const perfVisibleRef = useRef<boolean>(false);
+  const combatFlashRef = useRef<HTMLDivElement | null>(null);
+  const combatFlashTimerRef = useRef<number | null>(null);
 
   const worldRef = useRef<WorldState | null>(null);
   const inputRef = useRef<InputController | null>(null);
@@ -185,8 +189,40 @@ export default function App() {
   );
   const fpsLimitRef = useRef<FpsLimitOption>(cameraSettings.fpsLimit ?? 60);
   const cameraShakeRef = useRef<boolean>(cameraSettings.cameraShake ?? true);
+  const screenEffectsRef = useRef<boolean>(cameraSettings.screenEffects ?? true);
   const reducedMotionRef = useRef<boolean>(cameraSettings.reducedMotion);
   const forcePausedRerenderRef = useRef<boolean>(false);
+
+  const emitSensoryCombatFeedback = useCallback((events: WorldState['events']) => {
+    if (!events || events.length === 0) return;
+
+    if (inputRef.current?.isGamepadConnected() && cameraShakeRef.current) {
+      triggerGamepadHaptics(events, reducedMotionRef.current);
+    }
+
+    if (screenEffectsRef.current && combatFlashRef.current) {
+      const flash = computeScreenFlashTint(events, reducedMotionRef.current);
+      if (flash) {
+        const el = combatFlashRef.current;
+        el.dataset.tone = flash.tone;
+        el.style.transition = 'none';
+        el.style.boxShadow = `inset 0 0 110px rgba(${flash.rgba}, ${flash.maxOpacity})`;
+        el.style.opacity = '1';
+        void el.offsetWidth;
+        el.style.transition = `opacity ${flash.durationMs}ms ease-out`;
+        el.style.opacity = '0';
+        if (combatFlashTimerRef.current !== null) {
+          window.clearTimeout(combatFlashTimerRef.current);
+        }
+        combatFlashTimerRef.current = window.setTimeout(() => {
+          if (combatFlashRef.current) {
+            combatFlashRef.current.dataset.tone = 'none';
+          }
+          combatFlashTimerRef.current = null;
+        }, flash.durationMs + 20);
+      }
+    }
+  }, []);
   const [initialExplorationTab, setInitialExplorationTab] = useState<
     'missions' | 'map' | 'codex'
   >('missions');
@@ -565,6 +601,10 @@ export default function App() {
     setIsMuted(nextMuted);
   }, []);
 
+  const handlePlayCodexAudio = useCallback((speaker?: string, classification?: string) => {
+    soundRef.current?.playArchiveLogSample(speaker, classification);
+  }, []);
+
   const handleUpdateCameraSettings = useCallback((next: Partial<CameraSettings>) => {
     if (!inputRef.current) return;
     const updated = inputRef.current.setCameraSettings(next);
@@ -933,32 +973,7 @@ export default function App() {
       if (world.events.length > 0) {
         soundRef.current?.playEvents(world.events);
         sceneRenderer.handleCombatEvents(world.events);
-        if (input.isGamepadConnected() && cameraShakeRef.current && !reducedMotionRef.current) {
-          for (let i = 0; i < world.events.length; i++) {
-            const evType = world.events[i].type;
-            if (evType === 'chrono_execution_finisher') {
-              input.triggerGamepadRumble(0.95, 0.72, 190);
-              break;
-            }
-            if (evType === 'player_parry_success' || evType === 'resonance_convergence') {
-              input.triggerGamepadRumble(0.65, 0.4, 130);
-              break;
-            }
-            if (
-              evType === 'active_vent_success' ||
-              (evType === 'adrenaline_tier_changed' &&
-                (world.events[i].postureBonus ?? 0) > 0 &&
-                (world.events[i].amount ?? 0) >= 3)
-            ) {
-              input.triggerGamepadRumble(0.55, 0.35, 115);
-              break;
-            }
-            if (evType === 'player_perfect_dodge' || evType === 'player_damaged') {
-              input.triggerGamepadRumble(0.42, 0.25, 100);
-              break;
-            }
-          }
-        }
+        emitSensoryCombatFeedback(world.events);
       }
 
       const activeLockTarget =
@@ -1365,6 +1380,7 @@ export default function App() {
         if (world.events.length > 0) {
           soundRef.current?.playEvents(world.events);
           sceneRenderer.handleCombatEvents(world.events);
+          emitSensoryCombatFeedback(world.events);
         }
         sceneRenderer.updateAndRender(
           world,
@@ -1698,12 +1714,17 @@ export default function App() {
       delete win.__afterframeTest;
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('visibilitychange', handleVisibilityResume);
+      if (combatFlashTimerRef.current !== null) {
+        window.clearTimeout(combatFlashTimerRef.current);
+        combatFlashTimerRef.current = null;
+      }
       input.detach();
       sceneRenderer.dispose();
       soundRef.current?.dispose();
       rendererRef.current = null;
     };
   }, [
+    emitSensoryCombatFeedback,
     handleAdvanceNextChapter,
     handleOpenMap,
     handlePauseFromPointerLockLoss,
@@ -1726,6 +1747,7 @@ export default function App() {
     rendererRef.current?.applyPerformanceSettings(cameraSettings);
     fpsLimitRef.current = cameraSettings.fpsLimit ?? 60;
     cameraShakeRef.current = cameraSettings.cameraShake ?? true;
+    screenEffectsRef.current = cameraSettings.screenEffects ?? true;
     reducedMotionRef.current = cameraSettings.reducedMotion;
     const nextPerfHud = Boolean(cameraSettings.showPerfHud);
     perfVisibleRef.current = nextPerfHud;
@@ -1762,6 +1784,16 @@ export default function App() {
         ref={calloutMountRef}
         data-testid="combat-callout-layer"
         className="fixed inset-0 z-20 pointer-events-none overflow-hidden select-none"
+      />
+
+      {/* Peripheral Parry / Convergence / Dodge / Damage Edge Flash (Zero React re-renders) */}
+      <div
+        ref={combatFlashRef}
+        data-testid="combat-screen-flash"
+        data-tone="none"
+        style={{ opacity: 0 }}
+        className="fixed inset-0 z-15 pointer-events-none select-none"
+        aria-hidden="true"
       />
 
       {/* Projected 60fps Tactical Target Lock-On Diamond Reticle (Zero React re-renders) */}
@@ -1916,6 +1948,7 @@ export default function App() {
           onUpdateCameraSettings={handleUpdateCameraSettings}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
+          onPlayCodexAudio={handlePlayCodexAudio}
           tutorialEnabled={hud.tutorial.enabled}
           onToggleTutorial={handleToggleTutorial}
           initialExplorationTab={initialExplorationTab}

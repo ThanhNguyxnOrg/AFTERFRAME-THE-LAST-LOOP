@@ -7,6 +7,7 @@ import {
   resolveGraphicsSettings,
 } from '../game/performance.ts';
 import { getAllWeaponUpgradeDefinitions } from '../game/simulation.ts';
+import { computeCommsCodecProfile } from '../game/tactical-hud.ts';
 import type {
   BossCheckpointState,
   CameraSettings,
@@ -54,6 +55,7 @@ interface StatusModalProps {
   onUpdateCameraSettings: (next: Partial<CameraSettings>) => void;
   isMuted?: boolean;
   onToggleMute?: () => void;
+  onPlayCodexAudio?: (speaker?: string, classification?: string) => void;
   tutorialEnabled?: boolean;
   onToggleTutorial?: () => void;
   onResume: () => void;
@@ -106,6 +108,7 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
   onUpdateCameraSettings,
   isMuted = false,
   onToggleMute,
+  onPlayCodexAudio,
   tutorialEnabled = true,
   onToggleTutorial,
   onResume,
@@ -121,6 +124,47 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
     'missions' | 'map' | 'codex'
   >(initialExplorationTab);
   const [selectedCodexId, setSelectedCodexId] = React.useState<CodexEntryId>('CODEX-01');
+  const [playingCodexAudioId, setPlayingCodexAudioId] = React.useState<CodexEntryId | null>(null);
+  const [codexAudioPhase, setCodexAudioPhase] = React.useState<number>(1.8);
+  const codexAudioTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (codexAudioTimerRef.current !== null) {
+        window.clearTimeout(codexAudioTimerRef.current);
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!playingCodexAudioId || cameraSettings.reducedMotion) return;
+    const interval = window.setInterval(() => {
+      setCodexAudioPhase((prev) => Math.max(0.05, prev - 0.12));
+    }, 120);
+    return () => window.clearInterval(interval);
+  }, [playingCodexAudioId, cameraSettings.reducedMotion]);
+
+  const handleToggleCodexAudio = (
+    entryId: CodexEntryId,
+    author: string,
+    categoryLabel: string
+  ) => {
+    if (codexAudioTimerRef.current !== null) {
+      window.clearTimeout(codexAudioTimerRef.current);
+      codexAudioTimerRef.current = null;
+    }
+    if (playingCodexAudioId === entryId) {
+      setPlayingCodexAudioId(null);
+      return;
+    }
+    setCodexAudioPhase(1.72);
+    setPlayingCodexAudioId(entryId);
+    onPlayCodexAudio?.(author, categoryLabel);
+    codexAudioTimerRef.current = window.setTimeout(() => {
+      setPlayingCodexAudioId(null);
+      codexAudioTimerRef.current = null;
+    }, 1800);
+  };
 
   const isPaused = appState === 'paused';
   const isVictory =
@@ -1584,6 +1628,14 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                     exploration.codexEntries.find((e) => e.id === selectedCodexId) ??
                     exploration.codexEntries[0];
                   if (!activeEntry) return null;
+                  const isAudioPlaying = playingCodexAudioId === activeEntry.id;
+                  const codecProfile = computeCommsCodecProfile(
+                    activeEntry.author || activeEntry.title,
+                    activeEntry.categoryLabel || activeEntry.category,
+                    isAudioPlaying ? codexAudioPhase : 1.8,
+                    1.8,
+                    Boolean(cameraSettings.reducedMotion)
+                  );
                   return (
                     <div
                       data-testid="codex-entry-reader"
@@ -1601,6 +1653,61 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                         </h3>
                         <div className="text-[10px] font-mono-tabular text-cyan-300 mb-2">
                           {activeEntry.subtitle}
+                        </div>
+                        <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-2.5 bg-[#070b12] border border-slate-800">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <svg
+                              data-testid="codex-audio-waveform"
+                              width="34"
+                              height="16"
+                              viewBox="0 0 34 16"
+                              className="shrink-0"
+                              aria-hidden="true"
+                            >
+                              {codecProfile.bars.map((bar, barIdx) => {
+                                const h = Math.max(2, Math.round((isAudioPlaying ? bar : 0.25 + (barIdx % 3) * 0.15) * 14));
+                                const y = Math.round((16 - h) / 2);
+                                return (
+                                  <rect
+                                    key={barIdx}
+                                    x={barIdx * 5}
+                                    y={y}
+                                    width="3"
+                                    height={h}
+                                    fill={isAudioPlaying ? codecProfile.accentHex : activeEntry.discovered ? '#64748b' : '#334155'}
+                                  />
+                                );
+                              })}
+                            </svg>
+                            <span className="text-[9px] font-mono-tabular uppercase tracking-wider text-slate-400 truncate">
+                              {activeEntry.discovered ? `${codecProfile.channelCode} · ${codecProfile.frequencyLabel}` : 'ENCRYPTED STREAM'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            data-testid="codex-audio-play-btn"
+                            disabled={!activeEntry.discovered}
+                            onClick={() =>
+                              handleToggleCodexAudio(
+                                activeEntry.id,
+                                activeEntry.author || activeEntry.title,
+                                activeEntry.categoryLabel || activeEntry.category
+                              )
+                            }
+                            className={`px-2 py-0.5 text-[9px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors shrink-0 ${
+                              !activeEntry.discovered
+                                ? 'bg-[#080c12] border-slate-800 text-slate-600 cursor-not-allowed'
+                                : isAudioPlaying
+                                  ? 'bg-cyan-950/90 border-cyan-400 text-cyan-200 cursor-pointer'
+                                  : 'bg-[#0c1624] hover:bg-[#132238] border-cyan-500/60 text-cyan-300 cursor-pointer'
+                            }`}
+                          >
+                            {!activeEntry.discovered
+                              ? 'LOCKED'
+                              : isAudioPlaying
+                                ? 'STOP TRACE'
+                                : 'PLAY AUDIO LOG'}
+                          </button>
                         </div>
                         <div className="space-y-1.5 text-[11px] text-slate-200 leading-relaxed">
                           {(Array.isArray(activeEntry.body)

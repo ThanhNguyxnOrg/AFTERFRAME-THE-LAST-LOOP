@@ -1144,6 +1144,8 @@ export interface CombatEvent {
   bossAttack?: BossAttackType;
   bossPhase?: BossPhase;
   flowKind?: 'none' | 'riposte' | 'chrono_slip' | 'relay_momentum' | 'quick_draw';
+  commsSpeaker?: string;
+  commsClassification?: string;
 }
 
 export interface RunSummary {

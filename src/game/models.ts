@@ -87,9 +87,11 @@ export interface EnemyRig {
   ramLaneGroup?: THREE.Group;
   ramLaneFillMat?: THREE.MeshBasicMaterial;
   ramLaneBorderMat?: THREE.MeshBasicMaterial;
+  ramLaneShaderMat?: THREE.ShaderMaterial;
   sweepSectorGroup?: THREE.Group;
   sweepSectorFillMat?: THREE.MeshBasicMaterial;
   sweepSectorRimMat?: THREE.MeshBasicMaterial;
+  sweepSectorShaderMat?: THREE.ShaderMaterial;
   slamShockwaveRing?: THREE.Mesh;
   slamShockwaveMat?: THREE.MeshBasicMaterial;
   telegraphDisc: THREE.Mesh;
@@ -3215,9 +3217,11 @@ export function createEnemyRig(
   let ramLaneGroup: THREE.Group | undefined;
   let ramLaneFillMat: THREE.MeshBasicMaterial | undefined;
   let ramLaneBorderMat: THREE.MeshBasicMaterial | undefined;
+  let ramLaneShaderMat: THREE.ShaderMaterial | undefined;
   let sweepSectorGroup: THREE.Group | undefined;
   let sweepSectorFillMat: THREE.MeshBasicMaterial | undefined;
   let sweepSectorRimMat: THREE.MeshBasicMaterial | undefined;
+  let sweepSectorShaderMat: THREE.ShaderMaterial | undefined;
   let slamShockwaveRing: THREE.Mesh | undefined;
   let slamShockwaveMat: THREE.MeshBasicMaterial | undefined;
   let auxiliaryPivots: THREE.Group[] = [];
@@ -4275,6 +4279,64 @@ export function createEnemyRig(
       ramLaneGroup.add(railMesh);
     }
 
+    ramLaneShaderMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.NormalBlending,
+      uniforms: {
+        uProgress: { value: 0 },
+        uTime: { value: 0 },
+        uOpacity: { value: 0 },
+        uLocked: { value: 0 },
+        uChevronSpeed: { value: 2.6 },
+        uColor: { value: new THREE.Color(0xf59e0b) },
+        uReducedMotion: { value: 0 },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uProgress;
+        uniform float uTime;
+        uniform float uOpacity;
+        uniform float uLocked;
+        uniform float uChevronSpeed;
+        uniform vec3 uColor;
+        uniform float uReducedMotion;
+        varying vec2 vUv;
+        void main() {
+          float along = vUv.y;
+          float across = abs(vUv.x - 0.5) * 2.0;
+
+          float fillMask = 1.0 - smoothstep(uProgress - 0.04, uProgress + 0.02, along);
+          float frontLine = smoothstep(0.045, 0.0, abs(along - clamp(uProgress, 0.02, 0.98)));
+
+          float flow = (1.0 - uReducedMotion) * uTime * uChevronSpeed;
+          float chevronCoord = along * 6.5 - flow - across * 1.15;
+          float chevronBand = smoothstep(0.28, 0.62, sin(chevronCoord * 6.2831853));
+          float railEdge = smoothstep(0.84, 0.98, across);
+
+          float alpha = (fillMask * 0.24 + chevronBand * 0.42 * (0.45 + uProgress * 0.55) + frontLine * 0.95 + railEdge * (0.45 + uLocked * 0.4)) * uOpacity;
+          if (alpha <= 0.01) discard;
+
+          vec3 hotCol = mix(uColor, vec3(1.0, 0.97, 0.88), frontLine * 0.72 + railEdge * uLocked * 0.5 + chevronBand * 0.25);
+          gl_FragColor = vec4(hotCol, min(0.92, alpha));
+        }
+      `,
+    });
+    const ramShaderGeo = new THREE.PlaneGeometry(ramWidth, ramLen);
+    ramShaderGeo.translate(0, ramLen * 0.5, 0);
+    const ramShaderMesh = new THREE.Mesh(ramShaderGeo, ramLaneShaderMat);
+    ramShaderMesh.rotation.x = -Math.PI / 2;
+    ramShaderMesh.position.y = 0.008;
+    ramFieldFlipZ(ramShaderMesh);
+    ramLaneGroup.add(ramShaderMesh);
+
     // 10b. Helical Sweep Frontal Arc Sector (207 deg arc, 4.5m reach)
     sweepSectorGroup = new THREE.Group();
     sweepSectorGroup.position.y = 0.03;
@@ -4314,6 +4376,65 @@ export function createEnemyRig(
     sectorRimMesh.rotation.x = -Math.PI / 2;
     sectorRimMesh.position.y = 0.005;
     sweepSectorGroup.add(sectorRimMesh);
+
+    sweepSectorShaderMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.NormalBlending,
+      uniforms: {
+        uProgress: { value: 0 },
+        uTime: { value: 0 },
+        uOpacity: { value: 0 },
+        uLocked: { value: 0 },
+        uArcHalf: { value: sweepArc * 0.5 },
+        uColor: { value: new THREE.Color(0xf59e0b) },
+        uReducedMotion: { value: 0 },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vLocalPos;
+        void main() {
+          vLocalPos = position.xy;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uProgress;
+        uniform float uTime;
+        uniform float uOpacity;
+        uniform float uLocked;
+        uniform float uArcHalf;
+        uniform vec3 uColor;
+        uniform float uReducedMotion;
+        varying vec2 vLocalPos;
+        void main() {
+          float r = length(vLocalPos);
+          float normR = clamp((r - 0.9) / ${Math.max(0.5, sweepRadius - 0.9).toFixed(3)}, 0.0, 1.0);
+          float angle = atan(vLocalPos.x, -vLocalPos.y);
+          float arcFrac = clamp((angle + uArcHalf) / max(0.01, uArcHalf * 2.0), 0.0, 1.0);
+
+          float progR = clamp(uProgress, 0.06, 0.98);
+          float radialWave = smoothstep(0.06, 0.0, abs(normR - progR));
+          float outerBladeEdge = smoothstep(0.88, 0.98, normR);
+          float sweepBeam = smoothstep(0.09, 0.0, abs(arcFrac - clamp(uProgress, 0.0, 1.0)));
+          float sectorFill = (1.0 - smoothstep(progR - 0.05, progR + 0.03, normR)) * 0.28;
+          float tick = (1.0 - uReducedMotion) * (0.5 + 0.5 * sin(uTime * 16.0)) * uLocked * 0.25;
+
+          float alpha = (sectorFill + radialWave * 0.85 + sweepBeam * 0.72 + outerBladeEdge * (0.48 + tick)) * uOpacity;
+          if (alpha <= 0.01) discard;
+
+          vec3 col = mix(uColor, vec3(1.0, 0.96, 0.88), radialWave * 0.55 + sweepBeam * 0.65 + outerBladeEdge * uLocked * 0.4);
+          gl_FragColor = vec4(col, min(0.92, alpha));
+        }
+      `,
+    });
+    const sectorShaderMesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.9, sweepRadius, 48, 1, thetaStart, sweepArc),
+      sweepSectorShaderMat
+    );
+    sectorShaderMesh.rotation.x = -Math.PI / 2;
+    sectorShaderMesh.position.y = 0.009;
+    sweepSectorGroup.add(sectorShaderMesh);
 
     // 10c. Anchor Slam Expanding Temporal Shockwave Ring
     slamShockwaveMat = new THREE.MeshBasicMaterial({
@@ -4595,9 +4716,11 @@ export function createEnemyRig(
     ramLaneGroup,
     ramLaneFillMat,
     ramLaneBorderMat,
+    ramLaneShaderMat,
     sweepSectorGroup,
     sweepSectorFillMat,
     sweepSectorRimMat,
+    sweepSectorShaderMat,
     slamShockwaveRing,
     slamShockwaveMat,
     auxiliaryPivots,

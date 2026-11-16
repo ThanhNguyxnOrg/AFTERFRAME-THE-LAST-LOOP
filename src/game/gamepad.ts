@@ -1,7 +1,15 @@
 import { GAME_CONFIG } from './config.ts';
+import type { CombatEvent } from './types.ts';
 
 export const GAMEPAD_STICK_DEADZONE = 0.18;
 export const GAMEPAD_TRIGGER_THRESHOLD = 0.35;
+
+export interface HapticImpulse {
+  strongMagnitude: number;
+  weakMagnitude: number;
+  durationMs: number;
+  priority: number;
+}
 
 export interface GamepadButtonLike {
   pressed: boolean;
@@ -161,3 +169,127 @@ export function pollGamepadInput(
     nextButtonsMask,
   };
 }
+
+export function computeHapticImpulseForEvents(
+  events: readonly CombatEvent[] | null | undefined,
+  reducedMotion: boolean
+): HapticImpulse | null {
+  if (!events || events.length === 0) return null;
+
+  let best: HapticImpulse | null = null;
+  const consider = (candidate: HapticImpulse) => {
+    if (!best || candidate.priority > best.priority) {
+      best = candidate;
+    }
+  };
+
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    switch (ev.type) {
+      case 'chrono_execution_finisher':
+      case 'boss_defeated':
+        consider({ strongMagnitude: 0.96, weakMagnitude: 0.76, durationMs: 200, priority: 6 });
+        break;
+      case 'boss_phase_transition':
+      case 'boss_staggered':
+      case 'resonance_convergence':
+        consider({ strongMagnitude: 0.78, weakMagnitude: 0.56, durationMs: 160, priority: 5 });
+        break;
+      case 'player_parry_success':
+      case 'player_riposte_strike':
+        consider({ strongMagnitude: 0.7, weakMagnitude: 0.44, durationMs: 135, priority: 4 });
+        break;
+      case 'breaker_shockwave_slam':
+      case 'player_breaker_heavy_slam':
+      case 'active_vent_success':
+      case 'echo_collapse_detonated':
+        consider({ strongMagnitude: 0.58, weakMagnitude: 0.36, durationMs: 120, priority: 3 });
+        break;
+      case 'player_perfect_dodge':
+      case 'player_damaged':
+      case 'timed_hazard_damaged_player':
+        consider({ strongMagnitude: 0.44, weakMagnitude: 0.28, durationMs: 100, priority: 2 });
+        break;
+      case 'adrenaline_tier_changed':
+        if ((ev.postureBonus ?? 0) > 0 && (ev.amount ?? 0) >= 3) {
+          consider({ strongMagnitude: 0.48, weakMagnitude: 0.3, durationMs: 105, priority: 2 });
+        }
+        break;
+      case 'player_hit_enemy':
+        if (ev.isCriticalOrVulnerable) {
+          consider({ strongMagnitude: 0.3, weakMagnitude: 0.18, durationMs: 75, priority: 1 });
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (!best) return null;
+  const impulse: HapticImpulse = best;
+  if (!reducedMotion) return impulse;
+
+  return {
+    priority: impulse.priority,
+    strongMagnitude: Math.min(0.35, Number((impulse.strongMagnitude * 0.4).toFixed(3))),
+    weakMagnitude: Math.min(0.25, Number((impulse.weakMagnitude * 0.35).toFixed(3))),
+    durationMs: Math.min(90, Math.round(impulse.durationMs * 0.5)),
+  };
+}
+
+interface ActuatorLike {
+  playEffect?: (
+    type: string,
+    params: {
+      startDelay: number;
+      duration: number;
+      weakMagnitude: number;
+      strongMagnitude: number;
+    }
+  ) => Promise<unknown>;
+}
+
+export function triggerGamepadHaptics(
+  events: readonly CombatEvent[] | null | undefined,
+  reducedMotion: boolean,
+  activeIndex?: number | null
+): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') {
+    return false;
+  }
+  const impulse = computeHapticImpulseForEvents(events, reducedMotion);
+  if (!impulse) return false;
+
+  try {
+    const pads = navigator.getGamepads();
+    let pad: Gamepad | null = null;
+
+    if (typeof activeIndex === 'number') {
+      pad = pads?.[activeIndex] ?? null;
+    } else if (pads) {
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i]?.connected) {
+          pad = pads[i];
+          break;
+        }
+      }
+    }
+
+    const actuator = (pad as (Gamepad & { vibrationActuator?: ActuatorLike }) | null)
+      ?.vibrationActuator;
+    const playEffect = actuator?.playEffect;
+    if (typeof playEffect !== 'function') return false;
+    void playEffect
+      .call(actuator, 'dual-rumble', {
+        startDelay: 0,
+        duration: impulse.durationMs,
+        weakMagnitude: Math.max(0, Math.min(1, impulse.weakMagnitude)),
+        strongMagnitude: Math.max(0, Math.min(1, impulse.strongMagnitude)),
+      })
+      ?.catch?.(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+

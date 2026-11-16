@@ -1,6 +1,7 @@
 import React from 'react';
 import { GAME_CONFIG } from '../game/config.ts';
 import { getCurrentCalibrationObjective } from '../game/simulation.ts';
+import { computeCommsCodecProfile } from '../game/tactical-hud.ts';
 import type {
   CameraSettings,
   ChronicleLoomEndingId,
@@ -2035,91 +2036,163 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           hud.run.stage !== 'intro' &&
           hud.run.stage !== 'boss_intro' &&
           hud.run.stage !== 'transition_to_boss' &&
-          (!hud.loom.active || inspectingLoomChamber) && (
-            <div
-              data-testid="live-comms-banner"
-              data-comms-id={hud.comms.active.id}
-              data-comms-classification={hud.comms.active.classification}
-              className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:bottom-[146px] [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[348px] w-full bg-[#080c13]/94 border border-cyan-400/75 p-2 sm:p-2.5 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
-            >
-              <div className="flex items-center justify-between gap-2 mb-0.5 sm:mb-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className={`inline-block w-1.5 h-1.5 rotate-45 shrink-0 ${
-                      hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
-                        ? 'bg-red-400'
-                        : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
-                          ? 'bg-amber-400'
-                          : 'bg-cyan-400'
-                    }`}
-                  />
-                  <span
-                    data-testid="live-comms-classification"
-                    className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-widest px-1.5 py-0.5 border shrink-0 ${
-                      hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
-                        ? 'text-red-300 border-red-500/50 bg-red-950/40'
-                        : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
-                          ? 'text-amber-300 border-amber-500/50 bg-amber-950/40'
-                          : hud.comms.active.classification === 'LIVE NEURAL TRACE'
-                            ? 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40'
-                            : 'text-cyan-300 border-cyan-500/50 bg-cyan-950/40'
-                    }`}
-                  >
-                    {hud.comms.active.classification}
-                  </span>
-                  <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold text-slate-300 truncate">
-                    {hud.comms.active.speaker}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="btn-dismiss-comms"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onDismissComms?.();
-                  }}
-                  className="px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular uppercase text-slate-400 hover:text-white bg-[#0e1624] border border-slate-700/80 cursor-pointer shrink-0"
-                >
-                  ACK
-                </button>
-              </div>
+          (!hud.loom.active || inspectingLoomChamber) &&
+          (() => {
+            const codec = computeCommsCodecProfile(
+              hud.comms.active.speaker,
+              hud.comms.active.classification,
+              hud.comms.active.remainingTime,
+              hud.comms.active.maxDuration,
+              Boolean(cameraSettings?.reducedMotion)
+            );
+            return (
               <div
-                data-testid="live-comms-headline"
-                className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-slate-100 mb-0.5 truncate"
+                data-testid="live-comms-banner"
+                data-comms-id={hud.comms.active.id}
+                data-comms-classification={hud.comms.active.classification}
+                data-comms-channel={codec.channelCode}
+                className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:bottom-[146px] [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[360px] w-full bg-[#080c13]/94 border border-cyan-400/75 p-2 sm:p-2.5 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
               >
-                {hud.comms.active.headline}
-              </div>
-              <p
-                data-testid="live-comms-body"
-                className="text-[10px] sm:text-[11px] text-slate-200 leading-snug mb-1 max-sm:line-clamp-2"
-              >
-                {hud.comms.active.body}
-              </p>
-              {hud.comms.active.tacticalHint && (
-                <div
-                  data-testid="live-comms-hint"
-                  className="hidden sm:block text-[9px] sm:text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1 pt-1 border-t border-slate-800/80"
-                >
-                  TACTICAL: {hud.comms.active.tacticalHint}
+                <div className="flex items-start gap-2 mb-1">
+                  {/* Diegetic Speaker Codec Sigil */}
+                  <div className="hidden sm:flex flex-col items-center justify-center w-9 h-9 shrink-0 bg-[#050911] border border-slate-700/80">
+                    <svg viewBox="0 0 24 24" className="w-6 h-6" aria-hidden="true">
+                      {codec.glyph === 'warden' ? (
+                        <>
+                          <polygon points="12,3 20,8 20,16 12,21 4,16 4,8" fill="none" stroke={codec.accentHex} strokeWidth="1.5" />
+                          <polygon points="12,7 16,12 12,17 8,12" fill={codec.accentHex} fillOpacity="0.3" stroke={codec.accentHex} strokeWidth="1" />
+                          <line x1="7" y1="12" x2="17" y2="12" stroke="#f8fafc" strokeWidth="1.3" />
+                        </>
+                      ) : codec.glyph === 'lysa' ? (
+                        <>
+                          <circle cx="12" cy="12" r="8" fill="none" stroke={codec.accentHex} strokeWidth="1.4" strokeDasharray="16 6" />
+                          <polygon points="12,6 17,12 12,18 7,12" fill={codec.accentHex} fillOpacity="0.28" stroke={codec.accentHex} strokeWidth="1.2" />
+                          <circle cx="12" cy="12" r="1.8" fill="#f8fafc" />
+                        </>
+                      ) : codec.glyph === 'sera' ? (
+                        <>
+                          <circle cx="12" cy="12" r="8" fill="none" stroke={codec.accentHex} strokeWidth="1.5" />
+                          <polygon points="12,6 17,15 12,13 7,15" fill={codec.accentHex} />
+                        </>
+                      ) : (
+                        <>
+                          <rect x="4" y="4" width="16" height="16" fill="none" stroke={codec.accentHex} strokeWidth="1.4" />
+                          <line x1="6" y1="6" x2="18" y2="18" stroke={codec.accentHex} strokeWidth="1.2" />
+                          <line x1="18" y1="6" x2="6" y2="18" stroke={codec.accentHex} strokeWidth="1.2" />
+                        </>
+                      )}
+                    </svg>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`inline-block w-1.5 h-1.5 rotate-45 shrink-0 ${
+                            hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
+                              ? 'bg-red-400'
+                              : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
+                                ? 'bg-amber-400'
+                                : 'bg-cyan-400'
+                          }`}
+                        />
+                        <span
+                          data-testid="live-comms-classification"
+                          className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-widest px-1.5 py-0.5 border shrink-0 ${
+                            hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
+                              ? 'text-red-300 border-red-500/50 bg-red-950/40'
+                              : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
+                                ? 'text-amber-300 border-amber-500/50 bg-amber-950/40'
+                                : hud.comms.active.classification === 'LIVE NEURAL TRACE'
+                                  ? 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40'
+                                  : 'text-cyan-300 border-cyan-500/50 bg-cyan-950/40'
+                          }`}
+                        >
+                          {hud.comms.active.classification}
+                        </span>
+                        <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold text-slate-300 truncate">
+                          {hud.comms.active.speaker}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        data-testid="btn-dismiss-comms"
+                        onClick={(e) => {
+                          e.currentTarget.blur();
+                          onDismissComms?.();
+                        }}
+                        className="px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular uppercase text-slate-400 hover:text-white bg-[#0e1624] border border-slate-700/80 cursor-pointer shrink-0"
+                      >
+                        ACK
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[8px] sm:text-[9px] font-mono-tabular text-slate-400 tracking-wider uppercase truncate">
+                        {codec.channelCode} · {codec.frequencyLabel}
+                      </span>
+                      <svg
+                        viewBox="0 0 28 10"
+                        className="w-7 h-2.5 shrink-0"
+                        aria-hidden="true"
+                        data-testid="live-comms-waveform"
+                      >
+                        {codec.bars.map((amp, idx) => {
+                          const h = Math.max(2, Number((amp * 10).toFixed(1)));
+                          return (
+                            <rect
+                              key={idx}
+                              x={idx * 4}
+                              y={10 - h}
+                              width="2.5"
+                              height={h}
+                              fill={codec.accentHex}
+                              fillOpacity={0.85}
+                            />
+                          );
+                        })}
+                      </svg>
+                    </div>
+                  </div>
                 </div>
-              )}
-              <div className="relative h-0.5 w-full bg-[#05080c] overflow-hidden">
                 <div
-                  className="absolute inset-y-0 left-0 bg-cyan-400 transition-all duration-75"
-                  style={{
-                    width: `${Math.max(
-                      0,
-                      Math.min(
-                        100,
-                        (hud.comms.active.remainingTime / Math.max(0.1, hud.comms.active.maxDuration)) * 100
-                      )
-                    )}%`,
-                  }}
-                />
+                  data-testid="live-comms-headline"
+                  className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-slate-100 mb-0.5 truncate"
+                >
+                  {hud.comms.active.headline}
+                </div>
+                <p
+                  data-testid="live-comms-body"
+                  className="text-[10px] sm:text-[11px] text-slate-200 leading-snug mb-1 max-sm:line-clamp-2"
+                >
+                  {hud.comms.active.body}
+                </p>
+                {hud.comms.active.tacticalHint && (
+                  <div
+                    data-testid="live-comms-hint"
+                    className="hidden sm:block text-[9px] sm:text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1 pt-1 border-t border-slate-800/80"
+                  >
+                    TACTICAL: {hud.comms.active.tacticalHint}
+                  </div>
+                )}
+                <div className="relative h-0.5 w-full bg-[#05080c] overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-cyan-400 transition-all duration-75"
+                    style={{
+                      width: `${Math.max(
+                        0,
+                        Math.min(
+                          100,
+                          (hud.comms.active.remainingTime / Math.max(0.1, hud.comms.active.maxDuration)) * 100
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
         <div className="grid grid-cols-2 gap-1 items-end [@media(min-width:640px)_and_(min-height:541px)]:contents">
           {/* Bottom-Left Dock: Chrono Echo Rig Module */}
