@@ -393,8 +393,63 @@ export class SoundEngine {
         case 'codex_entry_discovered':
           this.playProgressionReward();
           break;
+        case 'active_vent_success':
+          this.playActiveVentSuccess();
+          break;
+        case 'active_vent_missed':
+          this.playEchoInvalidBeep();
+          break;
+        case 'adrenaline_tier_changed':
+          if ((ev.postureBonus ?? 0) > 0 && (ev.amount ?? 0) >= 1) {
+            this.playAdrenalineTierUp(ev.amount ?? 1);
+          }
+          break;
       }
     }
+  }
+
+  private playActiveVentSuccess(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc2.type = 'sine';
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(1240, now + 0.14);
+    osc2.frequency.setValueAtTime(780, now + 0.04);
+    osc2.frequency.exponentialRampToValueAtTime(1560, now + 0.18);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.16, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc2.start(now + 0.04);
+    osc.stop(now + 0.23);
+    osc2.stop(now + 0.23);
+  }
+
+  private playAdrenalineTierUp(tier: number): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const baseFreq = 440 + Math.min(5, Math.max(1, tier)) * 75;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + 0.16);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.11, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc.stop(now + 0.21);
   }
 
   private playPhaseRailShot(isHeavy: boolean): void {

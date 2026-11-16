@@ -908,6 +908,10 @@ export interface PlayerState {
   activeStrikeFlowDamageMult?: number;
   activeStrikeFlowStaggerMult?: number;
   activeStrikeFlowKind?: 'none' | 'riposte' | 'chrono_slip' | 'relay_momentum' | 'quick_draw';
+  adrenalineScore?: number;
+  adrenalineDecayGraceTimer?: number;
+  activeVentAttempted?: boolean;
+  activeVentEmpoweredShots?: number;
 }
 
 export interface EnemyState {
@@ -1083,7 +1087,10 @@ export interface CombatEvent {
     | 'narrative_event_triggered'
     | 'echo_memory_discovered'
     | 'player_riposte_strike'
-    | 'player_perfect_dodge';
+    | 'player_perfect_dodge'
+    | 'adrenaline_tier_changed'
+    | 'active_vent_success'
+    | 'active_vent_missed';
   x: number;
   z: number;
   originX?: number;
@@ -1907,6 +1914,21 @@ export interface HudSnapshot {
     lastShotOutcome: WeaponShotOutcome;
     statusLabel: string;
     activeProjectiles: number;
+    activeVent?: {
+      progress: number;
+      windowStart: number;
+      windowEnd: number;
+      attempted: boolean;
+      empoweredShots: number;
+    };
+  };
+  adrenaline?: {
+    tier: number;
+    score: number;
+    progressToNext: number;
+    label: string;
+    perkLabel: string;
+    decayGraceTimer: number;
   };
   progression: HudWeaponProgressionSnapshot;
   encounter: EncounterRuntimeState;

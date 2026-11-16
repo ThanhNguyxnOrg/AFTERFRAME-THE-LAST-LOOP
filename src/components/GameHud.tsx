@@ -348,6 +348,62 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               </div>
             );
           })}
+
+          {hud.weapon.overheated && hud.weapon.activeVent && (
+            <div
+              data-testid="active-vent-reticle-bar"
+              data-attempted={hud.weapon.activeVent.attempted ? 'true' : 'false'}
+              className="absolute left-1/2 top-[34px] -translate-x-1/2 w-32 bg-[#080c13]/92 border border-slate-700/90 px-1.5 py-1 pointer-events-none shadow-[0_4px_12px_rgba(0,0,0,0.75)]"
+            >
+              <div className="relative h-2 w-full bg-[#05080c] border border-slate-700 overflow-hidden">
+                {!hud.weapon.activeVent.attempted && (
+                  <div
+                    className="absolute inset-y-0 bg-cyan-400/55 border-x border-cyan-200"
+                    style={{
+                      left: `${Math.round(hud.weapon.activeVent.windowStart * 100)}%`,
+                      width: `${Math.round(
+                        (hud.weapon.activeVent.windowEnd - hud.weapon.activeVent.windowStart) * 100
+                      )}%`,
+                    }}
+                  />
+                )}
+                <div
+                  className={`absolute inset-y-0 w-1 ${
+                    hud.weapon.activeVent.attempted
+                      ? 'bg-red-500'
+                      : hud.weapon.activeVent.progress >= hud.weapon.activeVent.windowStart &&
+                          hud.weapon.activeVent.progress <= hud.weapon.activeVent.windowEnd
+                        ? 'bg-white'
+                        : 'bg-amber-300'
+                  }`}
+                  style={{
+                    left: `calc(${Math.round(hud.weapon.activeVent.progress * 100)}% - 2px)`,
+                  }}
+                />
+              </div>
+              <div
+                className={`mt-0.5 text-center text-[8px] font-mono-tabular font-bold uppercase tracking-wider leading-none ${
+                  hud.weapon.activeVent.attempted
+                    ? 'text-red-400'
+                    : hud.weapon.activeVent.progress >= hud.weapon.activeVent.windowStart &&
+                        hud.weapon.activeVent.progress <= hud.weapon.activeVent.windowEnd
+                      ? 'text-cyan-200'
+                      : 'text-amber-300'
+                }`}
+              >
+                {hud.weapon.activeVent.attempted ? 'VENT JAMMED' : '[F] ACTIVE VENT'}
+              </div>
+            </div>
+          )}
+
+          {!hud.weapon.overheated && (hud.weapon.activeVent?.empoweredShots ?? 0) > 0 && (
+            <div
+              data-testid="active-vent-overcharged-badge"
+              className="absolute left-1/2 top-[28px] -translate-x-1/2 px-1.5 py-0.5 bg-[#080c13]/92 border border-cyan-400/80 text-[8px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-200 whitespace-nowrap"
+            >
+              OVERCHARGED ×{hud.weapon.activeVent?.empoweredShots}
+            </div>
+          )}
         </div>
       )}
 
@@ -432,6 +488,66 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               </div>
             </div>
           </div>
+
+          {/* Live Adrenaline Sync Tier Bar (Tier 0-5) */}
+          {(() => {
+            const adr = hud.adrenaline ?? {
+              tier: 0,
+              score: 0,
+              progressToNext: 0,
+              label: 'SYNC LV 0',
+              perkLabel: 'BASE CALIBRATION',
+              decayGraceTimer: 0,
+            };
+            const isOverdrive = adr.tier >= 4;
+            const isActiveTier = adr.tier >= 1;
+            return (
+              <div
+                data-testid="adrenaline-hud-bar"
+                data-tier={adr.tier}
+                className="pt-1 border-t border-slate-800/85 mb-1.5"
+              >
+                <div className="flex items-center justify-between gap-1 mb-0.5">
+                  <span
+                    className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-wider ${
+                      isOverdrive
+                        ? 'text-amber-300'
+                        : isActiveTier
+                          ? 'text-cyan-300'
+                          : 'text-slate-400'
+                    }`}
+                  >
+                    {adr.label}
+                  </span>
+                  <span className="text-[8px] font-mono-tabular uppercase tracking-wide text-slate-400 truncate">
+                    {adr.perkLabel}
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {[0, 1, 2, 3, 4].map((idx) => {
+                    const filled = adr.tier > idx;
+                    const filling = adr.tier === idx;
+                    const cellPct = filled ? 100 : filling ? Math.round(adr.progressToNext * 100) : 0;
+                    return (
+                      <div
+                        key={idx}
+                        className="relative h-1 bg-[#05080c] border border-slate-800 overflow-hidden"
+                      >
+                        {cellPct > 0 && (
+                          <div
+                            className={`absolute inset-y-0 left-0 transition-all duration-75 ${
+                              idx >= 3 ? 'bg-amber-400' : 'bg-cyan-400'
+                            } ${filled ? 'opacity-100' : 'opacity-70'}`}
+                            style={{ width: `${cellPct}%` }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Chrono Echo Track Module */}
           <div
@@ -866,7 +982,18 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 data-overheated={hud.weapon.overheated ? 'true' : 'false'}
                 className="flex items-center gap-1.5"
               >
-                <div className="relative h-1 flex-1 bg-[#05080c] border border-slate-800 overflow-hidden">
+                <div className="relative h-1.5 flex-1 bg-[#05080c] border border-slate-800 overflow-hidden">
+                  {hud.weapon.overheated && hud.weapon.activeVent && !hud.weapon.activeVent.attempted && (
+                    <div
+                      className="absolute inset-y-0 bg-cyan-400/40 border-x border-cyan-300 z-10"
+                      style={{
+                        left: `${Math.round(hud.weapon.activeVent.windowStart * 100)}%`,
+                        width: `${Math.round(
+                          (hud.weapon.activeVent.windowEnd - hud.weapon.activeVent.windowStart) * 100
+                        )}%`,
+                      }}
+                    />
+                  )}
                   <div
                     className={`absolute inset-y-0 left-0 transition-all duration-75 ${
                       hud.weapon.overheated
@@ -877,26 +1004,38 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                     }`}
                     style={{ width: `${Math.round(hud.weapon.heatRatio * 100)}%` }}
                   />
+                  {hud.weapon.overheated && hud.weapon.activeVent && (
+                    <div
+                      className="absolute inset-y-0 w-0.5 bg-white z-20"
+                      style={{ left: `${Math.round(hud.weapon.activeVent.progress * 100)}%` }}
+                    />
+                  )}
                 </div>
                 <span
                   data-testid="weapon-status-readout"
                   className={`text-[8px] sm:text-[9px] font-mono-tabular uppercase whitespace-nowrap shrink-0 ${
                     hud.weapon.overheated
                       ? 'text-red-400 font-bold'
-                      : hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                          hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? hud.weapon.heat >= 70
-                          ? 'text-amber-300 font-semibold'
-                          : 'text-sky-300'
-                        : 'text-slate-400'
+                      : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
+                        ? 'text-cyan-300 font-bold'
+                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                            hud.weapon.equippedWeaponId === 'phase_rail'
+                          ? hud.weapon.heat >= 70
+                            ? 'text-amber-300 font-semibold'
+                            : 'text-sky-300'
+                          : 'text-slate-400'
                   }`}
                 >
                   {hud.weapon.overheated
-                    ? `OVERHEAT ${hud.weapon.overheatTimer.toFixed(1)}s`
-                    : hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                        hud.weapon.equippedWeaponId === 'phase_rail'
-                      ? `HEAT ${hud.weapon.heat}%`
-                      : `COMBO ${hud.comboStep}/3`}
+                    ? hud.weapon.activeVent && !hud.weapon.activeVent.attempted
+                      ? `VENT [F] ${hud.weapon.overheatTimer.toFixed(1)}s`
+                      : `OVERHEAT ${hud.weapon.overheatTimer.toFixed(1)}s`
+                    : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
+                      ? `OVERCHARGED ×${hud.weapon.activeVent?.empoweredShots}`
+                      : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                          hud.weapon.equippedWeaponId === 'phase_rail'
+                        ? `HEAT ${hud.weapon.heat}%`
+                        : `COMBO ${hud.comboStep}/3`}
                 </span>
               </div>
             </div>

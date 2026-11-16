@@ -2346,6 +2346,24 @@ export class ArenaSceneRenderer {
         case 'pulse_overheat_cleared':
           this.spawnBurst(ev.x, 1.15, ev.z, 8, 0x22d3ee, 3.6);
           break;
+        case 'active_vent_success':
+          this.spawnBurst(ev.x, 1.25, ev.z, 20, 0x22d3ee, 7.6);
+          this.spawnBurst(ev.x, 1.3, ev.z, 10, 0xffffff, 5.8);
+          this.triggerImpactRing(ev.x, 0.24, ev.z, 0x22d3ee, 0.36);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.2);
+          }
+          break;
+        case 'active_vent_missed':
+          this.spawnBurst(ev.x, 1.2, ev.z, 12, 0xf59e0b, 4.8);
+          break;
+        case 'adrenaline_tier_changed':
+          if ((ev.postureBonus ?? 0) > 0 && (ev.amount ?? 0) >= 1) {
+            const tierColor = (ev.amount ?? 0) >= 4 ? 0xfbbf24 : 0x22d3ee;
+            this.spawnBurst(ev.x, 1.15, ev.z, 14, tierColor, 5.4);
+            this.triggerImpactRing(ev.x, 0.14, ev.z, tierColor, 0.28);
+          }
+          break;
         case 'pulse_impact_obstacle':
           this.spawnBurst(
             ev.x,
@@ -4524,6 +4542,7 @@ export class ArenaSceneRenderer {
       if (rig.ramLaneGroup) rig.ramLaneGroup.visible = false;
       if (rig.sweepSectorGroup) rig.sweepSectorGroup.visible = false;
       if (rig.slamShockwaveRing) rig.slamShockwaveRing.visible = false;
+      this.syncTelegraphShader(rig, false, 0, 0xf59e0b, 0, world.elapsedTime);
 
       // KO topple transition
       if (enemy.aiState === 'ko') {
@@ -4703,6 +4722,7 @@ export class ArenaSceneRenderer {
           rig.telegraphDisc.scale.setScalar(0.5 + progress * 0.7);
           rig.telegraphRingMaterial.color.setHex(0xef4444);
           rig.telegraphRingMaterial.opacity = 0.92;
+          this.syncTelegraphShader(rig, true, progress, 0xef4444, 0.85, world.elapsedTime);
         } else if (bState === 'telegraph') {
           const locked = Boolean(boss?.telegraphLocked);
           const teleColor = locked ? 0xef4444 : 0xf59e0b;
@@ -4749,6 +4769,7 @@ export class ArenaSceneRenderer {
             rig.telegraphDiscMaterial.opacity = 0.22 + progress * 0.32;
             rig.telegraphRingMaterial.color.setHex(teleColor);
             rig.telegraphRingMaterial.opacity = 0.65 + progress * 0.35;
+            this.syncTelegraphShader(rig, true, progress, teleColor, 0.78 + progress * 0.2, world.elapsedTime);
 
             if (rig.slamShockwaveRing && rig.slamShockwaveMat) {
               rig.slamShockwaveRing.visible = true;
@@ -4816,6 +4837,7 @@ export class ArenaSceneRenderer {
             rig.telegraphDiscMaterial.opacity = 0.48 * (1 - progress);
             rig.telegraphRingMaterial.color.setHex(0xffffff);
             rig.telegraphRingMaterial.opacity = 0.85 * (1 - progress);
+            this.syncTelegraphShader(rig, true, 1, 0xef4444, 0.82 * (1 - progress), world.elapsedTime);
 
             if (rig.slamShockwaveRing && rig.slamShockwaveMat && boss?.shockwaveActive) {
               rig.slamShockwaveRing.visible = true;
@@ -5051,10 +5073,12 @@ export class ArenaSceneRenderer {
             ? Math.max(0, Math.min(1, 1 - enemy.stateTimer / enemy.stateDuration))
             : 0;
         const isLocked = Boolean(enemy.telegraphLocked) || progress >= 0.55;
+        const shaderHex = isLocked ? 0xef4444 : 0xf59e0b;
         rig.telegraphDiscMaterial.opacity = 0.16 + progress * 0.28;
         rig.telegraphDisc.scale.setScalar(Math.max(0.1, progress));
-        rig.telegraphRingMaterial.color.setHex(isLocked ? 0xef4444 : 0xf59e0b);
+        rig.telegraphRingMaterial.color.setHex(shaderHex);
         rig.telegraphRingMaterial.opacity = 0.58 + progress * 0.4;
+        this.syncTelegraphShader(rig, true, progress, shaderHex, 0.72 + progress * 0.25, world.elapsedTime);
 
         if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
           // Bastion / Sentinel raises heavy shock-maul high overhead while planting legs
@@ -5088,6 +5112,7 @@ export class ArenaSceneRenderer {
       } else if (enemy.aiState === 'attack') {
         rig.telegraphDiscMaterial.opacity = 0.46;
         rig.telegraphRingMaterial.opacity = 0.92;
+        this.syncTelegraphShader(rig, true, 1, 0xef4444, 0.88, world.elapsedTime);
         if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
           // Bastion commits to heavy downward ground-slam
           rig.bodyGroup.position.y = -0.06;
@@ -5326,6 +5351,30 @@ export class ArenaSceneRenderer {
       this.currentCamPos.z
     );
     this.camera.lookAt(this.currentLookAt);
+  }
+
+  private syncTelegraphShader(
+    rig: EnemyRig,
+    visible: boolean,
+    progress: number,
+    colorHex: number,
+    opacity: number,
+    elapsedTime: number
+  ): void {
+    const disc = rig.telegraphShaderDisc;
+    const mat = rig.telegraphShaderMat;
+    if (!disc || !mat) return;
+    if (!visible || opacity <= 0.01) {
+      disc.visible = false;
+      mat.uniforms.uOpacity.value = 0;
+      return;
+    }
+    disc.visible = true;
+    mat.uniforms.uProgress.value = progress;
+    mat.uniforms.uTime.value = elapsedTime;
+    mat.uniforms.uOpacity.value = opacity;
+    mat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
+    (mat.uniforms.uColor.value as THREE.Color).setHex(colorHex);
   }
 
   public resize(width: number, height: number): void {

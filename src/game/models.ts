@@ -93,6 +93,8 @@ export interface EnemyRig {
   telegraphDiscMaterial: THREE.MeshBasicMaterial;
   telegraphRing: THREE.Mesh;
   telegraphRingMaterial: THREE.MeshBasicMaterial;
+  telegraphShaderDisc?: THREE.Mesh;
+  telegraphShaderMat?: THREE.ShaderMaterial;
   laserSightMesh?: THREE.Mesh;
   laserSightMaterial?: THREE.MeshBasicMaterial;
   auxiliaryPivots?: THREE.Group[];
@@ -4105,6 +4107,65 @@ export function createEnemyRig(
   telegraphRing.position.y = 0.032;
   root.add(telegraphRing);
 
+  const telegraphShaderMat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.NormalBlending,
+    uniforms: {
+      uProgress: { value: 0 },
+      uTime: { value: 0 },
+      uOpacity: { value: 0 },
+      uColor: { value: new THREE.Color(0xf59e0b) },
+      uReducedMotion: { value: 0 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform float uProgress;
+      uniform float uTime;
+      uniform float uOpacity;
+      uniform vec3 uColor;
+      uniform float uReducedMotion;
+      varying vec2 vUv;
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        float dist = length(p);
+        if (dist > 1.0) discard;
+
+        float angle = atan(p.y, p.x);
+        float spin = (1.0 - uReducedMotion) * uTime * 3.8;
+        float sweepAngle = mod(angle + spin + 3.14159265, 6.2831853);
+        float arcMask = step(0.15, sin(sweepAngle * 6.0));
+
+        float progR = clamp(uProgress, 0.08, 0.93);
+        float outerRing = smoothstep(0.055, 0.0, abs(dist - 0.93));
+        float fillRing = smoothstep(0.048, 0.0, abs(dist - progR));
+        float innerWave = smoothstep(0.04, 0.0, abs(dist - mod(progR + 0.35, 0.9))) * 0.45;
+        float fillInterior = (1.0 - smoothstep(progR - 0.04, progR + 0.02, dist)) * 0.18;
+        float hazardSector = outerRing * (0.35 + 0.65 * arcMask);
+        float alpha = (hazardSector + fillRing * 1.15 + innerWave + fillInterior) * uOpacity;
+        if (alpha <= 0.01) discard;
+
+        vec3 col = mix(uColor, vec3(1.0, 0.96, 0.88), fillRing * 0.62 + outerRing * arcMask * 0.3);
+        gl_FragColor = vec4(col, min(0.92, alpha));
+      }
+    `,
+  });
+  const telegraphShaderDisc = new THREE.Mesh(
+    new THREE.PlaneGeometry(telegraphRadius * 2.15, telegraphRadius * 2.15),
+    telegraphShaderMat
+  );
+  telegraphShaderDisc.rotation.x = -Math.PI / 2;
+  telegraphShaderDisc.position.y = 0.042;
+  telegraphShaderDisc.visible = false;
+  root.add(telegraphShaderDisc);
+
   let laserSightMesh: THREE.Mesh | undefined;
   let laserSightMaterial: THREE.MeshBasicMaterial | undefined;
 
@@ -4162,6 +4223,8 @@ export function createEnemyRig(
     telegraphDiscMaterial,
     telegraphRing,
     telegraphRingMaterial,
+    telegraphShaderDisc,
+    telegraphShaderMat,
     laserSightMesh,
     laserSightMaterial,
   };

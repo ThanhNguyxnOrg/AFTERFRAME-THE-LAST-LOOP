@@ -13,6 +13,14 @@ import {
   tickPlayerCombatFlowTimers,
 } from './combat-flow.ts';
 import { computePeripheralThreats } from './tactical-hud.ts';
+import {
+  ACTIVE_VENT_CONFIG,
+  ADRENALINE_GAINS,
+  applyAdrenalineDelta,
+  evaluateActiveVentTiming,
+  getAdrenalineModifiers,
+  tickAdrenalineDecay,
+} from './adrenaline.ts';
 import type {
   BossAiState,
   BossAttackType,
@@ -3830,6 +3838,10 @@ export function createInitialPlayer(): PlayerState {
     activeStrikeFlowDamageMult: 1,
     activeStrikeFlowStaggerMult: 1,
     activeStrikeFlowKind: 'none',
+    adrenalineScore: 0,
+    adrenalineDecayGraceTimer: 0,
+    activeVentAttempted: false,
+    activeVentEmpoweredShots: 0,
   };
 }
 
@@ -9459,6 +9471,7 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     p.weaponHeat = p.maxWeaponHeat;
     p.weaponOverheated = true;
     p.weaponOverheatTimer = rangedCfg.overheatLockoutDuration;
+    p.activeVentAttempted = false;
     world.events.push({
       type: 'pulse_overheated',
       x: p.x,
@@ -9503,6 +9516,12 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     const nullCfg = GAME_CONFIG.weapons.upgrades.rail_null_aperture;
     damage = isEmpowered ? nullCfg.heavyEmpoweredDamage : nullCfg.heavyBaseDamage;
     staggerDamage = isEmpowered ? nullCfg.heavyEmpoweredStagger : nullCfg.heavyStagger;
+  }
+
+  if ((p.activeVentEmpoweredShots ?? 0) > 0) {
+    damage = Math.round(damage * ACTIVE_VENT_CONFIG.empoweredDamageMult);
+    staggerDamage = Math.round(staggerDamage * ACTIVE_VENT_CONFIG.empoweredStaggerMult);
+    p.activeVentEmpoweredShots = Math.max(0, (p.activeVentEmpoweredShots ?? 1) - 1);
   }
 
   world.projectiles.push({
@@ -10312,6 +10331,17 @@ function checkAndTriggerBossPhase2(
       enemyId: enemy.id,
       bossPhase: 2,
     });
+
+    const p2Adr = applyAdrenalineDelta(world.player, ADRENALINE_GAINS.bossPhaseBreak);
+    if (p2Adr.tierDelta !== 0) {
+      world.events.push({
+        type: 'adrenaline_tier_changed',
+        x: world.player.x,
+        z: world.player.z,
+        amount: p2Adr.nextTier,
+        postureBonus: p2Adr.tierDelta,
+      });
+    }
   }
 }
 
@@ -10513,6 +10543,26 @@ function handleEnemyZeroHpDefeat(
     isGuarded,
     enemyId: enemy.id,
   });
+
+  if (world.player.integrity > 0 && world.player.actionState !== 'dead') {
+    const adrMods = getAdrenalineModifiers(world.player.adrenalineScore);
+    if (adrMods.siphonOnKillHp > 0) {
+      world.player.integrity = Math.min(
+        world.player.maxIntegrity,
+        world.player.integrity + adrMods.siphonOnKillHp
+      );
+    }
+    const koAdr = applyAdrenalineDelta(world.player, ADRENALINE_GAINS.enemyKo);
+    if (koAdr.tierDelta !== 0) {
+      world.events.push({
+        type: 'adrenaline_tier_changed',
+        x: world.player.x,
+        z: world.player.z,
+        amount: koAdr.nextTier,
+        postureBonus: koAdr.tierDelta,
+      });
+    }
+  }
 }
 
 export function triggerBossDefeat(world: WorldState): boolean {
@@ -10794,12 +10844,14 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     res.postureBonus = effectiveConvPostureBonus;
     const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
 
+    const meleeAdrMods = getAdrenalineModifiers(p.adrenalineScore);
     const finalDamage = Math.max(
       1,
-      Math.round(baseDamage * vulnMult * guardDmgMult)
+      Math.round(baseDamage * vulnMult * guardDmgMult * meleeAdrMods.damageMult)
     );
     const effectiveStagger =
-      Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult) + convergencePostureBonus;
+      Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult * meleeAdrMods.staggerMult) +
+      convergencePostureBonus;
 
     if (triggeredConvergence) {
       p.flux = Math.max(0, p.flux - effectiveConvFluxCost);
@@ -11005,6 +11057,24 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
         enemyId: enemy.id,
         resonanceOutcome: 'converged',
         weaponId: p.equippedWeaponId,
+      });
+    }
+
+    const meleeHitAdr = applyAdrenalineDelta(
+      p,
+      triggeredConvergence
+        ? ADRENALINE_GAINS.convergence
+        : isHeavy
+          ? ADRENALINE_GAINS.heavyHit
+          : ADRENALINE_GAINS.lightHit
+    );
+    if (meleeHitAdr.tierDelta !== 0) {
+      world.events.push({
+        type: 'adrenaline_tier_changed',
+        x: p.x,
+        z: p.z,
+        amount: meleeHitAdr.nextTier,
+        postureBonus: meleeHitAdr.tierDelta,
       });
     }
 
@@ -11257,13 +11327,14 @@ function applyPlayerProjectileHitToEnemy(
   const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
   const projFlowDamageMult = proj.flowDamageMult ?? 1;
   const projFlowStaggerMult = proj.flowStaggerMult ?? 1;
+  const projAdrMods = getAdrenalineModifiers(p.adrenalineScore);
   const finalDamage = Math.max(
     1,
-    Math.round(baseDamage * vulnMult * guardDmgMult * projFlowDamageMult)
+    Math.round(baseDamage * vulnMult * guardDmgMult * projFlowDamageMult * projAdrMods.damageMult)
   );
   const effectiveStagger =
     Math.round(
-      staggerAmount * vulnStaggerMult * guardStaggerMult * projFlowStaggerMult
+      staggerAmount * vulnStaggerMult * guardStaggerMult * projFlowStaggerMult * projAdrMods.staggerMult
     ) + convergencePostureBonus;
 
   if (triggeredConvergence) {
@@ -11417,6 +11488,24 @@ function applyPlayerProjectileHitToEnemy(
       enemyId: enemy.id,
       resonanceOutcome: 'converged',
       weaponId: isPhaseRailProj ? 'phase_rail' : 'pulsecaster',
+    });
+  }
+
+  const projHitAdr = applyAdrenalineDelta(
+    p,
+    triggeredConvergence
+      ? ADRENALINE_GAINS.convergence
+      : isHeavy
+        ? ADRENALINE_GAINS.heavyHit
+        : ADRENALINE_GAINS.lightHit
+  );
+  if (projHitAdr.tierDelta !== 0) {
+    world.events.push({
+      type: 'adrenaline_tier_changed',
+      x: p.x,
+      z: p.z,
+      amount: projHitAdr.nextTier,
+      postureBonus: projHitAdr.tierDelta,
     });
   }
 
@@ -11682,6 +11771,26 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   const railCfg = GAME_CONFIG.weapons.phase_rail;
   const breakerCfg = GAME_CONFIG.weapons.grav_breaker;
   const activeThermalCfg = p.equippedWeaponId === 'phase_rail' ? railCfg : pulseCfg;
+  const adrMods = getAdrenalineModifiers(p.adrenalineScore);
+  let hasLiveEnemy = false;
+  for (let ei = 0; ei < world.enemies.length; ei++) {
+    const en = world.enemies[ei];
+    if (en.hp > 0 && en.aiState !== 'ko') {
+      hasLiveEnemy = true;
+      break;
+    }
+  }
+  const decayRes = tickAdrenalineDecay(p, dt, hasLiveEnemy);
+  if (decayRes.tierDelta !== 0) {
+    world.events.push({
+      type: 'adrenaline_tier_changed',
+      x: p.x,
+      z: p.z,
+      amount: decayRes.nextTier,
+      postureBonus: decayRes.tierDelta,
+    });
+  }
+
   if (p.weaponOverheated) {
     p.weaponOverheatTimer = Math.max(0, p.weaponOverheatTimer - dt);
     const lockDuration = Math.max(0.1, activeThermalCfg.overheatLockoutDuration);
@@ -11693,6 +11802,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     );
     if (p.weaponOverheatTimer <= 0) {
       p.weaponOverheated = false;
+      p.activeVentAttempted = false;
       p.weaponHeat = clearRatio * p.maxWeaponHeat;
       world.events.push({
         type: 'pulse_overheat_cleared',
@@ -11703,13 +11813,13 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     }
   } else if (p.weaponHeat > 0) {
     const coolRateMult =
-      p.equippedWeaponId === 'phase_rail'
+      (p.equippedWeaponId === 'phase_rail'
         ? getEquippedWeaponUpgrade(world, 'phase_rail') === 'rail_phase_capacitor'
           ? GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.coolRateMultiplier
           : 1.0
         : getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_thermal_sink'
           ? GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.coolRateMultiplier
-          : 1.0;
+          : 1.0) * adrMods.coolRateMult;
     p.weaponHeat = Math.max(
       0,
       p.weaponHeat - activeThermalCfg.heatCoolRatePerSec * coolRateMult * dt
@@ -11718,9 +11828,9 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
   p.fluxDampenedTimer = Math.max(0, (p.fluxDampenedTimer ?? 0) - dt);
   const fluxRegenMult =
-    (p.fluxDampenedTimer ?? 0) > 0
+    ((p.fluxDampenedTimer ?? 0) > 0
       ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
-      : 1.0;
+      : 1.0) * adrMods.fluxRegenMult;
   p.flux = Math.min(
     p.maxFlux,
     p.flux + GAME_CONFIG.player.fluxRegenPerSec * fluxRegenMult * dt
@@ -11915,7 +12025,52 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     }
   } else if (p.bufferedAction === 'light') {
     if (isRangedWeapon) {
-      if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
+      if (p.weaponOverheated) {
+        p.bufferedAction = 'none';
+        if (!p.activeVentAttempted) {
+          const ventResult = evaluateActiveVentTiming(
+            p.weaponOverheatTimer,
+            activeThermalCfg.overheatLockoutDuration
+          );
+          if (ventResult.inWindow) {
+            p.weaponOverheated = false;
+            p.weaponOverheatTimer = 0;
+            p.weaponHeat = 0;
+            p.weaponShotCooldownTimer = 0;
+            p.activeVentAttempted = false;
+            p.activeVentEmpoweredShots = ACTIVE_VENT_CONFIG.empoweredShotsGranted;
+            p.lastWeaponShotOutcome = 'fired';
+            p.flux = Math.min(p.maxFlux, p.flux + ACTIVE_VENT_CONFIG.fluxBonus);
+            const ventAdr = applyAdrenalineDelta(p, ADRENALINE_GAINS.activeVent);
+            if (ventAdr.tierDelta !== 0) {
+              world.events.push({
+                type: 'adrenaline_tier_changed',
+                x: p.x,
+                z: p.z,
+                amount: ventAdr.nextTier,
+                postureBonus: ventAdr.tierDelta,
+              });
+            }
+            world.events.push({
+              type: 'active_vent_success',
+              x: p.x,
+              z: p.z,
+              weaponId: p.equippedWeaponId,
+            });
+          } else {
+            p.activeVentAttempted = true;
+            p.lastWeaponShotOutcome = 'overheated';
+            world.events.push({
+              type: 'active_vent_missed',
+              x: p.x,
+              z: p.z,
+              weaponId: p.equippedWeaponId,
+            });
+          }
+        } else {
+          p.lastWeaponShotOutcome = 'overheated';
+        }
+      } else if (p.weaponHeat >= p.maxWeaponHeat) {
         p.bufferedAction = 'none';
         p.lastWeaponShotOutcome = 'overheated';
       } else if (isNeutralState || canFlowCancelLight) {
@@ -12366,6 +12521,16 @@ export function applyDamageToPlayer(
       z: p.z,
       enemyId: attacker?.id,
     });
+    const parryAdr = applyAdrenalineDelta(p, ADRENALINE_GAINS.parry);
+    if (parryAdr.tierDelta !== 0) {
+      world.events.push({
+        type: 'adrenaline_tier_changed',
+        x: p.x,
+        z: p.z,
+        amount: parryAdr.nextTier,
+        postureBonus: parryAdr.tierDelta,
+      });
+    }
     return false;
   }
 
@@ -12392,6 +12557,16 @@ export function applyDamageToPlayer(
         enemyId: attacker?.id,
         amount: fluxGain,
       });
+      const slipAdr = applyAdrenalineDelta(p, ADRENALINE_GAINS.chronoSlip);
+      if (slipAdr.tierDelta !== 0) {
+        world.events.push({
+          type: 'adrenaline_tier_changed',
+          x: p.x,
+          z: p.z,
+          amount: slipAdr.nextTier,
+          postureBonus: slipAdr.tierDelta,
+        });
+      }
     }
     return false;
   }
@@ -12418,6 +12593,16 @@ export function applyDamageToPlayer(
     amount: damage,
     enemyId: attacker?.id,
   });
+  const dmgAdr = applyAdrenalineDelta(p, ADRENALINE_GAINS.damageTakenPenalty, false);
+  if (dmgAdr.tierDelta !== 0) {
+    world.events.push({
+      type: 'adrenaline_tier_changed',
+      x: p.x,
+      z: p.z,
+      amount: dmgAdr.nextTier,
+      postureBonus: dmgAdr.tierDelta,
+    });
+  }
 
   if (p.integrity <= 0) {
     p.actionState = 'dead';
@@ -15064,7 +15249,37 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
                   ? p.comboIndex + 1
                   : 0
               }/3`,
+      activeVent: {
+        progress: (() => {
+          const lockDur = Math.max(
+            0.1,
+            p.equippedWeaponId === 'phase_rail'
+              ? GAME_CONFIG.weapons.phase_rail.overheatLockoutDuration
+              : GAME_CONFIG.weapons.pulsecaster.overheatLockoutDuration
+          );
+          return p.weaponOverheated
+            ? Number(Math.max(0, Math.min(1, 1 - p.weaponOverheatTimer / lockDur)).toFixed(3))
+            : 0;
+        })(),
+        windowStart: ACTIVE_VENT_CONFIG.windowStart,
+        windowEnd: ACTIVE_VENT_CONFIG.windowEnd,
+        attempted: Boolean(p.activeVentAttempted),
+        empoweredShots: p.activeVentEmpoweredShots ?? 0,
+      },
     },
+    adrenaline: (() => {
+      const score = p.adrenalineScore ?? 0;
+      const mods = getAdrenalineModifiers(score);
+      const progressToNext = mods.tier >= 5 ? 1 : Math.max(0, Math.min(1, score - mods.tier));
+      return {
+        tier: mods.tier,
+        score: Number(score.toFixed(2)),
+        progressToNext: Number(progressToNext.toFixed(3)),
+        label: mods.label,
+        perkLabel: mods.perkLabel,
+        decayGraceTimer: Number((p.adrenalineDecayGraceTimer ?? 0).toFixed(2)),
+      };
+    })(),
     progression: {
       memoryFragments: world.progression?.memoryFragments ?? 0,
       unlockedWeaponIds: getUnlockedWeaponIds(world),

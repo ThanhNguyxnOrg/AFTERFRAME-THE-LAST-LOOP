@@ -274,6 +274,44 @@ export function formatCombatCallouts(
         }
         break;
       }
+      case 'active_vent_success':
+        out.push({
+          text: 'ACTIVE VENT! OVERCHARGED',
+          tone: 'parry',
+          worldX: ev.x,
+          worldY: 2.15,
+          worldZ: ev.z,
+          scale: 1.24,
+          duration: 0.88,
+        });
+        break;
+      case 'active_vent_missed':
+        out.push({
+          text: 'VENT JAMMED',
+          tone: 'hurt',
+          worldX: ev.x,
+          worldY: 2.0,
+          worldZ: ev.z,
+          scale: 0.96,
+          duration: 0.65,
+        });
+        break;
+      case 'adrenaline_tier_changed': {
+        const tier = typeof ev.amount === 'number' ? Math.round(ev.amount) : 0;
+        const delta = typeof ev.postureBonus === 'number' ? ev.postureBonus : 0;
+        if (delta > 0 && tier >= 1) {
+          out.push({
+            text: tier >= 5 ? 'OVERDRIVE LV 5!' : `SYNC LV ${tier}`,
+            tone: tier >= 5 ? 'crit' : 'slip',
+            worldX: ev.x,
+            worldY: 2.25,
+            worldZ: ev.z,
+            scale: tier >= 5 ? 1.28 : 1.08,
+            duration: 0.85,
+          });
+        }
+        break;
+      }
     }
   }
   return out;

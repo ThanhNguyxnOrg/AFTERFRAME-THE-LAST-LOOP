@@ -922,6 +922,15 @@ export default function App() {
               input.triggerGamepadRumble(0.65, 0.4, 130);
               break;
             }
+            if (
+              evType === 'active_vent_success' ||
+              (evType === 'adrenaline_tier_changed' &&
+                (world.events[i].postureBonus ?? 0) > 0 &&
+                (world.events[i].amount ?? 0) >= 3)
+            ) {
+              input.triggerGamepadRumble(0.55, 0.35, 115);
+              break;
+            }
             if (evType === 'player_perfect_dodge' || evType === 'player_damaged') {
               input.triggerGamepadRumble(0.42, 0.25, 100);
               break;
@@ -1045,10 +1054,12 @@ export default function App() {
           world.echo.state === 'playback' ||
           world.player.chargeTime > 0 ||
           world.player.weaponHeat > 0 ||
+          world.player.weaponOverheated ||
           world.player.weaponOverheatTimer > 0 ||
           world.player.weaponShotCooldownTimer > 0 ||
           world.player.weaponSwitchCooldownTimer > 0 ||
           (world.player.fluxDampenedTimer ?? 0) > 0 ||
+          (world.player.adrenalineDecayGraceTimer ?? 0) > 0 ||
           world.player.ghostIntegrity > world.player.integrity + 0.05 ||
           (world.player.riposteTimer ?? 0) > 0 ||
           (world.player.chronoSlipTimer ?? 0) > 0 ||
