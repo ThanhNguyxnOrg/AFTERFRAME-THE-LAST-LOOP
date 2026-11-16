@@ -161,7 +161,7 @@ jobs:
         run: node scripts/itch-browser-smoke.mjs
 
       - name: Upload itch.io package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AFTERFRAME-THE-LAST-LOOP-itch-html5
           path: AFTERFRAME-THE-LAST-LOOP-itch-html5.zip
@@ -201,7 +201,7 @@ jobs:
           echo "itch.io target configuration is present (target value is intentionally not echoed)."
 
       - name: Download the package artifact from this workflow run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: AFTERFRAME-THE-LAST-LOOP-itch-html5
           path: release-artifact
