@@ -1,5 +1,11 @@
 import React from 'react';
+import { evaluateCombatRank } from '../game/combat-flow.ts';
 import { GAME_CONFIG } from '../game/config.ts';
+import {
+  FPS_LIMIT_OPTIONS,
+  RENDER_SCALE_OPTIONS,
+  resolveGraphicsSettings,
+} from '../game/performance.ts';
 import { getAllWeaponUpgradeDefinitions } from '../game/simulation.ts';
 import type {
   BossCheckpointState,
@@ -39,6 +45,7 @@ interface StatusModalProps {
   exploration?: WorldExplorationState;
   initialExplorationTab?: 'missions' | 'map' | 'codex';
   equippedWeaponId?: WeaponId;
+  onSelectWeapon?: (weaponId: WeaponId) => void;
   onPurchaseUpgrade?: (upgradeId: WeaponUpgradeId) => void;
   onEquipUpgrade?: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => void;
   cameraSettings: CameraSettings;
@@ -68,7 +75,7 @@ const NEXT_CHAPTER_LABELS: Record<CampaignChapterId, string> = {
 
 const ALL_UPGRADE_DEFINITIONS = getAllWeaponUpgradeDefinitions();
 
-export const StatusModal: React.FC<StatusModalProps> = ({
+export const StatusModal: React.FC<StatusModalProps> = React.memo(({
   appState,
   encounterMode = 'standard',
   runMode = 'practice_standard',
@@ -89,6 +96,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   exploration,
   initialExplorationTab = 'missions',
   equippedWeaponId = 'chrono_edge',
+  onSelectWeapon,
   onPurchaseUpgrade,
   onEquipUpgrade,
   cameraSettings,
@@ -111,24 +119,6 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   >(initialExplorationTab);
   const [selectedCodexId, setSelectedCodexId] = React.useState<CodexEntryId>('CODEX-01');
 
-  React.useEffect(() => {
-    if (appState === 'paused' || appState === 'gameover') {
-      setActiveExplorationTab(initialExplorationTab);
-      if (initialExplorationTab === 'map') {
-        requestAnimationFrame(() => {
-          const mapEl = document.querySelector('[data-testid="local-sector-map"]');
-          if (mapEl && typeof mapEl.scrollIntoView === 'function') {
-            mapEl.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
-          }
-        });
-      }
-    }
-  }, [appState, initialExplorationTab]);
-
-  if (appState !== 'paused' && appState !== 'gameover') {
-    return null;
-  }
-
   const isPaused = appState === 'paused';
   const isVictory =
     appState === 'gameover' && (summary?.outcome === 'victory' || outcome === 'victory');
@@ -145,16 +135,43 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   const chapterConfig = GAME_CONFIG.campaignChapters[chapter];
   const showUpgradeBench = Boolean((isPaused || (isVictory && !endingDetails)) && progression);
 
+  const [activeModalSection, setActiveModalSection] = React.useState<
+    'arsenal' | 'exploration' | 'telemetry' | 'settings'
+  >(() => {
+    if (initialExplorationTab === 'map') return 'exploration';
+    if (showUpgradeBench) return 'arsenal';
+    return 'telemetry';
+  });
+
+  React.useEffect(() => {
+    if (appState === 'paused' || appState === 'gameover') {
+      setActiveExplorationTab(initialExplorationTab);
+      if (initialExplorationTab === 'map') {
+        setActiveModalSection('exploration');
+      } else if (showUpgradeBench) {
+        setActiveModalSection('arsenal');
+      } else {
+        setActiveModalSection('telemetry');
+      }
+    }
+  }, [appState, initialExplorationTab, showUpgradeBench]);
+
+  if (appState !== 'paused' && appState !== 'gameover') {
+    return null;
+  }
+
   const displayTime = summary ? summary.elapsedTime : elapsedTime;
   const displayDefeated = summary ? summary.enemiesDefeated : enemiesDefeated;
   const displayTotal = summary ? summary.totalEnemies : totalEnemies;
   const displayDamageDealt = summary ? summary.damageDealt : 0;
   const displayDamageTaken = summary ? summary.damageTaken : 0;
   const displayParries = summary ? summary.parriesLanded : 0;
+  const displayPerfectDodges = summary ? (summary.perfectDodges ?? 0) : 0;
   const displayVulnerableHits = summary ? summary.vulnerableHits : 0;
   const displayConvergences = summary ? summary.convergencesTriggered : 0;
   const displayRelays = summary ? summary.relaysUsed : 0;
   const displayRemainingHp = summary ? summary.remainingTargetHp : 0;
+  const rankEval = summary ? evaluateCombatRank(summary) : null;
 
   return (
     <div
@@ -166,450 +183,652 @@ export const StatusModal: React.FC<StatusModalProps> = ({
       data-modal-outcome={outcome}
       data-run-mode={runMode}
       data-chapter={chapter}
-      className="fixed inset-0 z-30 flex items-center justify-center p-4 sm:p-6 pointer-events-auto overflow-y-auto"
+      className="fixed inset-0 z-30 flex items-center justify-center p-2 sm:p-4 pointer-events-auto"
       style={{
         backgroundColor: 'rgba(7, 9, 13, 0.86)',
       }}
     >
       <div
         className={`w-full ${
-          showUpgradeBench ? 'max-w-[660px]' : 'max-w-[560px]'
-        } bg-[#0b1018] border border-slate-700/90 p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.88)] my-auto`}
+          showUpgradeBench ? 'max-w-[960px]' : 'max-w-[760px]'
+        } max-h-[94vh] flex flex-col bg-[#0b1018] border border-slate-700/90 shadow-[0_20px_60px_rgba(0,0,0,0.92)] overflow-hidden`}
       >
-        {/* Status Kicker */}
-        <div className="flex items-center justify-between gap-2 text-xs font-mono-tabular uppercase tracking-widest mb-1">
-          {isPaused ? (
-            <span className="text-amber-400">
-              {isCampaign
-                ? `NADIR-9 CAMPAIGN · ${NEXT_CHAPTER_LABELS[chapter]}`
-                : 'ISOLATED PRACTICE SIMULATION · PAUSED'}
-            </span>
-          ) : isVictory ? (
-            <span className="text-cyan-400">
-              {endingDetails
-                ? `CHRONICLE LOOM · ${endingDetails.subtitle}`
-                : isCampaign
-                  ? `${NEXT_CHAPTER_LABELS[chapter]} · CLEARED`
-                  : isBossMode
-                    ? 'PRACTICE SIMULATION · WARDEN DEFEATED'
-                    : 'TEST BAY 04 · SECURED'}
-            </span>
-          ) : (
-            <span className="text-red-400">CHRONO RIG · SUIT INTEGRITY DEPLETED</span>
-          )}
-
-          {canAdvanceChapter && pendingNextChapter && (
-            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/40 px-2 py-0.5">
-              UNLOCKED: {NEXT_CHAPTER_LABELS[pendingNextChapter]}
-            </span>
-          )}
-        </div>
-
-        {/* Modal Heading */}
-        <h2
-          id="modal-status-heading"
-          className="text-2xl sm:text-3xl font-display font-bold tracking-wide text-slate-100 uppercase mb-2"
-        >
-          {isPaused
-            ? 'Simulation Paused'
-            : isVictory
-              ? endingDetails
-                ? endingDetails.epilogueTitle
-                : isBossMode
-                  ? 'Warden Core Silenced'
-                  : 'Loop Stabilized'
-              : 'Loop Terminated'}
-        </h2>
-
-        <p
-          data-testid={selectedEnding ? 'modal-ending-summary' : undefined}
-          className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-3"
-        >
-          {isPaused
-            ? 'Temporal telemetry suspended. Resume your active loop, configure weapon modifications at the Upgrade Bench, or adjust system preferences.'
-            : isVictory
-              ? endingDetails
-                ? endingDetails.epilogueBody
-                : canAdvanceChapter && pendingNextChapter
-                  ? chapterConfig.transitionBriefing
-                  : isCampaign && hasSavedCampaignSnapshot
-                    ? `${NEXT_CHAPTER_LABELS[chapter]} replay complete. Your primary campaign progress remains safely preserved in the archive.`
-                    : isCampaign
-                      ? chapterConfig.transitionBriefing
-                      : isBossMode
-                        ? 'Practice encounter complete. Campaign progression remains untouched.'
-                        : 'All WARDEN security proxies in Test Bay 04 have been neutralized.'
-              : isBossMode && hasBossCheckpoint && bossCheckpoint
-                ? `Sera Venn’s suit integrity failed. Retry Boss Checkpoint [R] restores your saved arena-entry state (${bossCheckpoint.integrity} Integrity · ${bossCheckpoint.flux} Flux), while Restart Full Campaign resets to Prologue.`
-                : 'Sera Venn’s suit integrity failed before the sector could be cleared. Press [R] to restart this sector immediately.'}
-        </p>
-
-        {/* Recovered Archive Log (Shown on Campaign Chapter Victory) */}
-        {!isPaused && isVictory && isCampaign && !endingDetails && chapterConfig?.archiveLog && (
-          <div
-            data-testid="modal-recovered-archive-log"
-            className="bg-[#08111d] border-l-2 border-cyan-400 border-y border-r border-slate-800/90 p-3 mb-3.5"
-          >
-            <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 mb-1">
-              <span className="font-bold">
-                RECOVERED ARCHIVE · {chapterConfig.archiveLog.id} — {chapterConfig.archiveLog.title}
+        {/* Pinned Top Header: Status Kicker, Title, Compact Telemetry Strip & Console Switcher */}
+        <div className="shrink-0 px-4 sm:px-5 pt-3.5 pb-2.5 bg-[#080d15] border-b border-slate-800/90">
+          {/* Status Kicker */}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-xs font-mono-tabular uppercase tracking-widest mb-0.5">
+            {isPaused ? (
+              <span className="text-amber-400">
+                {isCampaign
+                  ? `NADIR-9 CAMPAIGN · ${NEXT_CHAPTER_LABELS[chapter]}`
+                  : 'ISOLATED PRACTICE SIMULATION · PAUSED'}
               </span>
-              <span className="text-slate-400 shrink-0">{chapterConfig.archiveLog.timestamp}</span>
-            </div>
-            <p className="text-[11px] sm:text-xs text-slate-200 italic leading-snug">
-              {chapterConfig.archiveLog.excerpt}
-            </p>
+            ) : isVictory ? (
+              <span className="text-cyan-400">
+                {endingDetails
+                  ? `CHRONICLE LOOM · ${endingDetails.subtitle}`
+                  : isCampaign
+                    ? `${NEXT_CHAPTER_LABELS[chapter]} · CLEARED`
+                    : isBossMode
+                      ? 'PRACTICE SIMULATION · WARDEN DEFEATED'
+                      : 'TEST BAY 04 · SECURED'}
+              </span>
+            ) : (
+              <span className="text-red-400">CHRONO RIG · SUIT INTEGRITY DEPLETED</span>
+            )}
+
+            {canAdvanceChapter && pendingNextChapter && (
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/40 px-2 py-0.5">
+                UNLOCKED: {NEXT_CHAPTER_LABELS[pendingNextChapter]}
+              </span>
+            )}
           </div>
-        )}
 
-        {/* Chronicle Loom Final Exchange (Shown when a Final Ending is Selected) */}
-        {!isPaused && isVictory && endingDetails && (
-          <div
-            data-testid="modal-ending-dialogue"
-            className="bg-[#08111d] border-l-2 border-amber-400 border-y border-r border-slate-800/90 p-3 mb-3.5 space-y-1 font-mono-tabular text-[11px]"
-          >
-            <div className="text-amber-300">{endingDetails.wardenQuote}</div>
-            <div className="text-cyan-300 font-semibold">{endingDetails.seraQuote}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px] pt-1.5 mt-1 border-t border-slate-800/80">
-              <div className="text-rose-300">
-                <span className="font-bold uppercase">SACRIFICE:</span> {endingDetails.sacrifice}
-              </div>
-              <div className="text-cyan-300">
-                <span className="font-bold uppercase">PRESERVED:</span> {endingDetails.preserved}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
-              <span>WORLD STATE: {endingDetails.worldEffect}</span>
-              <span className="text-emerald-300 font-bold">
-                ENDINGS RECORDED: {completedEndings.length}/3 · LOGS: {recoveredLogs.length}/6
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            {/* Modal Heading */}
+            <h2
+              id="modal-status-heading"
+              className="text-xl sm:text-2xl font-display font-bold tracking-wide text-slate-100 uppercase leading-tight"
+            >
+              {isPaused
+                ? 'Simulation Paused'
+                : isVictory
+                  ? endingDetails
+                    ? endingDetails.epilogueTitle
+                    : isBossMode
+                      ? 'Warden Core Silenced'
+                      : 'Loop Stabilized'
+                  : 'Loop Terminated'}
+            </h2>
+
+            {/* Compact Inline Quick Telemetry Strip */}
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono-tabular">
+              <span className="px-2 py-0.5 bg-[#0b121e] border border-slate-800 text-slate-300">
+                {isVictory ? 'CLEAR' : 'TIME'}{' '}
+                <strong className="text-slate-100">{displayTime.toFixed(1)}s</strong>
               </span>
+              <span className="px-2 py-0.5 bg-[#0b121e] border border-slate-800 text-slate-300">
+                HOSTILES{' '}
+                <strong className="text-cyan-400">
+                  {displayDefeated}/{displayTotal}
+                </strong>
+              </span>
+              <span className="px-2 py-0.5 bg-[#0b121e] border border-slate-800 text-slate-300">
+                {isPaused || isVictory ? 'DMG' : 'HOSTILE HP'}{' '}
+                <strong className="text-amber-400">
+                  {isPaused || isVictory
+                    ? `${displayDamageDealt} (${displayVulnerableHits}x)`
+                    : displayRemainingHp}
+                </strong>
+              </span>
+              <span className="px-2 py-0.5 bg-[#0b121e] border border-slate-800 text-slate-300">
+                PARRY <strong className="text-amber-300">{displayParries}</strong> · SLIP{' '}
+                <strong className="text-cyan-300">{displayPerfectDodges}</strong> · CONV{' '}
+                <strong className="text-cyan-200">{displayConvergences}</strong>
+              </span>
+              {!isPaused && rankEval && (
+                <span
+                  data-testid="modal-combat-rank"
+                  data-rank-grade={rankEval.grade}
+                  className={`px-2 py-0.5 border font-bold ${
+                    rankEval.grade === 'S+' || rankEval.grade === 'S'
+                      ? 'bg-cyan-500/20 border-cyan-300 text-white'
+                      : rankEval.grade === 'A'
+                        ? 'bg-emerald-500/15 border-emerald-400 text-emerald-200'
+                        : 'bg-[#0b121e] border-slate-700 text-slate-200'
+                  }`}
+                >
+                  RANK {rankEval.grade}
+                </span>
+              )}
+              {progression && (
+                <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-400/60 text-amber-300 font-bold">
+                  FRAGMENTS: {progression.memoryFragments}
+                </span>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Phase 20: Campaign Finale Discovery & Synthesis Summary */}
-        {!isPaused && isVictory && endingDetails && exploration?.convergenceSummary && (
+          {/* Unified Top-Level Console Switcher Tabs */}
           <div
-            data-testid="modal-campaign-discovery-summary"
-            data-synthesis-tier={exploration.convergenceSummary.synthesisTier}
-            className="bg-[#07111c] border border-cyan-500/50 p-3 mb-3.5 space-y-2"
+            data-testid="modal-section-tabs"
+            className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-800/80"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300">
-                {exploration.convergenceSummary.synthesisHeadline}
-              </span>
-              <span
-                className={`text-[9px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border ${
-                  exploration.convergenceSummary.synthesisTier === 'complete_chronicle'
-                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
-                    : exploration.convergenceSummary.synthesisTier === 'reconstructed'
-                      ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                      : 'bg-amber-500/20 border-amber-400 text-amber-300'
+            <div className="flex flex-wrap items-center gap-1.5">
+              {showUpgradeBench && (
+                <button
+                  type="button"
+                  data-testid="modal-section-arsenal"
+                  aria-pressed={activeModalSection === 'arsenal'}
+                  onClick={() => setActiveModalSection('arsenal')}
+                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                    activeModalSection === 'arsenal'
+                      ? 'bg-cyan-400 text-slate-950 border-cyan-300'
+                      : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-cyan-200'
+                  }`}
+                >
+                  ⚔ ARSENAL & UPGRADES [U] (
+                  {(progression?.unlockedWeaponIds ?? ['chrono_edge', 'pulsecaster']).length}/4)
+                </button>
+              )}
+
+              {(isPaused || isVictory) && exploration && (
+                <button
+                  type="button"
+                  data-testid="modal-section-exploration"
+                  aria-pressed={activeModalSection === 'exploration'}
+                  onClick={() => setActiveModalSection('exploration')}
+                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                    activeModalSection === 'exploration'
+                      ? 'bg-emerald-400/20 border-emerald-400 text-emerald-200'
+                      : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-slate-300'
+                  }`}
+                >
+                  🗺 JOURNAL, MAP & CODEX [N] ({exploration.discoveredCodexIds.length}/
+                  {exploration.codexEntries.length})
+                </button>
+              )}
+
+              <button
+                type="button"
+                data-testid="modal-section-telemetry"
+                aria-pressed={activeModalSection === 'telemetry'}
+                onClick={() => setActiveModalSection('telemetry')}
+                className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                  activeModalSection === 'telemetry'
+                    ? 'bg-amber-400/20 border-amber-400 text-amber-200'
+                    : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-slate-300'
                 }`}
               >
-                {exploration.convergenceSummary.synthesisTier.replace('_', ' ').toUpperCase()}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-300 leading-snug">
-              {exploration.convergenceSummary.synthesisSummary}
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 font-mono-tabular text-[9px] uppercase">
-              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
-                <span className="text-slate-400">CHAPTERS</span>
-                <span className="text-cyan-300 font-bold">
-                  {exploration.convergenceSummary.completedChaptersCount}/
-                  {exploration.convergenceSummary.totalChaptersCount}
-                </span>
-              </div>
-              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
-                <span className="text-slate-400">ARCHIVE LOGS</span>
-                <span className="text-cyan-300 font-bold">
-                  {exploration.convergenceSummary.recoveredLogsCount}/
-                  {exploration.convergenceSummary.totalLogsCount}
-                </span>
-              </div>
-              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
-                <span className="text-slate-400">CODEX RECORDS</span>
-                <span className="text-amber-300 font-bold">
-                  {exploration.convergenceSummary.discoveredCodexCount}/
-                  {exploration.convergenceSummary.totalCodexCount}
-                </span>
-              </div>
-              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
-                <span className="text-slate-400">SECRETS</span>
-                <span className="text-emerald-300 font-bold">
-                  {exploration.convergenceSummary.discoveredSecretsCount}/
-                  {exploration.convergenceSummary.totalSecretsCount}
-                </span>
-              </div>
-              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
-                <span className="text-slate-400">ROUTES OPEN</span>
-                <span className="text-emerald-300 font-bold">
-                  {exploration.convergenceSummary.unlockedRoutesCount}/
-                  {exploration.convergenceSummary.totalRoutesCount}
-                </span>
-              </div>
-              <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
-                <span className="text-slate-400">EVENTS / ECHOES</span>
-                <span className="text-cyan-300 font-bold">
-                  {exploration.convergenceSummary.completedNarrativeEventsCount}/
-                  {exploration.convergenceSummary.totalNarrativeEventsCount} (
-                  {exploration.convergenceSummary.discoveredEchoMemoriesCount}/
-                  {exploration.convergenceSummary.totalEchoMemoriesCount})
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+                📊 LOGS & TELEMETRY
+              </button>
 
-        {/* Primary Telemetry Grid */}
-        <div className="grid grid-cols-3 gap-2.5 mb-3">
-          <div className="bg-[#070a0f] border border-slate-800 p-2.5">
-            <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-0.5">
-              {isVictory ? 'CLEAR TIME' : 'LOOP TIME'}
+              {isPaused && (
+                <button
+                  type="button"
+                  data-testid="modal-section-settings"
+                  aria-pressed={activeModalSection === 'settings'}
+                  onClick={() => setActiveModalSection('settings')}
+                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                    activeModalSection === 'settings'
+                      ? 'bg-cyan-400/20 border-cyan-400 text-cyan-200'
+                      : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-slate-300'
+                  }`}
+                >
+                  ⚙ SYSTEM SETTINGS
+                </button>
+              )}
             </div>
-            <div className="text-base sm:text-lg font-mono-tabular font-bold text-slate-100">
-              {displayTime.toFixed(1)}s
-            </div>
-          </div>
 
-          <div className="bg-[#070a0f] border border-slate-800 p-2.5">
-            <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-0.5">
-              HOSTILES
-            </div>
-            <div className="text-base sm:text-lg font-mono-tabular font-bold text-cyan-400">
-              {displayDefeated}/{displayTotal}
-            </div>
-          </div>
-
-          <div className="bg-[#070a0f] border border-slate-800 p-2.5">
-            <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-0.5">
-              {isPaused || isVictory ? 'DAMAGE DEALT' : 'HOSTILE HP'}
-            </div>
-            <div className="text-base sm:text-lg font-mono-tabular font-bold text-amber-400">
-              {isPaused || isVictory
-                ? `${displayDamageDealt} (${displayVulnerableHits}x)`
-                : displayRemainingHp}
-            </div>
+            {!isPaused && isVictory && isCampaign && !endingDetails && chapterConfig?.archiveLog && (
+              <button
+                type="button"
+                onClick={() => setActiveModalSection('telemetry')}
+                className="px-2 py-0.5 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-[9px] font-mono-tabular text-cyan-200 uppercase cursor-pointer"
+              >
+                RECOVERED: {chapterConfig.archiveLog.id} — {chapterConfig.archiveLog.title} →
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Secondary Tactical Breakdown (Shown on Victory/Defeat Result Screen) */}
-        {!isPaused && (
-          <div className="grid grid-cols-3 gap-2.5 mb-4">
-            <div className="bg-[#070a0f] border border-slate-800/80 p-2">
-              <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-                PARRIES LANDED
-              </div>
-              <div className="text-sm sm:text-base font-mono-tabular font-bold text-amber-300">
-                {displayParries}
-              </div>
-            </div>
-            <div className="bg-[#070a0f] border border-slate-800/80 p-2">
-              <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-                CONVERGENCES
-              </div>
-              <div className="text-sm sm:text-base font-mono-tabular font-bold text-cyan-300">
-                {displayConvergences}
-              </div>
-            </div>
-            <div className="bg-[#070a0f] border border-slate-800/80 p-2">
-              <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-                DAMAGE TAKEN / RELAYS
-              </div>
-              <div className="text-sm sm:text-base font-mono-tabular font-bold text-slate-200">
-                {displayDamageTaken} / {displayRelays}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Bounded Scrollable Main Console Body */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-3">
+          {/* SECTION 1: TELEMETRY & RECOVERED ARCHIVE LOG */}
+          <div className={activeModalSection === 'telemetry' ? 'space-y-3' : 'sr-only'}>
+            <p
+              data-testid={selectedEnding ? 'modal-ending-summary' : undefined}
+              className="text-xs sm:text-sm text-slate-300 leading-relaxed"
+            >
+              {isPaused
+                ? 'Temporal telemetry suspended. Resume your active loop, configure weapon modifications at the Upgrade Bench, or adjust system preferences.'
+                : isVictory
+                  ? endingDetails
+                    ? endingDetails.epilogueBody
+                    : canAdvanceChapter && pendingNextChapter
+                      ? chapterConfig.transitionBriefing
+                      : isCampaign && hasSavedCampaignSnapshot
+                        ? `${NEXT_CHAPTER_LABELS[chapter]} replay complete. Your primary campaign progress remains safely preserved in the archive.`
+                        : isCampaign
+                          ? chapterConfig.transitionBriefing
+                          : isBossMode
+                            ? 'Practice encounter complete. Campaign progression remains untouched.'
+                            : 'All WARDEN security proxies in Test Bay 04 have been neutralized.'
+                  : isBossMode && hasBossCheckpoint && bossCheckpoint
+                    ? `Sera Venn’s suit integrity failed. Retry Boss Checkpoint [R] restores your saved arena-entry state (${bossCheckpoint.integrity} Integrity · ${bossCheckpoint.flux} Flux), while Restart Full Campaign resets to Prologue.`
+                    : 'Sera Venn’s suit integrity failed before the sector could be cleared. Press [R] to restart this sector immediately.'}
+            </p>
 
-        {/* Phase 15: Chrono Rig Weapon Upgrade Bench (Shown on Pause & Chapter Intermission) */}
-        {showUpgradeBench && progression && (
-          <div
-            data-testid="upgrade-bench-panel"
-            className="bg-[#070a0f] border border-cyan-500/45 p-3.5 mb-4 space-y-2.5"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/90">
-              <div>
-                <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-cyan-300 font-bold">
-                  CHRONO RIG UPGRADE BENCH [U]
-                </div>
-                <div className="text-[10px] font-mono-tabular text-slate-400">
-                  1 ACTIVE CORE PER WEAPON · EARNED FROM CALIBRATION & WARDEN CORES
-                </div>
-              </div>
+            {/* Recovered Archive Log (Shown on Campaign Chapter Victory) */}
+            {!isPaused && isVictory && isCampaign && !endingDetails && chapterConfig?.archiveLog && (
               <div
-                data-testid="upgrade-fragments-balance"
-                data-fragments={progression.memoryFragments}
-                className="px-2.5 py-1 bg-amber-500/15 border border-amber-400/60 text-amber-300 font-mono-tabular text-xs font-bold tracking-wider uppercase whitespace-nowrap"
+                data-testid="modal-recovered-archive-log"
+                className="bg-[#08111d] border border-cyan-400/70 p-3"
               >
-                MEMORY FRAGMENTS: {progression.memoryFragments}
-              </div>
-            </div>
-
-            {progression.lastActionMessage && (
-              <div
-                data-testid="upgrade-status-message"
-                className="px-2.5 py-1.5 bg-[#0b1422] border-l-2 border-cyan-400 text-[11px] font-mono-tabular text-cyan-200"
-              >
-                {progression.lastActionMessage}
+                <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 mb-1">
+                  <span className="font-bold">
+                    RECOVERED ARCHIVE · {chapterConfig.archiveLog.id} — {chapterConfig.archiveLog.title}
+                  </span>
+                  <span className="text-slate-400 shrink-0">{chapterConfig.archiveLog.timestamp}</span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-200 italic leading-snug">
+                  {chapterConfig.archiveLog.excerpt}
+                </p>
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {(
-                ['chrono_edge', 'pulsecaster', 'phase_rail', 'grav_breaker'] as const
-              ).map((weaponId) => {
-                const weaponUpgrades = ALL_UPGRADE_DEFINITIONS.filter(
-                  (u) => u.weaponId === weaponId
-                );
-                const activeUpgradeId = progression.equippedUpgrades[weaponId];
-                const isCurrentWeapon = equippedWeaponId === weaponId;
-                const unlockedWeapons = progression.unlockedWeaponIds ?? [
-                  'chrono_edge',
-                  'pulsecaster',
-                ];
-                const isWeaponUnlocked = unlockedWeapons.includes(weaponId);
-                const weaponTitle =
-                  weaponId === 'chrono_edge'
-                    ? '[1] CHRONO EDGE (MELEE)'
-                    : weaponId === 'pulsecaster'
-                      ? '[2] PULSECASTER (RANGED)'
-                      : weaponId === 'phase_rail'
-                        ? '[3] NULL-POINT RAIL LANCE'
-                        : '[4] GRAV-BREAKER MAUL';
-                return (
-                  <div
-                    key={weaponId}
-                    data-testid={`upgrade-column-${weaponId}`}
-                    data-weapon-unlocked={isWeaponUnlocked ? 'true' : 'false'}
-                    className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-2"
+            {/* Chronicle Loom Final Exchange (Shown when a Final Ending is Selected) */}
+            {!isPaused && isVictory && endingDetails && (
+              <div
+                data-testid="modal-ending-dialogue"
+                className="bg-[#08111d] border border-amber-400/70 p-3 space-y-1 font-mono-tabular text-[11px]"
+              >
+                <div className="text-amber-300">{endingDetails.wardenQuote}</div>
+                <div className="text-cyan-300 font-semibold">{endingDetails.seraQuote}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px] pt-1.5 mt-1 border-t border-slate-800/80">
+                  <div className="text-rose-300">
+                    <span className="font-bold uppercase">SACRIFICE:</span> {endingDetails.sacrifice}
+                  </div>
+                  <div className="text-cyan-300">
+                    <span className="font-bold uppercase">PRESERVED:</span> {endingDetails.preserved}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
+                  <span>WORLD STATE: {endingDetails.worldEffect}</span>
+                  <span className="text-emerald-300 font-bold">
+                    ENDINGS RECORDED: {completedEndings.length}/3 · LOGS: {recoveredLogs.length}/6
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Phase 20: Campaign Finale Discovery & Synthesis Summary */}
+            {!isPaused && isVictory && endingDetails && exploration?.convergenceSummary && (
+              <div
+                data-testid="modal-campaign-discovery-summary"
+                data-synthesis-tier={exploration.convergenceSummary.synthesisTier}
+                className="bg-[#07111c] border border-cyan-500/50 p-3 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300">
+                    {exploration.convergenceSummary.synthesisHeadline}
+                  </span>
+                  <span
+                    className={`text-[9px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border ${
+                      exploration.convergenceSummary.synthesisTier === 'complete_chronicle'
+                        ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                        : exploration.convergenceSummary.synthesisTier === 'reconstructed'
+                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                          : 'bg-amber-500/20 border-amber-400 text-amber-300'
+                    }`}
                   >
-                    <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-slate-800/80">
-                      <span
-                        className={`text-[10px] font-mono-tabular font-bold uppercase tracking-wider ${
-                          weaponId === 'pulsecaster' || weaponId === 'phase_rail'
-                            ? 'text-sky-300'
-                            : weaponId === 'grav_breaker'
-                              ? 'text-amber-300'
-                              : 'text-cyan-300'
-                        }`}
-                      >
-                        {weaponTitle}
-                      </span>
-                      <span className="text-[9px] font-mono-tabular uppercase text-slate-400">
-                        {!isWeaponUnlocked
-                          ? 'WEAPON LOCKED'
-                          : activeUpgradeId
-                            ? weaponUpgrades.find((u) => u.id === activeUpgradeId)?.shortLabel
-                            : isCurrentWeapon
-                              ? 'EQUIPPED WEAPON'
-                              : 'STANDBY'}
-                      </span>
-                    </div>
+                    {exploration.convergenceSummary.synthesisTier.replace('_', ' ').toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-snug">
+                  {exploration.convergenceSummary.synthesisSummary}
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1 font-mono-tabular text-[9px] uppercase">
+                  <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                    <span className="text-slate-400">CHAPTERS</span>
+                    <span className="text-cyan-300 font-bold">
+                      {exploration.convergenceSummary.completedChaptersCount}/
+                      {exploration.convergenceSummary.totalChaptersCount}
+                    </span>
+                  </div>
+                  <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                    <span className="text-slate-400">ARCHIVE LOGS</span>
+                    <span className="text-cyan-300 font-bold">
+                      {exploration.convergenceSummary.recoveredLogsCount}/
+                      {exploration.convergenceSummary.totalLogsCount}
+                    </span>
+                  </div>
+                  <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                    <span className="text-slate-400">CODEX RECORDS</span>
+                    <span className="text-amber-300 font-bold">
+                      {exploration.convergenceSummary.discoveredCodexCount}/
+                      {exploration.convergenceSummary.totalCodexCount}
+                    </span>
+                  </div>
+                  <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                    <span className="text-slate-400">SECRETS</span>
+                    <span className="text-emerald-300 font-bold">
+                      {exploration.convergenceSummary.discoveredSecretsCount}/
+                      {exploration.convergenceSummary.totalSecretsCount}
+                    </span>
+                  </div>
+                  <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                    <span className="text-slate-400">ROUTES OPEN</span>
+                    <span className="text-emerald-300 font-bold">
+                      {exploration.convergenceSummary.unlockedRoutesCount}/
+                      {exploration.convergenceSummary.totalRoutesCount}
+                    </span>
+                  </div>
+                  <div className="bg-[#050911] border border-slate-800 p-1.5 flex items-center justify-between">
+                    <span className="text-slate-400">EVENTS / ECHOES</span>
+                    <span className="text-cyan-300 font-bold">
+                      {exploration.convergenceSummary.completedNarrativeEventsCount}/
+                      {exploration.convergenceSummary.totalNarrativeEventsCount} (
+                      {exploration.convergenceSummary.discoveredEchoMemoriesCount}/
+                      {exploration.convergenceSummary.totalEchoMemoriesCount})
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                    <div className="space-y-2">
-                      {weaponUpgrades.map((upg) => {
-                        const isOwned = progression.purchasedUpgrades.includes(upg.id);
-                        const isEquipped = activeUpgradeId === upg.id;
-                        const canAfford = progression.memoryFragments >= upg.cost;
+            {/* Primary Telemetry Grid */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-[#070a0f] border border-slate-800 p-2.5">
+                <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-0.5">
+                  {isVictory ? 'CLEAR TIME' : 'LOOP TIME'}
+                </div>
+                <div className="text-base sm:text-lg font-mono-tabular font-bold text-slate-100">
+                  {displayTime.toFixed(1)}s
+                </div>
+              </div>
 
-                        return (
-                          <div
-                            key={upg.id}
-                            data-testid={`upgrade-card-${upg.id}`}
-                            data-owned={isOwned ? 'true' : 'false'}
-                            data-equipped={isEquipped ? 'true' : 'false'}
-                            className={`p-2 border transition-colors ${
-                              isEquipped
-                                ? 'bg-[#0e1b2c] border-cyan-400/90'
-                                : isOwned
-                                  ? 'bg-[#0b131e] border-slate-700'
-                                  : 'bg-[#080d14] border-slate-800/90'
+              <div className="bg-[#070a0f] border border-slate-800 p-2.5">
+                <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-0.5">
+                  HOSTILES
+                </div>
+                <div className="text-base sm:text-lg font-mono-tabular font-bold text-cyan-400">
+                  {displayDefeated}/{displayTotal}
+                </div>
+              </div>
+
+              <div className="bg-[#070a0f] border border-slate-800 p-2.5">
+                <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-0.5">
+                  {isPaused || isVictory ? 'DAMAGE DEALT' : 'HOSTILE HP'}
+                </div>
+                <div className="text-base sm:text-lg font-mono-tabular font-bold text-amber-400">
+                  {isPaused || isVictory
+                    ? `${displayDamageDealt} (${displayVulnerableHits}x)`
+                    : displayRemainingHp}
+                </div>
+              </div>
+            </div>
+
+            {/* Secondary Tactical Breakdown (Shown on Victory/Defeat Result Screen) */}
+            {!isPaused && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-[#070a0f] border border-slate-800/80 p-2">
+                  <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+                    PARRIES / SLIPS
+                  </div>
+                  <div className="text-sm sm:text-base font-mono-tabular font-bold text-amber-300">
+                    {displayParries}{' '}
+                    <span className="text-cyan-300">/ {displayPerfectDodges}</span>
+                  </div>
+                </div>
+                <div className="bg-[#070a0f] border border-slate-800/80 p-2">
+                  <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+                    CONVERGENCES
+                  </div>
+                  <div className="text-sm sm:text-base font-mono-tabular font-bold text-cyan-300">
+                    {displayConvergences}
+                  </div>
+                </div>
+                <div className="bg-[#070a0f] border border-slate-800/80 p-2">
+                  <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+                    DMG TAKEN / RELAYS
+                  </div>
+                  <div className="text-sm sm:text-base font-mono-tabular font-bold text-slate-200">
+                    {displayDamageTaken} / {displayRelays}
+                  </div>
+                </div>
+                <div className="bg-[#070a0f] border border-slate-800/80 p-2">
+                  <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+                    COMBAT RANK
+                  </div>
+                  <div className="text-sm sm:text-base font-mono-tabular font-bold text-white flex items-baseline gap-1.5">
+                    <span
+                      className={
+                        rankEval?.grade === 'S+' || rankEval?.grade === 'S'
+                          ? 'text-cyan-300'
+                          : rankEval?.grade === 'A'
+                            ? 'text-emerald-300'
+                            : 'text-amber-300'
+                      }
+                    >
+                      {rankEval?.grade ?? '—'}
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-normal truncate">
+                      {rankEval?.summaryTag ?? ''}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 2: COMPACT 2x2 CHRONO RIG UPGRADE BENCH */}
+          {showUpgradeBench && progression && (
+            <div
+              data-testid="upgrade-bench-panel"
+              className={
+                activeModalSection === 'arsenal'
+                  ? 'bg-[#070a0f] border border-cyan-500/45 p-3 space-y-2'
+                  : 'sr-only'
+              }
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-slate-800/90">
+                <div>
+                  <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-cyan-300 font-bold">
+                    CHRONO RIG UPGRADE BENCH [U]
+                  </div>
+                  <div className="text-[10px] font-mono-tabular text-slate-400">
+                    Click [EQUIP WEAPON] or press [1–4] · 1 Active Core Modification per Weapon
+                  </div>
+                </div>
+                <div
+                  data-testid="upgrade-fragments-balance"
+                  data-fragments={progression.memoryFragments}
+                  className="px-2.5 py-0.5 bg-amber-500/15 border border-amber-400/60 text-amber-300 font-mono-tabular text-xs font-bold tracking-wider uppercase whitespace-nowrap"
+                >
+                  MEMORY FRAGMENTS: {progression.memoryFragments}
+                </div>
+              </div>
+
+              {progression.lastActionMessage && (
+                <div
+                  data-testid="upgrade-status-message"
+                  className="px-2.5 py-1 bg-[#0b1422] border border-cyan-400/70 text-[10px] font-mono-tabular text-cyan-200"
+                >
+                  {progression.lastActionMessage}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {(
+                  ['chrono_edge', 'pulsecaster', 'phase_rail', 'grav_breaker'] as const
+                ).map((weaponId) => {
+                  const weaponUpgrades = ALL_UPGRADE_DEFINITIONS.filter(
+                    (u) => u.weaponId === weaponId
+                  );
+                  const activeUpgradeId = progression.equippedUpgrades[weaponId];
+                  const isCurrentWeapon = equippedWeaponId === weaponId;
+                  const unlockedWeapons = progression.unlockedWeaponIds ?? [
+                    'chrono_edge',
+                    'pulsecaster',
+                  ];
+                  const isWeaponUnlocked = unlockedWeapons.includes(weaponId);
+                  const weaponTitle =
+                    weaponId === 'chrono_edge'
+                      ? '[1] CHRONO EDGE (MELEE)'
+                      : weaponId === 'pulsecaster'
+                        ? '[2] PULSECASTER (RANGED)'
+                        : weaponId === 'phase_rail'
+                          ? '[3] NULL-POINT RAIL LANCE'
+                          : '[4] GRAV-BREAKER MAUL';
+                  return (
+                    <div
+                      key={weaponId}
+                      data-testid={`upgrade-column-${weaponId}`}
+                      data-weapon-unlocked={isWeaponUnlocked ? 'true' : 'false'}
+                      data-weapon-equipped={isCurrentWeapon ? 'true' : 'false'}
+                      className={`bg-[#0a1019] border p-2 space-y-1.5 transition-colors ${
+                        isCurrentWeapon
+                          ? 'border-cyan-400/80 shadow-[0_0_16px_rgba(34,211,238,0.12)]'
+                          : 'border-slate-800/90'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 pb-1 border-b border-slate-800/80">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className={`text-[10px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
+                              weaponId === 'pulsecaster' || weaponId === 'phase_rail'
+                                ? 'text-sky-300'
+                                : weaponId === 'grav_breaker'
+                                  ? 'text-amber-300'
+                                  : 'text-cyan-300'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-1.5 mb-0.5">
-                              <span className="text-[11px] font-display font-bold uppercase tracking-wide text-slate-100">
-                                {upg.name}
-                              </span>
-                              <span
-                                className={`text-[9px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border whitespace-nowrap ${
-                                  isEquipped
-                                    ? 'bg-cyan-400/20 border-cyan-400 text-cyan-200'
-                                    : isOwned
-                                      ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
-                                      : canAfford
-                                        ? 'bg-amber-500/15 border-amber-400/60 text-amber-300'
-                                        : 'bg-slate-900 border-slate-700 text-slate-400'
-                                }`}
-                              >
-                                {isEquipped
-                                  ? 'EQUIPPED'
-                                  : isOwned
-                                    ? 'OWNED'
-                                    : `${upg.cost} FRAG`}
-                              </span>
-                            </div>
+                            {weaponTitle}
+                          </span>
+                          {activeUpgradeId && (
+                            <span className="text-[9px] font-mono-tabular uppercase px-1.5 py-0.5 bg-cyan-500/15 border border-cyan-500/40 text-cyan-200 whitespace-nowrap">
+                              {weaponUpgrades.find((u) => u.id === activeUpgradeId)?.shortLabel}
+                            </span>
+                          )}
+                        </div>
 
-                            <div className="text-[9px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-1">
-                              {upg.roleLabel}
-                            </div>
+                        {isWeaponUnlocked ? (
+                          <button
+                            type="button"
+                            data-testid={`bench-select-weapon-${weaponId}`}
+                            aria-pressed={isCurrentWeapon}
+                            onClick={() => onSelectWeapon?.(weaponId)}
+                            className={`px-2 py-0.5 text-[9px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer whitespace-nowrap ${
+                              isCurrentWeapon
+                                ? 'bg-cyan-400 text-slate-950 border-cyan-300'
+                                : 'bg-[#101c2e] hover:bg-[#182a44] text-cyan-200 border-cyan-500/50'
+                            }`}
+                          >
+                            {isCurrentWeapon ? 'ACTIVE WEAPON' : 'EQUIP WEAPON'}
+                          </button>
+                        ) : (
+                          <span className="text-[9px] font-mono-tabular uppercase px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-slate-500 whitespace-nowrap">
+                            WEAPON LOCKED
+                          </span>
+                        )}
+                      </div>
 
-                            <div className="text-[10px] text-emerald-300 leading-snug mb-0.5">
-                              <span className="font-mono-tabular font-bold">+ </span>
-                              {upg.benefitText}
-                            </div>
-                            <div className="text-[10px] text-amber-300/90 leading-snug mb-2">
-                              <span className="font-mono-tabular font-bold">- </span>
-                              {upg.tradeoffText}
-                            </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {weaponUpgrades.map((upg) => {
+                          const isOwned = progression.purchasedUpgrades.includes(upg.id);
+                          const isEquipped = activeUpgradeId === upg.id;
+                          const canAfford = progression.memoryFragments >= upg.cost;
 
-                            <button
-                              type="button"
-                              data-testid={`upgrade-action-${upg.id}`}
-                              onClick={() => {
-                                if (isEquipped) {
-                                  onEquipUpgrade?.(upg.weaponId, null);
-                                } else if (isOwned) {
-                                  onEquipUpgrade?.(upg.weaponId, upg.id);
-                                } else {
-                                  onPurchaseUpgrade?.(upg.id);
-                                }
-                              }}
-                              className={`w-full px-2.5 py-1.5 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer whitespace-nowrap text-center ${
+                          return (
+                            <div
+                              key={upg.id}
+                              data-testid={`upgrade-card-${upg.id}`}
+                              data-owned={isOwned ? 'true' : 'false'}
+                              data-equipped={isEquipped ? 'true' : 'false'}
+                              className={`p-2 border flex flex-col justify-between transition-colors ${
                                 isEquipped
-                                  ? 'bg-cyan-400/20 hover:bg-cyan-400/30 border-cyan-300 text-white'
+                                  ? 'bg-[#0e1b2c] border-cyan-400/90'
                                   : isOwned
-                                    ? 'bg-[#122236] hover:bg-[#19304b] border-cyan-500/60 text-cyan-200'
-                                    : canAfford
-                                      ? 'bg-amber-400 hover:bg-amber-300 border-amber-300 text-slate-950'
-                                      : 'bg-[#0d121a] hover:bg-[#141c28] border-slate-700 text-slate-400'
+                                    ? 'bg-[#0b131e] border-slate-700'
+                                    : 'bg-[#080d14] border-slate-800/90'
                               }`}
                             >
-                              {isEquipped
-                                ? 'EQUIPPED · UNEQUIP'
-                                : isOwned
-                                  ? 'EQUIP MODIFICATION'
-                                  : `UNLOCK & EQUIP (${upg.cost} FRAG)`}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                              <div>
+                                <div className="flex items-center justify-between gap-1 mb-0.5">
+                                  <span className="text-[10px] font-display font-bold uppercase tracking-wide text-slate-100 truncate">
+                                    {upg.name}
+                                  </span>
+                                  <span
+                                    className={`text-[8px] font-mono-tabular font-bold uppercase px-1 py-0.5 border whitespace-nowrap shrink-0 ${
+                                      isEquipped
+                                        ? 'bg-cyan-400/20 border-cyan-400 text-cyan-200'
+                                        : isOwned
+                                          ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                                          : canAfford
+                                            ? 'bg-amber-500/15 border-amber-400/60 text-amber-300'
+                                            : 'bg-slate-900 border-slate-700 text-slate-400'
+                                    }`}
+                                  >
+                                    {isEquipped
+                                      ? 'EQUIPPED'
+                                      : isOwned
+                                        ? 'OWNED'
+                                        : `${upg.cost} FRAG`}
+                                  </span>
+                                </div>
 
-        {/* Phase 18: Mission Journal & Station Lore Codex (Visible on Pause & Chapter Intermission) */}
-        {(isPaused || isVictory) && exploration && (
-          <div
-            data-testid="modal-exploration-panel"
-            className="bg-[#070a0f] border border-slate-800/90 p-3.5 mb-4 space-y-2.5"
-          >
+                                <div
+                                  className="text-[9px] text-emerald-300 leading-tight mb-0.5 line-clamp-2"
+                                  title={upg.benefitText}
+                                >
+                                  <span className="font-mono-tabular font-bold">+ </span>
+                                  {upg.benefitText}
+                                </div>
+                                <div
+                                  className="text-[9px] text-amber-300/90 leading-tight mb-1.5 line-clamp-1"
+                                  title={upg.tradeoffText}
+                                >
+                                  <span className="font-mono-tabular font-bold">- </span>
+                                  {upg.tradeoffText}
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                data-testid={`upgrade-action-${upg.id}`}
+                                disabled={!isWeaponUnlocked && !isOwned}
+                                onClick={() => {
+                                  if (!isWeaponUnlocked && !isOwned) return;
+                                  if (isEquipped) {
+                                    onEquipUpgrade?.(upg.weaponId, null);
+                                  } else if (isOwned) {
+                                    onEquipUpgrade?.(upg.weaponId, upg.id);
+                                  } else {
+                                    onPurchaseUpgrade?.(upg.id);
+                                  }
+                                }}
+                                className={`w-full px-2 py-1 text-[9px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors whitespace-nowrap text-center ${
+                                  !isWeaponUnlocked && !isOwned
+                                    ? 'bg-[#090d14] border-slate-800 text-slate-500 cursor-not-allowed'
+                                    : isEquipped
+                                      ? 'bg-cyan-400/20 hover:bg-cyan-400/30 border-cyan-300 text-white cursor-pointer'
+                                      : isOwned
+                                        ? 'bg-[#122236] hover:bg-[#19304b] border-cyan-500/60 text-cyan-200 cursor-pointer'
+                                        : canAfford
+                                          ? 'bg-amber-400 hover:bg-amber-300 border-amber-300 text-slate-950 cursor-pointer'
+                                          : 'bg-[#0d121a] hover:bg-[#141c28] border-slate-700 text-slate-400 cursor-pointer'
+                                }`}
+                              >
+                                {!isWeaponUnlocked && !isOwned
+                                  ? 'LOCKED'
+                                  : isEquipped
+                                    ? 'EQUIPPED · UNEQUIP'
+                                    : isOwned
+                                      ? 'EQUIP MOD'
+                                      : `UNLOCK (${upg.cost} FRAG)`}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 3: MISSION JOURNAL, SECTOR MAP & ARCHIVE CODEX */}
+          {(isPaused || isVictory) && exploration && (
+            <div
+              data-testid="modal-exploration-panel"
+              className={
+                activeModalSection === 'exploration'
+                  ? 'bg-[#070a0f] border border-slate-800/90 p-3 space-y-2.5'
+                  : 'sr-only'
+              }
+            >
             <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/90">
               <div>
                 <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-cyan-300 font-bold">
@@ -624,7 +843,10 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   type="button"
                   data-testid="modal-tab-missions"
                   aria-pressed={activeExplorationTab === 'missions'}
-                  onClick={() => setActiveExplorationTab('missions')}
+                  onClick={() => {
+                    setActiveModalSection('exploration');
+                    setActiveExplorationTab('missions');
+                  }}
                   className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase border transition-colors cursor-pointer ${
                     activeExplorationTab === 'missions'
                       ? 'bg-cyan-400/20 border-cyan-400 text-cyan-200'
@@ -637,7 +859,10 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   type="button"
                   data-testid="modal-tab-map"
                   aria-pressed={activeExplorationTab === 'map'}
-                  onClick={() => setActiveExplorationTab('map')}
+                  onClick={() => {
+                    setActiveModalSection('exploration');
+                    setActiveExplorationTab('map');
+                  }}
                   className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase border transition-colors cursor-pointer ${
                     activeExplorationTab === 'map'
                       ? 'bg-emerald-400/20 border-emerald-400 text-emerald-200'
@@ -650,7 +875,10 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   type="button"
                   data-testid="modal-tab-codex"
                   aria-pressed={activeExplorationTab === 'codex'}
-                  onClick={() => setActiveExplorationTab('codex')}
+                  onClick={() => {
+                    setActiveModalSection('exploration');
+                    setActiveExplorationTab('codex');
+                  }}
                   className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase border transition-colors cursor-pointer ${
                     activeExplorationTab === 'codex'
                       ? 'bg-amber-400/20 border-amber-400 text-amber-200'
@@ -1252,12 +1480,268 @@ export const StatusModal: React.FC<StatusModalProps> = ({
           </div>
         )}
 
-        {/* Consolidated System Settings (Visible on Pause Screen) */}
-        {isPaused && (
-          <div className="bg-[#070a0f] border border-slate-800/90 p-3.5 mb-5 space-y-3">
-            <div className="text-[10px] font-mono-tabular uppercase tracking-widest text-cyan-400 font-semibold">
-              SYSTEM & CAMERA SETTINGS
-            </div>
+          {/* SECTION 4: CONSOLIDATED SYSTEM SETTINGS (Visible on Pause Screen) */}
+          {isPaused && (() => {
+            const gfx = resolveGraphicsSettings(cameraSettings);
+            return (
+            <div
+              className={
+                activeModalSection === 'settings'
+                  ? 'bg-[#070a0f] border border-slate-800/90 p-3.5 space-y-3'
+                  : 'sr-only'
+              }
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] font-mono-tabular uppercase tracking-widest text-cyan-400 font-semibold">
+                  GRAPHICS, PERFORMANCE & SYSTEM SETTINGS
+                </div>
+                <span
+                  data-testid="modal-setting-preset-active"
+                  className="text-[10px] font-mono-tabular uppercase px-1.5 py-0.5 bg-[#0d1522] border border-cyan-500/40 text-cyan-300 font-bold"
+                >
+                  {gfx.graphicsPreset === 'performance'
+                    ? 'MAX FPS'
+                    : gfx.graphicsPreset === 'balanced'
+                      ? 'BALANCED'
+                      : gfx.graphicsPreset === 'quality'
+                        ? 'HIGH'
+                        : 'CUSTOM'}
+                </span>
+              </div>
+
+              {/* Graphics & Performance Optimization Controls */}
+              <div className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-300">
+                    QUALITY PRESET
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        { id: 'performance', label: 'MAX FPS' },
+                        { id: 'balanced', label: 'BALANCED' },
+                        { id: 'quality', label: 'HIGH' },
+                      ] as const
+                    ).map((preset) => {
+                      const active = gfx.graphicsPreset === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          data-testid={`modal-setting-preset-${preset.id}`}
+                          aria-pressed={active}
+                          onClick={() =>
+                            onUpdateCameraSettings({ graphicsPreset: preset.id })
+                          }
+                          className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase border transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300'
+                              : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono-tabular">
+                  {/* Render Scale */}
+                  <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800/90 px-2.5 py-1.5">
+                    <span className="text-slate-300 uppercase">RENDER SCALE</span>
+                    <div className="flex gap-1">
+                      {RENDER_SCALE_OPTIONS.map((scale) => {
+                        const active = Math.abs(gfx.renderScale - scale) < 0.02;
+                        return (
+                          <button
+                            key={scale}
+                            type="button"
+                            data-testid={`modal-setting-render-scale-${scale}`}
+                            aria-pressed={active}
+                            onClick={() =>
+                              onUpdateCameraSettings({
+                                graphicsPreset: 'custom',
+                                renderScale: scale,
+                              })
+                            }
+                            className={`px-1.5 py-0.5 border cursor-pointer ${
+                              active
+                                ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {Math.round(scale * 100)}%
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* FPS Cap */}
+                  <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800/90 px-2.5 py-1.5">
+                    <span className="text-slate-300 uppercase">FPS CAP</span>
+                    <div className="flex gap-1">
+                      {FPS_LIMIT_OPTIONS.map((cap) => {
+                        const active = gfx.fpsLimit === cap;
+                        return (
+                          <button
+                            key={cap}
+                            type="button"
+                            data-testid={`modal-setting-fps-${cap}`}
+                            aria-pressed={active}
+                            onClick={() =>
+                              onUpdateCameraSettings({
+                                graphicsPreset: 'custom',
+                                fpsLimit: cap,
+                              })
+                            }
+                            className={`px-1.5 py-0.5 border cursor-pointer ${
+                              active
+                                ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {cap === 0 ? 'MAX' : cap}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Shadows */}
+                  <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800/90 px-2.5 py-1.5">
+                    <span className="text-slate-300 uppercase">SHADOWS</span>
+                    <div className="flex gap-1">
+                      {(
+                        [
+                          { id: 'off', label: 'OFF' },
+                          { id: 'medium', label: '512' },
+                          { id: 'high', label: '1024' },
+                        ] as const
+                      ).map((opt) => {
+                        const active = gfx.shadowQuality === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            data-testid={`modal-setting-shadows-${opt.id}`}
+                            aria-pressed={active}
+                            onClick={() =>
+                              onUpdateCameraSettings({
+                                graphicsPreset: 'custom',
+                                shadowQuality: opt.id,
+                              })
+                            }
+                            className={`px-1.5 py-0.5 border cursor-pointer ${
+                              active
+                                ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* VFX / Particles */}
+                  <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800/90 px-2.5 py-1.5">
+                    <span className="text-slate-300 uppercase">VFX & PARTICLES</span>
+                    <div className="flex gap-1">
+                      {(
+                        [
+                          { id: 'low', label: 'LOW' },
+                          { id: 'medium', label: 'MED' },
+                          { id: 'high', label: 'HIGH' },
+                        ] as const
+                      ).map((opt) => {
+                        const active = gfx.particleQuality === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            data-testid={`modal-setting-particles-${opt.id}`}
+                            aria-pressed={active}
+                            onClick={() =>
+                              onUpdateCameraSettings({
+                                graphicsPreset: 'custom',
+                                particleQuality: opt.id,
+                              })
+                            }
+                            className={`px-1.5 py-0.5 border cursor-pointer ${
+                              active
+                                ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Lighting Quality */}
+                  <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800/90 px-2.5 py-1.5">
+                    <span className="text-slate-300 uppercase">LIGHTING</span>
+                    <div className="flex gap-1">
+                      {(
+                        [
+                          { id: 'lite', label: 'LITE' },
+                          { id: 'standard', label: 'STD' },
+                        ] as const
+                      ).map((opt) => {
+                        const active = gfx.lightingQuality === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            data-testid={`modal-setting-lighting-${opt.id}`}
+                            aria-pressed={active}
+                            onClick={() =>
+                              onUpdateCameraSettings({
+                                graphicsPreset: 'custom',
+                                lightingQuality: opt.id,
+                              })
+                            }
+                            className={`px-1.5 py-0.5 border cursor-pointer ${
+                              active
+                                ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* FPS & Latency HUD [F3] */}
+                  <button
+                    type="button"
+                    data-testid="modal-setting-perf-hud"
+                    aria-pressed={gfx.showPerfHud}
+                    onClick={() =>
+                      onUpdateCameraSettings({ showPerfHud: !gfx.showPerfHud })
+                    }
+                    className="flex items-center justify-between px-2.5 py-1.5 bg-[#070b12] hover:bg-[#131d2d] border border-slate-800/90 cursor-pointer"
+                  >
+                    <span className="text-slate-300 uppercase">FPS & LATENCY HUD [F3]</span>
+                    <span
+                      className={
+                        gfx.showPerfHud
+                          ? 'text-cyan-300 font-bold'
+                          : 'text-slate-500 font-bold'
+                      }
+                    >
+                      {gfx.showPerfHud ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                </div>
+              </div>
 
             {/* Audio Mute [M] & Tutorial Hints [H] Toggles */}
             <div className="grid grid-cols-2 gap-2">
@@ -1526,65 +2010,32 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                 Stops camera shake and title orbit; softens ambient motion. Combat cues stay visible.
               </p>
             </div>
-          </div>
-        )}
 
-        {/* Action CTAs: Clear Primary -> Secondary -> Destructive/Quiet Hierarchy */}
-        <div className="flex flex-col gap-2.5">
-          {/* Primary Action Row */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {isPaused && (
-              <button
-                type="button"
-                data-testid="modal-btn-resume"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onResume();
-                }}
-                className="w-full px-4 py-3 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-sm tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap shadow-[0_0_20px_rgba(34,211,238,0.3)]"
-              >
-                Resume Gameplay [P / Esc]
-              </button>
-            )}
+            <div className="bg-[#0a1019] border border-slate-800/90 px-3 py-2 text-[10px] font-mono-tabular text-slate-300">
+              <span className="text-cyan-300 font-bold uppercase mr-2">GAMEPAD (AUTO-DETECT):</span>
+              L-Stick Move · R-Stick Aim · A Dodge · X/RB Light · Y/RT Heavy · LB Parry · LT Relay · B Interact · D-Pad Echo &amp; Weapons · Start Pause
+            </div>
+            </div>
+            );
+          })()}
+        </div>
 
-            {canAdvanceChapter && pendingNextChapter && (
-              <button
-                type="button"
-                data-start="true"
-                data-testid="modal-btn-next-chapter"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onAdvanceNextChapter?.();
-                }}
-                className="w-full px-4 py-3.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-sm sm:text-base tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap shadow-[0_0_24px_rgba(34,211,238,0.35)]"
-              >
-                Advance to {NEXT_CHAPTER_LABELS[pendingNextChapter]} [Enter]
-              </button>
-            )}
+        {/* Pinned Sticky Action Footer: Always visible without scrolling */}
+        <div className="shrink-0 px-4 sm:px-5 py-2.5 bg-[#080d15] border-t border-slate-800/90 flex flex-wrap items-center justify-between gap-2">
+          {/* Left: Quiet Return to Title + Optional Restore / Boss Practice */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="modal-btn-title"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onReturnToTitle();
+              }}
+              className="px-3 py-2 bg-[#0a0f18] hover:bg-[#141e2e] text-slate-300 hover:text-white border border-slate-700/90 font-display font-semibold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap"
+            >
+              ← Return to Title
+            </button>
 
-            {!isPaused &&
-              isVictory &&
-              !canAdvanceChapter &&
-              hasSavedCampaignSnapshot &&
-              onRestoreSavedCampaign && (
-                <button
-                  type="button"
-                  data-start="true"
-                  data-testid="modal-btn-restore-campaign"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onRestoreSavedCampaign();
-                  }}
-                  className="w-full px-4 py-3.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-sm sm:text-base tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap shadow-[0_0_24px_rgba(34,211,238,0.35)]"
-                >
-                  Restore Saved Campaign
-                  {savedCampaignChapter ? ` (${NEXT_CHAPTER_LABELS[savedCampaignChapter]})` : ''}
-                </button>
-              )}
-          </div>
-
-          {/* Secondary / Recovery Grid (2 columns on desktop so each button has ~250px width and zero clipping) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {(isPaused || !isVictory || canAdvanceChapter) &&
               hasSavedCampaignSnapshot &&
               onRestoreSavedCampaign && (
@@ -1595,17 +2046,30 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                     e.currentTarget.blur();
                     onRestoreSavedCampaign();
                   }}
-                  className="sm:col-span-2 w-full px-3.5 py-2.5 bg-[#112233] hover:bg-[#19324a] text-cyan-300 border border-cyan-400/80 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap text-center"
+                  className="px-3 py-2 bg-[#112233] hover:bg-[#19324a] text-cyan-300 border border-cyan-400/80 font-display font-bold text-xs tracking-[0.06em] uppercase transition-colors cursor-pointer whitespace-nowrap"
                 >
                   Restore Saved Campaign
                   {savedCampaignChapter ? ` · ${NEXT_CHAPTER_LABELS[savedCampaignChapter]}` : ''}
-                  {savedCampaignCheckpoint
-                    ? ` (${savedCampaignCheckpoint.integrity} HP / ${savedCampaignCheckpoint.flux} FLX)`
-                    : ''}
                 </button>
               )}
 
-            {/* Campaign Boss Checkpoint Retry vs Full Run Restart */}
+            {onStartBoss && !isBossMode && !isCampaign && (
+              <button
+                type="button"
+                data-testid="modal-btn-boss"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onStartBoss();
+                }}
+                className="px-3 py-2 bg-[#161c28] hover:bg-[#222c3e] text-amber-300 border border-amber-500/70 font-display font-bold text-xs tracking-[0.06em] uppercase transition-colors cursor-pointer whitespace-nowrap"
+              >
+                Practice HELIX-04 [B]
+              </button>
+            )}
+          </div>
+
+          {/* Right: Secondary Retry/Restart + Primary Action CTA */}
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
             {isCampaign && isBossMode && hasBossCheckpoint ? (
               <>
                 <button
@@ -1616,7 +2080,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                     e.currentTarget.blur();
                     (onRetryBossCheckpoint ?? onRestart)();
                   }}
-                  className={`w-full px-3 py-2.5 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap text-center ${
+                  className={`px-3.5 py-2 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap ${
                     !isPaused && !isVictory
                       ? 'bg-cyan-400 hover:bg-cyan-300 text-slate-950 shadow-[0_0_18px_rgba(34,211,238,0.3)]'
                       : 'bg-[#121c2c] hover:bg-[#1a2840] text-cyan-300 border border-cyan-500/60'
@@ -1637,7 +2101,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                     e.currentTarget.blur();
                     (onRestartFullRun ?? onRestart)();
                   }}
-                  className={`w-full px-3 py-2.5 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap text-center ${
+                  className={`px-3.5 py-2 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap ${
                     !isPaused &&
                     isVictory &&
                     !canAdvanceChapter &&
@@ -1662,9 +2126,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({
                   e.currentTarget.blur();
                   onRestart();
                 }}
-                className={`w-full px-3.5 py-2.5 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap text-center ${
-                  onStartBoss && !isBossMode && !isCampaign ? '' : 'sm:col-span-2'
-                } ${
+                className={`px-3.5 py-2 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap ${
                   isPaused || canAdvanceChapter || (isVictory && hasSavedCampaignSnapshot)
                     ? 'bg-[#121a28] hover:bg-[#1b273b] text-slate-200 border border-slate-700'
                     : 'bg-cyan-400 hover:bg-cyan-300 text-slate-950 shadow-[0_0_18px_rgba(34,211,238,0.3)]'
@@ -1678,35 +2140,57 @@ export const StatusModal: React.FC<StatusModalProps> = ({
               </button>
             )}
 
-            {onStartBoss && !isBossMode && !isCampaign && (
+            {isPaused && (
               <button
                 type="button"
-                data-testid="modal-btn-boss"
+                data-testid="modal-btn-resume"
                 onClick={(e) => {
                   e.currentTarget.blur();
-                  onStartBoss();
+                  onResume();
                 }}
-                className="w-full px-3.5 py-2.5 bg-[#161c28] hover:bg-[#222c3e] text-amber-300 border border-amber-500/70 font-display font-bold text-xs tracking-[0.08em] uppercase transition-colors cursor-pointer whitespace-nowrap text-center"
+                className="px-4 py-2 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-xs sm:text-sm tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap shadow-[0_0_20px_rgba(34,211,238,0.3)]"
               >
-                Practice HELIX-04 [B]
+                Resume Gameplay [P / Esc]
               </button>
             )}
-          </div>
 
-          {/* Quiet Navigation Row */}
-          <button
-            type="button"
-            data-testid="modal-btn-title"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onReturnToTitle();
-            }}
-            className="w-full px-3.5 py-2 bg-[#0a0f18] hover:bg-[#141e2e] text-slate-400 hover:text-slate-200 border border-slate-800/90 font-display font-semibold text-xs tracking-[0.1em] uppercase transition-colors cursor-pointer whitespace-nowrap text-center"
-          >
-            Return to Title
-          </button>
+            {canAdvanceChapter && pendingNextChapter && (
+              <button
+                type="button"
+                data-start="true"
+                data-testid="modal-btn-next-chapter"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onAdvanceNextChapter?.();
+                }}
+                className="px-4 py-2 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-xs sm:text-sm tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap shadow-[0_0_24px_rgba(34,211,238,0.35)]"
+              >
+                Advance to {NEXT_CHAPTER_LABELS[pendingNextChapter]} [Enter] →
+              </button>
+            )}
+
+            {!isPaused &&
+              isVictory &&
+              !canAdvanceChapter &&
+              hasSavedCampaignSnapshot &&
+              onRestoreSavedCampaign && (
+                <button
+                  type="button"
+                  data-start="true"
+                  data-testid="modal-btn-restore-campaign"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onRestoreSavedCampaign();
+                  }}
+                  className="px-4 py-2 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-xs sm:text-sm tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap shadow-[0_0_24px_rgba(34,211,238,0.35)]"
+                >
+                  Restore Saved Campaign
+                  {savedCampaignChapter ? ` (${NEXT_CHAPTER_LABELS[savedCampaignChapter]})` : ''}
+                </button>
+              )}
+          </div>
         </div>
       </div>
     </div>
   );
-};
+});

@@ -22,6 +22,8 @@ import {
   startPracticeStandardRun,
   stepWorld,
   switchPlayerWeapon,
+  equipBenchWeapon,
+  unlockPlayerWeapon,
   transitionCampaignToBoss,
   triggerBossDefeat,
   grantProgressionReward,
@@ -1654,4 +1656,191 @@ test('Release Documentation Parity: docs/GAMEPLAY_GUIDE.md and README.md weapon 
     );
   }
 });
+
+test('Input & Movement Regression: Vietnamese IME (Telex) key normalization, Backspace non-reset, SOCD priority, and paused bench weapon hotkeys', () => {
+  const prevDoc = (globalThis as { document?: unknown }).document;
+  try {
+    (globalThis as { document?: unknown }).document = {
+      body: { dataset: { state: 'playing', runMode: 'campaign' } },
+      hidden: false,
+      pointerLockElement: null,
+    };
+
+    const input = new InputController() as unknown as {
+      resolveKeyCode(e: KeyboardEvent): string;
+      handleKeyDown(e: KeyboardEvent): void;
+      handleKeyUp(e: KeyboardEvent): void;
+      consumeFrameInput(dt: number): ReturnType<typeof createEmptyInput>;
+      onRestartCallback: (() => void) | null;
+      onStartBossCallback: (() => void) | null;
+      onSelectWeaponCallback: ((weaponId?: string) => void) | null;
+    };
+
+    let restartCount = 0;
+    let bossLaunchCount = 0;
+    const selectedBenchWeapons: Array<string | undefined> = [];
+    input.onRestartCallback = () => {
+      restartCount++;
+    };
+    input.onStartBossCallback = () => {
+      bossLaunchCount++;
+    };
+    input.onSelectWeaponCallback = (wId) => {
+      selectedBenchWeapons.push(wId);
+    };
+
+    // 1. Vietnamese Telex IME characters resolve to WASD / E / U even when e.code is 'Process' or empty
+    assert.equal(
+      input.resolveKeyCode({ code: 'Process', key: 'ư' } as unknown as KeyboardEvent),
+      'KeyW'
+    );
+    assert.equal(
+      input.resolveKeyCode({ code: 'Unidentified', key: 'á' } as unknown as KeyboardEvent),
+      'KeyA'
+    );
+    assert.equal(
+      input.resolveKeyCode({ code: '', key: 'đ' } as unknown as KeyboardEvent),
+      'KeyD'
+    );
+    assert.equal(
+      input.resolveKeyCode({ code: 'Process', key: 'ế' } as unknown as KeyboardEvent),
+      'KeyE'
+    );
+
+    // 2. Holding W via IME ('ư') and receiving an IME-injected Backspace must NOT trigger level restart
+    input.handleKeyDown({
+      code: 'Process',
+      key: 'ư',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    input.handleKeyDown({
+      code: 'Backspace',
+      key: 'Backspace',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    assert.equal(restartCount, 0, 'Backspace during movement must never reset the level');
+
+    // 3. Pressing R or B while holding W in active campaign gameplay must NOT reset or abort the campaign
+    input.handleKeyDown({
+      code: 'KeyR',
+      key: 'r',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    input.handleKeyDown({
+      code: 'KeyB',
+      key: 'b',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    assert.equal(restartCount, 0, 'KeyR while holding WASD movement must not reset mid-stride');
+    assert.equal(bossLaunchCount, 0, 'KeyB during active campaign must not abort into Practice Boss');
+
+    const frameMovingForward = input.consumeFrameInput(1 / 60);
+    assert.equal(frameMovingForward.moveZ, -1);
+
+    // 4. SOCD last-input priority: holding A (-1) then pressing D (+1) moves +1; releasing D returns to -1
+    input.handleKeyUp({ code: 'Process', key: 'ư' } as unknown as KeyboardEvent);
+    input.handleKeyDown({
+      code: 'KeyA',
+      key: 'a',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    assert.equal(input.consumeFrameInput(1 / 60).moveX, -1);
+
+    input.handleKeyDown({
+      code: 'KeyD',
+      key: 'd',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    assert.equal(
+      input.consumeFrameInput(1 / 60).moveX,
+      1,
+      'Pressing D while holding A must prioritize most recent cardinal input (+1)'
+    );
+
+    input.handleKeyUp({ code: 'KeyD', key: 'd' } as unknown as KeyboardEvent);
+    assert.equal(
+      input.consumeFrameInput(1 / 60).moveX,
+      -1,
+      'Releasing D while still holding A must resume -1 movement'
+    );
+    input.handleKeyUp({ code: 'KeyA', key: 'a' } as unknown as KeyboardEvent);
+
+    // 5. While paused in the [U] Upgrade Bench, Digit1-Digit4 and Tab invoke onSelectWeaponCallback
+    (
+      globalThis as unknown as { document: { body: { dataset: { state: string } } } }
+    ).document.body.dataset.state = 'paused';
+    input.handleKeyDown({
+      code: 'Digit2',
+      key: '2',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    input.handleKeyDown({
+      code: 'Tab',
+      key: 'Tab',
+      preventDefault: () => {},
+      target: { closest: () => null },
+    } as unknown as KeyboardEvent);
+    assert.deepEqual(selectedBenchWeapons, ['pulsecaster', undefined]);
+  } finally {
+    (globalThis as { document?: unknown }).document = prevDoc;
+  }
+});
+
+test('Weapon Selection Regression: buffered weapon switch during dodge/attack/cooldown and equipBenchWeapon while paused or in Title Arsenal', () => {
+  const world = createInitialWorld('playing');
+  startCampaignRun(world, true);
+  world.enemies = [];
+  unlockPlayerWeapon(world, 'phase_rail');
+  unlockPlayerWeapon(world, 'grav_breaker');
+
+  assert.equal(world.player.equippedWeaponId, 'chrono_edge');
+
+  // 1. Start a dodge -> pressing [2] (pulsecaster) mid-dodge buffers the weapon switch and executes as soon as dodge finishes
+  const dodgeInput = createEmptyInput(Math.PI);
+  dodgeInput.dodgeJustPressed = true;
+  stepWorld(world, dodgeInput, 0.02);
+  assert.equal(world.player.actionState, 'dodging');
+
+  const midDodgeSelect = createEmptyInput(Math.PI);
+  midDodgeSelect.selectWeaponId = 'pulsecaster';
+  stepWorld(world, midDodgeSelect, 0.02);
+  assert.equal(
+    world.player.equippedWeaponId,
+    'chrono_edge',
+    'Weapon must not cancel active dodge mid-frame'
+  );
+  assert.equal(world.player.bufferedWeaponSwitch, 'pulsecaster');
+
+  // Step until dodge completes (~0.26s) without pressing any more keys
+  for (let i = 0; i < 16; i++) {
+    stepWorld(world, createEmptyInput(Math.PI), 0.02);
+  }
+  assert.equal(
+    world.player.equippedWeaponId,
+    'pulsecaster',
+    'Buffered weapon selection must automatically equip pulsecaster as soon as dodge ends'
+  );
+
+  // 2. Equipping weapons in Paused [U] Upgrade Bench, Title Screen Arsenal, and Victory Intermission via equipBenchWeapon
+  world.appState = 'paused';
+  assert.equal(equipBenchWeapon(world, 'phase_rail'), true);
+  assert.equal(world.player.equippedWeaponId, 'phase_rail');
+
+  // Cycling with undefined (Tab) while paused advances phase_rail -> grav_breaker
+  assert.equal(equipBenchWeapon(world), true);
+  assert.equal(world.player.equippedWeaponId, 'grav_breaker');
+
+  // Title Screen Arsenal weapon selection
+  world.appState = 'title';
+  assert.equal(equipBenchWeapon(world, 'chrono_edge'), true);
+  assert.equal(world.player.equippedWeaponId, 'chrono_edge');
+});
+
 

@@ -152,6 +152,9 @@ export interface ProjectileState {
   hitTargetIds: string[];
   echoClipId?: number;
   echoEventId?: string;
+  flowDamageMult?: number;
+  flowStaggerMult?: number;
+  flowKind?: 'none' | 'riposte' | 'chrono_slip' | 'relay_momentum' | 'quick_draw';
 }
 
 export type PlayerActionState =
@@ -806,6 +809,12 @@ export interface ObstacleCollider {
   disabled?: boolean;
 }
 
+export type GraphicsPreset = 'performance' | 'balanced' | 'quality' | 'custom';
+export type ShadowQuality = 'off' | 'medium' | 'high';
+export type ParticleQuality = 'low' | 'medium' | 'high';
+export type LightingQuality = 'lite' | 'standard';
+export type FpsLimitOption = 0 | 30 | 45 | 60;
+
 export interface CameraSettings {
   sensitivity: number; // 0.3 to 2.5, default 1.0
   invertY: boolean; // default false
@@ -816,6 +825,13 @@ export interface CameraSettings {
   cameraShake?: boolean; // default true
   screenEffects?: boolean; // default true
   subtitlesEnabled?: boolean; // default true
+  graphicsPreset?: GraphicsPreset; // default 'balanced'
+  renderScale?: number; // 0.6 to 1.0, default 0.85
+  shadowQuality?: ShadowQuality; // 'off' | 'medium' | 'high', default 'medium'
+  particleQuality?: ParticleQuality; // 'low' | 'medium' | 'high', default 'medium'
+  lightingQuality?: LightingQuality; // 'lite' | 'standard', default 'standard'
+  fpsLimit?: FpsLimitOption; // 0 (unlimited) | 30 | 45 | 60, default 60
+  showPerfHud?: boolean; // default false
 }
 
 export interface PlayerInputFrame {
@@ -881,7 +897,17 @@ export interface PlayerState {
   currentAttackMarkId: number | null; // Active Resonance markId at the moment current attack was initiated
   bufferedAction: 'none' | 'light' | 'heavy' | 'dodge' | 'parry';
   bufferTimer: number;
+  bufferedWeaponSwitch?: WeaponId | 'cycle' | null;
+  weaponSwitchBufferTimer?: number;
   fluxDampenedTimer?: number;
+  riposteTimer?: number;
+  chronoSlipTimer?: number;
+  dodgeCounterTriggered?: boolean;
+  relayMomentumTimer?: number;
+  quickDrawTimer?: number;
+  activeStrikeFlowDamageMult?: number;
+  activeStrikeFlowStaggerMult?: number;
+  activeStrikeFlowKind?: 'none' | 'riposte' | 'chrono_slip' | 'relay_momentum' | 'quick_draw';
 }
 
 export interface EnemyState {
@@ -1055,7 +1081,9 @@ export interface CombatEvent {
     | 'timed_hazard_damaged_player'
     | 'secret_area_discovered'
     | 'narrative_event_triggered'
-    | 'echo_memory_discovered';
+    | 'echo_memory_discovered'
+    | 'player_riposte_strike'
+    | 'player_perfect_dodge';
   x: number;
   z: number;
   originX?: number;
@@ -1081,6 +1109,7 @@ export interface CombatEvent {
   resonanceOutcome?: ResonanceOutcome;
   bossAttack?: BossAttackType;
   bossPhase?: BossPhase;
+  flowKind?: 'none' | 'riposte' | 'chrono_slip' | 'relay_momentum' | 'quick_draw';
 }
 
 export interface RunSummary {
@@ -1094,6 +1123,7 @@ export interface RunSummary {
   damageDealt: number;
   damageTaken: number;
   parriesLanded: number;
+  perfectDodges?: number;
   vulnerableHits: number;
   convergencesTriggered: number;
   relaysUsed: number;
@@ -1801,6 +1831,7 @@ export interface WorldState {
     damageDealt: number;
     damageTaken: number;
     parriesLanded: number;
+    perfectDodges?: number;
     vulnerableHits: number;
   };
   frozenSummary: RunSummary | null;
@@ -1823,6 +1854,8 @@ export interface HudBossSnapshot {
   isResonanceMarked: boolean;
   resonanceRemaining: number;
   statusLabel: string;
+  introRemaining?: number;
+  introDuration?: number;
 }
 
 export interface HudSnapshot {
@@ -1840,6 +1873,15 @@ export interface HudSnapshot {
   playerActionState: PlayerActionState;
   chargeRatio: number;
   comboStep: number;
+  combatFlow?: {
+    active: boolean;
+    kind: 'none' | 'riposte' | 'chrono_slip' | 'relay_momentum' | 'quick_draw';
+    label: string;
+    riposteRemaining: number;
+    chronoSlipRemaining?: number;
+    relayMomentumRemaining: number;
+    quickDrawRemaining: number;
+  };
   weapon: {
     equippedId: WeaponId;
     equippedWeaponId: WeaponId;
@@ -1965,6 +2007,15 @@ export interface HudSnapshot {
   echoCollapse: EchoCollapseState;
   loom: ChronicleLoomState;
   comms: NarrativeCommsState;
+  threats?: HudPeripheralThreat[];
   elapsedTime: number;
   summary: RunSummary | null;
+}
+
+export interface HudPeripheralThreat {
+  id: string;
+  angleDeg: number;
+  severity: 'urgent' | 'telegraph' | 'hostile';
+  distance: number;
+  isBoss: boolean;
 }

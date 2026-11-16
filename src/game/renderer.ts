@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GAME_CONFIG } from './config.ts';
+import {
+  computeEffectivePixelRatio,
+  getDefaultGraphicsSettings,
+  getParticleScaleFactor,
+  getShadowMapSizeForQuality,
+  resolveGraphicsSettings,
+} from './performance.ts';
 import {
   buildArenaEnvironment,
   buildChapterEnvironment,
@@ -17,7 +25,24 @@ import {
   type EnemyRig,
   type PlayerRig,
 } from './models.ts';
-import type { CampaignChapterId, CombatEvent, ObstacleCollider, WorldState } from './types.ts';
+import {
+  formatCombatCallouts,
+  projectNdcToViewport,
+  type CombatCalloutTone,
+} from './tactical-hud.ts';
+import type {
+  CameraSettings,
+  CampaignChapterId,
+  ChronicleLoomEndingId,
+  CombatEvent,
+  FpsLimitOption,
+  GraphicsPreset,
+  LightingQuality,
+  ObstacleCollider,
+  ParticleQuality,
+  ShadowQuality,
+  WorldState,
+} from './types.ts';
 
 // Pre-allocated module-scope math helpers (Zero GC inside requestAnimationFrame)
 const _targetAnchor = new THREE.Vector3();
@@ -25,6 +50,32 @@ const _desiredCamPos = new THREE.Vector3();
 const _lookAtTarget = new THREE.Vector3();
 const _dummyObj = new THREE.Object3D();
 const _color = new THREE.Color();
+const _projVec = new THREE.Vector3();
+
+interface FloatingCalloutSlot {
+  active: boolean;
+  text: string;
+  tone: CombatCalloutTone;
+  worldX: number;
+  worldY: number;
+  worldZ: number;
+  age: number;
+  maxAge: number;
+  driftX: number;
+  scale: number;
+}
+
+const CALLOUT_POOL_SIZE = 14;
+const CALLOUT_TONE_COLOR: Record<CombatCalloutTone, string> = {
+  crit: '#ffffff',
+  parry: '#38bdf8',
+  slip: '#67e8f9',
+  converge: '#22d3ee',
+  stagger: '#fbbf24',
+  normal: '#e2e8f0',
+  blocked: '#f59e0b',
+  hurt: '#f87171',
+};
 
 const MATERIAL_TEXTURE_SLOTS = [
   'map',
@@ -60,6 +111,9 @@ function disposeMeshResources(root: THREE.Object3D): void {
       object.material.forEach(collectMaterial);
     } else {
       collectMaterial(object.material);
+    }
+    if (object instanceof THREE.InstancedMesh && typeof object.dispose === 'function') {
+      object.dispose();
     }
   });
   textures.forEach((texture) => texture.dispose());
@@ -105,7 +159,7 @@ interface EchoPoseSample {
   rightArmZ: number;
 }
 
-const PARTICLE_POOL_SIZE = 96;
+const PARTICLE_POOL_SIZE = 144;
 const ECHO_HISTORY_SIZE = 24;
 
 function dampAngle(current: number, target: number, alpha: number): number {
@@ -330,10 +384,29 @@ export class ArenaSceneRenderer {
   private calLight: THREE.PointLight;
   private shadowTex: THREE.CanvasTexture;
   private studioEnvTex: THREE.CanvasTexture;
+  private pmremEnvTarget?: THREE.WebGLRenderTarget | null = null;
 
   private particleInstancedMesh: THREE.InstancedMesh;
   private particles: PooledParticle[] = [];
   private nextParticleIdx = 0;
+  private particleColorsDirty = false;
+
+  private calloutMountEl: HTMLElement | null = null;
+  private calloutSlots: FloatingCalloutSlot[] = Array.from({ length: CALLOUT_POOL_SIZE }, () => ({
+    active: false,
+    text: '',
+    tone: 'normal',
+    worldX: 0,
+    worldY: 0,
+    worldZ: 0,
+    age: 0,
+    maxAge: 0.7,
+    driftX: 0,
+    scale: 1,
+  }));
+  private calloutNodes: HTMLDivElement[] = [];
+  private calloutNextIdx = 0;
+  private hasActiveCallouts = false;
 
   private resonanceMarkerGroup: THREE.Group;
   private resonanceOuterRingMesh: THREE.Mesh;
@@ -358,6 +431,12 @@ export class ArenaSceneRenderer {
   private impactRingMat: THREE.MeshBasicMaterial;
   private impactRingTimer = 0;
   private impactRingDuration = 0.28;
+
+  private railBeamMesh?: THREE.Mesh;
+  private railBeamMat?: THREE.MeshBasicMaterial;
+  private railBeamTimer = 0;
+  private hitstopTimer = 0;
+  private fovKick = 0;
 
   // Phase 14 Pooled Pulsecaster Projectile Meshes
   private projectilesGroup: THREE.Group;
@@ -418,6 +497,7 @@ export class ArenaSceneRenderer {
   private loomSealTetherMats: THREE.MeshBasicMaterial[] = [];
   private chapterEnvironments = new Map<CampaignChapterId, ChapterEnvironmentRig>();
   private obstacleMeshes: THREE.Object3D[] = [];
+  private obstacleMeshById?: Map<string, THREE.Object3D>;
   private interactablesGroup: THREE.Group;
   private interactableRigs: Array<{
     group: THREE.Group;
@@ -443,6 +523,21 @@ export class ArenaSceneRenderer {
     ringMat: THREE.MeshBasicMaterial;
   }> = [];
   private disposed = false;
+
+  private viewportWidth = 1280;
+  private viewportHeight = 720;
+  private graphicsPreset: GraphicsPreset = getDefaultGraphicsSettings().graphicsPreset;
+  private renderScale = getDefaultGraphicsSettings().renderScale;
+  private shadowQuality: ShadowQuality = getDefaultGraphicsSettings().shadowQuality;
+  private particleQuality: ParticleQuality = getDefaultGraphicsSettings().particleQuality;
+  private particleScale = getParticleScaleFactor(getDefaultGraphicsSettings().particleQuality);
+  private lightingQuality: LightingQuality = getDefaultGraphicsSettings().lightingQuality;
+  private fpsLimit: FpsLimitOption = getDefaultGraphicsSettings().fpsLimit;
+  private hasActiveParticles = false;
+  private lastEnvChapter: CampaignChapterId | null = null;
+  private lastEnvEnding: ChronicleLoomEndingId | null | undefined = undefined;
+  private lastEnvLightingQuality: LightingQuality | null = null;
+  private visibleChapterEnv: ChapterEnvironmentRig | null = null;
 
   private camAnchor = new THREE.Vector3();
   private currentCamDist: number = GAME_CONFIG.camera.distance;
@@ -472,10 +567,16 @@ export class ArenaSceneRenderer {
 
     const width = mountEl.clientWidth || window.innerWidth || 1280;
     const height = mountEl.clientHeight || window.innerHeight || 720;
+    this.viewportWidth = width;
+    this.viewportHeight = height;
 
-    this.appliedPixelRatio = this.isHeadless
-      ? 0.8
-      : Math.min(window.devicePixelRatio || 1, GAME_CONFIG.camera.maxPixelRatio);
+    this.appliedPixelRatio = computeEffectivePixelRatio(
+      window.devicePixelRatio || 1,
+      GAME_CONFIG.camera.maxPixelRatio,
+      this.renderScale,
+      this.isHeadless,
+      false
+    );
 
     mountEl.innerHTML = '';
     try {
@@ -507,15 +608,22 @@ export class ArenaSceneRenderer {
       } catch {
         // Ignore GL renderer query errors
       }
-      if (this.isSoftwareGl && !this.isHeadless) {
-        this.appliedPixelRatio = Math.min(this.appliedPixelRatio, 1.0);
+      if (this.isSoftwareGl) {
+        this.appliedPixelRatio = computeEffectivePixelRatio(
+          window.devicePixelRatio || 1,
+          GAME_CONFIG.camera.maxPixelRatio,
+          this.renderScale,
+          this.isHeadless,
+          true
+        );
       }
       this.renderer.setSize(width, height);
       this.renderer.setPixelRatio(this.appliedPixelRatio);
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this.renderer.toneMappingExposure = 1.22;
-      this.renderer.shadowMap.enabled = !this.isHeadless && !this.isSoftwareGl;
+      this.renderer.shadowMap.enabled =
+        !this.isHeadless && !this.isSoftwareGl && this.shadowQuality !== 'off';
       this.renderer.shadowMap.type = THREE.PCFShadowMap;
       mountEl.appendChild(this.renderer.domElement);
 
@@ -543,9 +651,24 @@ export class ArenaSceneRenderer {
     this.sceneFog = new THREE.FogExp2(bgHex, 0.0165);
     this.scene.fog = this.sceneFog;
 
-    // Equirectangular Studio Reflection Map (enabled on GPU; skipped on headless or software WebGL CPU to avoid per-pixel PMREM stalls)
+    // PBR Studio Reflection Map via PMREMGenerator + RoomEnvironment (falls back to equirectangular studioEnvTex)
     this.studioEnvTex = createStudioEnvironmentTexture();
-    if (!this.isHeadless && !this.isSoftwareGl) {
+    if (this.renderer) {
+      try {
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        pmrem.compileEquirectangularShader();
+        const roomEnv = new RoomEnvironment();
+        this.pmremEnvTarget = pmrem.fromScene(roomEnv, 0.04);
+        roomEnv.dispose();
+        pmrem.dispose();
+        this.scene.environment = this.pmremEnvTarget.texture;
+        this.scene.environmentIntensity = this.isHeadless || this.isSoftwareGl ? 0.72 : 0.88;
+      } catch {
+        if (!this.isHeadless && !this.isSoftwareGl) {
+          this.scene.environment = this.studioEnvTex;
+        }
+      }
+    } else if (!this.isHeadless && !this.isSoftwareGl) {
       this.scene.environment = this.studioEnvTex;
     }
 
@@ -572,9 +695,10 @@ export class ArenaSceneRenderer {
     const keyLight = new THREE.DirectionalLight(0xfffbeb, 2.65);
     keyLight.position.set(15, 25, 16);
     if (!this.isHeadless) {
-      keyLight.castShadow = true;
-      keyLight.shadow.mapSize.width = 1024;
-      keyLight.shadow.mapSize.height = 1024;
+      const initShadowSize = getShadowMapSizeForQuality(this.shadowQuality) || 512;
+      keyLight.castShadow = !this.isSoftwareGl && this.shadowQuality !== 'off';
+      keyLight.shadow.mapSize.width = initShadowSize;
+      keyLight.shadow.mapSize.height = initShadowSize;
       const d = 22;
       keyLight.shadow.camera.left = -d;
       keyLight.shadow.camera.right = d;
@@ -625,6 +749,7 @@ export class ArenaSceneRenderer {
     this.ventFanMeshes = env.ventFanMeshes;
     this.conduitGlowMat = env.conduitGlowMat;
     this.obstacleMeshes = env.obstacleMeshes;
+    this.obstacleMeshById = env.obstacleMeshById;
 
     for (let i = 0; i < CHAPTER_IDS.length; i++) {
       const chapter = CHAPTER_IDS[i];
@@ -678,10 +803,10 @@ export class ArenaSceneRenderer {
     this.helixLandmarksGroup = new THREE.Group();
     this.helixLandmarksGroup.visible = false;
     const helixCoords: Array<[number, number]> = [
-      [-13.8, -10.5],
-      [13.8, -10.5],
-      [-13.8, 8.5],
-      [13.8, 8.5],
+      [-16.4, -9.2],
+      [16.4, -9.2],
+      [-16.4, 8.8],
+      [16.4, 8.8],
     ];
     const helixPostGeo = new THREE.CylinderGeometry(0.28, 0.36, 3.6, 8);
     const helixRingGeo = new THREE.TorusGeometry(0.56, 0.05, 8, 24);
@@ -735,10 +860,10 @@ export class ArenaSceneRenderer {
     this.curatorLandmarksGroup = new THREE.Group();
     this.curatorLandmarksGroup.visible = false;
     const curatorCoords: Array<[number, number]> = [
-      [-13.6, -9.8],
-      [13.6, -9.8],
-      [-13.6, 9.0],
-      [13.6, 9.0],
+      [-16.2, -9.0],
+      [16.2, -9.0],
+      [-16.2, 8.8],
+      [16.2, 8.8],
     ];
     const monolithGeo = new THREE.BoxGeometry(0.65, 3.2, 0.65);
     const shardGeo = new THREE.OctahedronGeometry(0.45, 0);
@@ -770,10 +895,10 @@ export class ArenaSceneRenderer {
     this.matronLandmarksGroup = new THREE.Group();
     this.matronLandmarksGroup.visible = false;
     const matronCoords: Array<[number, number]> = [
-      [-13.5, -9.6],
-      [13.5, -9.6],
-      [-13.5, 8.8],
-      [13.5, 8.8],
+      [-16.0, -9.0],
+      [16.0, -9.0],
+      [-16.0, 8.8],
+      [16.0, 8.8],
     ];
     const stasisColGeo = new THREE.CylinderGeometry(0.38, 0.38, 3.8, 12);
     const scanRingGeo = new THREE.TorusGeometry(0.58, 0.045, 8, 24);
@@ -1173,6 +1298,22 @@ export class ArenaSceneRenderer {
     this.impactRingMesh.visible = false;
     this.scene.add(this.impactRingMesh);
 
+    // Pooled Additive Phase Rail Muzzle Lance Beam
+    const railBeamGeo = new THREE.CylinderGeometry(0.08, 0.14, 16, 12, 1, true);
+    railBeamGeo.rotateX(Math.PI * 0.5);
+    railBeamGeo.translate(0, 0, 8);
+    this.railBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xe0f2fe,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.railBeamMesh = new THREE.Mesh(railBeamGeo, this.railBeamMat);
+    this.railBeamMesh.visible = false;
+    this.scene.add(this.railBeamMesh);
+
     // Chapter II Harmonic Nodes (3 linked acoustic resonator pylons + 3D harmonic tether beams to THE CHOIR)
     this.choirNodesGroup = new THREE.Group();
     this.choirNodesGroup.visible = false;
@@ -1487,6 +1628,14 @@ export class ArenaSceneRenderer {
     return this.appliedPixelRatio;
   }
 
+  public isSoftwareWebGL(): boolean {
+    return Boolean(this.isSoftwareGl);
+  }
+
+  public getWebGLContext(): WebGLRenderingContext | WebGL2RenderingContext | null {
+    return this.renderer?.getContext?.() ?? null;
+  }
+
   public getDiagnostics(): {
     webglAvailable: boolean;
     webglContextLost: boolean;
@@ -1507,6 +1656,14 @@ export class ArenaSceneRenderer {
       calls: number;
       triangles: number;
       frame: number;
+    };
+    graphics?: {
+      preset: GraphicsPreset;
+      renderScale: number;
+      shadowQuality: ShadowQuality;
+      particleQuality: ParticleQuality;
+      lightingQuality: LightingQuality;
+      fpsLimit: FpsLimitOption;
     };
   } {
     const hydratedChapterAssets: CampaignChapterId[] = [];
@@ -1538,6 +1695,14 @@ export class ArenaSceneRenderer {
         calls: info?.render?.calls ?? 0,
         triangles: info?.render?.triangles ?? 0,
         frame: info?.render?.frame ?? 0,
+      },
+      graphics: {
+        preset: this.graphicsPreset ?? 'balanced',
+        renderScale: this.renderScale ?? 0.85,
+        shadowQuality: this.shadowQuality ?? 'medium',
+        particleQuality: this.particleQuality ?? 'medium',
+        lightingQuality: this.lightingQuality ?? 'standard',
+        fpsLimit: this.fpsLimit ?? 60,
       },
     };
   }
@@ -1572,11 +1737,16 @@ export class ArenaSceneRenderer {
 
   public syncEnemyRigs(world: WorldState): void {
     this.clearEchoHistory();
+    this.clearCallouts();
     this.relayVfxTimer = 0;
     this.impactRingTimer = 0;
+    this.railBeamTimer = 0;
+    this.hitstopTimer = 0;
+    this.fovKick = 0;
     if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
     if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
     if (this.impactRingMesh) this.impactRingMesh.visible = false;
+    if (this.railBeamMesh) this.railBeamMesh.visible = false;
     this.reconcileEnemyRigs(world);
     if (this.enemyRigs) {
       for (const rig of this.enemyRigs.values()) {
@@ -1662,10 +1832,14 @@ export class ArenaSceneRenderer {
     hexColor: number,
     speed = 5.5
   ): void {
+    const scale = this.particleScale ?? 1;
+    const scaledCount = scale >= 0.99 ? count : Math.max(1, Math.round(count * scale));
+    this.hasActiveParticles = true;
     _color.setHex(hexColor);
-    for (let i = 0; i < count; i++) {
-      const p = this.particles[this.nextParticleIdx];
-      this.nextParticleIdx = (this.nextParticleIdx + 1) % PARTICLE_POOL_SIZE;
+    for (let i = 0; i < scaledCount; i++) {
+      const slotIdx = this.nextParticleIdx;
+      const p = this.particles[slotIdx];
+      this.nextParticleIdx = (slotIdx + 1) % PARTICLE_POOL_SIZE;
       const angle = Math.random() * Math.PI * 2;
       const elev = (Math.random() - 0.2) * Math.PI * 0.5;
       const spd = speed * (0.45 + Math.random() * 0.75);
@@ -1682,10 +1856,142 @@ export class ArenaSceneRenderer {
       p.r = _color.r;
       p.g = _color.g;
       p.b = _color.b;
+      if (this.particleInstancedMesh) {
+        this.particleInstancedMesh.setColorAt(slotIdx, _color);
+        this.particleColorsDirty = true;
+      }
     }
   }
 
+  public attachCalloutLayer(el: HTMLElement | null): void {
+    if (this.calloutMountEl === el) return;
+    if (!this.calloutNodes) this.calloutNodes = [];
+    for (let i = 0; i < this.calloutNodes.length; i++) {
+      this.calloutNodes[i].remove?.();
+    }
+    this.calloutNodes.length = 0;
+    this.calloutMountEl = el;
+    if (!el || typeof document === 'undefined') return;
+    for (let i = 0; i < CALLOUT_POOL_SIZE; i++) {
+      const div = document.createElement('div');
+      div.setAttribute('data-callout-slot', String(i));
+      div.style.position = 'absolute';
+      div.style.left = '0px';
+      div.style.top = '0px';
+      div.style.pointerEvents = 'none';
+      div.style.willChange = 'transform, opacity';
+      div.style.fontFamily = "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace";
+      div.style.fontWeight = '800';
+      div.style.fontSize = '13px';
+      div.style.letterSpacing = '0.06em';
+      div.style.whiteSpace = 'nowrap';
+      div.style.textShadow = '0 2px 6px rgba(0, 0, 0, 0.92), 0 0 10px rgba(8, 12, 19, 0.75)';
+      div.style.opacity = '0';
+      el.appendChild(div);
+      this.calloutNodes.push(div);
+    }
+  }
+
+  private clearCallouts(): void {
+    this.hasActiveCallouts = false;
+    if (!this.calloutSlots || !this.calloutNodes) return;
+    for (let i = 0; i < CALLOUT_POOL_SIZE; i++) {
+      const slot = this.calloutSlots[i];
+      if (slot) slot.active = false;
+      const node = this.calloutNodes[i];
+      if (node && node.style.opacity !== '0') {
+        node.style.opacity = '0';
+      }
+    }
+  }
+
+  private spawnCombatCallouts(events: CombatEvent[]): void {
+    if (
+      this.screenEffectsEnabled === false ||
+      !this.calloutNodes ||
+      this.calloutNodes.length === 0 ||
+      !this.calloutSlots
+    ) {
+      return;
+    }
+    const specs = formatCombatCallouts(events);
+    if (specs.length === 0) return;
+    for (let i = 0; i < specs.length; i++) {
+      const spec = specs[i];
+      const idx = (this.calloutNextIdx ?? 0) % CALLOUT_POOL_SIZE;
+      this.calloutNextIdx = (idx + 1) % CALLOUT_POOL_SIZE;
+      const slot = this.calloutSlots[idx];
+      if (!slot) continue;
+      slot.active = true;
+      slot.text = spec.text;
+      slot.tone = spec.tone;
+      slot.worldX = spec.worldX;
+      slot.worldY = spec.worldY;
+      slot.worldZ = spec.worldZ;
+      slot.age = 0;
+      slot.maxAge = spec.duration;
+      slot.driftX = ((idx % 3) - 1) * 14;
+      slot.scale = spec.scale;
+      const node = this.calloutNodes[idx];
+      if (node) {
+        node.textContent = spec.text;
+        node.style.color = CALLOUT_TONE_COLOR[spec.tone] ?? '#e2e8f0';
+        node.style.fontSize = spec.scale > 1.12 ? '15px' : '13px';
+      }
+      this.hasActiveCallouts = true;
+    }
+  }
+
+  private updateCallouts(dt: number, appState: WorldState['appState']): void {
+    if (
+      !this.hasActiveCallouts ||
+      !this.calloutNodes ||
+      this.calloutNodes.length === 0 ||
+      !this.calloutSlots
+    ) {
+      return;
+    }
+    if (appState !== 'playing' || this.screenEffectsEnabled === false) {
+      this.clearCallouts();
+      return;
+    }
+    const vw = this.viewportWidth || (typeof window !== 'undefined' ? window.innerWidth : 0);
+    const vh = this.viewportHeight || (typeof window !== 'undefined' ? window.innerHeight : 0);
+    let anyActive = false;
+
+    for (let i = 0; i < CALLOUT_POOL_SIZE; i++) {
+      const slot = this.calloutSlots[i];
+      const node = this.calloutNodes[i];
+      if (!slot || !slot.active) continue;
+      slot.age += dt;
+      if (slot.age >= slot.maxAge) {
+        slot.active = false;
+        if (node) node.style.opacity = '0';
+        continue;
+      }
+      anyActive = true;
+      if (!node) continue;
+
+      const progress = slot.age / Math.max(0.05, slot.maxAge);
+      const liftY = this.reducedMotion ? 0.35 : progress * 0.72;
+      _projVec.set(slot.worldX, slot.worldY + liftY, slot.worldZ).project(this.camera);
+      const projected = projectNdcToViewport(_projVec.x, _projVec.y, _projVec.z, vw, vh);
+      if (!projected.visible) {
+        node.style.opacity = '0';
+        continue;
+      }
+      const alpha = progress < 0.16 ? progress / 0.16 : Math.max(0, 1 - (progress - 0.16) / 0.84);
+      const pop = progress < 0.18 && !this.reducedMotion ? slot.scale * (1 + (0.18 - progress) * 0.9) : slot.scale;
+      const sx = projected.x + slot.driftX * progress;
+      const sy = projected.y;
+      node.style.opacity = alpha.toFixed(2);
+      node.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -50%) scale(${pop.toFixed(2)})`;
+    }
+    this.hasActiveCallouts = anyActive;
+  }
+
   public handleCombatEvents(events: CombatEvent[]): void {
+    this.spawnCombatCallouts(events);
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
       switch (ev.type) {
@@ -1725,6 +2031,10 @@ export class ArenaSceneRenderer {
               ev.isCriticalOrVulnerable ? 0xffffff : 0x22d3ee,
               0.28
             );
+            if (!this.reducedMotion) {
+              this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, ev.isCriticalOrVulnerable ? 0.052 : 0.042);
+              this.fovKick = Math.max(this.fovKick ?? 0, ev.isCriticalOrVulnerable ? 2.4 : 1.6);
+            }
           }
           break;
         case 'enemy_staggered':
@@ -1732,6 +2042,10 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.5, ev.z, 24, 0xffffff, 8.8);
           this.spawnBurst(ev.x, 1.3, ev.z, 14, 0x22d3ee, 7.2);
           this.triggerImpactRing(ev.x, 0.18, ev.z, 0xffffff, 0.38);
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.055);
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.6);
+          }
           break;
         case 'enemy_killed':
           this.spawnBurst(ev.x, 1.2, ev.z, 24, 0xf59e0b, 9.2);
@@ -1762,6 +2076,10 @@ export class ArenaSceneRenderer {
         case 'boss_core_exposed':
           this.spawnBurst(ev.x, 1.55, ev.z, 16, 0xffffff, 6.2);
           this.triggerImpactRing(ev.x, 1.35, ev.z, 0x22d3ee, 0.28);
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.048);
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.0);
+          }
           break;
         case 'boss_phase_transition':
           this.spawnBurst(ev.x, 1.65, ev.z, 32, 0xef4444, 10.4);
@@ -1776,6 +2094,27 @@ export class ArenaSceneRenderer {
         case 'player_parry_success':
           this.spawnBurst(ev.x, 1.2, ev.z, 18, 0x38bdf8, 8.0);
           this.triggerImpactRing(ev.x, 1.15, ev.z, 0xe0f2fe, 0.3);
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.052);
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.2);
+          }
+          break;
+        case 'player_riposte_strike':
+          this.spawnBurst(ev.x, 1.2, ev.z, 16, 0xfbbf24, 7.2);
+          this.spawnBurst(ev.x, 1.25, ev.z, 10, 0x38bdf8, 6.0);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xfbbf24, 0.28);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 1.6);
+          }
+          break;
+        case 'player_perfect_dodge':
+          this.spawnBurst(ev.x, 1.05, ev.z, 18, 0x67e8f9, 7.8);
+          this.spawnBurst(ev.x, 1.15, ev.z, 10, 0xffffff, 6.2);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0x67e8f9, 0.3);
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.042);
+            this.fovKick = Math.max(this.fovKick ?? 0, 1.85);
+          }
           break;
         case 'player_damaged':
           this.spawnBurst(ev.x, 1.1, ev.z, 14, 0xef4444, 6.5);
@@ -1873,6 +2212,10 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.3, ev.z, 26, 0xffffff, 9.2);
           this.spawnBurst(ev.x, 1.15, ev.z, 20, 0x22d3ee, 7.8);
           this.triggerImpactRing(ev.x, 0.2, ev.z, 0xffffff, 0.38);
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.055);
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.8);
+          }
           break;
         case 'resonance_convergence_rejected':
           this.spawnBurst(ev.x, 0.85, ev.z, 6, 0xf59e0b, 3.5);
@@ -1945,11 +2288,36 @@ export class ArenaSceneRenderer {
         case 'player_rail_shot':
           this.spawnBurst(ev.x, 1.15, ev.z, 14, 0xe0f2fe, 6.8);
           this.triggerImpactRing(ev.x, 0.2, ev.z, 0x38bdf8, 0.24);
+          if (this.screenEffectsEnabled !== false && this.railBeamMesh && this.railBeamMat) {
+            this.railBeamMesh.position.set(ev.x, 1.15, ev.z);
+            this.railBeamMesh.rotation.y = this.playerRig?.root?.rotation?.y ?? 0;
+            this.railBeamMesh.scale.set(0.95, 0.95, 1);
+            this.railBeamMat.color.setHex(0x38bdf8);
+            this.railBeamMat.opacity = 0.72;
+            this.railBeamMesh.visible = true;
+            this.railBeamTimer = 0.14;
+          }
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 1.4);
+          }
           break;
         case 'player_rail_heavy_shot':
           this.spawnBurst(ev.x, 1.15, ev.z, 26, 0xffffff, 9.4);
           this.spawnBurst(ev.x, 1.15, ev.z, 16, 0x22d3ee, 7.6);
           this.triggerImpactRing(ev.x, 0.22, ev.z, 0xffffff, 0.34);
+          if (this.screenEffectsEnabled !== false && this.railBeamMesh && this.railBeamMat) {
+            this.railBeamMesh.position.set(ev.x, 1.15, ev.z);
+            this.railBeamMesh.rotation.y = this.playerRig?.root?.rotation?.y ?? 0;
+            this.railBeamMesh.scale.set(1.6, 1.6, 1);
+            this.railBeamMat.color.setHex(0xffffff);
+            this.railBeamMat.opacity = 0.92;
+            this.railBeamMesh.visible = true;
+            this.railBeamTimer = 0.18;
+          }
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.045);
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.6);
+          }
           break;
         case 'breaker_shockwave_slam':
           this.spawnBurst(
@@ -1967,6 +2335,10 @@ export class ArenaSceneRenderer {
             ev.isHeavy ? 0xf59e0b : 0x38bdf8,
             ev.isHeavy ? 0.44 : 0.3
           );
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, ev.isHeavy ? 0.052 : 0.036);
+            this.fovKick = Math.max(this.fovKick ?? 0, ev.isHeavy ? 2.6 : 1.6);
+          }
           break;
         case 'pulse_overheated':
           this.spawnBurst(ev.x, 1.2, ev.z, 14, 0xef4444, 5.5);
@@ -2013,7 +2385,9 @@ export class ArenaSceneRenderer {
   }
 
   private updateParticles(dt: number): void {
+    if (!this.hasActiveParticles) return;
     let anyChanged = false;
+    let anyStillActive = false;
     for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
       const p = this.particles[i];
       if (!p.active) continue;
@@ -2027,6 +2401,7 @@ export class ArenaSceneRenderer {
         this.particleInstancedMesh.setMatrixAt(i, _dummyObj.matrix);
         continue;
       }
+      anyStillActive = true;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
@@ -2041,15 +2416,15 @@ export class ArenaSceneRenderer {
       );
       _dummyObj.updateMatrix();
       this.particleInstancedMesh.setMatrixAt(i, _dummyObj.matrix);
-      _color.setRGB(p.r, p.g, p.b);
-      this.particleInstancedMesh.setColorAt(i, _color);
     }
 
+    this.hasActiveParticles = anyStillActive;
     if (anyChanged) {
       this.particleInstancedMesh.instanceMatrix.needsUpdate = true;
-      if (this.particleInstancedMesh.instanceColor) {
-        this.particleInstancedMesh.instanceColor.needsUpdate = true;
-      }
+    }
+    if (this.particleColorsDirty && this.particleInstancedMesh.instanceColor) {
+      this.particleInstancedMesh.instanceColor.needsUpdate = true;
+      this.particleColorsDirty = false;
     }
   }
 
@@ -2069,6 +2444,75 @@ export class ArenaSceneRenderer {
       if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
       if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
       if (this.impactRingMesh) this.impactRingMesh.visible = false;
+    }
+  }
+
+  public applyPerformanceSettings(settings: Partial<CameraSettings>): void {
+    const resolved = resolveGraphicsSettings(settings);
+    this.graphicsPreset = resolved.graphicsPreset;
+    this.renderScale = resolved.renderScale;
+    this.shadowQuality = resolved.shadowQuality;
+    this.particleQuality = resolved.particleQuality;
+    this.particleScale = getParticleScaleFactor(resolved.particleQuality);
+    this.lightingQuality = resolved.lightingQuality;
+    this.fpsLimit = resolved.fpsLimit;
+    this.lastEnvLightingQuality = null;
+
+    if (typeof settings.reducedMotion === 'boolean') {
+      this.setReducedMotion(settings.reducedMotion);
+    }
+    if (typeof settings.cameraShake === 'boolean') {
+      this.setCameraShake(settings.cameraShake);
+    }
+    if (typeof settings.screenEffects === 'boolean') {
+      this.setScreenEffects(settings.screenEffects);
+    }
+
+    const nextDpr = computeEffectivePixelRatio(
+      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+      GAME_CONFIG.camera.maxPixelRatio,
+      resolved.renderScale,
+      this.isHeadless,
+      this.isSoftwareGl
+    );
+    if (Math.abs(nextDpr - (this.appliedPixelRatio ?? 1)) > 0.01) {
+      this.appliedPixelRatio = nextDpr;
+      this.renderer?.setPixelRatio?.(nextDpr);
+      if (this.viewportWidth > 0 && this.viewportHeight > 0) {
+        this.renderer?.setSize?.(this.viewportWidth, this.viewportHeight, false);
+      }
+    }
+
+    if (this.renderer && !this.isHeadless && !this.isSoftwareGl) {
+      const wantShadows = resolved.shadowQuality !== 'off';
+      const targetSize = getShadowMapSizeForQuality(resolved.shadowQuality);
+      this.renderer.shadowMap.enabled = wantShadows;
+      this.keyLight.castShadow = wantShadows;
+      if (wantShadows && targetSize > 0 && this.keyLight.shadow.mapSize.width !== targetSize) {
+        this.keyLight.shadow.mapSize.set(targetSize, targetSize);
+        this.keyLight.shadow.map?.dispose?.();
+        this.keyLight.shadow.map = null;
+      }
+      this.renderer.shadowMap.needsUpdate = true;
+    }
+
+    if (this.calLight) {
+      this.calLight.visible = resolved.lightingQuality === 'standard';
+    }
+    if (this.scene) {
+      this.scene.environmentIntensity =
+        this.isHeadless || this.isSoftwareGl
+          ? resolved.lightingQuality === 'lite'
+            ? 0.45
+            : 0.72
+          : resolved.lightingQuality === 'lite'
+            ? 0.48
+            : 0.88;
+    }
+    if (resolved.particleQuality === 'low' && this.echoGhosts) {
+      for (let g = 0; g < this.echoGhosts.length; g++) {
+        this.echoGhosts[g].root.visible = false;
+      }
     }
   }
 
@@ -2114,65 +2558,85 @@ export class ArenaSceneRenderer {
       this.loomContinuityDomeMesh.visible = false;
     }
 
-    // Chapter architecture and lighting remain presentation-only.
+    // Chapter architecture and lighting remain presentation-only; cache static updates across frames
     const ch = world.run.chapter;
-    for (let i = 0; i < CHAPTER_IDS.length; i++) {
-      const chapterEnv = this.chapterEnvironments.get(CHAPTER_IDS[i]);
-      if (!chapterEnv) continue;
-      chapterEnv.group.visible = CHAPTER_IDS[i] === ch;
-      if (chapterEnv.group.visible) {
-        for (let r = 0; r < chapterEnv.rotors.length; r++) {
-          chapterEnv.rotors[r].rotation.y += ambientDt * (r % 2 === 0 ? 0.46 : -0.34) * ringSpeedScale;
+    const envDirty =
+      ch !== this.lastEnvChapter ||
+      selectedEnding !== this.lastEnvEnding ||
+      this.lightingQuality !== this.lastEnvLightingQuality;
+
+    if (envDirty) {
+      this.lastEnvChapter = ch;
+      this.lastEnvEnding = selectedEnding;
+      this.lastEnvLightingQuality = this.lightingQuality;
+      this.visibleChapterEnv = null;
+      for (let i = 0; i < CHAPTER_IDS.length; i++) {
+        const chapterEnv = this.chapterEnvironments.get(CHAPTER_IDS[i]);
+        if (!chapterEnv) continue;
+        const isVis = CHAPTER_IDS[i] === ch;
+        chapterEnv.group.visible = isVis;
+        if (isVis) {
+          this.visibleChapterEnv = chapterEnv;
         }
-        for (let m = 0; m < chapterEnv.pulseMaterials.length; m++) {
-          chapterEnv.pulseMaterials[m].opacity =
-            selectedEnding === 'silence' ? 0.08 : 0.28 + Math.sin(ambientTime * 2.8 + m) * 0.12 * ambientScale;
+      }
+
+      const look = CHAPTER_LOOKS[ch];
+      (this.scene.background as THREE.Color).setHex(look.background);
+      this.sceneFog.color.setHex(look.background);
+      this.sceneFog.density = look.fogDensity;
+      this.hemiLight.color.setHex(look.hemi);
+      this.keyLight.color.setHex(look.key);
+      this.keyLight.intensity = look.keyIntensity;
+      this.rimLight.color.setHex(look.rim);
+      this.rimLight.intensity = look.rimIntensity;
+      this.loomLight.color.setHex(look.loom);
+      this.loomLight.intensity = look.loomIntensity;
+      this.calLight.color.setHex(look.practical);
+      this.calLight.visible = this.lightingQuality !== 'lite';
+      this.conduitGlowMat.color.setHex(look.conduit);
+
+      if (ch === 'chapter_5_loom' && selectedEnding) {
+        if (selectedEnding === 'silence') {
+          (this.scene.background as THREE.Color).setHex(0x05070a);
+          this.sceneFog.color.setHex(0x05070a);
+          this.sceneFog.density = 0.022;
+          this.hemiLight.color.setHex(0x64748b);
+          this.keyLight.color.setHex(0x94a3b8);
+          this.keyLight.intensity = 1.2;
+          this.rimLight.color.setHex(0x475569);
+          this.loomLight.color.setHex(0x475569);
+          this.loomLight.intensity = 1.25;
+          this.conduitGlowMat.color.setHex(0x475569);
+        } else if (selectedEnding === 'witness') {
+          this.hemiLight.color.setHex(0xe0f2fe);
+          this.keyLight.color.setHex(0xf0f9ff);
+          this.keyLight.intensity = 2.8;
+          this.rimLight.color.setHex(0x38bdf8);
+          this.loomLight.color.setHex(0xffffff);
+          this.loomLight.intensity = 10.5;
+          this.conduitGlowMat.color.setHex(0xe0f2fe);
+        } else if (selectedEnding === 'continuity') {
+          this.hemiLight.color.setHex(0xfef3c7);
+          this.keyLight.color.setHex(0xfffbeb);
+          this.keyLight.intensity = 2.65;
+          this.rimLight.color.setHex(0xf59e0b);
+          this.loomLight.color.setHex(0xfbbf24);
+          this.loomLight.intensity = 8.2;
+          this.conduitGlowMat.color.setHex(0xfbbf24);
         }
       }
     }
 
-    const look = CHAPTER_LOOKS[ch];
-    (this.scene.background as THREE.Color).setHex(look.background);
-    this.sceneFog.color.setHex(look.background);
-    this.sceneFog.density = look.fogDensity;
-    this.hemiLight.color.setHex(look.hemi);
-    this.keyLight.color.setHex(look.key);
-    this.keyLight.intensity = look.keyIntensity;
-    this.rimLight.color.setHex(look.rim);
-    this.rimLight.intensity = look.rimIntensity;
-    this.loomLight.color.setHex(look.loom);
-    this.loomLight.intensity = look.loomIntensity;
-    this.calLight.color.setHex(look.practical);
-    this.conduitGlowMat.color.setHex(look.conduit);
-
-    if (ch === 'chapter_5_loom' && selectedEnding) {
-      if (selectedEnding === 'silence') {
-        (this.scene.background as THREE.Color).setHex(0x05070a);
-        this.sceneFog.color.setHex(0x05070a);
-        this.sceneFog.density = 0.022;
-        this.hemiLight.color.setHex(0x64748b);
-        this.keyLight.color.setHex(0x94a3b8);
-        this.keyLight.intensity = 1.2;
-        this.rimLight.color.setHex(0x475569);
-        this.loomLight.color.setHex(0x475569);
-        this.loomLight.intensity = 1.25;
-        this.conduitGlowMat.color.setHex(0x475569);
-      } else if (selectedEnding === 'witness') {
-        this.hemiLight.color.setHex(0xe0f2fe);
-        this.keyLight.color.setHex(0xf0f9ff);
-        this.keyLight.intensity = 2.8;
-        this.rimLight.color.setHex(0x38bdf8);
-        this.loomLight.color.setHex(0xffffff);
-        this.loomLight.intensity = 10.5;
-        this.conduitGlowMat.color.setHex(0xe0f2fe);
-      } else if (selectedEnding === 'continuity') {
-        this.hemiLight.color.setHex(0xfef3c7);
-        this.keyLight.color.setHex(0xfffbeb);
-        this.keyLight.intensity = 2.65;
-        this.rimLight.color.setHex(0xf59e0b);
-        this.loomLight.color.setHex(0xfbbf24);
-        this.loomLight.intensity = 8.2;
-        this.conduitGlowMat.color.setHex(0xfbbf24);
+    if (this.visibleChapterEnv) {
+      for (let r = 0; r < this.visibleChapterEnv.rotors.length; r++) {
+        this.visibleChapterEnv.rotors[r].rotation.y +=
+          ambientDt * (r % 2 === 0 ? 0.46 : -0.34) * ringSpeedScale;
+      }
+      for (let m = 0; m < this.visibleChapterEnv.pulseMaterials.length; m++) {
+        this.visibleChapterEnv.pulseMaterials[m].opacity =
+          selectedEnding === 'silence'
+            ? 0.08
+            : 0.28 + Math.sin(ambientTime * 2.8 + m) * 0.12 * ambientScale;
       }
     }
 
@@ -2351,7 +2815,21 @@ export class ArenaSceneRenderer {
     }
 
     // Phase 19: Retract unlocked corner containment pylons smoothly into the deck floor
-    if (this.obstacleMeshes && this.obstacleMeshes.length > 0 && world.obstacles) {
+    if (world.obstacles && this.obstacleMeshById && this.obstacleMeshById.size > 0) {
+      for (let i = 0; i < world.obstacles.length; i++) {
+        const obs = world.obstacles[i];
+        if (!obs || obs.id === 'loom-pylon') continue;
+        const meshGroup = this.obstacleMeshById.get(obs.id);
+        if (!meshGroup) continue;
+        const targetY = obs.disabled ? -(obs.height + 0.35) : 0;
+        if (this.reducedMotion) {
+          meshGroup.position.y = targetY;
+        } else {
+          meshGroup.position.y +=
+            (targetY - meshGroup.position.y) * Math.min(1, dt * 6.5);
+        }
+      }
+    } else if (this.obstacleMeshes && this.obstacleMeshes.length > 0 && world.obstacles) {
       for (let i = 0; i < this.obstacleMeshes.length; i++) {
         const meshGroup = this.obstacleMeshes[i];
         const obs = world.obstacles[i];
@@ -2437,8 +2915,24 @@ export class ArenaSceneRenderer {
     dt: number,
     shouldRender = true
   ): void {
-    const poseAlpha = 1 - Math.exp(-26 * dt);
-    this.updateEnvironmentPresentation(world, dt);
+    if ((this.hitstopTimer ?? 0) > 0) {
+      this.hitstopTimer = Math.max(0, (this.hitstopTimer ?? 0) - dt);
+    }
+    const animDt = (this.hitstopTimer ?? 0) > 0 && !this.reducedMotion ? dt * 0.08 : dt;
+    const poseAlpha = 1 - Math.exp(-26 * animDt);
+    this.updateEnvironmentPresentation(world, animDt);
+
+    if ((this.railBeamTimer ?? 0) > 0 && this.railBeamMesh && this.railBeamMat) {
+      this.railBeamTimer = Math.max(0, (this.railBeamTimer ?? 0) - dt);
+      const ratio = this.railBeamTimer / 0.16;
+      this.railBeamMat.opacity = Math.max(0, Math.min(0.92, ratio * 0.85));
+      const beamScale = 0.4 + ratio * 0.8;
+      this.railBeamMesh.scale.x = beamScale;
+      this.railBeamMesh.scale.y = beamScale;
+      if (this.railBeamTimer <= 0) {
+        this.railBeamMesh.visible = false;
+      }
+    }
 
     // Update Relay Departure/Arrival VFX Columns & Impact Shockwave Ring
     if (this.relayVfxTimer > 0) {
@@ -2494,9 +2988,11 @@ export class ArenaSceneRenderer {
     this.smoothedFwdAccel += (rawFwdAccel - this.smoothedFwdAccel) * Math.min(1, dt * 10);
     this.smoothedSideAccel += (rawSideAccel - this.smoothedSideAccel) * Math.min(1, dt * 10);
 
-    // Rotate Dorsal Chrono Rig harmonic rings
-    this.playerRig.chronoRingMesh.rotation.z += dt * 0.92;
-    this.playerRig.chronoInnerRingMesh.rotation.z -= dt * 1.55;
+    // Rotate Dorsal Chrono Rig harmonic rings (accelerated during Riposte / Chrono Slip flow windows)
+    const flowSpinBoost =
+      (p.riposteTimer ?? 0) > 0 || (p.chronoSlipTimer ?? 0) > 0 ? 3.2 : 1;
+    this.playerRig.chronoRingMesh.rotation.z += dt * 0.92 * flowSpinBoost;
+    this.playerRig.chronoInnerRingMesh.rotation.z -= dt * 1.55 * flowSpinBoost;
 
     // Velocity-proportional locomotion stride, knee bend, ankle planting & pelvis weight shift
     const moveSpeed = Math.hypot(p.vx, p.vz);
@@ -2625,6 +3121,23 @@ export class ArenaSceneRenderer {
 
     if (p.hurtFlashTimer > 0) {
       this.playerRig.bladeMaterial.emissive.setHex(0xef4444);
+    } else if ((p.riposteTimer ?? 0) > 0) {
+      this.playerRig.bladeMaterial.emissive.setHex(0xfbbf24);
+      this.playerRig.bladeMaterial.emissiveIntensity = 2.35;
+      if (isPulsecaster) {
+        this.playerRig.pulsecasterMaterial.emissive.setHex(0xfbbf24);
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.6;
+      }
+    } else if ((p.chronoSlipTimer ?? 0) > 0) {
+      this.playerRig.bladeMaterial.emissive.setHex(0x67e8f9);
+      this.playerRig.bladeMaterial.emissiveIntensity = 2.45;
+      if (isPulsecaster) {
+        this.playerRig.pulsecasterMaterial.emissive.setHex(0x67e8f9);
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.65;
+      }
+    } else if ((p.relayMomentumTimer ?? 0) > 0) {
+      this.playerRig.bladeMaterial.emissive.setHex(0x38bdf8);
+      this.playerRig.bladeMaterial.emissiveIntensity = 2.15;
     } else if (
       isGravBreaker ||
       p.actionState === 'charging_heavy' ||
@@ -2774,9 +3287,11 @@ export class ArenaSceneRenderer {
           targetLeftArmZ = -0.26;
 
           this.playerRig.slashArcPivot.rotation.set(0.18, 0, -0.32);
-          this.playerRig.slashArcMaterial.color.setHex(0x22d3ee);
+          this.playerRig.slashArcMaterial.color.setHex(
+            isGravBreaker ? 0xf59e0b : isPhaseRail ? 0xe0f2fe : 0x22d3ee
+          );
           this.playerRig.slashArcMaterial.opacity = 0.84;
-          this.playerRig.slashArcMesh.scale.setScalar(1.04);
+          this.playerRig.slashArcMesh.scale.setScalar(isGravBreaker ? 1.18 : 1.04);
           this.playerRig.slashArcMesh.rotation.z = -0.14;
         } else if (p.comboIndex === 1) {
           // Strike 2 active: sweeping left-to-right upward reverse slash
@@ -2795,9 +3310,12 @@ export class ArenaSceneRenderer {
           targetLeftArmZ = -0.22;
 
           this.playerRig.slashArcPivot.rotation.set(-0.16, 0, 0.34);
-          this.playerRig.slashArcMaterial.color.setHex(0x38bdf8);
+          this.playerRig.slashArcMaterial.color.setHex(
+            isGravBreaker ? 0xfbbf24 : isPhaseRail ? 0xe0f2fe : 0x38bdf8
+          );
           this.playerRig.slashArcMaterial.opacity = 0.88;
-          this.playerRig.slashArcMesh.scale.set(-1.08, 1.08, 1.08);
+          const arcScale2 = isGravBreaker ? 1.22 : 1.08;
+          this.playerRig.slashArcMesh.scale.set(-arcScale2, arcScale2, arcScale2);
           this.playerRig.slashArcMesh.rotation.z = 0.16;
         } else {
           // Strike 3 Finisher active: high-commitment lunging horizontal vortex cleave
@@ -2821,9 +3339,11 @@ export class ArenaSceneRenderer {
           targetLeftArmZ = -0.38;
 
           this.playerRig.slashArcPivot.rotation.set(0.06, 0.12, -0.1);
-          this.playerRig.slashArcMaterial.color.setHex(0xe0f2fe);
+          this.playerRig.slashArcMaterial.color.setHex(
+            isGravBreaker ? 0xfde68a : 0xe0f2fe
+          );
           this.playerRig.slashArcMaterial.opacity = 0.96;
-          this.playerRig.slashArcMesh.scale.setScalar(1.32);
+          this.playerRig.slashArcMesh.scale.setScalar(isGravBreaker ? 1.46 : 1.32);
           this.playerRig.slashArcMesh.rotation.z = -0.26;
         }
         break;
@@ -2925,10 +3445,16 @@ export class ArenaSceneRenderer {
 
         this.playerRig.slashArcPivot.rotation.set(0.42, 0.15, -0.68);
         this.playerRig.slashArcMaterial.color.setHex(
-          p.isEmpoweredHeavy ? 0xf59e0b : 0x38bdf8
+          isGravBreaker
+            ? 0xfbbf24
+            : isPhaseRail
+              ? 0xe0f2fe
+              : p.isEmpoweredHeavy
+                ? 0xf59e0b
+                : 0x38bdf8
         );
         this.playerRig.slashArcMaterial.opacity = 0.96;
-        this.playerRig.slashArcMesh.scale.setScalar(1.38);
+        this.playerRig.slashArcMesh.scale.setScalar(isGravBreaker ? 1.52 : 1.38);
         break;
       }
       case 'heavy_recovery': {
@@ -3390,73 +3916,79 @@ export class ArenaSceneRenderer {
         }
       }
 
-      // Sample Echo pose into circular history buffer every 25ms for Temporal Afterimage Ghosts
-      this.echoSampleTimer += dt;
-      if (this.echoSampleTimer >= 0.025) {
-        this.echoSampleTimer = 0;
-        const sample = this.echoHistory[this.echoHistoryHead];
-        sample.valid = true;
-        sample.time = world.elapsedTime;
-        sample.x = actor.x;
-        sample.z = actor.z;
-        sample.rotY = actor.rotationY;
-        sample.bodyY = this.echoRig.bodyGroup.position.y;
-        sample.bodyRotX = this.echoRig.bodyGroup.rotation.x;
-        sample.bodyRotZ = this.echoRig.bodyGroup.rotation.z;
-        sample.torsoRotX = this.echoRig.torsoPivot.rotation.x;
-        sample.torsoRotY = this.echoRig.torsoPivot.rotation.y;
-        sample.torsoRotZ = this.echoRig.torsoPivot.rotation.z;
-        sample.leftLegX = this.echoRig.leftLegPivot.rotation.x;
-        sample.rightLegX = this.echoRig.rightLegPivot.rotation.x;
-        sample.leftArmX = this.echoRig.leftArmPivot.rotation.x;
-        sample.leftArmY = this.echoRig.leftArmPivot.rotation.y;
-        sample.leftArmZ = this.echoRig.leftArmPivot.rotation.z;
-        sample.rightArmX = this.echoRig.rightArmPivot.rotation.x;
-        sample.rightArmY = this.echoRig.rightArmPivot.rotation.y;
-        sample.rightArmZ = this.echoRig.rightArmPivot.rotation.z;
-        this.echoHistoryHead = (this.echoHistoryHead + 1) % ECHO_HISTORY_SIZE;
-      }
+      // Sample Echo pose into circular history buffer every 25ms for Temporal Afterimage Ghosts (skip on Low VFX)
+      if (this.particleQuality === 'low') {
+        for (let g = 0; g < this.echoGhosts.length; g++) {
+          this.echoGhosts[g].root.visible = false;
+        }
+      } else {
+        this.echoSampleTimer += dt;
+        if (this.echoSampleTimer >= 0.025) {
+          this.echoSampleTimer = 0;
+          const sample = this.echoHistory[this.echoHistoryHead];
+          sample.valid = true;
+          sample.time = world.elapsedTime;
+          sample.x = actor.x;
+          sample.z = actor.z;
+          sample.rotY = actor.rotationY;
+          sample.bodyY = this.echoRig.bodyGroup.position.y;
+          sample.bodyRotX = this.echoRig.bodyGroup.rotation.x;
+          sample.bodyRotZ = this.echoRig.bodyGroup.rotation.z;
+          sample.torsoRotX = this.echoRig.torsoPivot.rotation.x;
+          sample.torsoRotY = this.echoRig.torsoPivot.rotation.y;
+          sample.torsoRotZ = this.echoRig.torsoPivot.rotation.z;
+          sample.leftLegX = this.echoRig.leftLegPivot.rotation.x;
+          sample.rightLegX = this.echoRig.rightLegPivot.rotation.x;
+          sample.leftArmX = this.echoRig.leftArmPivot.rotation.x;
+          sample.leftArmY = this.echoRig.leftArmPivot.rotation.y;
+          sample.leftArmZ = this.echoRig.leftArmPivot.rotation.z;
+          sample.rightArmX = this.echoRig.rightArmPivot.rotation.x;
+          sample.rightArmY = this.echoRig.rightArmPivot.rotation.y;
+          sample.rightArmZ = this.echoRig.rightArmPivot.rotation.z;
+          this.echoHistoryHead = (this.echoHistoryHead + 1) % ECHO_HISTORY_SIZE;
+        }
 
-      // Position delayed afterimage ghosts (~75ms and ~150ms behind live Echo)
-      const ghostOffsets = [3, 6];
-      for (let g = 0; g < this.echoGhosts.length; g++) {
-        const ghost = this.echoGhosts[g];
-        const idx =
-          (this.echoHistoryHead - 1 - ghostOffsets[g] + ECHO_HISTORY_SIZE * 2) %
-          ECHO_HISTORY_SIZE;
-        const sample = this.echoHistory[idx];
-        const distSq = sample.valid
-          ? (sample.x - actor.x) * (sample.x - actor.x) +
-            (sample.z - actor.z) * (sample.z - actor.z)
-          : 0;
-        const isActionPose =
-          actor.actionState !== 'idle' && actor.actionState !== 'moving';
-        if (sample.valid && (distSq > 0.008 || isActionPose)) {
-          ghost.root.visible = true;
-          ghost.root.position.set(sample.x, 0, sample.z);
-          ghost.root.rotation.y = sample.rotY;
-          ghost.bodyGroup.position.y = sample.bodyY;
-          ghost.bodyGroup.rotation.x = sample.bodyRotX;
-          ghost.bodyGroup.rotation.z = sample.bodyRotZ;
-          ghost.torsoPivot.rotation.set(
-            sample.torsoRotX,
-            sample.torsoRotY,
-            sample.torsoRotZ
-          );
-          ghost.leftLegPivot.rotation.x = sample.leftLegX;
-          ghost.rightLegPivot.rotation.x = sample.rightLegX;
-          ghost.leftArmPivot.rotation.set(
-            sample.leftArmX,
-            sample.leftArmY,
-            sample.leftArmZ
-          );
-          ghost.rightArmPivot.rotation.set(
-            sample.rightArmX,
-            sample.rightArmY,
-            sample.rightArmZ
-          );
-        } else {
-          ghost.root.visible = false;
+        // Position delayed afterimage ghosts (~75ms and ~150ms behind live Echo)
+        const ghostOffsets = [3, 6];
+        for (let g = 0; g < this.echoGhosts.length; g++) {
+          const ghost = this.echoGhosts[g];
+          const idx =
+            (this.echoHistoryHead - 1 - ghostOffsets[g] + ECHO_HISTORY_SIZE * 2) %
+            ECHO_HISTORY_SIZE;
+          const sample = this.echoHistory[idx];
+          const distSq = sample.valid
+            ? (sample.x - actor.x) * (sample.x - actor.x) +
+              (sample.z - actor.z) * (sample.z - actor.z)
+            : 0;
+          const isActionPose =
+            actor.actionState !== 'idle' && actor.actionState !== 'moving';
+          if (sample.valid && (distSq > 0.008 || isActionPose)) {
+            ghost.root.visible = true;
+            ghost.root.position.set(sample.x, 0, sample.z);
+            ghost.root.rotation.y = sample.rotY;
+            ghost.bodyGroup.position.y = sample.bodyY;
+            ghost.bodyGroup.rotation.x = sample.bodyRotX;
+            ghost.bodyGroup.rotation.z = sample.bodyRotZ;
+            ghost.torsoPivot.rotation.set(
+              sample.torsoRotX,
+              sample.torsoRotY,
+              sample.torsoRotZ
+            );
+            ghost.leftLegPivot.rotation.x = sample.leftLegX;
+            ghost.rightLegPivot.rotation.x = sample.rightLegX;
+            ghost.leftArmPivot.rotation.set(
+              sample.leftArmX,
+              sample.leftArmY,
+              sample.leftArmZ
+            );
+            ghost.rightArmPivot.rotation.set(
+              sample.rightArmX,
+              sample.rightArmY,
+              sample.rightArmZ
+            );
+          } else {
+            ghost.root.visible = false;
+          }
         }
       }
     } else {
@@ -4692,6 +5224,7 @@ export class ArenaSceneRenderer {
     if (shouldRender && this.renderer && !this.webglContextLost) {
       this.renderer.render(this.scene, this.camera);
     }
+    this.updateCallouts(dt, world.appState);
   }
 
   private updateCameraPresentation(
@@ -4768,6 +5301,25 @@ export class ArenaSceneRenderer {
     const shakeX = shakeMag > 0.001 ? (Math.random() * 2 - 1) * shakeMag : 0;
     const shakeY = shakeMag > 0.001 ? (Math.random() * 2 - 1) * shakeMag : 0;
 
+    if (typeof this.camera.updateProjectionMatrix === 'function') {
+      const baseFov = this.camera.aspect < 0.75 ? 60 : 52;
+      if (this.reducedMotion) {
+        this.fovKick = 0;
+        if (this.camera.fov !== baseFov) {
+          this.camera.fov = baseFov;
+          this.camera.updateProjectionMatrix();
+        }
+      } else if ((this.fovKick ?? 0) > 0.01) {
+        this.fovKick = Math.max(0, (this.fovKick ?? 0) * Math.exp(-14 * dt));
+        this.camera.fov = baseFov + this.fovKick;
+        this.camera.updateProjectionMatrix();
+      } else if (this.camera.fov !== baseFov) {
+        this.fovKick = 0;
+        this.camera.fov = baseFov;
+        this.camera.updateProjectionMatrix();
+      }
+    }
+
     this.camera.position.set(
       this.currentCamPos.x + shakeX,
       this.currentCamPos.y + shakeY,
@@ -4778,6 +5330,8 @@ export class ArenaSceneRenderer {
 
   public resize(width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
+    this.viewportWidth = width;
+    this.viewportHeight = height;
     this.camera.aspect = width / height;
     this.camera.fov = this.camera.aspect < 0.75 ? 60 : 52;
     this.camera.updateProjectionMatrix();
@@ -4787,6 +5341,7 @@ export class ArenaSceneRenderer {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.attachCalloutLayer(null);
     if (this.renderer?.domElement) {
       this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLostBound);
       this.renderer.domElement.removeEventListener(
@@ -4804,6 +5359,8 @@ export class ArenaSceneRenderer {
     this.enemyGuardRecoilTimers?.clear();
     this.shadowTex.dispose();
     this.studioEnvTex.dispose();
+    this.pmremEnvTarget?.dispose();
+    this.pmremEnvTarget = null;
     this.renderer?.dispose();
   }
 }

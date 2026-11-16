@@ -653,3 +653,51 @@ test('Phase 23.4-A1: StatusModal mute/hints toggle buttons expose aria-pressed a
     'TitleScreen control legend must document [Q / L] Parry (+35 Flux)'
   );
 });
+
+test('Phase 24: reducedMotion disables hitstopTimer and fovKick side effects while preserving base camera FOV', () => {
+  const world = createInitialWorld('playing');
+  const renderer = rendererFixture(true) as ReturnType<typeof rendererFixture> & {
+    fovKick: number;
+    hitstopTimer: number;
+    particles: Array<{ active: boolean; x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; maxAge: number; size: number; r: number; g: number; b: number }>;
+    nextParticleIdx: number;
+    impactRingMesh: Mesh;
+    impactRingMat: { color: Color; opacity: number };
+    impactRingDuration: number;
+    impactRingTimer: number;
+    railBeamMesh: Mesh;
+    railBeamMat: { color: Color; opacity: number };
+    railBeamTimer: number;
+    camera: { aspect: number; fov?: number; updateProjectionMatrix?: () => void; position: Vector3; target: Vector3; lookAt: (v: Vector3) => void };
+    handleCombatEvents(events: Array<{ type: 'player_parry_success' | 'resonance_convergence' | 'player_rail_heavy_shot' | 'breaker_shockwave_slam'; x: number; z: number; isHeavy?: boolean }>): void;
+  };
+  let projUpdates = 0;
+  renderer.camera.fov = 55;
+  renderer.camera.updateProjectionMatrix = () => {
+    projUpdates += 1;
+  };
+  renderer.fovKick = 0;
+  renderer.hitstopTimer = 0;
+  renderer.nextParticleIdx = 0;
+  renderer.particles = Array.from({ length: 144 }, () => ({
+    active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0, maxAge: 0.3, size: 1, r: 1, g: 1, b: 1,
+  }));
+  renderer.impactRingMesh = new Mesh();
+  renderer.impactRingMat = { color: new Color(), opacity: 0 };
+  renderer.railBeamMesh = new Mesh();
+  renderer.railBeamMat = { color: new Color(), opacity: 0 };
+
+  renderer.handleCombatEvents([
+    { type: 'player_parry_success', x: 0, z: 0 },
+    { type: 'resonance_convergence', x: 1, z: 1 },
+    { type: 'player_rail_heavy_shot', x: 0, z: 2 },
+    { type: 'breaker_shockwave_slam', x: 0, z: 2, isHeavy: true },
+  ]);
+
+  assert.equal(renderer.hitstopTimer, 0, 'reducedMotion must suppress micro-hitstop');
+  assert.equal(renderer.fovKick, 0, 'reducedMotion must suppress camera FOV kick');
+
+  renderer.updateCameraPresentation(world, 0, 0.28, 1 / 60);
+  assert.equal(renderer.camera.fov, 52, 'reducedMotion must keep camera FOV at base 52 deg');
+  assert.equal(projUpdates, 1, 'camera projection should normalize back to base FOV once');
+});

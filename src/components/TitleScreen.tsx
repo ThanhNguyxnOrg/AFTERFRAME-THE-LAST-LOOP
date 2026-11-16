@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { GAME_CONFIG } from '../game/config.ts';
+import {
+  FPS_LIMIT_OPTIONS,
+  RENDER_SCALE_OPTIONS,
+  resolveGraphicsSettings,
+} from '../game/performance.ts';
 import type {
   BossCheckpointState,
   BossEncounterId,
@@ -8,7 +13,9 @@ import type {
   ChronicleLoomEndingId,
   EncounterCompositionId,
   HudWeaponProgressionSnapshot,
+  WeaponId,
   WeaponProgressionState,
+  WeaponUpgradeId,
   WorldExplorationState,
 } from '../game/types.ts';
 
@@ -36,6 +43,10 @@ interface TitleScreenProps {
   onUpdateCameraSettings?: (settings: Partial<CameraSettings>) => void;
   progression?: WeaponProgressionState | HudWeaponProgressionSnapshot;
   exploration?: WorldExplorationState;
+  equippedWeaponId?: WeaponId;
+  onSelectWeapon?: (weaponId: WeaponId) => void;
+  onPurchaseUpgrade?: (upgradeId: WeaponUpgradeId) => void;
+  onEquipUpgrade?: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => void;
 }
 
 const CHAPTER_METADATA: Array<{
@@ -227,6 +238,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onUpdateCameraSettings,
   progression,
   exploration,
+  equippedWeaponId = 'chrono_edge',
+  onSelectWeapon,
+  onPurchaseUpgrade,
+  onEquipUpgrade,
 }) => {
   const [activeDrawer, setActiveDrawer] = useState<ActiveTitleDrawer>('none');
 
@@ -807,9 +822,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {activeDrawer === 'archive' && (
             <div
               data-testid="title-archive-panel"
-              className="w-full max-w-lg bg-[#090e17]/95 border border-violet-500/50 p-4 text-xs font-mono-tabular text-slate-300 shadow-[0_16px_48px_rgba(0,0,0,0.85)]"
+              className="w-full max-w-xl bg-[#090e17]/95 border border-violet-500/50 p-3.5 text-xs font-mono-tabular text-slate-300 shadow-[0_16px_48px_rgba(0,0,0,0.85)]"
             >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
                 <div>
                   <div className="text-[10px] uppercase tracking-widest text-violet-400">
                     CHRONO RIG ARMORY · {unlockedWeaponIds.length}/4 WEAPONS · {codexCount}/8 CODEX
@@ -828,7 +843,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </button>
               </div>
 
-              <div className="space-y-1.5 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2.5">
                 {(
                   [
                     {
@@ -862,40 +877,105 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   ] as const
                 ).map((w) => {
                   const unlocked = unlockedWeaponIds.includes(w.id);
+                  const isEquippedWeapon = equippedWeaponId === w.id;
                   const equippedUpgrade = progression?.equippedUpgrades?.[w.id] ?? null;
+                  const weaponUpgrades = Object.values(GAME_CONFIG.weapons.upgrades).filter(
+                    (u) => u.weaponId === w.id
+                  );
                   return (
                     <div
                       key={w.id}
                       data-testid={`title-arsenal-weapon-${w.id}`}
                       data-unlocked={unlocked ? 'true' : 'false'}
-                      className={`p-2.5 border ${
-                        unlocked
-                          ? 'bg-[#0e1626] border-violet-500/40 text-slate-200'
-                          : 'bg-[#070b12] border-slate-800 text-slate-500'
+                      data-equipped={isEquippedWeapon ? 'true' : 'false'}
+                      className={`p-2.5 border transition-colors ${
+                        isEquippedWeapon
+                          ? 'bg-[#101c30] border-cyan-400/80 text-slate-100'
+                          : unlocked
+                            ? 'bg-[#0e1626] border-violet-500/40 text-slate-200'
+                            : 'bg-[#070b12] border-slate-800 text-slate-500'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-0.5">
                         <span className="font-display font-bold text-xs uppercase tracking-wider text-white">
                           <span className="text-cyan-400 mr-1.5">{w.slot}</span>
                           {w.title}
                         </span>
-                        <span
-                          className={`text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 border ${
-                            unlocked
-                              ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
-                              : 'bg-slate-900 border-slate-800 text-slate-500'
-                          }`}
-                        >
-                          {unlocked
-                            ? equippedUpgrade
-                              ? `MOD: ${GAME_CONFIG.weapons.upgrades[equippedUpgrade]?.shortLabel ?? equippedUpgrade}`
-                              : 'UNLOCKED'
-                            : 'LOCKED'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {unlocked && equippedUpgrade && (
+                            <span className="text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 border bg-emerald-950/40 border-emerald-500/50 text-emerald-300">
+                              MOD: {GAME_CONFIG.weapons.upgrades[equippedUpgrade]?.shortLabel ?? equippedUpgrade}
+                            </span>
+                          )}
+                          {unlocked ? (
+                            <button
+                              type="button"
+                              data-testid={`title-select-weapon-${w.id}`}
+                              aria-pressed={isEquippedWeapon}
+                              onClick={() => onSelectWeapon?.(w.id)}
+                              className={`text-[9px] font-semibold uppercase tracking-widest px-2 py-0.5 border transition-colors cursor-pointer ${
+                                isEquippedWeapon
+                                  ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-bold'
+                                  : 'bg-[#111e34] hover:bg-[#1a2e4d] text-cyan-200 border-cyan-500/50'
+                              }`}
+                            >
+                              {isEquippedWeapon ? 'ACTIVE WEAPON' : 'EQUIP WEAPON'}
+                            </button>
+                          ) : (
+                            <span className="text-[9px] font-semibold uppercase tracking-widest px-1.5 py-0.5 border bg-slate-900 border-slate-800 text-slate-500">
+                              LOCKED
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-300">
+                      <div className="text-[11px] text-slate-300 mb-1.5">
                         {unlocked ? w.role : w.unlockHint}
                       </div>
+                      {unlocked && weaponUpgrades.length > 0 && (
+                        <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-800/80">
+                          {weaponUpgrades.map((upg) => {
+                            const isOwned =
+                              progression?.purchasedUpgrades?.includes(upg.id) ?? false;
+                            const isModEquipped = equippedUpgrade === upg.id;
+                            const canAfford =
+                              (progression?.memoryFragments ?? 0) >= upg.cost;
+                            return (
+                              <button
+                                key={upg.id}
+                                type="button"
+                                data-testid={`title-upgrade-action-${upg.id}`}
+                                onClick={() => {
+                                  if (isModEquipped) {
+                                    onEquipUpgrade?.(w.id, null);
+                                  } else if (isOwned) {
+                                    onEquipUpgrade?.(w.id, upg.id);
+                                  } else {
+                                    onPurchaseUpgrade?.(upg.id);
+                                  }
+                                }}
+                                className={`px-2 py-1 text-[9px] font-mono-tabular uppercase tracking-wider border text-left transition-colors cursor-pointer ${
+                                  isModEquipped
+                                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-100 font-bold'
+                                    : isOwned
+                                      ? 'bg-[#0b1524] hover:bg-[#13233b] border-slate-700 text-slate-200'
+                                      : canAfford
+                                        ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-400/60 text-amber-200'
+                                        : 'bg-[#080d16] border-slate-800 text-slate-500'
+                                }`}
+                              >
+                                <div className="truncate font-semibold">{upg.shortLabel}</div>
+                                <div className="text-[8px] opacity-80">
+                                  {isModEquipped
+                                    ? 'EQUIPPED · UNEQUIP'
+                                    : isOwned
+                                      ? 'OWNED · EQUIP'
+                                      : `UNLOCK (${upg.cost} FRAG)`}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -994,13 +1074,268 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     </div>
                   </div>
                 </div>
+
+                <div className="sm:col-span-2 bg-[#0d1422] border border-slate-800 px-2.5 py-2">
+                  <span className="text-cyan-300 font-semibold uppercase tracking-wider mr-2">
+                    GAMEPAD (XBOX / PS):
+                  </span>
+                  <span className="text-slate-300">
+                    L-Stick Move · R-Stick Aim · A Dodge · X/RB Light · Y/RT Heavy · LB Parry · LT Relay · B Interact · D-Pad Echo &amp; Weapons
+                  </span>
+                </div>
               </div>
 
               {/* Live Settings Controls */}
-              <div className="border-t border-slate-800 pt-3 space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+              <div className="border-t border-slate-800 pt-3 space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
                 <div className="text-[10px] uppercase tracking-widest text-slate-400">
-                  AUDIO, CAMERA & ACCESSIBILITY PREFERENCES
+                  GRAPHICS, AUDIO, CAMERA & ACCESSIBILITY PREFERENCES
                 </div>
+
+                {cameraSettings && onUpdateCameraSettings && (() => {
+                  const gfx = resolveGraphicsSettings(cameraSettings);
+                  return (
+                    <div className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-wider text-cyan-300 font-bold">
+                            GRAPHICS & PERFORMANCE
+                          </span>
+                          <span
+                            data-testid="title-setting-preset-active"
+                            className="text-[9px] uppercase px-1.5 py-0.5 bg-[#0d1522] border border-cyan-500/40 text-cyan-300 font-bold"
+                          >
+                            {gfx.graphicsPreset === 'performance'
+                              ? 'MAX FPS'
+                              : gfx.graphicsPreset === 'balanced'
+                                ? 'BALANCED'
+                                : gfx.graphicsPreset === 'quality'
+                                  ? 'HIGH'
+                                  : 'CUSTOM'}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(
+                            [
+                              { id: 'performance', label: 'MAX FPS' },
+                              { id: 'balanced', label: 'BALANCED' },
+                              { id: 'quality', label: 'HIGH' },
+                            ] as const
+                          ).map((preset) => {
+                            const active = gfx.graphicsPreset === preset.id;
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                data-testid={`title-setting-preset-${preset.id}`}
+                                aria-pressed={active}
+                                onClick={() =>
+                                  onUpdateCameraSettings({ graphicsPreset: preset.id })
+                                }
+                                className={`px-2 py-0.5 text-[10px] font-bold uppercase border cursor-pointer ${
+                                  active
+                                    ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300'
+                                    : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px]">
+                        <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800 px-2.5 py-1.5">
+                          <span className="text-slate-300 uppercase">RENDER SCALE</span>
+                          <div className="flex gap-1">
+                            {RENDER_SCALE_OPTIONS.map((scale) => {
+                              const active = Math.abs(gfx.renderScale - scale) < 0.02;
+                              return (
+                                <button
+                                  key={scale}
+                                  type="button"
+                                  data-testid={`title-setting-render-scale-${scale}`}
+                                  aria-pressed={active}
+                                  onClick={() =>
+                                    onUpdateCameraSettings({
+                                      graphicsPreset: 'custom',
+                                      renderScale: scale,
+                                    })
+                                  }
+                                  className={`px-1.5 py-0.5 border cursor-pointer ${
+                                    active
+                                      ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {Math.round(scale * 100)}%
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800 px-2.5 py-1.5">
+                          <span className="text-slate-300 uppercase">FPS CAP</span>
+                          <div className="flex gap-1">
+                            {FPS_LIMIT_OPTIONS.map((cap) => {
+                              const active = gfx.fpsLimit === cap;
+                              return (
+                                <button
+                                  key={cap}
+                                  type="button"
+                                  data-testid={`title-setting-fps-${cap}`}
+                                  aria-pressed={active}
+                                  onClick={() =>
+                                    onUpdateCameraSettings({
+                                      graphicsPreset: 'custom',
+                                      fpsLimit: cap,
+                                    })
+                                  }
+                                  className={`px-1.5 py-0.5 border cursor-pointer ${
+                                    active
+                                      ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {cap === 0 ? 'MAX' : cap}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800 px-2.5 py-1.5">
+                          <span className="text-slate-300 uppercase">SHADOWS</span>
+                          <div className="flex gap-1">
+                            {(
+                              [
+                                { id: 'off', label: 'OFF' },
+                                { id: 'medium', label: '512' },
+                                { id: 'high', label: '1024' },
+                              ] as const
+                            ).map((opt) => {
+                              const active = gfx.shadowQuality === opt.id;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  data-testid={`title-setting-shadows-${opt.id}`}
+                                  aria-pressed={active}
+                                  onClick={() =>
+                                    onUpdateCameraSettings({
+                                      graphicsPreset: 'custom',
+                                      shadowQuality: opt.id,
+                                    })
+                                  }
+                                  className={`px-1.5 py-0.5 border cursor-pointer ${
+                                    active
+                                      ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800 px-2.5 py-1.5">
+                          <span className="text-slate-300 uppercase">VFX & PARTICLES</span>
+                          <div className="flex gap-1">
+                            {(
+                              [
+                                { id: 'low', label: 'LOW' },
+                                { id: 'medium', label: 'MED' },
+                                { id: 'high', label: 'HIGH' },
+                              ] as const
+                            ).map((opt) => {
+                              const active = gfx.particleQuality === opt.id;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  data-testid={`title-setting-particles-${opt.id}`}
+                                  aria-pressed={active}
+                                  onClick={() =>
+                                    onUpdateCameraSettings({
+                                      graphicsPreset: 'custom',
+                                      particleQuality: opt.id,
+                                    })
+                                  }
+                                  className={`px-1.5 py-0.5 border cursor-pointer ${
+                                    active
+                                      ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 bg-[#070b12] border border-slate-800 px-2.5 py-1.5">
+                          <span className="text-slate-300 uppercase">LIGHTING</span>
+                          <div className="flex gap-1">
+                            {(
+                              [
+                                { id: 'lite', label: 'LITE' },
+                                { id: 'standard', label: 'STD' },
+                              ] as const
+                            ).map((opt) => {
+                              const active = gfx.lightingQuality === opt.id;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  data-testid={`title-setting-lighting-${opt.id}`}
+                                  aria-pressed={active}
+                                  onClick={() =>
+                                    onUpdateCameraSettings({
+                                      graphicsPreset: 'custom',
+                                      lightingQuality: opt.id,
+                                    })
+                                  }
+                                  className={`px-1.5 py-0.5 border cursor-pointer ${
+                                    active
+                                      ? 'bg-cyan-400/20 border-cyan-400 text-cyan-300 font-bold'
+                                      : 'bg-[#0b1018] border-slate-700 text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          data-testid="title-setting-perf-hud"
+                          aria-pressed={gfx.showPerfHud}
+                          onClick={() =>
+                            onUpdateCameraSettings({ showPerfHud: !gfx.showPerfHud })
+                          }
+                          className="flex items-center justify-between px-2.5 py-1.5 bg-[#070b12] hover:bg-[#162236] border border-slate-800 cursor-pointer"
+                        >
+                          <span className="text-slate-300 uppercase">FPS & LATENCY HUD [F3]</span>
+                          <span
+                            className={
+                              gfx.showPerfHud
+                                ? 'text-cyan-300 font-bold'
+                                : 'text-slate-500 font-bold'
+                            }
+                          >
+                            {gfx.showPerfHud ? 'ON' : 'OFF'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-2 gap-2">
                   <button

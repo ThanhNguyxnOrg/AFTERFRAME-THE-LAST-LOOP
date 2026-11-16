@@ -1160,6 +1160,8 @@ export const GAME_CONFIG = {
           '“Sera, if Bay 04 recognized your biometrics, the Chrono Rig is yours. Don’t trust WARDEN’s voice—it thinks a recorded human loop is safer than a living person. I split the Loom override across four sector seals. Use your own past to break through.”',
       },
       transitionHeadline: 'PRIMARY CONTAINMENT SEAL BREACHED · SECTOR 01 UNLOCKED',
+      arrivalBriefing:
+        'Bay 04 temporal anchors are offline. Record an Echo with [T], Replay with [Y] to hold Anchor Pad 01, and clear the outer quarantine proxies.',
       transitionBriefing:
         'Calibration Gate 03 is open. Ahead lies the Primary Containment Ring, guarded by Security Marshal HELIX-04—the heavy physical bolt sealing Nadir-9’s inner archive sectors.',
     },
@@ -1178,6 +1180,8 @@ export const GAME_CONFIG = {
         excerpt:
           '“HELIX-04 was only the physical bolt, Sera. Beyond this bulkhead is the Acoustic Garden—where WARDEN recorded the crew’s daily routines over and over until their voices fused into a single chord. It calls the array THE CHOIR.”',
       },
+      arrivalBriefing:
+        'Security Marshal HELIX-04 seals the inner vault behind a frontal Aegis shield. Sidestep Vector Ram, Parry [Q] Helical Sweeps, or Converge [E] to crack the core.',
       transitionHeadline: 'CONTAINMENT BOLT SHATTERED · RESONANCE AMPHITHEATER UNLOCKED',
       transitionBriefing:
         'With HELIX-04 dismantled, the blast doors part toward Sector 02: The Garden of Repeated Days, where THE CHOIR phase-locks the station using three synchronized Harmonic Pylons.',
@@ -1197,6 +1201,8 @@ export const GAME_CONFIG = {
         excerpt:
           '“WARDEN: Crew recordings exhibit 14.2% emotional drift. Forwarding divergent tracks to Sector 03 for pruning. — [LYSA]: It’s editing us, Sera! Anything grieving or unpredictable gets cut by THE CURATOR. Take the Gravity Pin [G] module I hid in the vault!”',
       },
+      arrivalBriefing:
+        'THE CHOIR sustains an acoustic phase-shield through three Harmonic Pylons. Shatter the synchronized pylons to expose its central dissonance core.',
       transitionHeadline: 'HARMONIC SHIELD SILENCED · GRAVITY PIN [G] UNLOCKED',
       transitionBriefing:
         'Shattering THE CHOIR’s forced unison unlocks Lysa’s Gravity Pin [G] module and opens Sector 03: The Archive That Answers, where THE CURATOR weaponizes reconstructed memories.',
@@ -1216,6 +1222,8 @@ export const GAME_CONFIG = {
         excerpt:
           '“When I refused to let WARDEN erase the crew’s final messages home, it classified live human will as a surgical contagion and sent MATRON-V after me. If she locks a Chrono Sever zone onto your Echo, detonate the track first with Echo Collapse [X].”',
       },
+      arrivalBriefing:
+        'THE CURATOR edits sector telemetry and projects false Echo traces. Anchor key glyphs with Gravity Pin [G], sever projected clones, and strike the archive frame.',
       transitionHeadline: 'UNEDITED CATASTROPHE LOGS RECOVERED · ECHO COLLAPSE [X] UNLOCKED',
       transitionBriefing:
         'THE CURATOR’s vault yields the unedited truth of Nadir-9’s breach and unlocks Echo Collapse [X]. Ahead lies Sector 04: Quarantine Ward, domain of MATRON-V, The Surgeon.',
@@ -1235,6 +1243,8 @@ export const GAME_CONFIG = {
         excerpt:
           '“My suit integrity failed in the Ward, Sera, so I stepped into the Loom’s neural cradle myself. My body didn’t survive the transfer, but my consciousness is holding the Core open from within. Step into the Loom—and choose as someone who is alive.”',
       },
+      arrivalBriefing:
+        'MATRON-V deploys Chrono Sever excision zones and siphons Flux. Detonate threatened Echoes with Collapse [X] before excision locks and shatter her surgical stance.',
       transitionHeadline: 'QUARANTINE OVERSEER DISMANTLED · CHRONICLE LOOM CORE OPEN',
       transitionBriefing:
         'MATRON-V has fallen. The central blast doors to Chapter V: The Last Loop stand open—where Lysa’s preserved neural trace holds the Chronicle Loom Core awaiting your final directive.',
@@ -1254,6 +1264,8 @@ export const GAME_CONFIG = {
         excerpt:
           '“You made it, Sera. I can hold WARDEN’s executive routines down for a few more seconds, but the Loom needs a human command. End the machine in Silence, broadcast the truth as a Witness, or seal us in an isolated Continuity sanctuary.”',
       },
+      arrivalBriefing:
+        'WARDEN Prime defends the Chronicle Loom Core across escalating loop protocols. Break its executive triad to reclaim the Loom and choose Nadir-9’s final directive.',
       transitionHeadline: 'CHRONICLE LOOM DIRECTIVE EXECUTED',
       transitionBriefing:
         'The Chronicle Loom responds to Sera Venn’s final command.',

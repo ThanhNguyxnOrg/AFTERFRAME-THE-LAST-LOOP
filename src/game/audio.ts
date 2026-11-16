@@ -209,6 +209,12 @@ export class SoundEngine {
         case 'player_parry_success':
           this.playParryDeflect();
           break;
+        case 'player_riposte_strike':
+          this.playRiposteStrike();
+          break;
+        case 'player_perfect_dodge':
+          this.playPerfectDodge();
+          break;
         case 'player_dodge':
           this.playDodge();
           break;
@@ -758,6 +764,26 @@ export class SoundEngine {
     });
   }
 
+  private playRiposteStrike(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freqs = [587.33, 880, 1318.51];
+    freqs.forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx === 0 ? 'sawtooth' : 'sine';
+      osc.frequency.setValueAtTime(f, now + idx * 0.018);
+      osc.frequency.exponentialRampToValueAtTime(f * 1.18, now + idx * 0.018 + 0.14);
+      gain.gain.setValueAtTime(idx === 0 ? 0.11 : 0.09, now + idx * 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.018 + 0.16);
+      osc.connect(gain);
+      gain.connect(this.getOutputNode(ctx));
+      osc.start(now + idx * 0.018);
+      osc.stop(now + idx * 0.018 + 0.17);
+    });
+  }
+
   private playDodge(): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
@@ -1080,6 +1106,27 @@ export class SoundEngine {
       gain.connect(this.getOutputNode(ctx));
       osc.start(now + idx * 0.03);
       osc.stop(now + idx * 0.03 + 0.19);
+    });
+  }
+
+  private playPerfectDodge(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [740, 1108.73, 1479.98];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = now + idx * 0.022;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.15, start + 0.16);
+      gain.gain.setValueAtTime(0.11, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18);
+      osc.connect(gain);
+      gain.connect(this.getOutputNode(ctx));
+      osc.start(start);
+      osc.stop(start + 0.19);
     });
   }
 

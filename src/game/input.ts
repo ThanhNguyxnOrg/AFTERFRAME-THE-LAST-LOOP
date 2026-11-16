@@ -1,4 +1,9 @@
 import { GAME_CONFIG } from './config.ts';
+import { pollGamepadInput } from './gamepad.ts';
+import {
+  mergeGraphicsSettingsPatch,
+  resolveGraphicsSettings,
+} from './performance.ts';
 import type { CameraSettings, PlayerInputFrame, WeaponId } from './types.ts';
 import { wrapAngle } from './simulation.ts';
 
@@ -6,12 +11,16 @@ const CAMERA_SETTINGS_STORAGE_KEY = 'afterframe_camera_settings_v1';
 
 export class InputController {
   private heldKeys = new Set<string>();
+  private heldCardinalOrder: string[] = [];
   private justPressedKeys = new Set<string>();
   private pendingSelectWeaponId: WeaponId | null = null;
   private leftMouseDown = false;
   private leftMouseJustPressed = false;
   private leftMouseJustReleased = false;
   private rightMouseJustPressed = false;
+  private prevGamepadButtonsMask = 0;
+  private prevGamepadLightHeld = false;
+  private activeGamepadIndex: number | null = null;
 
   public aimYaw: number = GAME_CONFIG.camera.defaultYaw;
   public aimPitch: number = GAME_CONFIG.camera.defaultPitch;
@@ -67,6 +76,7 @@ export class InputController {
   private onAdvanceChapterCallback: (() => boolean) | null = null;
   private onSelectLoomEndingCallback: ((endingId: 'silence' | 'witness' | 'continuity') => boolean) | null = null;
   private onMapToggleCallback: (() => void) | null = null;
+  private onSelectWeaponCallback: ((weaponId?: WeaponId) => void) | null = null;
 
   constructor() {
     this.loadSettings();
@@ -87,6 +97,18 @@ export class InputController {
       // Fallback to unlocked/drag-to-orbit camera look if pointer lock is denied
       this.pointerLocked = false;
     };
+  }
+
+  private hasGraphicsKeys(obj: Partial<CameraSettings>): boolean {
+    return (
+      obj.graphicsPreset !== undefined ||
+      obj.renderScale !== undefined ||
+      obj.shadowQuality !== undefined ||
+      obj.particleQuality !== undefined ||
+      obj.lightingQuality !== undefined ||
+      obj.fpsLimit !== undefined ||
+      obj.showPerfHud !== undefined
+    );
   }
 
   private loadSettings(): void {
@@ -127,6 +149,13 @@ export class InputController {
         if (typeof parsed.subtitlesEnabled === 'boolean') {
           this.settings.subtitlesEnabled = parsed.subtitlesEnabled;
         }
+        if (this.hasGraphicsKeys(parsed)) {
+          const resolvedGfx = resolveGraphicsSettings(parsed);
+          this.settings = {
+            ...this.settings,
+            ...resolvedGfx,
+          };
+        }
       }
     } catch {
       // Ignore storage access errors
@@ -135,6 +164,10 @@ export class InputController {
 
   public getCameraSettings(): CameraSettings {
     return { ...this.settings };
+  }
+
+  public getResolvedGraphicsSettings() {
+    return resolveGraphicsSettings(this.settings);
   }
 
   public setCameraSettings(next: Partial<CameraSettings>): CameraSettings {
@@ -164,6 +197,13 @@ export class InputController {
     }
     if (typeof next.subtitlesEnabled === 'boolean') {
       this.settings.subtitlesEnabled = next.subtitlesEnabled;
+    }
+    if (this.hasGraphicsKeys(next) || this.hasGraphicsKeys(this.settings)) {
+      const resolvedGfx = mergeGraphicsSettingsPatch(this.settings, next);
+      this.settings = {
+        ...this.settings,
+        ...resolvedGfx,
+      };
     }
     try {
       window.localStorage.setItem(CAMERA_SETTINGS_STORAGE_KEY, JSON.stringify(this.settings));
@@ -247,6 +287,7 @@ export class InputController {
       onAdvanceChapter?: () => boolean;
       onSelectLoomEnding?: (endingId: 'silence' | 'witness' | 'continuity') => boolean;
       onMapToggle?: () => void;
+      onSelectWeapon?: (weaponId?: WeaponId) => void;
     }
   ): void {
     this.canvasEl = canvasContainer;
@@ -262,6 +303,7 @@ export class InputController {
     this.onAdvanceChapterCallback = callbacks.onAdvanceChapter ?? null;
     this.onSelectLoomEndingCallback = callbacks.onSelectLoomEnding ?? null;
     this.onMapToggleCallback = callbacks.onMapToggle ?? null;
+    this.onSelectWeaponCallback = callbacks.onSelectWeapon ?? null;
 
     window.addEventListener('keydown', this.onKeyDownBound);
     window.addEventListener('keyup', this.onKeyUpBound);
@@ -296,6 +338,7 @@ export class InputController {
 
   public clearAllInputs(): void {
     this.heldKeys.clear();
+    this.heldCardinalOrder.length = 0;
     this.justPressedKeys.clear();
     this.pendingSelectWeaponId = null;
     this.leftMouseDown = false;
@@ -318,6 +361,50 @@ export class InputController {
     this.touchCameraLastX = null;
     this.touchCameraLastY = null;
     this.touchCameraActive = false;
+    this.prevGamepadButtonsMask = 0;
+    this.prevGamepadLightHeld = false;
+  }
+
+  public isGamepadConnected(): boolean {
+    return this.activeGamepadIndex !== null;
+  }
+
+  public triggerGamepadRumble(
+    strongMagnitude = 0.4,
+    weakMagnitude = 0.2,
+    durationMs = 110
+  ): void {
+    if (this.activeGamepadIndex === null) return;
+    if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
+    try {
+      const pads = navigator.getGamepads();
+      const pad = pads?.[this.activeGamepadIndex] as
+        | (Gamepad & {
+            vibrationActuator?: {
+              playEffect?: (
+                type: string,
+                params: {
+                  startDelay: number;
+                  duration: number;
+                  weakMagnitude: number;
+                  strongMagnitude: number;
+                }
+              ) => Promise<unknown>;
+            };
+          })
+        | null
+        | undefined;
+      pad?.vibrationActuator
+        ?.playEffect?.('dual-rumble', {
+          startDelay: 0,
+          duration: durationMs,
+          weakMagnitude: Math.max(0, Math.min(1, weakMagnitude)),
+          strongMagnitude: Math.max(0, Math.min(1, strongMagnitude)),
+        })
+        ?.catch?.(() => {});
+    } catch {
+      // Ignore rumble failures on unsupported gamepads
+    }
   }
 
   public resetCameraAngles(): void {
@@ -340,9 +427,143 @@ export class InputController {
     );
   }
 
+  /**
+   * Resolves physical key codes reliably even when an IME (such as Vietnamese UniKey / EVKey in Telex/VNI mode)
+   * intercepts the keystroke and emits an accented character or 'Process' / 'Unidentified' code.
+   */
+  public resolveKeyCode(e: KeyboardEvent): string {
+    const rawCode = typeof e.code === 'string' ? e.code : '';
+    if (rawCode && rawCode !== 'Unidentified' && rawCode !== 'Process') {
+      return rawCode;
+    }
+    const rawKey = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+    if (!rawKey) return rawCode;
+
+    switch (rawKey) {
+      case 'w':
+      case 'ư':
+      case 'ứ':
+      case 'ừ':
+      case 'ử':
+      case 'ữ':
+      case 'ự':
+        return 'KeyW';
+      case 'a':
+      case 'ă':
+      case 'â':
+      case 'á':
+      case 'à':
+      case 'ả':
+      case 'ã':
+      case 'ạ':
+      case 'ắ':
+      case 'ằ':
+      case 'ẳ':
+      case 'ẵ':
+      case 'ặ':
+      case 'ấ':
+      case 'ầ':
+      case 'ẩ':
+      case 'ẫ':
+      case 'ậ':
+        return 'KeyA';
+      case 's':
+        return 'KeyS';
+      case 'd':
+      case 'đ':
+        return 'KeyD';
+      case 'e':
+      case 'ê':
+      case 'ế':
+      case 'ề':
+      case 'ể':
+      case 'ễ':
+      case 'ệ':
+        return 'KeyE';
+      case 'q':
+        return 'KeyQ';
+      case 'r':
+        return 'KeyR';
+      case 'f':
+        return 'KeyF';
+      case 'g':
+        return 'KeyG';
+      case 'v':
+        return 'KeyV';
+      case 'c':
+        return 'KeyC';
+      case 'x':
+        return 'KeyX';
+      case 'z':
+        return 'KeyZ';
+      case 'j':
+        return 'KeyJ';
+      case 'k':
+        return 'KeyK';
+      case 'l':
+        return 'KeyL';
+      case 'u':
+      case 'ú':
+      case 'ù':
+      case 'ủ':
+      case 'ũ':
+      case 'ụ':
+        return 'KeyU';
+      case 'p':
+        return 'KeyP';
+      case 'n':
+        return 'KeyN';
+      case 'm':
+        return 'KeyM';
+      case 'h':
+        return 'KeyH';
+      case 'b':
+        return 'KeyB';
+      case '1':
+        return 'Digit1';
+      case '2':
+        return 'Digit2';
+      case '3':
+        return 'Digit3';
+      case '4':
+        return 'Digit4';
+      case ' ':
+        return 'Space';
+      case 'tab':
+        return 'Tab';
+      case 'enter':
+        return 'Enter';
+      case 'escape':
+      case 'esc':
+        return 'Escape';
+      case 'shift':
+        return 'ShiftLeft';
+      case 'arrowup':
+        return 'ArrowUp';
+      case 'arrowdown':
+        return 'ArrowDown';
+      case 'arrowleft':
+        return 'ArrowLeft';
+      case 'arrowright':
+        return 'ArrowRight';
+      default:
+        return rawCode;
+    }
+  }
+
+  private isMovementKeyHeld(): boolean {
+    return (
+      this.heldKeys.has('KeyW') ||
+      this.heldKeys.has('KeyA') ||
+      this.heldKeys.has('KeyS') ||
+      this.heldKeys.has('KeyD')
+    );
+  }
+
   private handleKeyDown(e: KeyboardEvent): void {
-    const code = e.code;
+    const code = this.resolveKeyCode(e);
     const state = document.body.dataset.state;
+    const runMode = document.body.dataset.runMode;
 
     // Development-only F3 Performance Overlay Toggle
     if (code === 'F3') {
@@ -352,7 +573,11 @@ export class InputController {
     }
 
     // Global Boss Encounter Launch Shortcut [B]
+    // Guarded during active Campaign gameplay or while holding WASD so bumping [B] near [V]/[G]/[Space] never aborts a Campaign chapter
     if (code === 'KeyB') {
+      if (state === 'playing' && (runMode === 'campaign' || this.isMovementKeyHeld())) {
+        return;
+      }
       e.preventDefault();
       this.onStartBossCallback?.();
       return;
@@ -398,10 +623,18 @@ export class InputController {
       }
     }
 
+    // Restart shortcut [R]
+    // NOTE: Backspace is intentionally NOT bound to restart because Vietnamese IMEs (UniKey / EVKey in Telex mode)
+    // inject hardware Backspace events when pressing W ('ư'), A+S ('á'), D+D ('đ'), or A+R ('ả') during WASD movement.
     if (
-      (code === 'KeyR' || code === 'Backspace') &&
+      code === 'KeyR' &&
+      !e.isComposing &&
+      !e.repeat &&
       (state === 'playing' || state === 'paused' || state === 'gameover')
     ) {
+      if (state === 'playing' && this.isMovementKeyHeld()) {
+        return;
+      }
       e.preventDefault();
       this.onRestartCallback?.();
       return;
@@ -417,6 +650,36 @@ export class InputController {
       e.preventDefault();
       this.onToggleTutorialCallback?.();
       return;
+    }
+
+    // Allow [1]-[4] and [Tab]/[Z] weapon selection while inside the Paused [U] Upgrade Bench or Victory Intermission
+    if (state === 'paused' || state === 'gameover') {
+      if ((e.target as HTMLElement | null)?.closest?.('input, select, textarea')) return;
+      if (code === 'Digit1') {
+        e.preventDefault();
+        this.onSelectWeaponCallback?.('chrono_edge');
+        return;
+      }
+      if (code === 'Digit2') {
+        e.preventDefault();
+        this.onSelectWeaponCallback?.('pulsecaster');
+        return;
+      }
+      if (code === 'Digit3') {
+        e.preventDefault();
+        this.onSelectWeaponCallback?.('phase_rail');
+        return;
+      }
+      if (code === 'Digit4') {
+        e.preventDefault();
+        this.onSelectWeaponCallback?.('grav_breaker');
+        return;
+      }
+      if (code === 'Tab' || code === 'KeyZ') {
+        e.preventDefault();
+        this.onSelectWeaponCallback?.();
+        return;
+      }
     }
 
     if (state !== 'playing') return;
@@ -449,10 +712,27 @@ export class InputController {
       this.justPressedKeys.add(code);
     }
     this.heldKeys.add(code);
+    if (code === 'KeyW' || code === 'KeyS' || code === 'KeyA' || code === 'KeyD') {
+      const existingIdx = this.heldCardinalOrder.indexOf(code);
+      if (existingIdx !== -1) {
+        this.heldCardinalOrder.splice(existingIdx, 1);
+      }
+      this.heldCardinalOrder.push(code);
+    }
   }
 
   private handleKeyUp(e: KeyboardEvent): void {
-    this.heldKeys.delete(e.code);
+    const code = this.resolveKeyCode(e);
+    if (typeof e.code === 'string' && e.code) {
+      this.heldKeys.delete(e.code);
+    }
+    if (code) {
+      this.heldKeys.delete(code);
+      const idx = this.heldCardinalOrder.indexOf(code);
+      if (idx !== -1) {
+        this.heldCardinalOrder.splice(idx, 1);
+      }
+    }
   }
 
   private handleMouseDown(e: MouseEvent): void {
@@ -550,7 +830,57 @@ export class InputController {
   }
 
   public consumeFrameInput(dt: number): PlayerInputFrame {
-    // Allow Arrow keys to smoothly orbit camera yaw & pitch
+    let activePad: Gamepad | null = null;
+    if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+      try {
+        const pads = navigator.getGamepads();
+        if (pads) {
+          for (let i = 0; i < pads.length; i++) {
+            const cand = pads[i];
+            if (cand && cand.connected !== false) {
+              activePad = cand;
+              this.activeGamepadIndex = cand.index ?? i;
+              break;
+            }
+          }
+        }
+      } catch {
+        activePad = null;
+      }
+    }
+    if (!activePad) {
+      this.activeGamepadIndex = null;
+    }
+
+    const gp = pollGamepadInput(
+      activePad,
+      this.prevGamepadButtonsMask,
+      this.settings.sensitivity,
+      this.settings.invertY,
+      dt
+    );
+    this.prevGamepadButtonsMask = gp.nextButtonsMask;
+    const gpLightJustReleased = !gp.lightHeld && this.prevGamepadLightHeld;
+    this.prevGamepadLightHeld = gp.lightHeld;
+
+    const docState = typeof document !== 'undefined' ? document.body?.dataset?.state : undefined;
+    if (gp.connected) {
+      if (docState === 'title' && gp.justPressed.pause) {
+        this.onStartGameCallback?.();
+      } else if (docState === 'playing' || docState === 'paused') {
+        if (gp.justPressed.pause) {
+          this.onPauseToggleCallback?.();
+        } else if (gp.justPressed.map) {
+          if (this.onMapToggleCallback) {
+            this.onMapToggleCallback();
+          } else {
+            this.onPauseToggleCallback?.();
+          }
+        }
+      }
+    }
+
+    // Allow Arrow keys & Gamepad right stick to smoothly orbit camera yaw & pitch
     const keyTurn = GAME_CONFIG.camera.keyboardTurnSpeed * this.settings.sensitivity;
     const invertSign = this.settings.invertY ? -1 : 1;
     if (this.heldKeys.has('ArrowLeft')) {
@@ -578,13 +908,45 @@ export class InputController {
       );
     }
 
+    const gpPlaying = gp.connected && docState === 'playing';
+    if (gpPlaying) {
+      if (gp.lookYawDelta !== 0) {
+        this.aimYaw = wrapAngle(this.aimYaw + gp.lookYawDelta);
+      }
+      if (gp.lookPitchDelta !== 0) {
+        this.aimPitch = Math.max(
+          GAME_CONFIG.camera.minPitch,
+          Math.min(GAME_CONFIG.camera.maxPitch, this.aimPitch + gp.lookPitchDelta)
+        );
+      }
+    }
+
     let moveX = 0;
     let moveZ = 0;
 
-    if (this.heldKeys.has('KeyW')) moveZ -= 1;
-    if (this.heldKeys.has('KeyS')) moveZ += 1;
-    if (this.heldKeys.has('KeyA')) moveX -= 1;
-    if (this.heldKeys.has('KeyD')) moveX += 1;
+    const hasW = this.heldKeys.has('KeyW');
+    const hasS = this.heldKeys.has('KeyS');
+    if (hasW && hasS) {
+      const wIdx = this.heldCardinalOrder.lastIndexOf('KeyW');
+      const sIdx = this.heldCardinalOrder.lastIndexOf('KeyS');
+      moveZ = sIdx > wIdx ? 1 : -1;
+    } else if (hasW) {
+      moveZ = -1;
+    } else if (hasS) {
+      moveZ = 1;
+    }
+
+    const hasA = this.heldKeys.has('KeyA');
+    const hasD = this.heldKeys.has('KeyD');
+    if (hasA && hasD) {
+      const aIdx = this.heldCardinalOrder.lastIndexOf('KeyA');
+      const dIdx = this.heldCardinalOrder.lastIndexOf('KeyD');
+      moveX = dIdx > aIdx ? 1 : -1;
+    } else if (hasA) {
+      moveX = -1;
+    } else if (hasD) {
+      moveX = 1;
+    }
 
     if (this.touchPulseTimer > 0) {
       this.touchPulseTimer = Math.max(0, this.touchPulseTimer - dt);
@@ -602,31 +964,51 @@ export class InputController {
       moveZ += this.touchPulseZ;
     }
 
+    if (gpPlaying) {
+      moveX += gp.moveX;
+      moveZ += gp.moveZ;
+      const mag = Math.hypot(moveX, moveZ);
+      if (mag > 1) {
+        moveX /= mag;
+        moveZ /= mag;
+      }
+    }
+
     const lightAttackJustPressed =
       (!this.isDraggingCamera && this.leftMouseJustPressed) ||
       this.justPressedKeys.has('KeyJ') ||
-      this.justPressedKeys.has('KeyF');
+      this.justPressedKeys.has('KeyF') ||
+      (gpPlaying && gp.justPressed.light);
 
     const heavyHoldActive =
-      (!this.isDraggingCamera && this.leftMouseDown) || this.heldKeys.has('KeyJ');
+      (!this.isDraggingCamera && this.leftMouseDown) ||
+      this.heldKeys.has('KeyJ') ||
+      (gpPlaying && gp.lightHeld);
 
     const heavyJustReleased =
-      !this.isDraggingCamera && this.leftMouseJustReleased;
+      (!this.isDraggingCamera && this.leftMouseJustReleased) ||
+      (gpPlaying && gpLightJustReleased);
 
     const heavyAttackJustPressed =
       this.rightMouseJustPressed ||
       this.justPressedKeys.has('KeyE') ||
-      this.justPressedKeys.has('KeyK');
+      this.justPressedKeys.has('KeyK') ||
+      (gpPlaying && gp.justPressed.heavy);
 
     const dodgeJustPressed =
       this.justPressedKeys.has('Space') ||
       this.justPressedKeys.has('ShiftLeft') ||
-      this.justPressedKeys.has('ShiftRight');
+      this.justPressedKeys.has('ShiftRight') ||
+      (gpPlaying && gp.justPressed.dodge);
 
     const parryJustPressed =
-      this.justPressedKeys.has('KeyQ') || this.justPressedKeys.has('KeyL');
+      this.justPressedKeys.has('KeyQ') ||
+      this.justPressedKeys.has('KeyL') ||
+      (gpPlaying && gp.justPressed.parry);
     const switchWeaponJustPressed =
-      this.justPressedKeys.has('Tab') || this.justPressedKeys.has('KeyZ');
+      this.justPressedKeys.has('Tab') ||
+      this.justPressedKeys.has('KeyZ') ||
+      (gpPlaying && gp.justPressed.switchWeapon);
     const selectWeaponId: WeaponId | null =
       this.pendingSelectWeaponId ??
       (this.justPressedKeys.has('Digit1')
@@ -638,13 +1020,20 @@ export class InputController {
             : this.justPressedKeys.has('Digit4')
               ? 'grav_breaker'
               : null);
-    const echoRecordJustPressed = this.justPressedKeys.has('KeyT');
-    const echoPlayJustPressed = this.justPressedKeys.has('KeyY');
-    const echoClearJustPressed = this.justPressedKeys.has('KeyC');
-    const echoRelayJustPressed = this.justPressedKeys.has('KeyV');
-    const gravityPinJustPressed = this.justPressedKeys.has('KeyG');
-    const echoCollapseJustPressed = this.justPressedKeys.has('KeyX');
-    const interactJustPressed = this.justPressedKeys.has('KeyI');
+    const echoRecordJustPressed =
+      this.justPressedKeys.has('KeyT') || (gpPlaying && gp.justPressed.echoRecord);
+    const echoPlayJustPressed =
+      this.justPressedKeys.has('KeyY') || (gpPlaying && gp.justPressed.echoReplay);
+    const echoClearJustPressed =
+      this.justPressedKeys.has('KeyC') || (gpPlaying && gp.justPressed.echoClear);
+    const echoRelayJustPressed =
+      this.justPressedKeys.has('KeyV') || (gpPlaying && gp.justPressed.echoRelay);
+    const gravityPinJustPressed =
+      this.justPressedKeys.has('KeyG') || (gpPlaying && gp.justPressed.gravityPin);
+    const echoCollapseJustPressed =
+      this.justPressedKeys.has('KeyX') || (gpPlaying && gp.justPressed.echoCollapse);
+    const interactJustPressed =
+      this.justPressedKeys.has('KeyI') || (gpPlaying && gp.justPressed.interact);
     const cameraDragJustStarted = this.cameraDragJustStarted;
 
     // Clear one-shot edge triggers

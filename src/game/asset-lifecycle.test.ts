@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { ArenaSceneRenderer } from './renderer.ts';
+import { buildArenaEnvironment } from './models.ts';
 import { createInitialWorld } from './simulation.ts';
 import type { CampaignChapterId, WorldState } from './types.ts';
 
@@ -558,4 +559,82 @@ test('Phase 23.4-C1: reconcileEnemyRigs and syncEnemyRigs dispose stale enemy ri
 
   renderer.dispose();
   assert.equal(renderer.enemyRigs.size, 0, 'dispose() must clear enemyRigs map');
+});
+
+test('Phase 24: buildArenaEnvironment registers obstacleMeshById excluding perimeter walls and updateEnvironmentPresentation retracts disabled corner pillars by ID', (t) => {
+  const prevDocument = globalThis.document;
+  t.after(() => {
+    globalThis.document = prevDocument;
+  });
+  globalThis.document = {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => null,
+    }),
+  } as unknown as Document;
+
+  const world = createInitialWorld('playing');
+  const scene = new THREE.Scene();
+  const shadowTex = new THREE.Texture();
+  const env = buildArenaEnvironment(scene, world.obstacles, shadowTex, 1, false);
+
+  const pillarObstacles = world.obstacles.filter(
+    (o) => o.id !== 'teach-barrier' && o.id !== 'combine-barrier' && !o.id.includes('barrier')
+  );
+  assert.equal(env.obstacleMeshes.length, pillarObstacles.length, 'obstacleMeshes must match the 5 non-barrier obstacles');
+  assert.equal(env.obstacleMeshById.size, pillarObstacles.length, 'obstacleMeshById must contain all 5 non-barrier obstacles');
+  for (const obs of pillarObstacles) {
+    const mesh = env.obstacleMeshById.get(obs.id);
+    assert.ok(mesh, `Expected obstacleMeshById entry for ${obs.id}`);
+    assert.equal(mesh!.userData.obstacleId, obs.id);
+  }
+
+  const { renderer } = rendererFixture(t);
+  renderer.scene.background = new THREE.Color();
+  Object.assign(renderer, {
+    reducedMotion: true,
+    loomPylonGroup: env.loomPylonGroup,
+    loomRingMesh: env.loomRingMesh,
+    loomInnerRingMesh: env.loomInnerRingMesh,
+    loomOuterRingMesh: env.loomOuterRingMesh,
+    loomWitnessBeamMesh: new THREE.Group(),
+    loomWitnessBeamMat: new THREE.MeshBasicMaterial(),
+    loomContinuityDomeMesh: new THREE.Group(),
+    loomContinuityDomeMat: new THREE.MeshBasicMaterial(),
+    sceneFog: new THREE.FogExp2(0),
+    hemiLight: new THREE.HemisphereLight(),
+    keyLight: new THREE.DirectionalLight(),
+    rimLight: new THREE.DirectionalLight(),
+    loomLight: new THREE.PointLight(),
+    calLight: new THREE.PointLight(),
+    conduitGlowMat: env.conduitGlowMat,
+    ventFanMeshes: env.ventFanMeshes,
+    helixLandmarksGroup: new THREE.Group(),
+    choirLandmarksGroup: new THREE.Group(),
+    curatorLandmarksGroup: new THREE.Group(),
+    matronLandmarksGroup: new THREE.Group(),
+    loomSealsGroup: new THREE.Group(),
+    helixBeaconRings: [],
+    choirWaveRingMeshes: [],
+    curatorShardMeshes: [],
+    matronScanRings: [],
+    loomSealCrystals: [],
+    obstacleMeshes: env.obstacleMeshes,
+    obstacleMeshById: env.obstacleMeshById,
+  });
+
+  const targetPillar = world.obstacles.find((o) => o.id === 'pillar-nw')!;
+  targetPillar.disabled = true;
+  renderer.updateEnvironmentPresentation(world, 1 / 60);
+
+  assert.equal(
+    env.obstacleMeshById.get('pillar-nw')!.position.y,
+    -(targetPillar.height + 0.35),
+    'Disabled corner pillar must retract cleanly by ID'
+  );
+  assert.equal(env.obstacleMeshById.get('pillar-ne')!.position.y, 0, 'Active pillars must remain deployed');
+  assert.equal(env.obstacleMeshById.get('pillar-sw')!.position.y, 0);
+  assert.equal(env.obstacleMeshById.get('pillar-se')!.position.y, 0);
+  assert.equal(env.obstacleMeshById.get('loom-pylon')!.position.y, 0);
 });

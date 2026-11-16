@@ -1,4 +1,18 @@
 import { GAME_CONFIG } from './config.ts';
+import {
+  COMBAT_FLOW_CONFIG,
+  canCancelActionTailForCombatFlow,
+  clearActiveStrikeFlow,
+  consumeAttackFlowMultipliers,
+  getCombatFlowHudSummary,
+  getCombatFlowMovementSpeedMultiplier,
+  grantChronoSlipWindow,
+  grantQuickDrawWindow,
+  grantRelayMomentumWindow,
+  grantRiposteWindow,
+  tickPlayerCombatFlowTimers,
+} from './combat-flow.ts';
+import { computePeripheralThreats } from './tactical-hud.ts';
 import type {
   BossAiState,
   BossAttackType,
@@ -3808,6 +3822,14 @@ export function createInitialPlayer(): PlayerState {
     bufferedAction: 'none',
     bufferTimer: 0,
     fluxDampenedTimer: 0,
+    riposteTimer: 0,
+    chronoSlipTimer: 0,
+    dodgeCounterTriggered: false,
+    relayMomentumTimer: 0,
+    quickDrawTimer: 0,
+    activeStrikeFlowDamageMult: 1,
+    activeStrikeFlowStaggerMult: 1,
+    activeStrikeFlowKind: 'none',
   };
 }
 
@@ -4245,6 +4267,7 @@ export function attemptEchoRelay(world: WorldState): boolean {
   p.vz = 0;
   p.squashX = 0.86;
   p.squashY = 1.16;
+  grantRelayMomentumWindow(p);
 
   world.relay.activationCount += 1;
   world.relay.lastOutcome = 'teleported';
@@ -7405,21 +7428,23 @@ function resolveCircleObstacleCollisions(
   obstacles: ObstacleCollider[],
   arenaRadius: number
 ): void {
-  for (let i = 0; i < obstacles.length; i++) {
-    const obs = obstacles[i];
-    if (obs.disabled) continue;
-    const dx = entity.x - obs.x;
-    const dz = entity.z - obs.z;
-    const distSq = dx * dx + dz * dz;
-    const minDist = entity.radius + obs.radius;
-    if (distSq < minDist * minDist) {
-      if (distSq < 1e-6) {
-        entity.z += minDist;
-      } else {
-        const dist = Math.sqrt(distSq);
-        const overlap = minDist - dist;
-        entity.x += (dx / dist) * overlap;
-        entity.z += (dz / dist) * overlap;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < obstacles.length; i++) {
+      const obs = obstacles[i];
+      if (obs.disabled) continue;
+      const dx = entity.x - obs.x;
+      const dz = entity.z - obs.z;
+      const distSq = dx * dx + dz * dz;
+      const minDist = entity.radius + obs.radius;
+      if (distSq < minDist * minDist) {
+        if (distSq < 1e-6) {
+          entity.z += minDist;
+        } else {
+          const dist = Math.sqrt(distSq);
+          const overlap = minDist - dist;
+          entity.x += (dx / dist) * overlap;
+          entity.z += (dz / dist) * overlap;
+        }
       }
     }
   }
@@ -8903,15 +8928,27 @@ function startLightAttack(
 
   p.rotationY = resolveCombatAimAngle(world, input, moveVec, 4.6);
 
-  p.actionState = 'light_windup';
-  p.stateTimer = isBreaker
+  const flow = consumeAttackFlowMultipliers(p);
+  const baseWindup = isBreaker
     ? (GAME_CONFIG.weapons.grav_breaker.lightSlam.windup[p.comboIndex] ?? 0.16)
     : (cfg.windup[p.comboIndex] ?? 0.09);
+  p.actionState = 'light_windup';
+  p.stateTimer = Math.max(0.035, baseWindup * flow.windupMult);
   p.attackHitIds = [];
   p.currentAttackStartedAt = world.elapsedTime;
   p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
   p.squashX = isBreaker ? 0.86 : 0.9;
   p.squashY = isBreaker ? 1.14 : 1.1;
+
+  if (flow.triggeredRiposte) {
+    world.events.push({
+      type: 'player_riposte_strike',
+      x: p.x,
+      z: p.z,
+      weaponId: p.equippedWeaponId,
+      flowKind: flow.flowKind,
+    });
+  }
 
   recordEchoActionEvent(world, isBreaker ? 'breaker_slam' : 'light_swing');
 }
@@ -8953,13 +8990,25 @@ function startHeavyWindup(
     p.flux = Math.max(0, p.flux - empowerFluxCost);
   }
 
+  const flow = consumeAttackFlowMultipliers(p);
   p.actionState = 'heavy_windup';
-  p.stateTimer = cfg.windup;
+  p.stateTimer = Math.max(0.04, cfg.windup * flow.windupMult);
   p.chargeTime = 0;
   p.comboWindowTimer = 0;
   p.attackHitIds = [];
   p.squashX = isBreaker ? 0.8 : 0.84;
   p.squashY = isBreaker ? 1.22 : 1.18;
+
+  if (flow.triggeredRiposte) {
+    world.events.push({
+      type: 'player_riposte_strike',
+      x: p.x,
+      z: p.z,
+      isHeavy: true,
+      weaponId: p.equippedWeaponId,
+      flowKind: flow.flowKind,
+    });
+  }
 
   recordEchoActionEvent(world, isBreaker ? 'breaker_charged_slam' : 'heavy_swing');
 
@@ -8993,12 +9042,14 @@ function startDodge(
 ): void {
   const p = world.player;
   const cfg = GAME_CONFIG.player.dodge;
+  clearActiveStrikeFlow(p);
   if (moveVec.length > 0.1) {
     p.rotationY = Math.atan2(moveVec.dirX, moveVec.dirZ);
   }
   p.actionState = 'dodging';
   p.stateTimer = cfg.duration;
   p.invulnTimer = Math.max(p.invulnTimer, cfg.invulnDuration);
+  p.dodgeCounterTriggered = false;
   p.dodgeCooldownTimer = cfg.cooldown;
   p.chargeTime = 0;
   p.squashX = 1.22;
@@ -9019,6 +9070,7 @@ function startParry(
 ): void {
   const p = world.player;
   const cfg = GAME_CONFIG.player.parry;
+  clearActiveStrikeFlow(p);
   p.rotationY = resolveCombatAimAngle(world, input, moveVec, 4.5);
   p.actionState = 'parry_active';
   p.stateTimer = cfg.activeWindow;
@@ -9125,20 +9177,113 @@ export function switchPlayerWeapon(world: WorldState, targetWeaponId?: WeaponId)
     return false;
   }
 
-  // If switching while charging a heavy attack, cleanly cancel the charge without firing an unintended attack
-  if (p.actionState === 'charging_heavy') {
+  const prevIsRanged =
+    p.equippedWeaponId === 'pulsecaster' || p.equippedWeaponId === 'phase_rail';
+  const canFlowCancelSwitch = canCancelActionTailForCombatFlow(
+    p,
+    prevIsRanged,
+    'weapon_switch'
+  );
+
+  // If switching while charging a heavy attack or at the trailing edge of heavy/parry recovery, snap cleanly to idle
+  if (p.actionState === 'charging_heavy' || canFlowCancelSwitch) {
     p.actionState = 'idle';
+    p.stateTimer = 0;
   }
 
-  // Clear stale buffered attacks, residual charge state, empowered heavy flag, or melee combo chain state while preserving any active recovery timer
+  // Clear stale buffered attacks, residual charge state, empowered heavy flag, or melee combo chain state while preserving ordinary recovery timers
+  clearActiveStrikeFlow(p);
   p.chargeTime = 0;
   p.isEmpoweredHeavy = false;
   p.bufferedAction = 'none';
   p.bufferTimer = 0;
+  p.bufferedWeaponSwitch = null;
+  p.weaponSwitchBufferTimer = 0;
   p.comboWindowTimer = 0;
   p.comboIndex = 0;
   p.equippedWeaponId = nextWeaponId;
   p.weaponSwitchCooldownTimer = getWeaponDefinition(nextWeaponId).switchCooldown;
+  grantQuickDrawWindow(p);
+
+  world.events.push({
+    type: 'weapon_switched',
+    x: p.x,
+    z: p.z,
+    weaponId: nextWeaponId,
+  });
+
+  return true;
+}
+
+/**
+ * Selects or cycles the active weapon from the Upgrade Bench ([U] Paused / Victory Intermission),
+ * Title Screen Arsenal, or live HUD slot click (buffering the switch if mid-swing/dodge during combat).
+ */
+export function equipBenchWeapon(world: WorldState, targetWeaponId?: WeaponId): boolean {
+  if (!world || !world.player) return false;
+  if (world.outcome === 'defeat' || world.player.actionState === 'dead') {
+    return false;
+  }
+  if (world.run?.chapter === 'chapter_5_loom' && world.run?.stage === 'chronicle_loom') {
+    return false;
+  }
+  if (targetWeaponId !== undefined && !isValidWeaponId(targetWeaponId)) {
+    return false;
+  }
+
+  const unlockedList = getUnlockedWeaponIds(world);
+  if (targetWeaponId !== undefined && !unlockedList.includes(targetWeaponId)) {
+    return false;
+  }
+
+  const p = world.player;
+  const baseCycleList = normalizeUnlockedWeaponIds(world.progression?.unlockedWeaponIds);
+  const cycleList = baseCycleList.includes(p.equippedWeaponId)
+    ? baseCycleList
+    : unlockedList;
+  let nextWeaponId: WeaponId;
+  if (targetWeaponId !== undefined) {
+    nextWeaponId = targetWeaponId;
+  } else if (cycleList.length <= 1) {
+    nextWeaponId = cycleList[0] ?? 'chrono_edge';
+  } else {
+    const curIdx = cycleList.indexOf(p.equippedWeaponId);
+    nextWeaponId =
+      curIdx >= 0
+        ? cycleList[(curIdx + 1) % cycleList.length]
+        : cycleList[0];
+  }
+
+  if (nextWeaponId === p.equippedWeaponId) {
+    p.bufferedWeaponSwitch = null;
+    p.weaponSwitchBufferTimer = 0;
+    return false;
+  }
+
+  if (world.appState === 'playing' && world.outcome === 'none') {
+    if (switchPlayerWeapon(world, nextWeaponId)) {
+      return true;
+    }
+    // Buffer the requested weapon switch so it executes immediately after the current swing/dodge/cooldown
+    p.bufferedWeaponSwitch = nextWeaponId;
+    p.weaponSwitchBufferTimer = 0.35;
+    return false;
+  }
+
+  p.chargeTime = 0;
+  p.isEmpoweredHeavy = false;
+  p.bufferedAction = 'none';
+  p.bufferTimer = 0;
+  p.bufferedWeaponSwitch = null;
+  p.weaponSwitchBufferTimer = 0;
+  p.comboWindowTimer = 0;
+  p.comboIndex = 0;
+  p.equippedWeaponId = nextWeaponId;
+  p.weaponSwitchCooldownTimer = 0;
+
+  if (world.progression) {
+    world.progression.lastActionMessage = `ACTIVE WEAPON EQUIPPED · ${getWeaponDefinition(nextWeaponId).name}`;
+  }
 
   world.events.push({
     type: 'weapon_switched',
@@ -9170,16 +9315,27 @@ function startPulsecasterLightShot(
     return false;
   }
 
+  const flow = consumeAttackFlowMultipliers(p);
   p.rotationY = resolvePulsecasterAimAngle(world, input, moveVec);
   p.comboIndex = 0;
   p.comboWindowTimer = 0;
   p.actionState = 'light_windup';
-  p.stateTimer = rangedCfg.lightShot.windup;
+  p.stateTimer = Math.max(0.035, rangedCfg.lightShot.windup * flow.windupMult);
   p.attackHitIds = [];
   p.currentAttackStartedAt = world.elapsedTime;
   p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
   p.squashX = 0.94;
   p.squashY = 1.06;
+
+  if (flow.triggeredRiposte) {
+    world.events.push({
+      type: 'player_riposte_strike',
+      x: p.x,
+      z: p.z,
+      weaponId: p.equippedWeaponId,
+      flowKind: flow.flowKind,
+    });
+  }
 
   recordEchoActionEvent(world, isRail ? 'rail_shot' : 'pulse_shot');
   return true;
@@ -9224,13 +9380,25 @@ function startPulsecasterHeavyWindup(
     p.flux = Math.max(0, p.flux - heavyCfg.fluxCostForEmpower);
   }
 
+  const flow = consumeAttackFlowMultipliers(p);
   p.actionState = 'heavy_windup';
-  p.stateTimer = heavyCfg.windup;
+  p.stateTimer = Math.max(0.04, heavyCfg.windup * flow.windupMult);
   p.chargeTime = 0;
   p.comboWindowTimer = 0;
   p.attackHitIds = [];
   p.squashX = 0.88;
   p.squashY = 1.12;
+
+  if (flow.triggeredRiposte) {
+    world.events.push({
+      type: 'player_riposte_strike',
+      x: p.x,
+      z: p.z,
+      isHeavy: true,
+      weaponId: p.equippedWeaponId,
+      flowKind: flow.flowKind,
+    });
+  }
 
   recordEchoActionEvent(world, isRail ? 'rail_charged_shot' : 'pulse_charged_shot');
 
@@ -9370,7 +9538,11 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     attackStartedAt: p.currentAttackStartedAt,
     attackMarkId: p.currentAttackMarkId,
     hitTargetIds: [],
+    flowDamageMult: p.activeStrikeFlowDamageMult ?? 1,
+    flowStaggerMult: p.activeStrikeFlowStaggerMult ?? 1,
+    flowKind: p.activeStrikeFlowKind ?? 'none',
   });
+  clearActiveStrikeFlow(p);
 
   world.events.push({
     type: isRail
@@ -10428,6 +10600,15 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     );
   }
 
+  const flowDmgMult = p.activeStrikeFlowDamageMult ?? 1;
+  const flowStagMult = p.activeStrikeFlowStaggerMult ?? 1;
+  if (flowDmgMult !== 1) {
+    baseDamage = Math.max(1, Math.round(baseDamage * flowDmgMult));
+  }
+  if (flowStagMult !== 1) {
+    staggerAmount = Math.round(staggerAmount * flowStagMult);
+  }
+
   evaluateLivePlayerStrikeOnChoirNodes(world, isHeavy);
 
   for (let i = 0; i < world.enemies.length; i++) {
@@ -11074,12 +11255,16 @@ function applyPlayerProjectileHitToEnemy(
   const effectiveConvPostureBonus = getEffectiveConvergencePostureBonus(world);
   res.postureBonus = effectiveConvPostureBonus;
   const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
+  const projFlowDamageMult = proj.flowDamageMult ?? 1;
+  const projFlowStaggerMult = proj.flowStaggerMult ?? 1;
   const finalDamage = Math.max(
     1,
-    Math.round(baseDamage * vulnMult * guardDmgMult)
+    Math.round(baseDamage * vulnMult * guardDmgMult * projFlowDamageMult)
   );
   const effectiveStagger =
-    Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult) + convergencePostureBonus;
+    Math.round(
+      staggerAmount * vulnStaggerMult * guardStaggerMult * projFlowStaggerMult
+    ) + convergencePostureBonus;
 
   if (triggeredConvergence) {
     p.flux = Math.max(0, p.flux - effectiveConvFluxCost);
@@ -11488,6 +11673,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   p.weaponShotCooldownTimer = Math.max(0, p.weaponShotCooldownTimer - dt);
   p.weaponSwitchCooldownTimer = Math.max(0, p.weaponSwitchCooldownTimer - dt);
   p.bufferTimer = Math.max(0, p.bufferTimer - dt);
+  tickPlayerCombatFlowTimers(p, dt);
   if (p.bufferTimer <= 0) {
     p.bufferedAction = 'none';
   }
@@ -11509,7 +11695,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       p.weaponOverheated = false;
       p.weaponHeat = clearRatio * p.maxWeaponHeat;
       world.events.push({
-        type: 'pulse_overheated' === 'pulse_overheated' ? 'pulse_overheat_cleared' : 'pulse_overheat_cleared',
+        type: 'pulse_overheat_cleared',
         x: p.x,
         z: p.z,
         weaponId: p.equippedWeaponId === 'phase_rail' ? 'phase_rail' : 'pulsecaster',
@@ -11561,12 +11747,37 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     }
   }
 
-  if (input.selectWeaponId && isValidWeaponId(input.selectWeaponId)) {
-    if (input.selectWeaponId !== p.equippedWeaponId) {
-      switchPlayerWeapon(world, input.selectWeaponId);
+  if ((p.weaponSwitchBufferTimer ?? 0) > 0) {
+    p.weaponSwitchBufferTimer = Math.max(0, (p.weaponSwitchBufferTimer ?? 0) - dt);
+    if (p.weaponSwitchBufferTimer <= 0) {
+      p.bufferedWeaponSwitch = null;
     }
-  } else if (input.switchWeaponJustPressed) {
-    switchPlayerWeapon(world);
+  }
+
+  const isLoomEndingStage =
+    world.run.chapter === 'chapter_5_loom' && world.run.stage === 'chronicle_loom';
+
+  if (!isLoomEndingStage && input.selectWeaponId && isValidWeaponId(input.selectWeaponId)) {
+    if (input.selectWeaponId !== p.equippedWeaponId) {
+      if (
+        !switchPlayerWeapon(world, input.selectWeaponId) &&
+        getUnlockedWeaponIds(world).includes(input.selectWeaponId)
+      ) {
+        p.bufferedWeaponSwitch = input.selectWeaponId;
+        p.weaponSwitchBufferTimer = 0.35;
+      }
+    } else {
+      p.bufferedWeaponSwitch = null;
+      p.weaponSwitchBufferTimer = 0;
+    }
+  } else if (!isLoomEndingStage && input.switchWeaponJustPressed) {
+    if (!switchPlayerWeapon(world)) {
+      p.bufferedWeaponSwitch = 'cycle';
+      p.weaponSwitchBufferTimer = 0.35;
+    }
+  } else if (!isLoomEndingStage && (p.weaponSwitchBufferTimer ?? 0) > 0 && p.bufferedWeaponSwitch) {
+    const target = p.bufferedWeaponSwitch === 'cycle' ? undefined : p.bufferedWeaponSwitch;
+    switchPlayerWeapon(world, target);
   }
 
   if (input.dodgeJustPressed) {
@@ -11625,6 +11836,8 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       (isBreaker
         ? breakerCfg.lightSlam.chainCancelRemaining
         : GAME_CONFIG.player.lightAttack.chainCancelRemaining);
+  const canFlowCancelHeavy = canCancelActionTailForCombatFlow(p, isRangedWeapon, 'heavy');
+  const canFlowCancelLight = canCancelActionTailForCombatFlow(p, isRangedWeapon, 'light');
 
   const heavyChargeThreshold = isPhaseRail
     ? railCfg.heavyShot.chargeThreshold
@@ -11641,7 +11854,10 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         ? breakerCfg.heavySlam.maxChargeTime
         : GAME_CONFIG.player.heavyAttack.maxChargeTime;
 
-  if (p.bufferedAction === 'heavy' && (isNeutralState || canChainCancelRecovery)) {
+  if (
+    p.bufferedAction === 'heavy' &&
+    (isNeutralState || canChainCancelRecovery || canFlowCancelHeavy)
+  ) {
     p.bufferedAction = 'none';
     if (isRangedWeapon) {
       if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
@@ -11679,8 +11895,11 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   }
 
   const canStartLightAttack = isRangedWeapon
-    ? p.weaponShotCooldownTimer <= 0 && !p.weaponOverheated && isNeutralState
-    : p.comboCooldownTimer <= 0 && (isNeutralState || canChainCancelRecovery);
+    ? p.weaponShotCooldownTimer <= 0 &&
+      !p.weaponOverheated &&
+      (isNeutralState || canFlowCancelLight)
+    : p.comboCooldownTimer <= 0 &&
+      (isNeutralState || canChainCancelRecovery || canFlowCancelLight);
 
   if (
     isNeutralState &&
@@ -11699,7 +11918,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
         p.bufferedAction = 'none';
         p.lastWeaponShotOutcome = 'overheated';
-      } else if (isNeutralState) {
+      } else if (isNeutralState || canFlowCancelLight) {
         p.bufferedAction = 'none';
         if (startPulsecasterLightShot(world, input, moveVec)) {
           return;
@@ -11717,7 +11936,10 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     case 'moving': {
       if (moveVec.length > 0.05) {
         p.actionState = 'moving';
-        const speed = GAME_CONFIG.player.moveSpeed * moveVec.length;
+        const speed =
+          GAME_CONFIG.player.moveSpeed *
+          getCombatFlowMovementSpeedMultiplier(p) *
+          moveVec.length;
         p.vx = moveVec.dirX * speed;
         p.vz = moveVec.dirZ * speed;
         const targetAngle = Math.atan2(moveVec.dirX, moveVec.dirZ);
@@ -11835,6 +12057,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         p.vz = Math.cos(p.rotationY) * 1.5;
         performPlayerMeleeHitCheck(world, false);
         if (p.stateTimer <= 0) {
+          clearActiveStrikeFlow(p);
           p.actionState = 'light_recovery';
           const recDuration = isBreaker
             ? (breakerCfg.lightSlam.recovery[p.comboIndex] ?? 0.28) +
@@ -11870,6 +12093,16 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
           : GAME_CONFIG.player.attackMoveSpeedMultiplier;
       p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * moveMult;
       p.vz = moveVec.dirZ * GAME_CONFIG.player.moveSpeed * moveMult;
+      if (moveVec.length > 0.05) {
+        const targetYaw = Math.atan2(moveVec.dirX, moveVec.dirZ);
+        p.rotationY = dampAngle(
+          p.rotationY,
+          targetYaw,
+          GAME_CONFIG.player.turnSpeed * 0.65,
+          dt
+        );
+        p.gaitPhase += dt * 9.5;
+      }
       if (p.stateTimer <= 0) {
         if (p.comboIndex === maxComboIdx) {
           p.comboIndex = 0;
@@ -11938,6 +12171,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         p.vz = Math.cos(p.rotationY) * 2.5;
         performPlayerMeleeHitCheck(world, true);
         if (p.stateTimer <= 0) {
+          clearActiveStrikeFlow(p);
           p.actionState = 'heavy_recovery';
           const breakerUp = getEquippedWeaponUpgrade(world, 'grav_breaker');
           p.stateTimer = isBreaker
@@ -11959,9 +12193,23 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'heavy_recovery': {
       p.stateTimer -= dt;
-      const decay = Math.exp(-9.5 * dt);
-      p.vx *= decay;
-      p.vz *= decay;
+      if (p.stateTimer <= 0.18 && moveVec.length > 0.05) {
+        const driftSpeed = GAME_CONFIG.player.moveSpeed * 0.42;
+        p.vx = moveVec.dirX * driftSpeed;
+        p.vz = moveVec.dirZ * driftSpeed;
+        const targetYaw = Math.atan2(moveVec.dirX, moveVec.dirZ);
+        p.rotationY = dampAngle(
+          p.rotationY,
+          targetYaw,
+          GAME_CONFIG.player.turnSpeed * 0.5,
+          dt
+        );
+        p.gaitPhase += dt * 7.5;
+      } else {
+        const decay = Math.exp(-9.5 * dt);
+        p.vx *= decay;
+        p.vz *= decay;
+      }
       if (p.stateTimer <= 0) {
         p.actionState = moveVec.length > 0.05 ? 'moving' : 'idle';
       }
@@ -11994,6 +12242,16 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       p.stateTimer -= dt;
       p.vx = moveVec.dirX * GAME_CONFIG.player.moveSpeed * 0.45;
       p.vz = moveVec.dirZ * GAME_CONFIG.player.moveSpeed * 0.45;
+      if (moveVec.length > 0.05) {
+        const targetYaw = Math.atan2(moveVec.dirX, moveVec.dirZ);
+        p.rotationY = dampAngle(
+          p.rotationY,
+          targetYaw,
+          GAME_CONFIG.player.turnSpeed * 0.6,
+          dt
+        );
+        p.gaitPhase += dt * 8.0;
+      }
       if (p.stateTimer <= 0) {
         p.actionState = moveVec.length > 0.05 ? 'moving' : 'idle';
       }
@@ -12019,6 +12277,8 @@ export function applyDamageToPlayer(
     p.invulnTimer = Math.max(p.invulnTimer, 0.35);
     p.actionState = 'idle';
     p.stateTimer = 0;
+    clearActiveStrikeFlow(p);
+    grantRiposteWindow(p);
     world.stats.parriesLanded += 1;
     world.hitstopTimer = Math.max(world.hitstopTimer, 0.085);
     world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.48);
@@ -12109,8 +12369,30 @@ export function applyDamageToPlayer(
     return false;
   }
 
-  // Check Dodge / Hurt invulnerability
+  // Check Dodge / Hurt invulnerability (reward timed Dodges through attacks with Chrono Slip)
   if (p.invulnTimer > 0) {
+    if (p.actionState === 'dodging' && !p.dodgeCounterTriggered) {
+      p.dodgeCounterTriggered = true;
+      p.invulnTimer = Math.max(
+        p.invulnTimer,
+        COMBAT_FLOW_CONFIG.chronoSlipInvulnExtension
+      );
+      const rawGain = COMBAT_FLOW_CONFIG.chronoSlipFluxGain;
+      const fluxGain =
+        (p.fluxDampenedTimer ?? 0) > 0 ? Math.round(rawGain * 0.65) : rawGain;
+      p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
+      grantChronoSlipWindow(p);
+      world.stats.perfectDodges = (world.stats.perfectDodges ?? 0) + 1;
+      world.hitstopTimer = Math.max(world.hitstopTimer, 0.042);
+      world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.22);
+      world.events.push({
+        type: 'player_perfect_dodge',
+        x: p.x,
+        z: p.z,
+        enemyId: attacker?.id,
+        amount: fluxGain,
+      });
+    }
     return false;
   }
 
@@ -13875,6 +14157,7 @@ export function buildRunSummary(world: WorldState): RunSummary {
     damageDealt: Math.round(world.stats.damageDealt),
     damageTaken: Math.round(world.stats.damageTaken),
     parriesLanded: world.stats.parriesLanded,
+    perfectDodges: world.stats.perfectDodges ?? 0,
     vulnerableHits: world.stats.vulnerableHits,
     convergencesTriggered: world.resonance.convergenceCount,
     relaysUsed: world.relay.activationCount,
@@ -14007,8 +14290,33 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
   // Process Echo record/play/clear one-shot commands even if hitstop is active
   handleEchoControlInputs(world, input);
 
-  // Hitstop freeze pauses simulation physics & Echo timeline while rendering & trauma continue
+  // Hitstop freeze pauses simulation physics & Echo timeline while preserving combat input buffers
   if (world.hitstopTimer > 0) {
+    const p = world.player;
+    if (p.actionState !== 'dead') {
+      if (input.dodgeJustPressed) {
+        p.bufferedAction = 'dodge';
+        p.bufferTimer = 0.2;
+      } else if (input.parryJustPressed) {
+        p.bufferedAction = 'parry';
+        p.bufferTimer = 0.2;
+      } else if (input.heavyAttackJustPressed) {
+        p.bufferedAction = 'heavy';
+        p.bufferTimer = 0.2;
+      } else if (input.lightAttackJustPressed) {
+        p.bufferedAction = 'light';
+        p.bufferTimer = 0.2;
+      }
+      if (input.selectWeaponId && isValidWeaponId(input.selectWeaponId)) {
+        if (input.selectWeaponId !== p.equippedWeaponId && getUnlockedWeaponIds(world).includes(input.selectWeaponId)) {
+          p.bufferedWeaponSwitch = input.selectWeaponId;
+          p.weaponSwitchBufferTimer = 0.35;
+        }
+      } else if (input.switchWeaponJustPressed) {
+        p.bufferedWeaponSwitch = 'cycle';
+        p.weaponSwitchBufferTimer = 0.35;
+      }
+    }
     world.hitstopTimer = Math.max(0, world.hitstopTimer - dt);
     return;
   }
@@ -14408,7 +14716,7 @@ export function getEnemyTacticalProfile(
   };
 }
 
-export function extractHudSnapshot(world: WorldState): HudSnapshot {
+export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnapshot {
   const p = world.player;
   const totalEnemies = world.enemies.length;
   const aliveList = world.enemies.filter((e) => e.hp > 0 && e.aiState !== 'ko');
@@ -14482,6 +14790,12 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
       resonanceRemaining:
         isBossMarked && activeMark ? Number(activeMark.remainingTime.toFixed(2)) : 0,
       statusLabel: b.statusLabel,
+      introRemaining:
+        b.aiState === 'dormant' ? Number(Math.max(0, b.stateTimer).toFixed(2)) : 0,
+      introDuration:
+        b.aiState === 'dormant' && b.stateDuration > 0
+          ? b.stateDuration
+          : GAME_CONFIG.boss.introDuration,
     };
   }
 
@@ -14615,10 +14929,12 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
   }
 
   if (world.run.stage === 'transition_to_boss') {
-    objectiveText = 'ARCHIVE CALIBRATION COMPLETE · BREACHING CONTAINMENT SECTOR';
-    objectiveSubtext =
-      world.run.checkpointNotice ??
-      'WARNING: WARDEN Marshal HELIX-04 awakening in primary arena';
+    const destChapterId = world.run.pendingNextChapter ?? 'chapter_1_helix';
+    const destChapterCfg =
+      GAME_CONFIG.campaignChapters[destChapterId] ??
+      GAME_CONFIG.campaignChapters.chapter_1_helix;
+    objectiveText = `${destChapterCfg.numberLabel} · BREACHING ${destChapterCfg.sectorName.toUpperCase()}`;
+    objectiveSubtext = world.run.checkpointNotice ?? destChapterCfg.arrivalBriefing;
   }
 
   const echo = world.echo;
@@ -14695,6 +15011,7 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
       (p.actionState.startsWith('light_') || p.comboWindowTimer > 0)
         ? p.comboIndex + 1
         : 0,
+    combatFlow: getCombatFlowHudSummary(p),
     weapon: {
       equippedId: p.equippedWeaponId,
       equippedWeaponId: p.equippedWeaponId,
@@ -14940,6 +15257,17 @@ export function extractHudSnapshot(world: WorldState): HudSnapshot {
       triggeredIds: [...(world.comms?.triggeredIds ?? [])],
       history: (world.comms?.history ?? []).map((h) => ({ ...h })),
     },
+    threats:
+      world.appState === 'playing'
+        ? computePeripheralThreats(
+            p,
+            world.enemies,
+            world.boss,
+            world.projectiles,
+            aimYaw ?? p.rotationY,
+            6
+          )
+        : [],
     elapsedTime: world.elapsedTime,
     summary: world.frozenSummary,
   };

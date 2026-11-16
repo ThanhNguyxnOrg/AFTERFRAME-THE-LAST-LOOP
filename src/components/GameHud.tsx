@@ -140,7 +140,7 @@ const LOOM_ENDING_CARDS: Array<{
   },
 ];
 
-export const GameHud: React.FC<GameHudProps> = ({
+export const GameHud: React.FC<GameHudProps> = React.memo(({
   hud,
   isMuted,
   onToggleMute,
@@ -249,6 +249,25 @@ export const GameHud: React.FC<GameHudProps> = ({
     resonance.lastOutcome === 'expired' ||
     resonance.lastOutcome === 'insufficient_flux';
 
+  const showCenterReticle =
+    hud.appState === 'playing' &&
+    !(hud.loom.active && hud.run.stage === 'chronicle_loom' && !inspectingLoomChamber);
+  const reticleAccent =
+    resonance.primed && resonance.canConverge
+      ? '#ffffff'
+      : hud.weapon.overheated
+        ? '#f87171'
+        : hud.weapon.equippedWeaponId === 'grav_breaker'
+          ? '#fbbf24'
+          : hud.weapon.equippedWeaponId === 'phase_rail'
+            ? '#e0f2fe'
+            : hud.weapon.equippedWeaponId === 'pulsecaster'
+              ? '#38bdf8'
+              : '#22d3ee';
+  const reticleGap = hud.weapon.equippedWeaponId === 'phase_rail' ? 4 : hud.weapon.equippedWeaponId === 'grav_breaker' ? 9 : 6;
+  const peripheralThreats =
+    (cameraSettings?.screenEffects ?? true) && Array.isArray(hud.threats) ? hud.threats : [];
+
   return (
     <div className="fixed inset-0 z-10 pointer-events-none select-none overflow-hidden">
       {/* Subtle Peripheral Low-Integrity Vignette */}
@@ -262,6 +281,76 @@ export const GameHud: React.FC<GameHudProps> = ({
         />
       )}
 
+      {/* Center Tactical Reticle & 360-Degree Peripheral Threat Radar */}
+      {showCenterReticle && (
+        <div
+          data-testid="center-tactical-reticle"
+          data-weapon={hud.weapon.equippedWeaponId}
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+        >
+          <svg
+            width="44"
+            height="44"
+            viewBox="-22 -22 44 44"
+            className="block opacity-75"
+            aria-hidden="true"
+          >
+            <circle
+              cx="0"
+              cy="0"
+              r={hud.weapon.equippedWeaponId === 'phase_rail' ? '1.6' : '1.4'}
+              fill={reticleAccent}
+            />
+            <line x1={-reticleGap - 5} y1="0" x2={-reticleGap} y2="0" stroke={reticleAccent} strokeWidth="1.5" />
+            <line x1={reticleGap} y1="0" x2={reticleGap + 5} y2="0" stroke={reticleAccent} strokeWidth="1.5" />
+            <line x1="0" y1={-reticleGap - 5} x2="0" y2={-reticleGap} stroke={reticleAccent} strokeWidth="1.5" />
+            <line x1="0" y1={reticleGap} x2="0" y2={reticleGap + 5} stroke={reticleAccent} strokeWidth="1.5" />
+            {hud.weapon.overheated && (
+              <circle cx="0" cy="0" r="14" fill="none" stroke="#ef4444" strokeWidth="1.4" strokeDasharray="4 3" />
+            )}
+            {resonance.primed && resonance.canConverge && (
+              <circle cx="0" cy="0" r="16" fill="none" stroke="#22d3ee" strokeWidth="1.2" strokeDasharray="3 3" />
+            )}
+          </svg>
+
+          {peripheralThreats.map((threat) => {
+            const color =
+              threat.severity === 'urgent'
+                ? '#f43f5e'
+                : threat.severity === 'telegraph'
+                  ? '#f59e0b'
+                  : '#94a3b8';
+            const radiusPx = threat.severity === 'urgent' ? 54 : 60;
+            return (
+              <div
+                key={threat.id}
+                data-testid="threat-radar-chevron"
+                data-threat-id={threat.id}
+                data-threat-severity={threat.severity}
+                className="absolute left-1/2 top-1/2 pointer-events-none"
+                style={{
+                  transform: `translate(-50%, -50%) rotate(${threat.angleDeg}deg) translateY(-${radiusPx}px)`,
+                }}
+              >
+                <svg
+                  width={threat.isBoss ? '16' : '12'}
+                  height={threat.isBoss ? '12' : '9'}
+                  viewBox="0 0 12 9"
+                  className="block"
+                  aria-hidden="true"
+                >
+                  <polygon
+                    points="6,0 12,9 6,6.2 0,9"
+                    fill={color}
+                    fillOpacity={threat.severity === 'hostile' ? '0.68' : '0.96'}
+                  />
+                </svg>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Top Perimeter Row: Low-Occlusion Layout for Mobile (390x844) & Desktop (1280x800) */}
       <div
         className={`flex flex-wrap md:flex-nowrap items-start justify-between w-full p-2 sm:p-4 md:p-5 [@media(max-height:540px)]:p-2 gap-1.5 sm:gap-3 transition-opacity duration-150 ${
@@ -273,7 +362,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         {/* Cluster 1 (Top-Left): Compact Survival Bars, Chrono Echo & Action Deck */}
         <div
           data-testid="player-hud"
-          className="order-1 w-[236px] sm:w-68 md:w-76 [@media(max-height:540px)]:w-[236px] bg-[#090d14]/90 border border-slate-800/90 p-2 sm:p-3 [@media(max-height:540px)]:p-2 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
+          className="order-1 w-[236px] sm:w-68 md:w-76 [@media(max-height:540px)]:w-[236px] bg-[#080c13]/92 border border-slate-700/80 p-2 sm:p-3 [@media(max-height:540px)]:p-2 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
         >
           {/* Compact Integrity & Flux Bars (Side-by-side on mobile to save vertical space, stacked on sm+) */}
           <div className="grid grid-cols-2 sm:grid-cols-1 [@media(max-height:540px)]:grid-cols-2 gap-2 sm:gap-1.5 mb-1.5 sm:mb-2 [@media(max-height:540px)]:mb-1.5">
@@ -318,7 +407,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   {(hud.fluxDampenedTimer ?? 0) > 0 && (
                     <span
                       data-testid="hud-flux-dampened-badge"
-                      className="px-1 py-0.2 text-[8px] font-mono-tabular bg-fuchsia-950/90 border border-fuchsia-500/60 text-fuchsia-300 animate-pulse"
+                      className="px-1 py-0.2 text-[8px] font-mono-tabular bg-fuchsia-950/90 border border-fuchsia-500/70 text-fuchsia-300"
                     >
                       DAMPENED {(hud.fluxDampenedTimer ?? 0).toFixed(1)}s
                     </span>
@@ -355,7 +444,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 {echo.state === 'recording' ? (
                   <span
                     aria-hidden="true"
-                    className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0"
+                    className="inline-block w-2 h-2 bg-amber-400 shrink-0"
                   />
                 ) : echo.state === 'playback' ? (
                   <svg
@@ -606,7 +695,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                     aria-hidden="true"
                     className={`inline-block w-1.5 h-1.5 shrink-0 ${
                       hud.weapon.overheated
-                        ? 'bg-red-500 animate-pulse'
+                        ? 'bg-red-500 rotate-45'
                         : hud.weapon.equippedWeaponId === 'pulsecaster'
                           ? 'bg-sky-400 rounded-full'
                           : 'bg-cyan-400 rotate-45'
@@ -617,9 +706,12 @@ export const GameHud: React.FC<GameHudProps> = ({
                     className={`text-[9px] sm:text-[10px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
                       hud.weapon.overheated
                         ? 'text-red-400'
-                        : hud.weapon.equippedWeaponId === 'pulsecaster'
+                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                            hud.weapon.equippedWeaponId === 'phase_rail'
                           ? 'text-sky-300'
-                          : 'text-cyan-300'
+                          : hud.weapon.equippedWeaponId === 'grav_breaker'
+                            ? 'text-amber-300'
+                            : 'text-cyan-300'
                     }`}
                   >
                     {hud.weapon.label}
@@ -647,7 +739,24 @@ export const GameHud: React.FC<GameHudProps> = ({
                     }`}
                   >
                     <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
-                    {hud.weapon.equippedWeaponId === 'chrono_edge' ? '→ PULSE' : '→ EDGE'}
+                    {(() => {
+                      const cycleList: readonly WeaponId[] =
+                        hud.progression.unlockedWeaponIds.length > 0
+                          ? hud.progression.unlockedWeaponIds
+                          : ['chrono_edge', 'pulsecaster'];
+                      const curIdx = cycleList.indexOf(hud.weapon.equippedWeaponId);
+                      const nextW =
+                        curIdx >= 0
+                          ? cycleList[(curIdx + 1) % cycleList.length]
+                          : cycleList[0];
+                      return nextW === 'pulsecaster'
+                        ? '→ PULSE'
+                        : nextW === 'phase_rail'
+                          ? '→ RAIL'
+                          : nextW === 'grav_breaker'
+                            ? '→ MAUL'
+                            : '→ EDGE';
+                    })()}
                   </button>
 
                   <button
@@ -791,6 +900,24 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </span>
               </div>
             </div>
+
+            {hud.combatFlow?.active && (
+              <div
+                data-testid="combat-flow-indicator"
+                data-flow-kind={hud.combatFlow.kind}
+                className={`mb-1 px-1.5 py-0.5 border text-[9px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
+                  hud.combatFlow.kind === 'riposte'
+                    ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                    : hud.combatFlow.kind === 'chrono_slip'
+                      ? 'bg-cyan-400/25 border-cyan-300 text-white'
+                      : hud.combatFlow.kind === 'relay_momentum'
+                        ? 'bg-cyan-500/20 border-cyan-300 text-cyan-200'
+                        : 'bg-sky-500/20 border-sky-400 text-sky-200'
+                }`}
+              >
+                {hud.combatFlow.label}
+              </div>
+            )}
 
             <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-400 mb-1">
               <span className="whitespace-nowrap shrink-0">
@@ -979,7 +1106,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             className={
               boss
                 ? 'sr-only'
-                : 'bg-[#090d14]/90 border border-slate-800/90 px-3 sm:px-4 py-1.5 sm:py-2 w-full shadow-[0_8px_24px_rgba(0,0,0,0.65)]'
+                : 'bg-[#080c13]/92 border border-slate-700/80 px-3 sm:px-4 py-1.5 sm:py-2 w-full shadow-[0_8px_24px_rgba(0,0,0,0.65)]'
             }
           >
             {/* Primary Objective Row */}
@@ -1372,22 +1499,22 @@ export const GameHud: React.FC<GameHudProps> = ({
                 data-enemy-status={focused.statusLabel}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-[10px] sm:text-xs font-display font-bold tracking-wider text-slate-100 uppercase truncate">
+                  <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+                    <span className="text-[10px] sm:text-xs font-display font-bold tracking-wider text-slate-100 uppercase whitespace-nowrap">
                       {focused.name}
                     </span>
                     <span
                       data-testid="enemy-role-badge"
-                      className="hidden sm:inline text-[9px] font-mono-tabular font-semibold tracking-wider text-cyan-300/90 uppercase whitespace-nowrap"
+                      className="hidden lg:inline text-[9px] font-mono-tabular font-semibold tracking-wider text-cyan-300/90 uppercase whitespace-nowrap"
                     >
                       [{focused.roleLabel}]
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 font-mono-tabular text-[9px] sm:text-[11px] whitespace-nowrap shrink-0">
+                  <div className="flex items-center gap-1.5 font-mono-tabular text-[9px] sm:text-[10px] min-w-0 justify-end">
                     {focused.isDecoy && (
                       <span
                         data-testid="enemy-decoy-badge"
-                        className="text-purple-300 font-bold tracking-wider uppercase"
+                        className="text-purple-300 font-bold tracking-wider uppercase whitespace-nowrap shrink-0"
                       >
                         FALSE ECHO DECOY
                       </span>
@@ -1395,7 +1522,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                     {(focused.pinnedTimer ?? 0) > 0 && (
                       <span
                         data-testid="enemy-pinned-badge"
-                        className="text-cyan-300 font-bold tracking-wider uppercase"
+                        className="text-cyan-300 font-bold tracking-wider uppercase whitespace-nowrap shrink-0"
                       >
                         PINNED
                       </span>
@@ -1403,7 +1530,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                     {focused.isResonanceMarked && (
                       <span
                         data-testid="enemy-resonance-badge"
-                        className="text-cyan-300 font-bold tracking-wider uppercase"
+                        className="text-cyan-300 font-bold tracking-wider uppercase whitespace-nowrap shrink-0"
                       >
                         RESONANCE · {focused.resonanceRemaining.toFixed(1)}s
                       </span>
@@ -1411,7 +1538,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                     {isEnemyVulnerable ? (
                       <span
                         data-testid="enemy-status-badge"
-                        className="text-white font-bold tracking-wider uppercase"
+                        className="text-white font-bold tracking-wider uppercase truncate"
                       >
                         {focused.statusLabel}
                       </span>
@@ -1420,19 +1547,19 @@ export const GameHud: React.FC<GameHudProps> = ({
                         data-testid="enemy-status-badge"
                         className={`${
                           focused.telegraphLocked ? 'text-red-400' : 'text-amber-400'
-                        } font-bold tracking-wider uppercase`}
+                        } font-bold tracking-wider uppercase truncate`}
                       >
                         {focused.statusLabel}
                       </span>
                     ) : (
                       <span
                         data-testid="enemy-status-badge"
-                        className="hidden md:inline text-slate-400 font-semibold tracking-wider uppercase"
+                        className="hidden md:inline text-slate-400 font-semibold tracking-wider uppercase truncate"
                       >
                         {focused.statusLabel}
                       </span>
                     )}
-                    <span className="text-slate-300 font-semibold">
+                    <span className="text-slate-300 font-semibold whitespace-nowrap shrink-0">
                       {focused.hp}/{focused.maxHp}
                     </span>
                   </div>
@@ -1717,7 +1844,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         >
           <div className="flex items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="inline-block w-2 h-2 rotate-45 bg-cyan-400 shrink-0" />
               <span className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-widest text-cyan-400">
                 PROLOGUE · WAKE — LOG-00 // LYSA VENN
               </span>
@@ -1756,18 +1883,19 @@ export const GameHud: React.FC<GameHudProps> = ({
       {hud.comms.active &&
         (cameraSettings?.subtitlesEnabled ?? true) &&
         hud.run.stage !== 'intro' &&
+        hud.run.stage !== 'boss_intro' &&
         hud.run.stage !== 'transition_to_boss' &&
         (!hud.loom.active || inspectingLoomChamber) && (
           <div
             data-testid="live-comms-banner"
             data-comms-id={hud.comms.active.id}
             data-comms-classification={hud.comms.active.classification}
-            className="fixed left-2 sm:left-5 bottom-36 sm:bottom-28 [@media(max-height:540px)]:left-2.5 [@media(max-height:540px)]:right-auto [@media(max-height:540px)]:bottom-2 [@media(max-height:540px)]:w-[348px] [@media(max-height:540px)]:p-2 z-15 w-[92vw] sm:w-92 max-w-md bg-[#080d16]/94 border-l-2 border-cyan-400 border-y border-r border-slate-800/95 p-2.5 sm:p-3 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
+            className="fixed left-2 sm:left-5 bottom-36 sm:bottom-28 [@media(max-height:540px)]:left-2.5 [@media(max-height:540px)]:right-auto [@media(max-height:540px)]:bottom-2 [@media(max-height:540px)]:w-[348px] [@media(max-height:540px)]:p-2 z-15 w-[92vw] sm:w-92 max-w-md bg-[#080c13]/94 border border-cyan-400/75 p-2.5 sm:p-3 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
           >
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-1.5 min-w-0">
                 <span
-                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 animate-pulse ${
+                  className={`inline-block w-1.5 h-1.5 rotate-45 shrink-0 ${
                     hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
                       ? 'bg-red-400'
                       : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
@@ -1853,11 +1981,20 @@ export const GameHud: React.FC<GameHudProps> = ({
             const chapterCfg =
               GAME_CONFIG.campaignChapters[hud.run.chapter] ??
               GAME_CONFIG.campaignChapters.chapter_1_helix;
+            const introPct = Math.max(
+              0,
+              Math.min(
+                100,
+                ((boss?.introRemaining ?? 0) /
+                  Math.max(0.1, boss?.introDuration ?? GAME_CONFIG.boss.introDuration)) *
+                  100
+              )
+            );
             return (
               <>
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    <span className="inline-block w-2 h-2 rotate-45 bg-amber-400 shrink-0" />
                     <span className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-widest text-amber-300 truncate">
                       {chapterCfg.sectorName} // {chapterCfg.wardenRole}
                     </span>
@@ -1871,19 +2008,19 @@ export const GameHud: React.FC<GameHudProps> = ({
                     }}
                     className="px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    ENGAGE MARSHAL [SPACE]
+                    ENGAGE {boss?.name ?? 'MARSHAL'} [SPACE]
                   </button>
                 </div>
                 <div className="text-sm sm:text-base font-display font-bold uppercase tracking-wider text-white mb-0.5">
                   {chapterCfg.title} — {chapterCfg.subtitle}
                 </div>
                 <p className="text-[11px] sm:text-xs text-slate-200 leading-snug mb-2">
-                  {chapterCfg.transitionBriefing}
+                  {chapterCfg.arrivalBriefing}
                 </p>
                 <div className="relative h-1 w-full bg-[#05080c] overflow-hidden">
                   <div
-                    className="absolute inset-y-0 left-0 bg-amber-400 animate-pulse"
-                    style={{ width: '100%' }}
+                    className="absolute inset-y-0 left-0 bg-amber-400 transition-all duration-75"
+                    style={{ width: `${introPct}%` }}
                   />
                 </div>
               </>
@@ -1902,6 +2039,12 @@ export const GameHud: React.FC<GameHudProps> = ({
             const transitionChapterCfg =
               GAME_CONFIG.campaignChapters[hud.run.chapter] ??
               GAME_CONFIG.campaignChapters.prologue;
+            const destChapterId =
+              hud.run.pendingNextChapter ??
+              (hud.run.chapter === 'prologue' ? 'chapter_1_helix' : hud.run.chapter);
+            const destChapterCfg =
+              GAME_CONFIG.campaignChapters[destChapterId] ??
+              GAME_CONFIG.campaignChapters.chapter_1_helix;
             return (
               <>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -1921,7 +2064,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   </button>
                 </div>
                 <h3 className="text-lg sm:text-xl font-display font-bold uppercase tracking-wider text-slate-100 mb-1">
-                  CHAPTER I: MARSHAL HELIX-04 AWAKENING
+                  {destChapterCfg.numberLabel}: {destChapterCfg.title}
                 </h3>
                 <p className="text-[11px] sm:text-xs text-slate-300 leading-snug mb-2">
                   {transitionChapterCfg.transitionBriefing}
@@ -2076,7 +2219,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 
             <div
               data-testid="loom-lysa-transmission"
-              className="bg-[#081220] border-l-2 border-cyan-400 border-y border-r border-slate-800 px-3 py-2 mb-3"
+              className="bg-[#081220] border border-cyan-400/75 px-3 py-2 mb-3"
             >
               <div className="text-[10px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300 mb-0.5">
                 {GAME_CONFIG.campaignChapters.chapter_5_loom.archiveLog.id} //{' '}
@@ -2187,7 +2330,8 @@ export const GameHud: React.FC<GameHudProps> = ({
         {/* Checkpoint Saved / Restored Notice Toast */}
         {hud.run.checkpointNotice &&
           hud.run.checkpointNoticeTimer > 0 &&
-          hud.run.stage !== 'transition_to_boss' && (
+          hud.run.stage !== 'transition_to_boss' &&
+          hud.run.stage !== 'boss_intro' && (
             <div
               data-testid="checkpoint-notice-banner"
               className="bg-[#09121e]/95 border border-cyan-400/80 px-3 py-1 text-[10px] sm:text-[11px] font-mono-tabular font-bold text-cyan-300 tracking-wider uppercase shadow-md max-w-full truncate"
@@ -2459,4 +2603,5 @@ export const GameHud: React.FC<GameHudProps> = ({
       </div>
     </div>
   );
-};
+});
+
