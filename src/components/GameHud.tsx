@@ -297,24 +297,36 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
             width="44"
             height="44"
             viewBox="-22 -22 44 44"
-            className="block opacity-75"
+            className="block opacity-80"
             aria-hidden="true"
           >
             <circle
               cx="0"
               cy="0"
-              r={hud.weapon.equippedWeaponId === 'phase_rail' ? '1.6' : '1.4'}
-              fill={reticleAccent}
+              r={hud.weapon.equippedWeaponId === 'phase_rail' ? '1.8' : '1.5'}
+              fill={hud.chargeRatio >= 1 ? '#22d3ee' : reticleAccent}
             />
             <line x1={-reticleGap - 5} y1="0" x2={-reticleGap} y2="0" stroke={reticleAccent} strokeWidth="1.5" />
             <line x1={reticleGap} y1="0" x2={reticleGap + 5} y2="0" stroke={reticleAccent} strokeWidth="1.5" />
             <line x1="0" y1={-reticleGap - 5} x2="0" y2={-reticleGap} stroke={reticleAccent} strokeWidth="1.5" />
             <line x1="0" y1={reticleGap} x2="0" y2={reticleGap + 5} stroke={reticleAccent} strokeWidth="1.5" />
+            {hud.chargeRatio > 0.05 && (
+              <circle
+                cx="0"
+                cy="0"
+                r="13"
+                fill="none"
+                stroke={hud.chargeRatio >= 1 ? '#22d3ee' : '#f59e0b'}
+                strokeWidth="2"
+                strokeDasharray={`${hud.chargeRatio * 82} 84`}
+                transform="rotate(-90)"
+              />
+            )}
             {hud.weapon.overheated && (
-              <circle cx="0" cy="0" r="14" fill="none" stroke="#ef4444" strokeWidth="1.4" strokeDasharray="4 3" />
+              <circle cx="0" cy="0" r="15" fill="none" stroke="#ef4444" strokeWidth="1.4" strokeDasharray="4 3" />
             )}
             {resonance.primed && resonance.canConverge && (
-              <circle cx="0" cy="0" r="16" fill="none" stroke="#22d3ee" strokeWidth="1.2" strokeDasharray="3 3" />
+              <circle cx="0" cy="0" r="16.5" fill="none" stroke="#22d3ee" strokeWidth="1.2" strokeDasharray="3 3" />
             )}
           </svg>
 
@@ -420,34 +432,30 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
             : ''
         }`}
       >
-        {/* Cluster 1 (Top-Left): Compact Survival Vitals & Adrenaline Sync Pod */}
+        {/* Cluster 1 (Top-Left): Sleek Survival Vitals & Sync Bar */}
         <div
           data-testid="player-hud"
-          className="relative order-1 w-[152px] sm:w-[248px] [@media(max-height:540px)]:w-[200px] bg-[#080d15]/92 border border-slate-700/80 p-2 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
+          className="relative order-1 w-[148px] sm:w-[214px] [@media(max-height:540px)]:w-[184px] bg-[#070b12]/80 border border-white/10 px-2.5 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.55)] shrink-0"
         >
-          <span aria-hidden="true" className="pointer-events-none absolute -top-px -left-px w-2 h-2 border-t-2 border-l-2 border-cyan-400/80" />
-          <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -right-px w-2 h-2 border-b-2 border-r-2 border-cyan-400/80" />
-          <div className="grid grid-cols-1 gap-1.5 mb-1.5">
+          <div className="space-y-1.5 mb-1.5">
             {/* Integrity */}
             <div>
               <div className="flex items-baseline justify-between mb-0.5">
-                <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-400 font-semibold">
+                <span className="text-[9px] font-mono-tabular uppercase tracking-wider text-cyan-400 font-semibold">
                   INTEGRITY
                 </span>
                 <div className="flex items-baseline gap-0.5 font-mono-tabular">
                   <span
-                    className={`text-sm sm:text-lg font-bold leading-none ${
+                    className={`text-sm sm:text-base font-bold leading-none ${
                       isLowHp ? 'text-red-400' : 'text-slate-100'
                     }`}
                   >
                     {hud.integrity}
                   </span>
-                  <span className="text-[9px] sm:text-[10px] text-slate-500">
-                    /{hud.maxIntegrity}
-                  </span>
+                  <span className="text-[9px] text-slate-500">/{hud.maxIntegrity}</span>
                 </div>
               </div>
-              <div className="relative h-1.5 sm:h-2 w-full bg-[#05080c] border border-slate-800 overflow-hidden">
+              <div className="relative h-1.5 w-full bg-[#04070c] overflow-hidden">
                 <div
                   className="absolute inset-y-0 left-0 bg-amber-500/70 transition-all duration-75"
                   style={{ width: `${ghostIntegrityPct}%` }}
@@ -464,27 +472,23 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
             {/* Chrono Flux */}
             <div data-flux-dampened={(hud.fluxDampenedTimer ?? 0) > 0 ? 'true' : 'false'}>
               <div className="flex items-baseline justify-between mb-0.5">
-                <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1">
+                <span className="text-[9px] font-mono-tabular uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1">
                   <span>FLUX</span>
                   {(hud.fluxDampenedTimer ?? 0) > 0 && (
                     <span
                       data-testid="hud-flux-dampened-badge"
-                      className="px-1 py-0.2 text-[8px] font-mono-tabular bg-fuchsia-950/90 border border-fuchsia-500/70 text-fuchsia-300"
+                      className="text-[8px] font-mono-tabular text-fuchsia-300"
                     >
-                      DAMP {(hud.fluxDampenedTimer ?? 0).toFixed(1)}s
+                      · DAMP {(hud.fluxDampenedTimer ?? 0).toFixed(1)}s
                     </span>
                   )}
                 </span>
-                <span className="text-xs sm:text-sm font-mono-tabular font-bold text-amber-300 leading-none">
+                <span className="text-xs font-mono-tabular font-bold text-amber-300 leading-none">
                   {hud.flux}
                   <span className="text-[9px] text-slate-500 font-normal">/{hud.maxFlux}</span>
                 </span>
               </div>
-              <div
-                className={`relative h-1.5 w-full bg-[#05080c] border overflow-hidden ${
-                  (hud.fluxDampenedTimer ?? 0) > 0 ? 'border-fuchsia-500/70' : 'border-slate-800'
-                }`}
-              >
+              <div className="relative h-1 w-full bg-[#04070c] overflow-hidden">
                 <div
                   className={`absolute inset-y-0 left-0 transition-all duration-75 ${
                     (hud.fluxDampenedTimer ?? 0) > 0 ? 'bg-fuchsia-400' : 'bg-amber-400'
@@ -495,7 +499,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
             </div>
           </div>
 
-          {/* Live Adrenaline Sync Tier Bar (Tier 0-5) */}
+          {/* Live Adrenaline Sync Tier Strip (Tier 0-5) */}
           {(() => {
             const adr = hud.adrenaline ?? {
               tier: 0,
@@ -511,11 +515,15 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               <div
                 data-testid="adrenaline-hud-bar"
                 data-tier={adr.tier}
-                className="pt-1 border-t border-slate-800/85"
+                className={
+                  adr.tier === 0 && adr.progressToNext <= 0.02
+                    ? 'sr-only'
+                    : 'pt-1 border-t border-white/8'
+                }
               >
                 <div className="flex items-center justify-between gap-1 mb-0.5">
                   <span
-                    className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-wider whitespace-nowrap ${
+                    className={`text-[8px] font-mono-tabular font-semibold uppercase tracking-wider whitespace-nowrap ${
                       isOverdrive
                         ? 'text-amber-300'
                         : isActiveTier
@@ -525,9 +533,11 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   >
                     {adr.label}
                   </span>
-                  <span className="hidden sm:inline text-[8px] font-mono-tabular uppercase tracking-wide text-slate-400 truncate">
-                    {adr.perkLabel}
-                  </span>
+                  {adr.tier > 0 && (
+                    <span className="hidden sm:inline text-[8px] font-mono-tabular uppercase tracking-wide text-slate-400 truncate">
+                      {adr.perkLabel}
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-5 gap-1">
                   {[0, 1, 2, 3, 4].map((idx) => {
@@ -535,10 +545,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                     const filling = adr.tier === idx;
                     const cellPct = filled ? 100 : filling ? Math.round(adr.progressToNext * 100) : 0;
                     return (
-                      <div
-                        key={idx}
-                        className="relative h-1 bg-[#05080c] border border-slate-800 overflow-hidden"
-                      >
+                      <div key={idx} className="relative h-1 bg-[#04070c] overflow-hidden">
                         {cellPct > 0 && (
                           <div
                             className={`absolute inset-y-0 left-0 transition-all duration-75 ${
@@ -559,14 +566,12 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
             <div
               data-testid="combat-flow-indicator"
               data-flow-kind={hud.combatFlow.kind}
-              className={`mt-1.5 px-1.5 py-0.5 border text-[9px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
+              className={`mt-1 text-[8px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
                 hud.combatFlow.kind === 'riposte'
-                  ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                  ? 'text-amber-300'
                   : hud.combatFlow.kind === 'chrono_slip'
-                    ? 'bg-cyan-400/25 border-cyan-300 text-white'
-                    : hud.combatFlow.kind === 'relay_momentum'
-                      ? 'bg-cyan-500/20 border-cyan-300 text-cyan-200'
-                      : 'bg-sky-500/20 border-sky-400 text-sky-200'
+                    ? 'text-white'
+                    : 'text-cyan-300'
               }`}
             >
               {hud.combatFlow.label}
@@ -574,19 +579,17 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           )}
         </div>
 
-        {/* Cluster 2 (Top-Center): Progressive Objective Tracker OR Consolidated Boss HUD */}
-        <div className="order-3 md:order-2 flex flex-col items-center w-full md:max-w-[440px] lg:max-w-[464px]">
-          {/* Standard / Calibration / Loom Objective Card (Hidden when Boss HUD is active so top-center doesn't double-stack!) */}
+        {/* Cluster 2 (Top-Center): Slim Single-Focus Objective OR Boss Telemetry */}
+        <div className="order-3 md:order-2 flex flex-col items-center w-full md:max-w-[410px] lg:max-w-[436px]">
           <div
             className={
               boss
                 ? 'sr-only'
-                : 'bg-[#080c13]/92 border border-slate-700/80 px-3 sm:px-4 py-1.5 sm:py-2 w-full shadow-[0_8px_24px_rgba(0,0,0,0.65)]'
+                : 'bg-[#070b12]/80 border border-white/10 px-3 py-1.5 w-full shadow-[0_8px_22px_rgba(0,0,0,0.55)]'
             }
           >
-            {/* Primary Objective Row */}
-            <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular text-cyan-400 tracking-wider uppercase">
-              <span className="font-bold truncate">
+            <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular tracking-wider uppercase">
+              <span className="font-bold text-cyan-400 truncate">
                 {!boss && !hud.loom.active
                   ? hud.encounter.encounterId !== 'prologue_calibration_bay'
                     ? hud.objectiveText
@@ -603,17 +606,16 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   className="text-slate-300 font-semibold whitespace-nowrap shrink-0"
                 >
                   {hud.encounter.totalWaves > 1
-                    ? `WAVE ${hud.encounter.currentWaveIndex}/${hud.encounter.totalWaves} · `
+                    ? `W${hud.encounter.currentWaveIndex}/${hud.encounter.totalWaves} · `
                     : ''}
-                  PROXIES {hud.totalEnemies - hud.enemiesAlive}/{hud.totalEnemies}
+                  {hud.totalEnemies - hud.enemiesAlive}/{hud.totalEnemies}
                 </span>
               )}
             </div>
 
-            {/* Single Actionable Current Instruction */}
             <div
               data-testid="calibration-active-objective"
-              className="text-[10px] sm:text-xs text-slate-200 leading-snug mt-0.5 line-clamp-2"
+              className="text-[10px] sm:text-[11px] text-slate-200 leading-snug mt-0.5 line-clamp-2"
             >
               {!boss && !hud.loom.active
                 ? echo.statusMessage &&
@@ -627,73 +629,71 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   : hud.objectiveSubtext}
             </div>
 
-            {/* Progressive 3-Step Calibration Bar (Preserves pressure-plate-status and chrono-puzzle-status test IDs & attributes) */}
+            {/* Clean Unboxed Calibration Checklist */}
             <div
               className={
                 boss || hud.loom.active
                   ? 'sr-only'
-                  : 'mt-1.5 pt-1 border-t border-slate-800/80 flex items-center justify-between gap-1.5 text-[9px] sm:text-[10px] font-mono-tabular uppercase'
+                  : 'mt-1 pt-1 border-t border-white/8 flex items-center justify-between gap-2 text-[9px] font-mono-tabular uppercase'
               }
             >
-              {/* Step 1: Anchor Pad 01 */}
-              <div
+              <span
                 data-testid="pressure-plate-status"
                 data-plate-activated={plate.active ? 'true' : 'false'}
                 data-barrier-open={plate.barrierOpen ? 'true' : 'false'}
-                className={`px-1.5 py-0.5 border truncate ${
+                className={`truncate ${
                   puzzle.teachCompleted || plate.active
-                    ? 'bg-cyan-500/15 border-cyan-400/70 text-cyan-300 font-bold'
+                    ? 'text-cyan-300 font-bold'
                     : calGuidance.stepNumber === 1
-                      ? 'bg-[#101c2e] border-cyan-500/60 text-white font-semibold'
-                      : 'bg-[#070b12] border-slate-800 text-slate-500'
+                      ? 'text-slate-100 font-semibold'
+                      : 'text-slate-300/80'
                 }`}
               >
-                1. PAD 01: {plate.active ? 'ACTIVE' : puzzle.teachCompleted ? 'DONE' : 'HOLD [Y]'}
-              </div>
-
-              {/* Step 2 & 3: Receiver & Final Gate */}
+                1. Pad {plate.active ? 'Active' : puzzle.teachCompleted ? 'Done' : '[Y]'}
+              </span>
+              <span aria-hidden="true" className="text-slate-500">·</span>
               <div
                 data-testid="chrono-puzzle-status"
                 data-puzzle-stage={puzzle.stage}
                 data-receiver-charged={puzzle.receiverCharged ? 'true' : 'false'}
                 data-combine-plate-active={puzzle.combinePlateActive ? 'true' : 'false'}
                 data-final-barrier-open={puzzle.finalBarrierOpen ? 'true' : 'false'}
-                className="flex items-center gap-1.5 min-w-0"
+                className="flex items-center gap-2 min-w-0"
               >
                 <span
-                  className={`px-1.5 py-0.5 border whitespace-nowrap ${
+                  className={`whitespace-nowrap ${
                     puzzle.receiverCharged
-                      ? 'bg-amber-500/20 border-amber-400 text-amber-300 font-bold'
+                      ? 'text-amber-300 font-bold'
                       : puzzle.testCompleted
-                        ? 'bg-cyan-500/15 border-cyan-400/60 text-cyan-300'
+                        ? 'text-cyan-300'
                         : calGuidance.stepNumber === 2
-                          ? 'bg-[#101c2e] border-cyan-500/60 text-white font-semibold'
-                          : 'bg-[#070b12] border-slate-800 text-slate-500'
+                          ? 'text-slate-100 font-semibold'
+                          : 'text-slate-300/80'
                   }`}
                 >
-                  2. RCV:{' '}
+                  2. Rcv{' '}
                   {puzzle.receiverCharged
                     ? `${puzzle.receiverChargeTimer.toFixed(1)}s`
                     : puzzle.testCompleted
-                      ? 'DONE'
-                      : 'HEAVY [E]'}
+                      ? 'Done'
+                      : '[E]'}
                 </span>
-
+                <span aria-hidden="true" className="text-slate-500">·</span>
                 <span
-                  className={`px-1.5 py-0.5 border whitespace-nowrap ${
+                  className={`whitespace-nowrap ${
                     puzzle.finalBarrierOpen
-                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 font-bold'
+                      ? 'text-emerald-300 font-bold'
                       : calGuidance.stepNumber === 3
-                        ? 'bg-[#101c2e] border-cyan-500/60 text-white font-semibold'
-                        : 'bg-[#070b12] border-slate-800 text-slate-500'
+                        ? 'text-slate-100 font-semibold'
+                        : 'text-slate-300/80'
                   }`}
                 >
-                  3. GATE: {puzzle.finalBarrierOpen ? 'OPEN' : 'LOCKED'}
+                  3. Gate {puzzle.finalBarrierOpen ? 'Open' : 'Locked'}
                 </span>
               </div>
             </div>
 
-            {/* Phase 18, 19 & 20: Mission Tracker, Timed Hazard Telemetry & Secret/Codex/Narrative Readout */}
+            {/* Active Hazard Alert Only (Secrets/Codex counters live cleanly in Sector Map [N]) */}
             <div
               data-testid="hud-optional-objective"
               data-mission-id={hud.exploration.mission.id}
@@ -703,45 +703,36 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               data-narrative-events-triggered={
                 hud.exploration.narrativeEvents?.filter((e) => e.completed).length ?? 0
               }
-              className="mt-1 pt-1 border-t border-slate-800/70 flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-300"
+              className={
+                hud.exploration.hazards &&
+                hud.exploration.hazards.length > 0 &&
+                hud.exploration.hazards[0].phase !== 'safe'
+                  ? 'mt-1 pt-1 border-t border-white/8 flex items-center justify-between gap-2 text-[9px] font-mono-tabular uppercase'
+                  : 'sr-only'
+              }
             >
-              <span className="truncate text-cyan-300/90">
-                {hud.exploration.mission.optionalObjectiveSummary ??
-                  `${hud.exploration.mission.code} · ALL OPTIONAL OBJECTIVES COMPLETE`}
-              </span>
-              <div className="flex items-center gap-2 shrink-0">
-                {hud.exploration.hazards && hud.exploration.hazards.length > 0 && (
-                  <span
-                    data-testid="hud-hazard-telemetry"
-                    data-hazard-id={hud.exploration.hazards[0].id}
-                    data-hazard-phase={hud.exploration.hazards[0].phase}
-                    className={`hidden sm:inline px-1 py-0.2 border text-[8px] font-bold uppercase ${
-                      hud.exploration.hazards[0].phase === 'active'
-                        ? 'bg-red-500/20 border-red-400 text-red-300'
-                        : hud.exploration.hazards[0].phase === 'warning'
-                          ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                          : 'bg-cyan-500/10 border-cyan-500/50 text-cyan-300'
-                    }`}
-                  >
-                    VENT: {hud.exploration.hazards[0].phase.toUpperCase()}
-                  </span>
-                )}
+              {hud.exploration.hazards && hud.exploration.hazards.length > 0 && (
                 <span
-                  data-testid="hud-narrative-event-badge"
-                  data-triggered-count={
-                    hud.exploration.narrativeEvents?.filter((e) => e.completed).length ?? 0
-                  }
-                  data-total-count={hud.exploration.narrativeEvents?.length ?? 4}
-                  className="text-slate-400 whitespace-nowrap"
+                  data-testid="hud-hazard-telemetry"
+                  data-hazard-id={hud.exploration.hazards[0].id}
+                  data-hazard-phase={hud.exploration.hazards[0].phase}
+                  className={`font-bold ${
+                    hud.exploration.hazards[0].phase === 'active'
+                      ? 'text-red-300'
+                      : 'text-amber-300'
+                  }`}
                 >
-                  SECRETS {hud.exploration.localMap?.discoveredSecretsInChapter ?? 0}/
-                  {hud.exploration.localMap?.totalSecretsInChapter ?? 0} · CODEX{' '}
-                  {hud.exploration.discoveredCodexIds.length}/
-                  {hud.exploration.codexEntries.length} · EVENTS{' '}
-                  {hud.exploration.narrativeEvents?.filter((e) => e.completed).length ?? 0}/
-                  {hud.exploration.narrativeEvents?.length ?? 4}
+                  HAZARD VENT: {hud.exploration.hazards[0].phase.toUpperCase()}
                 </span>
-              </div>
+              )}
+              <span
+                data-testid="hud-narrative-event-badge"
+                data-triggered-count={
+                  hud.exploration.narrativeEvents?.filter((e) => e.completed).length ?? 0
+                }
+                data-total-count={hud.exploration.narrativeEvents?.length ?? 4}
+                className="sr-only"
+              />
             </div>
           </div>
 
@@ -945,10 +936,10 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               )}
             </div>
           ) : (
-            /* Standard Focused Enemy Status Bar (Contextually shown on mobile when damaged, telegraphing, vulnerable, or marked so full-HP idle enemies don't occlude the arena) */
+            /* Standard Focused Enemy Status Bar (Clean 2-row readout, no clipped text) */
             focused && (
               <div
-                className={`mt-1 w-full bg-[#090d14]/90 border px-2.5 sm:px-3.5 py-1.5 ${
+                className={`mt-1 w-full max-w-[360px] bg-[#070b12]/80 border px-3 py-1.5 ${
                   focused.hp < focused.maxHp ||
                   isEnemyVulnerable ||
                   isEnemyTelegraphing ||
@@ -959,14 +950,14 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                     : 'hidden sm:block'
                 } ${
                   isEnemyVulnerable
-                    ? 'border-white shadow-[0_0_20px_rgba(255,255,255,0.25)]'
+                    ? 'border-white/70'
                     : focused.isDecoy
-                      ? 'border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.28)]'
+                      ? 'border-purple-400/70'
                       : focused.isResonanceMarked
-                        ? 'border-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.28)]'
+                        ? 'border-cyan-300/70'
                         : isEnemyTelegraphing
-                          ? 'border-amber-400'
-                  : 'border-slate-800'
+                          ? 'border-amber-400/70'
+                          : 'border-white/10'
                 }`}
                 data-testid="focused-enemy-hud"
                 data-enemy-archetype={focused.archetype}
@@ -974,73 +965,46 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 data-enemy-status={focused.statusLabel}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-                    <span className="text-[10px] sm:text-xs font-display font-bold tracking-wider text-slate-100 uppercase whitespace-nowrap">
-                      {focused.name}
-                    </span>
-                    <span
-                      data-testid="enemy-role-badge"
-                      className="hidden lg:inline text-[9px] font-mono-tabular font-semibold tracking-wider text-cyan-300/90 uppercase whitespace-nowrap"
-                    >
-                      [{focused.roleLabel}]
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 font-mono-tabular text-[9px] sm:text-[10px] min-w-0 justify-end">
+                  <span className="text-[11px] font-display font-bold tracking-wider text-slate-100 uppercase truncate">
+                    {focused.name.split('·')[0].trim()}
+                  </span>
+                  <div className="flex items-center gap-2 font-mono-tabular text-[9px] shrink-0">
                     {focused.isDecoy && (
-                      <span
-                        data-testid="enemy-decoy-badge"
-                        className="text-purple-300 font-bold tracking-wider uppercase whitespace-nowrap shrink-0"
-                      >
-                        FALSE ECHO DECOY
+                      <span data-testid="enemy-decoy-badge" className="text-purple-300 font-bold uppercase">
+                        DECOY
                       </span>
                     )}
                     {(focused.pinnedTimer ?? 0) > 0 && (
-                      <span
-                        data-testid="enemy-pinned-badge"
-                        className="text-cyan-300 font-bold tracking-wider uppercase whitespace-nowrap shrink-0"
-                      >
+                      <span data-testid="enemy-pinned-badge" className="text-cyan-300 font-bold uppercase">
                         PINNED
                       </span>
                     )}
                     {focused.isResonanceMarked && (
-                      <span
-                        data-testid="enemy-resonance-badge"
-                        className="text-cyan-300 font-bold tracking-wider uppercase whitespace-nowrap shrink-0"
-                      >
-                        RESONANCE · {focused.resonanceRemaining.toFixed(1)}s
+                      <span data-testid="enemy-resonance-badge" className="text-cyan-300 font-bold uppercase">
+                        RESONANCE {focused.resonanceRemaining.toFixed(1)}s
                       </span>
                     )}
-                    {isEnemyVulnerable ? (
-                      <span
-                        data-testid="enemy-status-badge"
-                        className="text-white font-bold tracking-wider uppercase truncate"
-                      >
-                        {focused.statusLabel}
-                      </span>
-                    ) : isEnemyTelegraphing ? (
-                      <span
-                        data-testid="enemy-status-badge"
-                        className={`${
-                          focused.telegraphLocked ? 'text-red-400' : 'text-amber-400'
-                        } font-bold tracking-wider uppercase truncate`}
-                      >
-                        {focused.statusLabel}
-                      </span>
-                    ) : (
-                      <span
-                        data-testid="enemy-status-badge"
-                        className="hidden md:inline text-slate-400 font-semibold tracking-wider uppercase truncate"
-                      >
-                        {focused.statusLabel}
-                      </span>
-                    )}
-                    <span className="text-slate-300 font-semibold whitespace-nowrap shrink-0">
+                    <span
+                      data-testid="enemy-status-badge"
+                      className={`font-semibold uppercase ${
+                        isEnemyVulnerable
+                          ? 'text-white'
+                          : isEnemyTelegraphing
+                            ? focused.telegraphLocked
+                              ? 'text-red-400'
+                              : 'text-amber-300'
+                            : 'text-slate-400'
+                      }`}
+                    >
+                      {focused.statusLabel.split('·')[0].trim()}
+                    </span>
+                    <span className="text-slate-300 font-bold">
                       {focused.hp}/{focused.maxHp}
                     </span>
                   </div>
                 </div>
 
-                <div className="relative h-1.5 w-full bg-[#05080c] border border-slate-800 overflow-hidden mb-0.5">
+                <div className="relative h-1.5 w-full bg-[#04070c] overflow-hidden mb-0.5">
                   <div
                     className="absolute inset-y-0 left-0 bg-amber-300/60"
                     style={{ width: `${enemyGhostPct}%` }}
@@ -1057,7 +1021,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   />
                 </div>
 
-                <div className="relative h-1 w-full bg-[#05080c] overflow-hidden">
+                <div className="relative h-0.5 w-full bg-[#04070c] overflow-hidden">
                   <div
                     className="absolute inset-y-0 left-0 bg-cyan-400"
                     style={{ width: `${enemyStaggerPct}%` }}
@@ -1160,32 +1124,11 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   e.currentTarget.blur();
                   onRestoreCampaign();
                 }}
-                className="h-8 sm:h-9 px-2 sm:px-2.5 flex items-center justify-center font-mono-tabular text-[9px] sm:text-[11px] font-bold uppercase bg-[#0d1c2e] hover:bg-[#17314f] border border-cyan-400 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
+                className="h-8 px-2 flex items-center justify-center font-mono-tabular text-[9px] font-bold uppercase bg-[#0d1c2e] hover:bg-[#17314f] border border-cyan-400 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
               >
                 RESTORE CAMPAIGN
               </button>
             )}
-
-          {onStartBoss && (
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="hud-btn-boss"
-              aria-label="Practice HELIX-04 Boss [B]"
-              title="Isolated Practice Arena: HELIX-04 [B]"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onStartBoss();
-              }}
-              className={`hidden xl:flex h-8 sm:h-9 px-2 items-center justify-center font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
-                hud.run.mode === 'practice_boss'
-                  ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                  : 'bg-[#080d15]/90 hover:bg-[#162032] border-slate-700/80 text-slate-400 hover:text-amber-300'
-              }`}
-            >
-              <span>PRACTICE [B]</span>
-            </button>
-          )}
 
           <button
             type="button"
@@ -1196,7 +1139,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               e.currentTarget.blur();
               onToggleMute();
             }}
-            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center bg-[#090d14]/90 hover:bg-[#162032] border border-slate-700/90 text-slate-200 transition-colors cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center bg-[#070b12]/80 hover:bg-[#162032] border border-white/10 text-slate-200 transition-colors cursor-pointer"
           >
             <svg
               viewBox="0 0 24 24"
@@ -1223,40 +1166,14 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           <button
             type="button"
             tabIndex={-1}
-            aria-label="Restart Encounter [R]"
-            title="Restart Encounter / Retry Checkpoint [R]"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onRestart();
-            }}
-            className="h-8 sm:h-9 px-2 flex items-center gap-1 justify-center bg-[#090d14]/90 hover:bg-[#162032] border border-slate-700/90 text-slate-200 transition-colors cursor-pointer"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="w-3.5 h-3.5 text-amber-400"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>
-            <span className="hidden lg:inline text-[10px] font-mono-tabular font-semibold">
-              RETRY [R]
-            </span>
-          </button>
-
-          <button
-            type="button"
-            tabIndex={-1}
             data-testid="hud-btn-pause"
             aria-label="Pause Game [P]"
-            title="Pause Game [P / Esc]"
+            title="Pause / Menu [P / Esc]"
             onClick={(e) => {
               e.currentTarget.blur();
               onTogglePause();
             }}
-            className="h-8 sm:h-9 px-2.5 flex items-center gap-1.5 justify-center bg-[#090d14]/90 hover:bg-[#162032] border border-slate-700/90 text-slate-200 transition-colors cursor-pointer"
+            className="h-8 px-2.5 flex items-center gap-1.5 justify-center bg-[#070b12]/80 hover:bg-[#162032] border border-white/10 text-slate-200 transition-colors cursor-pointer"
           >
             <svg
               viewBox="0 0 24 24"
@@ -1269,12 +1186,12 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               <rect x="14" y="4" width="4" height="16" fill="#0f172a" />
             </svg>
             <span className="hidden lg:inline text-[10px] font-mono-tabular font-semibold">
-              PAUSE [P]
+              MENU [P]
             </span>
           </button>
           </div>
 
-          {/* Live Diegetic Sector Tactical Radar (Click or [N] for Full Schematic) */}
+          {/* Live Compact Circular Tactical Radar (Click or [N] for Full Schematic) */}
           {hud.radar && (
             <button
               type="button"
@@ -1283,7 +1200,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               data-radar-blips={hud.radar.blips.length}
               data-echo-active={hud.radar.echoActive ? 'true' : 'false'}
               aria-label="Sector Tactical Radar — Open Full Sector Map [N]"
-              title="Live Tactical Telemetry Radar — Click or press [N] for Full Schematic"
+              title="Sector Radar — Click or press [N] for Map"
               onClick={(e) => {
                 e.currentTarget.blur();
                 if (onOpenMap) {
@@ -1292,19 +1209,11 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   onTogglePause();
                 }
               }}
-              className="relative group pointer-events-auto w-[62px] sm:w-[136px] [@media(max-height:540px)]:hidden bg-[#070c14]/92 hover:bg-[#0c1626] border border-slate-700/85 hover:border-cyan-400/85 p-1 sm:p-1.5 shadow-[0_8px_22px_rgba(0,0,0,0.7)] transition-colors cursor-pointer text-left"
+              className="relative group pointer-events-auto w-[56px] sm:w-[106px] [@media(max-height:540px)]:hidden rounded-full bg-[#05080e]/82 hover:bg-[#0c1626] border border-white/15 hover:border-cyan-400/80 p-1 shadow-[0_8px_22px_rgba(0,0,0,0.65)] transition-colors cursor-pointer"
             >
-              <span aria-hidden="true" className="pointer-events-none absolute -top-px -left-px w-1.5 h-1.5 border-t border-l border-cyan-400" />
-              <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -right-px w-1.5 h-1.5 border-b border-r border-cyan-400" />
-              <div className="hidden sm:flex items-center justify-between gap-1 text-[8px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-1">
-                <span className="text-cyan-300 font-bold whitespace-nowrap">
-                  SECTOR RADAR
-                </span>
-                <span className="text-slate-500 group-hover:text-cyan-200">[N]</span>
-              </div>
               <svg
                 viewBox="-24 -24 48 48"
-                className="w-full aspect-square block bg-[#04070c] border border-slate-800/80"
+                className="w-full aspect-square block rounded-full bg-[#04070c]"
                 aria-hidden="true"
               >
                 {/* Arena Perimeter & Mid-Range Rings */}
@@ -1567,40 +1476,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         </div>
       </div>
 
-      {/* Gaze-Routed Center Crosshair & Heavy Charge Gauge */}
-      <div
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center"
-        aria-hidden="true"
-      >
-        <svg viewBox="0 0 48 48" className="w-10 h-10 opacity-75">
-          <circle
-            cx="24"
-            cy="24"
-            r="14"
-            fill="none"
-            stroke="#1e293b"
-            strokeWidth="1.5"
-          />
-          {hud.chargeRatio > 0.05 && (
-            <circle
-              cx="24"
-              cy="24"
-              r="14"
-              fill="none"
-              stroke={hud.chargeRatio >= 1 ? '#22d3ee' : '#f59e0b'}
-              strokeWidth="2.5"
-              strokeDasharray={`${hud.chargeRatio * 88} 90`}
-              transform="rotate(-90 24 24)"
-            />
-          )}
-          <circle
-            cx="24"
-            cy="24"
-            r="2"
-            fill={hud.chargeRatio >= 1 ? '#22d3ee' : '#f8fafc'}
-          />
-        </svg>
-      </div>
+      {/* Duplicate center SVG reticle merged cleanly into center-tactical-reticle above */}
 
       {/* Contextual Chrono Break Execution Prompt on Staggered Target */}
       {hud.lockOn?.canExecute && (
@@ -1628,19 +1504,16 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         </div>
       )}
 
-      {/* Skippable Campaign Opening Transmission Card (Stage: intro) */}
+      {/* Skippable Campaign Opening Transmission Card (Stage: intro — docked low so center arena stays unobstructed) */}
       {hud.run.stage === 'intro' && (
         <div
           data-testid="campaign-intro-banner"
-          className="fixed left-1/2 bottom-28 sm:bottom-32 -translate-x-1/2 z-20 w-[92vw] max-w-lg bg-[#090e17]/95 border border-cyan-400/85 p-3.5 sm:p-4 pointer-events-auto shadow-[0_14px_36px_rgba(0,0,0,0.85)]"
+          className="fixed left-1/2 bottom-3 sm:bottom-5 -translate-x-1/2 z-20 w-[92vw] max-w-lg bg-[#070b12]/92 border border-cyan-400/75 p-3 sm:p-3.5 pointer-events-auto shadow-[0_14px_36px_rgba(0,0,0,0.8)]"
         >
           <div className="flex items-center justify-between gap-2 mb-1">
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rotate-45 bg-cyan-400 shrink-0" />
-              <span className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-widest text-cyan-400">
-                PROLOGUE · WAKE — LOG-00 // LYSA VENN
-              </span>
-            </div>
+            <span className="text-[10px] font-mono-tabular font-bold uppercase tracking-widest text-cyan-400 truncate">
+              PROLOGUE · LOG-00 // LYSA VENN
+            </span>
             <button
               type="button"
               data-testid="btn-skip-intro"
@@ -1648,9 +1521,9 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 e.currentTarget.blur();
                 onSkipIntro?.();
               }}
-              className="px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase bg-cyan-400 hover:bg-cyan-300 text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+              className="px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase bg-cyan-400 hover:bg-cyan-300 text-slate-950 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              BEGIN CALIBRATION [SPACE]
+              BEGIN [SPACE]
             </button>
           </div>
           <p className="text-xs sm:text-sm text-slate-200 leading-snug mb-2">
@@ -2051,12 +1924,12 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 data-comms-id={hud.comms.active.id}
                 data-comms-classification={hud.comms.active.classification}
                 data-comms-channel={codec.channelCode}
-                className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:bottom-[146px] [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[360px] w-full bg-[#080c13]/94 border border-cyan-400/75 p-2 sm:p-2.5 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
+                className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:bottom-[96px] [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[348px] w-full bg-[#070b12]/90 border border-cyan-400/55 p-2 sm:p-2.5 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.75)]"
               >
                 <div className="flex items-start gap-2 mb-1">
                   {/* Diegetic Speaker Codec Sigil */}
-                  <div className="hidden sm:flex flex-col items-center justify-center w-9 h-9 shrink-0 bg-[#050911] border border-slate-700/80">
-                    <svg viewBox="0 0 24 24" className="w-6 h-6" aria-hidden="true">
+                  <div className="hidden sm:flex flex-col items-center justify-center w-8 h-8 shrink-0 bg-[#050911] border border-white/10">
+                    <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
                       {codec.glyph === 'warden' ? (
                         <>
                           <polygon points="12,3 20,8 20,16 12,21 4,16 4,8" fill="none" stroke={codec.accentHex} strokeWidth="1.5" />
@@ -2085,7 +1958,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span
                           className={`inline-block w-1.5 h-1.5 rotate-45 shrink-0 ${
@@ -2098,20 +1971,17 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                         />
                         <span
                           data-testid="live-comms-classification"
-                          className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-widest px-1.5 py-0.5 border shrink-0 ${
+                          className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-wider shrink-0 ${
                             hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
-                              ? 'text-red-300 border-red-500/50 bg-red-950/40'
+                              ? 'text-red-300'
                               : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
-                                ? 'text-amber-300 border-amber-500/50 bg-amber-950/40'
+                                ? 'text-amber-300'
                                 : hud.comms.active.classification === 'LIVE NEURAL TRACE'
-                                  ? 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40'
-                                  : 'text-cyan-300 border-cyan-500/50 bg-cyan-950/40'
+                                  ? 'text-emerald-300'
+                                  : 'text-cyan-300'
                           }`}
                         >
                           {hud.comms.active.classification}
-                        </span>
-                        <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold text-slate-300 truncate">
-                          {hud.comms.active.speaker}
                         </span>
                       </div>
                       <button
@@ -2122,19 +1992,19 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                           e.currentTarget.blur();
                           onDismissComms?.();
                         }}
-                        className="px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular uppercase text-slate-400 hover:text-white bg-[#0e1624] border border-slate-700/80 cursor-pointer shrink-0"
+                        className="px-1.5 py-0.5 text-[8px] font-mono-tabular uppercase text-slate-400 hover:text-white bg-[#0e1624] border border-white/10 cursor-pointer shrink-0"
                       >
                         ACK
                       </button>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[8px] sm:text-[9px] font-mono-tabular text-slate-400 tracking-wider uppercase truncate">
-                        {codec.channelCode} · {codec.frequencyLabel}
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <span className="text-[8px] sm:text-[9px] font-mono-tabular text-slate-300 tracking-wide uppercase truncate">
+                        {hud.comms.active.speaker} · {codec.frequencyLabel}
                       </span>
                       <svg
                         viewBox="0 0 28 10"
-                        className="w-7 h-2.5 shrink-0"
+                        className="w-6 h-2 shrink-0"
                         aria-hidden="true"
                         data-testid="live-comms-waveform"
                       >
@@ -2171,7 +2041,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 {hud.comms.active.tacticalHint && (
                   <div
                     data-testid="live-comms-hint"
-                    className="hidden sm:block text-[9px] sm:text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1 pt-1 border-t border-slate-800/80"
+                    className="hidden sm:block text-[9px] sm:text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1 pt-1 border-t border-white/8"
                   >
                     TACTICAL: {hud.comms.active.tacticalHint}
                   </div>
@@ -2195,47 +2065,32 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           })()}
 
         <div className="grid grid-cols-2 gap-1 items-end [@media(min-width:640px)_and_(min-height:541px)]:contents">
-          {/* Bottom-Left Dock: Chrono Echo Rig Module */}
+          {/* Bottom-Left Dock: Slim Chrono Echo Rig Module */}
           <div
             data-testid="echo-hud-module"
             data-echo-state={echo.state}
-            className="relative [@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[264px] bg-[#080d15]/92 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
+            className="relative [@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[236px] bg-[#070b12]/80 border border-white/10 p-2 shadow-[0_8px_22px_rgba(0,0,0,0.55)] pointer-events-auto"
           >
-            <span aria-hidden="true" className="pointer-events-none absolute -top-px -left-px w-2 h-2 border-t-2 border-l-2 border-cyan-400/75" />
-            <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -right-px w-2 h-2 border-b-2 border-r-2 border-cyan-400/75" />
             <div className="flex items-center justify-between gap-1.5 mb-1">
               <div className="flex items-center gap-1.5 min-w-0">
                 {echo.state === 'recording' ? (
-                  <span
-                    aria-hidden="true"
-                    className="inline-block w-2 h-2 bg-amber-400 shrink-0"
-                  />
+                  <span aria-hidden="true" className="inline-block w-2 h-2 bg-amber-400 shrink-0" />
                 ) : echo.state === 'playback' ? (
-                  <svg
-                    viewBox="0 0 12 12"
-                    className="w-2.5 h-2.5 text-cyan-300 shrink-0"
-                    fill="currentColor"
-                  >
+                  <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-cyan-300 shrink-0" fill="currentColor">
                     <polygon points="2,1 11,6 2,11" />
                   </svg>
                 ) : echo.hasClip ? (
-                  <span
-                    aria-hidden="true"
-                    className="inline-block w-2 h-2 rotate-45 bg-cyan-400 shrink-0"
-                  />
+                  <span aria-hidden="true" className="inline-block w-2 h-2 rotate-45 bg-cyan-400 shrink-0" />
                 ) : (
-                  <span
-                    aria-hidden="true"
-                    className="inline-block w-2 h-2 border border-slate-500 shrink-0"
-                  />
+                  <span aria-hidden="true" className="inline-block w-2 h-2 border border-slate-500 shrink-0" />
                 )}
-                <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase tracking-wider text-slate-300 truncate">
-                  ECHO RIG
+                <span className="text-[9px] font-mono-tabular font-semibold uppercase tracking-wider text-slate-300 truncate">
+                  ECHO
                 </span>
               </div>
               <span
                 data-testid="echo-state-badge"
-                className={`text-[8px] sm:text-[10px] font-mono-tabular font-bold uppercase whitespace-nowrap shrink-0 ${
+                className={`text-[9px] font-mono-tabular font-bold uppercase whitespace-nowrap shrink-0 ${
                   echo.state === 'recording'
                     ? 'text-amber-400'
                     : echo.state === 'playback'
@@ -2249,8 +2104,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               </span>
             </div>
 
-            {/* Echo Timeline Progress Bar */}
-            <div className="relative h-1 w-full bg-[#05080c] border border-slate-800 overflow-hidden mb-1.5">
+            <div className="relative h-1 w-full bg-[#04070c] overflow-hidden mb-1.5">
               <div
                 className={`absolute inset-y-0 left-0 ${
                   echo.state === 'recording'
@@ -2265,7 +2119,6 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               />
             </div>
 
-            {/* Tactical Echo Controls ([T] REC · [Y] PLAY · [V] RELAY · [C] CLR) */}
             <div className="grid grid-cols-4 gap-1">
               <button
                 type="button"
@@ -2276,10 +2129,10 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   e.currentTarget.blur();
                   onEchoRecord();
                 }}
-                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-0.5 py-1 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
                   echo.state === 'recording'
                     ? 'bg-amber-500/25 border-amber-400 text-amber-200'
-                    : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
+                    : 'bg-[#0c121c] hover:bg-[#162032] border-white/10 text-slate-200'
                 }`}
               >
                 <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[T] </span>
@@ -2290,19 +2143,15 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 type="button"
                 tabIndex={-1}
                 data-testid="echo-btn-replay"
-                title={
-                  echo.hasClip
-                    ? 'Replay recorded Chrono Echo [Y]'
-                    : 'Record an Echo with [T] first'
-                }
+                title={echo.hasClip ? 'Replay recorded Chrono Echo [Y]' : 'Record an Echo with [T] first'}
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onEchoReplay();
                 }}
-                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-0.5 py-1 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
                   echo.state === 'playback' || echo.hasClip
                     ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                    : 'bg-[#0a0f17] border-slate-800/80 text-slate-500'
+                    : 'bg-[#0a0f17] border-white/5 text-slate-500'
                 }`}
               >
                 <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Y] </span>PLAY
@@ -2317,24 +2166,21 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   e.currentTarget.blur();
                   onEchoRelay();
                 }}
-                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-0.5 py-1 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
                   relay.canRelay
                     ? 'bg-cyan-400/25 border-cyan-300 text-white'
                     : echo.state === 'playback'
                       ? 'bg-amber-500/15 border-amber-500/70 text-amber-300'
-                      : 'bg-[#0a0f17] border-slate-800/80 text-slate-500'
+                      : 'bg-[#0a0f17] border-white/5 text-slate-500'
                 }`}
               >
-                {relay.cooldownTimer > 0 ? (
-                  <>
-                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>
-                    {relay.cooldownTimer.toFixed(1)}s
-                  </>
-                ) : (
-                  <>
-                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>RELAY
-                  </>
-                )}
+                {relay.cooldownTimer > 0
+                  ? `${relay.cooldownTimer.toFixed(1)}s`
+                  : (
+                    <>
+                      <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>WARP
+                    </>
+                  )}
               </button>
 
               <button
@@ -2346,110 +2192,62 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   e.currentTarget.blur();
                   onEchoClear();
                 }}
-                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-400 transition-colors cursor-pointer whitespace-nowrap"
+                className="px-0.5 py-1 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase bg-[#0c121c] hover:bg-[#162032] border border-white/10 text-slate-400 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[C] </span>CLR
               </button>
             </div>
 
-            {/* Contextual Relay & Resonance Telemetry */}
+            {/* Single Prioritized Echo/Resonance Status Line (Shown only during active Replay / Relay / Resonance) */}
             <div
               className={
                 showContextualRelayOrResonance
-                  ? 'mt-1 pt-1 border-t border-slate-800/70 space-y-0.5'
-                  : 'hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-1.5 pt-1 border-t border-slate-800/70 space-y-0.5'
+                  ? 'mt-1 pt-1 border-t border-white/8 flex items-center justify-between gap-2 text-[9px] font-mono-tabular uppercase'
+                  : 'sr-only'
               }
             >
-              <div
-                data-testid="relay-status-readout"
-                data-relay-status={relay.status}
-                data-can-relay={relay.canRelay ? 'true' : 'false'}
-                className="flex items-center justify-between gap-1 text-[8px] sm:text-[9px] font-mono-tabular uppercase"
-              >
-                <span className="text-slate-400 whitespace-nowrap shrink-0">
-                  RELAY [V] · {relay.fluxCost}F
-                </span>
-                <span className="sr-only"> · </span>
-                <span
-                  className={`font-bold truncate ${
-                    relay.canRelay
-                      ? 'text-cyan-300'
-                      : relay.status === 'no_active_echo'
-                        ? 'text-slate-500'
-                        : 'text-amber-300'
-                  }`}
-                >
-                  {relay.canRelay
-                    ? `READY (${relay.distance.toFixed(1)}m)`
-                    : relay.status === 'on_cooldown'
-                      ? `COOLDOWN ${relay.cooldownTimer.toFixed(1)}s`
-                      : relay.status === 'insufficient_flux'
-                        ? 'LOW FLUX'
-                        : relay.status === 'out_of_range'
-                          ? `RANGE ${relay.distance.toFixed(1)}m/${relay.maxRange.toFixed(0)}m`
-                          : relay.status === 'path_blocked'
-                            ? 'PATH BLOCKED'
-                            : relay.status === 'no_safe_landing'
-                              ? 'NO SAFE SPOT'
-                              : relay.status === 'action_locked'
-                                ? 'ACTION BUSY'
-                                : 'NEED REPLAY'}
-                </span>
-              </div>
-
-              <div
+              <span
                 data-testid="resonance-status-readout"
                 data-resonance-status={resonance.status}
                 data-resonance-primed={resonance.primed ? 'true' : 'false'}
                 data-can-converge={resonance.canConverge ? 'true' : 'false'}
                 data-resonance-outcome={resonance.lastOutcome}
-                className="flex items-center justify-between gap-1 text-[8px] sm:text-[9px] font-mono-tabular uppercase"
-              >
-                <span className="text-slate-400 whitespace-nowrap shrink-0">
-                  SYNC · {resonance.fluxCost}F
-                </span>
-                <span className="sr-only"> · </span>
-                <span
-                  className={`font-bold truncate ${
-                    resonance.primed
-                      ? resonance.canConverge
-                        ? 'text-white'
-                        : 'text-amber-300'
-                      : resonance.status === 'on_cooldown'
-                        ? 'text-amber-300'
-                        : resonance.lastOutcome === 'expired' ||
-                            resonance.lastOutcome === 'insufficient_flux'
-                          ? 'text-amber-300'
-                          : resonance.convergenceCount > 0
-                            ? 'text-cyan-300'
-                            : 'text-slate-500'
-                  }`}
-                >
-                  {resonance.primed
+                className={`font-semibold truncate ${
+                  resonance.primed
                     ? resonance.canConverge
-                      ? `PRIMED ${resonance.remainingWindow.toFixed(1)}s · HIT [E]`
-                      : `PRIMED ${resonance.remainingWindow.toFixed(1)}s · LOW FLUX`
+                      ? 'text-white'
+                      : 'text-amber-300'
                     : resonance.status === 'on_cooldown'
-                      ? `COOLDOWN ${resonance.cooldownTimer.toFixed(1)}s`
-                      : resonance.lastOutcome === 'expired'
-                        ? 'EXPIRED · REPLAY [Y]'
-                        : resonance.lastOutcome === 'insufficient_flux'
-                          ? `LOW FLUX (${resonance.fluxCost} REQ)`
-                          : resonance.convergenceCount > 0
-                            ? `CONVERGED ×${resonance.convergenceCount}`
-                            : 'ECHO HEAVY -> [E]'}
-                </span>
-              </div>
+                      ? 'text-amber-300'
+                      : 'text-slate-300'
+                }`}
+              >
+                {resonance.primed
+                  ? resonance.canConverge
+                    ? `SYNC PRIMED ${resonance.remainingWindow.toFixed(1)}s · [E]`
+                    : 'SYNC PRIMED · LOW FLUX'
+                  : relay.canRelay
+                    ? `WARP READY (${relay.distance.toFixed(1)}m)`
+                    : echo.state === 'playback'
+                      ? 'ECHO REPLAYING'
+                      : 'STANDBY'}
+              </span>
+              <span
+                data-testid="relay-status-readout"
+                data-relay-status={relay.status}
+                data-can-relay={relay.canRelay ? 'true' : 'false'}
+                className="text-slate-400 shrink-0"
+              >
+                {relay.fluxCost}F
+              </span>
             </div>
           </div>
 
-          {/* Bottom-Right Dock: Arsenal Weapons, Thermal Telemetry & Action Controls */}
+          {/* Bottom-Right Dock: Sleek Action-RPG Arsenal Card */}
           <div
             data-testid="weapon-dock-card"
-            className="relative [@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:right-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[304px] bg-[#080d15]/92 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
+            className="relative [@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:right-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[276px] bg-[#070b12]/80 border border-white/10 p-2 shadow-[0_8px_22px_rgba(0,0,0,0.55)] pointer-events-auto"
           >
-            <span aria-hidden="true" className="pointer-events-none absolute -top-px -right-px w-2 h-2 border-t-2 border-r-2 border-amber-400/75" />
-            <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -left-px w-2 h-2 border-b-2 border-l-2 border-amber-400/75" />
             <div
               data-testid="weapon-hud-module"
               data-equipped-weapon={hud.weapon.equippedWeaponId}
@@ -2457,7 +2255,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               data-overheated={hud.weapon.overheated ? 'true' : 'false'}
               className="mb-1"
             >
-              <div className="flex items-center justify-between gap-1 mb-0.5">
+              <div className="flex items-center justify-between gap-1.5 mb-1">
                 <div className="flex items-center gap-1 min-w-0">
                   <span
                     aria-hidden="true"
@@ -2471,7 +2269,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   />
                   <span
                     data-testid="weapon-active-label"
-                    className={`text-[8px] sm:text-[10px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
+                    className={`text-[9px] sm:text-[10px] font-mono-tabular font-bold uppercase tracking-wider whitespace-nowrap ${
                       hud.weapon.overheated
                         ? 'text-red-400'
                         : hud.weapon.equippedWeaponId === 'pulsecaster' ||
@@ -2497,7 +2295,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       e.currentTarget.blur();
                       onSwitchWeapon?.();
                     }}
-                    className={`px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-1 sm:px-1.5 py-0.5 text-[8px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       hud.weapon.equippedWeaponId === 'pulsecaster' ||
                       hud.weapon.equippedWeaponId === 'phase_rail'
                         ? 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-400 text-sky-200'
@@ -2506,7 +2304,6 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                           : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
                     }`}
                   >
-                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
                     {(() => {
                       const cycleList: readonly WeaponId[] =
                         hud.progression.unlockedWeaponIds.length > 0
@@ -2518,12 +2315,12 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                           ? cycleList[(curIdx + 1) % cycleList.length]
                           : cycleList[0];
                       return nextW === 'pulsecaster'
-                        ? '→ PULSE'
+                        ? 'TAB → PULSE'
                         : nextW === 'phase_rail'
-                          ? '→ RAIL'
+                          ? 'TAB → RAIL'
                           : nextW === 'grav_breaker'
-                            ? '→ MAUL'
-                            : '→ EDGE';
+                            ? 'TAB → MAUL'
+                            : 'TAB → EDGE';
                     })()}
                   </button>
 
@@ -2537,17 +2334,17 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       e.currentTarget.blur();
                       onTogglePause();
                     }}
-                    className={`px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-1 sm:px-1.5 py-0.5 text-[8px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       hud.progression.memoryFragments >= 2
                         ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400 text-amber-200'
-                        : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-300'
+                        : 'bg-[#0d131d] hover:bg-[#162032] border-white/10 text-slate-300'
                     }`}
                   >
                     <span
                       data-testid="hud-memory-fragments"
                       data-fragments={hud.progression.memoryFragments}
                     >
-                      {hud.progression.memoryFragments} FRAG
+                      {hud.progression.memoryFragments}◆
                     </span>
                     <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">
                       {' '}
@@ -2606,26 +2403,19 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 })}
               </div>
 
-              {/* Active Mod Core + Thermal / Combo Bar (Single unified readout, no duplicate COMBO label) */}
-              <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-1 text-[9px] font-mono-tabular uppercase mb-0.5">
-                <span className="text-slate-500 whitespace-nowrap shrink-0">MOD CORE</span>
-                <span
-                  data-testid="weapon-active-upgrade"
-                  data-upgrade-id={hud.weapon.equippedUpgradeId ?? 'none'}
-                  className={`truncate font-semibold ${
-                    hud.weapon.equippedUpgradeId
-                      ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                        hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? 'text-sky-300'
-                        : hud.weapon.equippedWeaponId === 'grav_breaker'
-                          ? 'text-amber-300'
-                          : 'text-cyan-300'
-                      : 'text-slate-500'
-                  }`}
-                >
-                  {hud.weapon.equippedUpgradeLabel ?? 'STANDARD · NO MOD'}
-                </span>
-              </div>
+              {/* Active Mod Core (Only shown when a mod is equipped) */}
+              {hud.weapon.equippedUpgradeId && (
+                <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-1 text-[8px] font-mono-tabular uppercase mb-0.5">
+                  <span className="text-slate-500">MOD</span>
+                  <span
+                    data-testid="weapon-active-upgrade"
+                    data-upgrade-id={hud.weapon.equippedUpgradeId}
+                    className="truncate font-semibold text-cyan-300"
+                  >
+                    {hud.weapon.equippedUpgradeLabel}
+                  </span>
+                </div>
+              )}
 
               <div
                 data-testid="pulsecaster-heat-bar"
@@ -2634,7 +2424,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 data-overheated={hud.weapon.overheated ? 'true' : 'false'}
                 className="flex items-center gap-1.5"
               >
-                <div className="relative h-1.5 flex-1 bg-[#05080c] border border-slate-800 overflow-hidden">
+                <div className="relative h-1.5 flex-1 bg-[#04070c] overflow-hidden">
                   {hud.weapon.overheated && hud.weapon.activeVent && !hud.weapon.activeVent.attempted && (
                     <div
                       className="absolute inset-y-0 bg-cyan-400/40 border-x border-cyan-300 z-10"
@@ -2670,12 +2460,11 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       ? 'text-red-400 font-bold'
                       : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
                         ? 'text-cyan-300 font-bold'
-                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                            hud.weapon.equippedWeaponId === 'phase_rail'
-                          ? hud.weapon.heat >= 70
+                        : resonance.primed && resonance.canConverge
+                          ? 'text-white font-bold'
+                          : isEmpoweredReady
                             ? 'text-amber-300 font-semibold'
-                            : 'text-sky-300'
-                          : 'text-slate-400'
+                            : 'text-slate-400'
                   }`}
                 >
                   {hud.weapon.overheated
@@ -2684,55 +2473,20 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       : `OVERHEAT ${hud.weapon.overheatTimer.toFixed(1)}s`
                     : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
                       ? `OVERCHARGED ×${hud.weapon.activeVent?.empoweredShots}`
-                      : hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                          hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? `HEAT ${hud.weapon.heat}%`
-                        : `COMBO ${hud.comboStep}/3`}
+                      : resonance.primed && resonance.canConverge
+                        ? `CONVERGE [E]`
+                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                            hud.weapon.equippedWeaponId === 'phase_rail'
+                          ? `HEAT ${hud.weapon.heat}%`
+                          : isEmpoweredReady
+                            ? 'HEAVY [E] READY'
+                            : `COMBO ${hud.comboStep}/3`}
                 </span>
               </div>
             </div>
 
-            {/* Weapon Range & Heavy Strike Flux Cue (Desktop) */}
-            <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-2 text-[9px] font-mono-tabular text-slate-400 mb-1">
-              <span className="whitespace-nowrap shrink-0">
-                {hud.weapon.equippedWeaponId === 'pulsecaster'
-                  ? 'RANGED · 12.5m'
-                  : hud.weapon.equippedWeaponId === 'phase_rail'
-                    ? 'RAIL · 17.0m'
-                    : hud.weapon.equippedWeaponId === 'grav_breaker'
-                      ? 'BREAKER · 85% PIERCE'
-                      : 'MELEE · CHRONO BLADE'}
-              </span>
-              <span
-                className={`whitespace-nowrap shrink-0 ${
-                  resonance.primed && resonance.canConverge
-                    ? 'text-white font-semibold'
-                    : isEmpoweredReady
-                      ? 'text-amber-300 font-medium'
-                      : 'text-slate-500'
-                }`}
-              >
-                {resonance.primed && resonance.canConverge
-                  ? `CONVERGE [E] ${resonance.fluxCost}F`
-                  : isEmpoweredReady
-                    ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                      hud.weapon.equippedWeaponId === 'phase_rail'
-                      ? 'LANCE [E] EMPOWERED'
-                      : 'HEAVY [E] EMPOWERED'
-                    : hud.weapon.equippedWeaponId === 'pulsecaster'
-                      ? 'LANCE [E] 20F'
-                      : hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? 'NULL LANCE [E] 22F'
-                        : hud.weapon.equippedWeaponId === 'grav_breaker'
-                          ? 'CRUSH [E] 28F'
-                          : `HEAVY [E] ${
-                              hud.weapon.equippedUpgradeId === 'edge_harmonic_conductor' ? 30 : 25
-                            }F`}
-              </span>
-            </div>
-
-            {/* 4-Action Combat Bar */}
-            <div className="grid grid-cols-4 gap-1">
+            {/* Mobile / Touch 4-Action Combat Bar (Hidden on desktop so keyboard/mouse users get clean HUD) */}
+            <div className="[@media(min-width:640px)_and_(min-height:541px)]:hidden grid grid-cols-4 gap-1">
               <button
                 type="button"
                 tabIndex={-1}
@@ -2742,29 +2496,29 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   e.currentTarget.blur();
                   onLightAttack?.();
                 }}
-                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
+                className="px-0.5 py-1 text-[8px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-[#162032] border border-white/10 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
               >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[F] </span>LIGHT
+                LIGHT
               </button>
 
               <button
                 type="button"
                 tabIndex={-1}
                 data-testid="combat-btn-heavy"
-                title="Charged Heavy — hold LMB / J then release, or tap E / K / RMB"
+                title="Charged Heavy"
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onHeavyAttack?.();
                 }}
-                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-0.5 py-1 text-[8px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
                   resonance.primed && resonance.canConverge
                     ? 'bg-cyan-400/25 border-white text-white'
                     : isEmpoweredReady
                       ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                      : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
+                      : 'bg-[#0d131d] active:bg-[#162032] border-white/10 text-slate-200'
                 }`}
               >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[E] </span>HEAVY
+                HEAVY
               </button>
 
               <button
@@ -2775,7 +2529,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   e.currentTarget.blur();
                   onDodge?.();
                 }}
-                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+                className="px-0.5 py-1 text-[8px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-[#162032] border border-white/10 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
               >
                 DODGE
               </button>
@@ -2788,9 +2542,9 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   e.currentTarget.blur();
                   onParry?.();
                 }}
-                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+                className="px-0.5 py-1 text-[8px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-[#162032] border border-white/10 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
               >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Q] </span>PARRY
+                PARRY
               </button>
             </div>
 
@@ -2807,12 +2561,12 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       e.currentTarget.blur();
                       onGravityPin?.();
                     }}
-                    className={`px-1 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
+                    className={`px-1 py-0.5 text-[8px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
                       hud.gravityPin.status === 'active'
                         ? 'bg-purple-500/25 border-purple-300 text-purple-200'
                         : hud.gravityPin.status === 'ready'
                           ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                          : 'bg-[#0d131d] border-slate-800 text-slate-500'
+                          : 'bg-[#0c121c] border-white/10 text-slate-500'
                     }`}
                   >
                     {hud.gravityPin.status === 'active'
@@ -2832,10 +2586,10 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       e.currentTarget.blur();
                       onEchoCollapse?.();
                     }}
-                    className={`px-1 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
+                    className={`px-1 py-0.5 text-[8px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
                       hud.echoCollapse.status === 'ready'
                         ? 'bg-rose-500/25 border-rose-300 text-white'
-                        : 'bg-[#0d131d] border-slate-800 text-slate-500'
+                        : 'bg-[#0c121c] border-white/10 text-slate-500'
                     }`}
                   >
                     {hud.echoCollapse.cooldownTimer > 0
@@ -2846,31 +2600,6 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               </div>
             )}
 
-            {/* Environmental Interaction Action [I] */}
-            <div className="mt-1">
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="hud-btn-interact"
-                data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
-                data-interactable-id={hud.exploration.prompt.interactableId ?? 'none'}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onInteract?.();
-                }}
-                className={`w-full px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
-                  hud.exploration.prompt.canInteract
-                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-400 text-emerald-200'
-                    : hud.exploration.prompt.interactableId
-                      ? 'bg-amber-500/15 border-amber-400/70 text-amber-200'
-                      : 'bg-[#0d131d] hover:bg-[#162032] border-slate-800 text-slate-400'
-                }`}
-              >
-                {hud.exploration.prompt.canInteract && hud.exploration.prompt.label
-                  ? `[I] INTERACT · ${hud.exploration.prompt.label}`
-                  : '[I] INTERACT · SCAN NODE'}
-              </button>
-            </div>
           </div>
         </div>
 
@@ -2881,44 +2610,53 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           data-run-stage={hud.run.stage}
           className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:left-1/2 [@media(min-width:640px)_and_(min-height:541px)]:-translate-x-1/2 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-auto [@media(min-width:640px)_and_(min-height:541px)]:max-w-[calc(100vw-620px)] flex flex-col items-center gap-1"
         >
-          {/* Contextual Environmental Interaction Prompt Banner (Moved here so Top-Center stays slim) */}
-          {hud.exploration.prompt.interactableId && (
-            <div
-              data-testid="hud-interaction-prompt"
-              data-interactable-id={hud.exploration.prompt.interactableId}
-              data-interaction-status={hud.exploration.prompt.status}
-              data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
-              className={`w-full max-w-md bg-[#080d15]/95 border px-2.5 sm:px-3.5 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)] pointer-events-auto ${
-                hud.exploration.prompt.canInteract
-                  ? 'border-emerald-400/90 text-emerald-200'
-                  : hud.exploration.prompt.status === 'already_activated'
-                    ? 'border-cyan-500/60 text-cyan-200'
-                    : 'border-amber-400/80 text-amber-200'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold">
-                <span className="truncate">{hud.exploration.prompt.promptText}</span>
-                {hud.exploration.prompt.canInteract && (
+          {/* Single Contextual Environmental Interaction Prompt (Suppressed during intro/transition banners to prevent overlap) */}
+          {hud.exploration.prompt.interactableId &&
+            hud.run.stage !== 'intro' &&
+            hud.run.stage !== 'boss_intro' &&
+            hud.run.stage !== 'transition_to_boss' &&
+            (!hud.loom.active || inspectingLoomChamber) && (
+              <div
+                data-testid="hud-interaction-prompt"
+                data-interactable-id={hud.exploration.prompt.interactableId}
+                data-interaction-status={hud.exploration.prompt.status}
+                data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
+                className={`w-full max-w-md bg-[#070b12]/88 border px-3 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)] pointer-events-auto ${
+                  hud.exploration.prompt.canInteract
+                    ? 'border-emerald-400/80 text-emerald-200'
+                    : hud.exploration.prompt.status === 'already_activated'
+                      ? 'border-cyan-500/50 text-cyan-200'
+                      : 'border-amber-400/55 text-amber-200'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold">
+                  <span className="truncate">{hud.exploration.prompt.promptText}</span>
                   <button
                     type="button"
                     tabIndex={-1}
+                    data-testid="hud-btn-interact"
+                    data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
+                    data-interactable-id={hud.exploration.prompt.interactableId}
                     onClick={(e) => {
                       e.currentTarget.blur();
                       onInteract?.();
                     }}
-                    className="px-2 py-0.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[9px] font-bold uppercase tracking-wider cursor-pointer shrink-0 whitespace-nowrap"
+                    className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer shrink-0 whitespace-nowrap ${
+                      hud.exploration.prompt.canInteract
+                        ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950'
+                        : 'bg-[#0e1624] border border-amber-400/50 text-amber-200'
+                    }`}
                   >
-                    ACTIVATE [I]
+                    {hud.exploration.prompt.canInteract ? 'ACTIVATE [I]' : '[I] NODE'}
                   </button>
+                </div>
+                {hud.exploration.prompt.detailText && (
+                  <div className="text-[9px] sm:text-[10px] font-mono-tabular text-slate-300 truncate mt-0.5">
+                    {hud.exploration.prompt.detailText}
+                  </div>
                 )}
               </div>
-              {hud.exploration.prompt.detailText && (
-                <div className="text-[9px] sm:text-[10px] font-mono-tabular text-slate-300 truncate mt-0.5">
-                  {hud.exploration.prompt.detailText}
-                </div>
-              )}
-            </div>
-          )}
+            )}
 
           {/* Secret Area Discovery Banner */}
           {hud.exploration.lastDiscoveryBanner && (
@@ -2954,38 +2692,37 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               </div>
             )}
 
-          {/* Contextual Gameplay Tutorial Prompt Banner */}
+          {/* Contextual Gameplay Tutorial Prompt (Compact 1-line strip; hides during intro, loom, or urgent interact prompt so never double-stacks) */}
           <div
             data-testid="tutorial-prompt-banner"
             data-tutorial-step={hud.tutorial.step}
             data-tutorial-enabled={hud.tutorial.enabled ? 'true' : 'false'}
             data-tutorial-stuck={hud.tutorial.stuckHintActive ? 'true' : 'false'}
             className={
-              hud.run.stage === 'intro' || hud.loom.active
+              hud.run.stage === 'intro' ||
+              hud.run.stage === 'boss_intro' ||
+              hud.run.stage === 'transition_to_boss' ||
+              hud.loom.active ||
+              Boolean(hud.exploration.prompt.interactableId)
                 ? 'sr-only'
-                : 'w-full max-w-lg pointer-events-auto'
+                : 'w-full max-w-md pointer-events-auto'
             }
           >
             {hud.tutorial.enabled && hud.tutorial.step !== 'completed' ? (
-              <div className="bg-[#080d15]/92 border border-slate-700/90 px-2.5 py-1.5 sm:px-3.5 sm:py-2 shadow-[0_8px_22px_rgba(0,0,0,0.7)]">
+              <div className="bg-[#070b12]/80 border border-white/10 px-3 py-1.5 shadow-[0_6px_18px_rgba(0,0,0,0.55)]">
                 <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-widest text-amber-300 shrink-0">
-                      {tutorialMeta.badge}
-                    </span>
-                    <span aria-hidden="true" className="text-slate-600">
-                      ·
-                    </span>
-                    <span
-                      data-testid="tutorial-step-title"
-                      className="text-[9px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-400 truncate"
-                    >
+                  <span
+                    data-testid="tutorial-step-title"
+                    className="text-[9px] font-mono-tabular font-bold uppercase tracking-wider text-amber-300 truncate"
+                  >
+                    {tutorialMeta.badge} ·{' '}
+                    <span className="text-cyan-300">
                       {hud.tutorial.title.replace(
                         /^(STEP\s+\d+|CALIBRATION\s+\d\/\d|CHAPTER\s+[IVX]+)\s*·\s*/i,
                         ''
                       )}
                     </span>
-                  </div>
+                  </span>
                   <button
                     type="button"
                     tabIndex={-1}
@@ -2994,35 +2731,27 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       e.currentTarget.blur();
                       onToggleTutorial?.();
                     }}
-                    className="px-1.5 py-0.5 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0f1726] hover:bg-[#19253b] border border-slate-700 text-slate-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    className="text-[8px] font-mono-tabular uppercase text-slate-400 hover:text-white cursor-pointer whitespace-nowrap shrink-0"
                   >
                     HIDE [H]
                   </button>
                 </div>
                 <p
                   data-testid="tutorial-desktop-prompt"
-                  className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block text-[11px] text-slate-100 leading-snug"
+                  className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block text-[11px] text-slate-200 leading-snug line-clamp-1"
                 >
                   {hud.tutorial.desktopPrompt}
                 </p>
                 <p
                   data-testid="tutorial-mobile-prompt"
-                  className="[@media(min-width:640px)_and_(min-height:541px)]:hidden text-[10px] text-slate-100 leading-snug line-clamp-2"
+                  className="[@media(min-width:640px)_and_(min-height:541px)]:hidden text-[10px] text-slate-200 leading-snug line-clamp-2"
                 >
                   {hud.tutorial.mobilePrompt}
                 </p>
-                {tutorialMeta.whyItMatters && (
-                  <p
-                    data-testid="tutorial-why-context"
-                    className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-0.5 text-[10px] text-slate-400 leading-snug"
-                  >
-                    {tutorialMeta.whyItMatters}
-                  </p>
-                )}
                 {hud.tutorial.stuckHintActive && hud.tutorial.stuckHint && (
                   <p
                     data-testid="tutorial-stuck-hint"
-                    className="mt-1 pt-1 border-t border-amber-500/40 text-[10px] font-mono-tabular text-amber-300 leading-snug"
+                    className="mt-1 pt-1 border-t border-amber-500/30 text-[10px] font-mono-tabular text-amber-300 leading-snug"
                   >
                     HINT: {hud.tutorial.stuckHint}
                   </p>
@@ -3039,9 +2768,9 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       e.currentTarget.blur();
                       onToggleTutorial?.();
                     }}
-                    className="px-2.5 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#080d15]/90 hover:bg-[#162032] border border-slate-700/80 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
+                    className="px-2.5 py-1 text-[9px] font-mono-tabular uppercase bg-[#070b12]/75 hover:bg-[#162032] border border-white/10 text-slate-300 hover:text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    SHOW HINTS [H]
+                    HINTS [H]
                   </button>
                 </div>
               )

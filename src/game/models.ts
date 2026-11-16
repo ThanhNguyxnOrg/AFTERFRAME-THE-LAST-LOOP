@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GAME_CONFIG } from './config.ts';
 import type { CampaignChapterId, EnemyArchetype, ObstacleCollider } from './types.ts';
+import { applyVerticalVertexAO } from './visual-palette.ts';
 
 export interface PlayerRig {
   root: THREE.Group;
@@ -380,10 +381,10 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
 
   if (cCtx) {
     // Deep recessed carbon-slate channel bed
-    cCtx.fillStyle = '#060a11';
+    cCtx.fillStyle = '#050911';
     cCtx.fillRect(0, 0, size, size);
 
-    const palette = ['#121c2a', '#152132', '#101926', '#172436'];
+    const palette = ['#131f2f', '#172538', '#111b2a', '#19293e'];
 
     for (let y = 0; y < size; y += tile) {
       for (let x = 0; x < size; x += tile) {
@@ -396,18 +397,18 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
         cCtx.fillRect(x + 4, y + 4, tile - 8, tile - 8);
 
         // Crisp machined inner bevel highlight & dark recess outline
-        cCtx.strokeStyle = '#273a54';
+        cCtx.strokeStyle = '#334b6b';
         cCtx.lineWidth = 2;
         cCtx.strokeRect(x + 7, y + 7, tile - 14, tile - 14);
 
-        cCtx.strokeStyle = '#0b111c';
+        cCtx.strokeStyle = '#0a101b';
         cCtx.lineWidth = 1;
         cCtx.strokeRect(x + 14, y + 14, tile - 28, tile - 28);
 
         // Subtle axial brushed aluminum grain (aligned with deck seam axes)
-        cCtx.strokeStyle = 'rgba(148, 163, 184, 0.045)';
+        cCtx.strokeStyle = 'rgba(186, 210, 238, 0.055)';
         cCtx.lineWidth = 1;
-        for (let by = y + 20; by < y + tile - 20; by += 8) {
+        for (let by = y + 20; by < y + tile - 20; by += 7) {
           cCtx.beginPath();
           cCtx.moveTo(x + 18, by);
           cCtx.lineTo(x + tile - 18, by);
@@ -416,28 +417,35 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
 
         // Recessed service louver grate on every 4th alternating bay plate
         if ((tx + ty) % 4 === 2) {
-          cCtx.fillStyle = '#080d16';
-          cCtx.fillRect(x + 24, y + 24, tile - 48, tile - 48);
-          cCtx.strokeStyle = '#1f3047';
+          cCtx.fillStyle = '#070c15';
+          cCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
+          cCtx.strokeStyle = '#253954';
           cCtx.lineWidth = 2;
-          for (let gy = y + 30; gy < y + tile - 26; gy += 8) {
+          for (let gy = y + 28; gy < y + tile - 24; gy += 7) {
             cCtx.beginPath();
-            cCtx.moveTo(x + 28, gy);
-            cCtx.lineTo(x + tile - 28, gy);
+            cCtx.moveTo(x + 26, gy);
+            cCtx.lineTo(x + tile - 26, gy);
             cCtx.stroke();
           }
+          // Subtle amber industrial hazard chevron bar on utility hatches
+          cCtx.fillStyle = 'rgba(245, 158, 11, 0.28)';
+          for (let hx = x + 26; hx < x + tile - 32; hx += 12) {
+            cCtx.fillRect(hx, y + tile - 20, 6, 3);
+          }
         } else if ((tx + ty) % 4 === 0) {
-          // Subtle recessed maintenance cross-seam on primary deck tiles
-          cCtx.strokeStyle = '#0c1421';
+          // Recessed maintenance cross-seam + center inspection access cap
+          cCtx.strokeStyle = '#0c1522';
           cCtx.lineWidth = 2;
           cCtx.beginPath();
           cCtx.moveTo(x + 16, y + tile * 0.5);
           cCtx.lineTo(x + tile - 16, y + tile * 0.5);
+          cCtx.moveTo(x + tile * 0.5, y + 16);
+          cCtx.lineTo(x + tile * 0.5, y + tile - 16);
           cCtx.stroke();
         }
 
         // Machined corner fastener sockets
-        cCtx.fillStyle = '#070b13';
+        cCtx.fillStyle = '#060a12';
         const sockets = [
           [x + 12, y + 12],
           [x + tile - 12, y + 12],
@@ -450,10 +458,10 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
           cCtx.fill();
         }
 
-        // Restrained micro sector alignment notch
+        // Crisp sector alignment micro-strips
         if ((tx + ty) % 2 === 0) {
-          cCtx.fillStyle = 'rgba(56, 189, 248, 0.22)';
-          cCtx.fillRect(x + 22, y + tile - 17, 22, 2);
+          cCtx.fillStyle = 'rgba(56, 189, 248, 0.28)';
+          cCtx.fillRect(x + 22, y + tile - 17, 24, 2);
         }
       }
     }
@@ -479,17 +487,17 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
       for (let x = 0; x < size; x += tile) {
         const tx = x / tile;
         const ty = y / tile;
-        bCtx.strokeStyle = '#181818';
+        bCtx.strokeStyle = '#141414';
         bCtx.lineWidth = 6;
         bCtx.strokeRect(x + 2, y + 2, tile - 4, tile - 4);
 
-        bCtx.strokeStyle = '#cfcfcf';
+        bCtx.strokeStyle = '#dcdcdc';
         bCtx.lineWidth = 2;
         bCtx.strokeRect(x + 7, y + 7, tile - 14, tile - 14);
 
         if ((tx + ty) % 4 === 2) {
-          bCtx.fillStyle = '#3c3c3c';
-          bCtx.fillRect(x + 24, y + 24, tile - 48, tile - 48);
+          bCtx.fillStyle = '#343434';
+          bCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
         }
       }
     }
@@ -507,17 +515,17 @@ export function createIndustrialDeckTextures(maxAnisotropy: number): {
   roughCanvas.height = size;
   const rCtx = roughCanvas.getContext('2d');
   if (rCtx) {
-    rCtx.fillStyle = '#c4c4c4';
+    rCtx.fillStyle = '#cfcfcf';
     rCtx.fillRect(0, 0, size, size);
     for (let y = 0; y < size; y += tile) {
       for (let x = 0; x < size; x += tile) {
         const tx = x / tile;
         const ty = y / tile;
-        rCtx.fillStyle = (tx + ty) % 2 === 0 ? '#5c5c5c' : '#747474';
+        rCtx.fillStyle = (tx + ty) % 2 === 0 ? '#4a4a4a' : '#646464';
         rCtx.fillRect(x + 8, y + 8, tile - 16, tile - 16);
         if ((tx + ty) % 4 === 2) {
-          rCtx.fillStyle = '#a8a8a8';
-          rCtx.fillRect(x + 24, y + 24, tile - 48, tile - 48);
+          rCtx.fillStyle = '#b4b4b4';
+          rCtx.fillRect(x + 22, y + 22, tile - 44, tile - 44);
         }
       }
     }
@@ -594,7 +602,11 @@ export function buildArenaEnvironment(
   subDeckFans: THREE.Object3D[];
   conduitGlowMat: THREE.MeshBasicMaterial;
   floorTelemetryMat: THREE.ShaderMaterial;
+  skyDomeMat: THREE.ShaderMaterial;
   planetMat: THREE.ShaderMaterial;
+  planetRingMat: THREE.ShaderMaterial;
+  orbitalDrydockGroup: THREE.Group;
+  beamConeMat: THREE.MeshBasicMaterial;
   loomLightShaftMat: THREE.MeshBasicMaterial;
   obstacleMeshes: THREE.Object3D[];
   obstacleMeshById: Map<string, THREE.Object3D>;
@@ -603,16 +615,59 @@ export function buildArenaEnvironment(
   const armorBump = createArmorDetailBumpTexture();
   const arenaRadius = GAME_CONFIG.arena.radius;
 
+  // 0. GLSL Orbital Nebula Sky Dome (replaces flat background void with deep atmospheric horizon + subtle nebula bands)
+  const skyDomeMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uZenith: { value: new THREE.Color(0x040812) },
+      uHorizon: { value: new THREE.Color(0x10243d) },
+      uNebula: { value: new THREE.Color(0x22d3ee) },
+    },
+    vertexShader: `
+      varying vec3 vWorldDir;
+      void main() {
+        vWorldDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uZenith;
+      uniform vec3 uHorizon;
+      uniform vec3 uNebula;
+      varying vec3 vWorldDir;
+      void main() {
+        float h = clamp(vWorldDir.y * 0.5 + 0.5, 0.0, 1.0);
+        float horizonBand = exp(-abs(vWorldDir.y - 0.04) * 5.2);
+        vec3 baseSky = mix(uZenith, uHorizon, smoothstep(0.32, 0.56, h) * 0.85 + horizonBand * 0.55);
+        float waveA = sin(vWorldDir.x * 5.5 + vWorldDir.z * 3.8 + uTime * 0.045) * 0.5 + 0.5;
+        float waveB = sin(vWorldDir.z * 7.2 - vWorldDir.y * 6.0 - uTime * 0.03) * 0.5 + 0.5;
+        float nebulaMask = smoothstep(-0.1, 0.45, vWorldDir.y) * (1.0 - smoothstep(0.55, 0.92, vWorldDir.y));
+        float cloud = pow(waveA * waveB, 1.35) * nebulaMask;
+        vec3 col = baseSky + uNebula * (cloud * 0.24 + horizonBand * 0.08);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  });
+  const skyDomeMesh = new THREE.Mesh(new THREE.SphereGeometry(88, 32, 20), skyDomeMat);
+  skyDomeMesh.name = 'NadirOrbitalSkyDome';
+  skyDomeMesh.matrixAutoUpdate = false;
+  skyDomeMesh.updateMatrix();
+  scene.add(skyDomeMesh);
+
   // 1. Main Layered Industrial Deck Floor
   const floorGeo = new THREE.CylinderGeometry(arenaRadius + 1.15, arenaRadius + 2.1, 0.9, 64);
   const floorMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     map: colorMap,
     bumpMap,
-    bumpScale: 0.028,
+    bumpScale: 0.032,
     roughnessMap,
-    roughness: 0.56,
-    metalness: 0.48,
+    roughness: 0.54,
+    metalness: 0.5,
   });
   const floorMesh = new THREE.Mesh(floorGeo, floorMat);
   floorMesh.position.y = -0.45;
@@ -880,7 +935,46 @@ export function buildArenaEnvironment(
     scene.add(channelCoreInst);
   }
 
-  // 3. Shared Environment PBR Materials (Calibrated Albedo + Roughness/Metalness Contrast)
+  // Outer Perimeter Sector Ring + Cardinal Cable Raceway Strips (visual floor zoning without obstructing footwork)
+  const outerSectorRing = new THREE.Mesh(
+    new THREE.RingGeometry(16.12, 16.36, 72),
+    tealSubtleMat
+  );
+  outerSectorRing.rotation.x = -Math.PI / 2;
+  outerSectorRing.position.set(0, 0.015, 0);
+  outerSectorRing.updateMatrix();
+  outerSectorRing.matrixAutoUpdate = false;
+  scene.add(outerSectorRing);
+
+  const cardinalRacewayGeo = new RoundedBoxGeometry(0.42, 0.024, 11.4, 1, 0.008);
+  const cardinalFiberGeo = new THREE.PlaneGeometry(0.09, 11.2);
+  cardinalFiberGeo.rotateX(-Math.PI / 2);
+  const racewayInst = new THREE.InstancedMesh(cardinalRacewayGeo, conduitEdgeMat, 4);
+  const racewayGlowInst = new THREE.InstancedMesh(cardinalFiberGeo, conduitGlowMat, 4);
+  const rwDummy = new THREE.Object3D();
+  for (let i = 0; i < 4; i++) {
+    const cAngle = (i * Math.PI) / 2;
+    const dist = 11.55;
+    rwDummy.position.set(Math.sin(cAngle) * dist, 0.01, -2 * Math.cos(cAngle) * 0.25 + Math.cos(cAngle) * dist);
+    // Keep anchor center at (0, 0) on outer perimeter ring radial alignment
+    rwDummy.position.set(Math.sin(cAngle) * 11.4, 0.011, Math.cos(cAngle) * 11.4);
+    rwDummy.rotation.set(0, cAngle, 0);
+    rwDummy.updateMatrix();
+    racewayInst.setMatrixAt(i, rwDummy.matrix);
+    rwDummy.position.y = 0.024;
+    rwDummy.updateMatrix();
+    racewayGlowInst.setMatrixAt(i, rwDummy.matrix);
+  }
+  racewayInst.instanceMatrix.needsUpdate = true;
+  racewayGlowInst.instanceMatrix.needsUpdate = true;
+  racewayInst.frustumCulled = false;
+  racewayGlowInst.frustumCulled = false;
+  racewayInst.matrixAutoUpdate = false;
+  racewayGlowInst.matrixAutoUpdate = false;
+  scene.add(racewayInst);
+  scene.add(racewayGlowInst);
+
+  // 3. Shared Environment PBR Materials (Calibrated Albedo + Roughness/Metalness Contrast + Vertex AO Materials)
   const obstacleMeshes: THREE.Object3D[] = [];
   const obstacleMeshById = new Map<string, THREE.Object3D>();
 
@@ -891,20 +985,36 @@ export function buildArenaEnvironment(
     roughness: 0.46,
     metalness: 0.64,
   });
+  const deepGraphiteAoMat = new THREE.MeshStandardMaterial({
+    color: 0x1e2b3f,
+    bumpMap: armorBump,
+    bumpScale: 0.014,
+    roughness: 0.48,
+    metalness: 0.62,
+    vertexColors: true,
+  });
   const steelBlueMat = new THREE.MeshStandardMaterial({
-    color: 0x2f435e,
+    color: 0x334966,
+    bumpMap: armorBump,
+    bumpScale: 0.01,
+    roughness: 0.28,
+    metalness: 0.76,
+  });
+  const steelBlueAoMat = new THREE.MeshStandardMaterial({
+    color: 0x354d6b,
     bumpMap: armorBump,
     bumpScale: 0.01,
     roughness: 0.3,
-    metalness: 0.74,
+    metalness: 0.75,
+    vertexColors: true,
   });
   const paleAlloyTrimMat = new THREE.MeshStandardMaterial({
-    color: 0x8698b0,
+    color: 0x8ea0b8,
     roughness: 0.22,
-    metalness: 0.85,
+    metalness: 0.86,
   });
   const warmBronzeTrimMat = new THREE.MeshStandardMaterial({
-    color: 0xb45309,
+    color: 0xc2610c,
     roughness: 0.28,
     metalness: 0.82,
   });
@@ -916,16 +1026,24 @@ export function buildArenaEnvironment(
   const hazardAmberMat = new THREE.MeshStandardMaterial({
     color: 0xf59e0b,
     emissive: 0xd97706,
-    emissiveIntensity: 1.25,
+    emissiveIntensity: 1.28,
     roughness: 0.2,
     metalness: 0.5,
   });
   const cyanEmissiveMat = new THREE.MeshStandardMaterial({
     color: 0x38bdf8,
     emissive: 0x06b6d4,
-    emissiveIntensity: 1.4,
+    emissiveIntensity: 1.45,
     roughness: 0.16,
     metalness: 0.42,
+  });
+  const beamConeMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.036,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
   });
 
   // Diegetic Facility Signage Textures
@@ -937,7 +1055,11 @@ export function buildArenaEnvironment(
   });
 
   // 4. Unified 16-Segment Observation Containment Ring + Sub-Deck Radial Trusses (InstancedMesh Draw-Call Batching)
-  const wallBoxGeo = new RoundedBoxGeometry(4.9, 1.72, 0.82, 1, 0.12);
+  const wallBoxGeo = applyVerticalVertexAO(
+    new RoundedBoxGeometry(4.9, 1.72, 0.82, 1, 0.12),
+    0.46,
+    1.0
+  );
   const recessedPanelGeo = new RoundedBoxGeometry(3.86, 0.94, 0.88, 1, 0.08);
   const verticalRibGeo = new RoundedBoxGeometry(0.24, 1.68, 0.94, 1, 0.04);
   const topRailGeo = new RoundedBoxGeometry(5.36, 0.32, 0.98, 1, 0.1);
@@ -952,6 +1074,10 @@ export function buildArenaEnvironment(
   const sillLightGeo = new THREE.BoxGeometry(1.5, 0.055, 0.92);
   const archColumnGeo = new RoundedBoxGeometry(1.12, 11.4, 1.35, 1, 0.14);
   const archKneeGeo = new RoundedBoxGeometry(1.02, 0.82, 3.4, 1, 0.1);
+  const archUpperBoomGeo = new RoundedBoxGeometry(0.86, 0.56, 4.8, 1, 0.08);
+  const floodPodGeo = new RoundedBoxGeometry(0.95, 0.38, 0.58, 1, 0.06);
+  const floodLensGeo = new THREE.BoxGeometry(0.76, 0.1, 0.42);
+  const beamConeGeo = new THREE.CylinderGeometry(0.32, 2.5, 7.6, 16, 1, true);
   const archLightGeo = new THREE.BoxGeometry(0.18, 7.6, 0.18);
   const beaconCapGeo = new THREE.BoxGeometry(0.55, 0.12, 0.55);
   const ventHousingGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.2, 14);
@@ -981,7 +1107,7 @@ export function buildArenaEnvironment(
   };
 
   const trussInst = createStaticInstanced(radialTrussGeo, orbitalRingMat, numSegments);
-  const baseWallInst = createStaticInstanced(wallBoxGeo, deepGraphiteMat, numSegments, enableShadows);
+  const baseWallInst = createStaticInstanced(wallBoxGeo, deepGraphiteAoMat, numSegments, enableShadows);
   const insetPanelInst = createStaticInstanced(recessedPanelGeo, steelBlueMat, numSegments);
   const vRibInst = createStaticInstanced(verticalRibGeo, paleAlloyTrimMat, numSegments * 2);
   const lowerPipeInst = createStaticInstanced(bumperCylGeo, paleAlloyTrimMat, numSegments);
@@ -1003,6 +1129,10 @@ export function buildArenaEnvironment(
   const monitorFrameInst = createStaticInstanced(monitorFrameGeo, deepGraphiteMat, monitorCount);
   const archRibInst = createStaticInstanced(archColumnGeo, deepGraphiteMat, archCount);
   const archKneeInst = createStaticInstanced(archKneeGeo, steelBlueMat, archCount);
+  const archBoomInst = createStaticInstanced(archUpperBoomGeo, steelBlueMat, archCount);
+  const floodPodInst = createStaticInstanced(floodPodGeo, deepGraphiteMat, archCount);
+  const floodLensInst = createStaticInstanced(floodLensGeo, cyanEmissiveMat, archCount);
+  const beamConeInst = createStaticInstanced(beamConeGeo, beamConeMat, archCount);
   const archLightInst = createStaticInstanced(archLightGeo, cyanEmissiveMat, archCount);
   const beaconCapInst = createStaticInstanced(beaconCapGeo, hazardAmberMat, archCount);
 
@@ -1096,6 +1226,10 @@ export function buildArenaEnvironment(
     if (i % 4 === 0) {
       setInstPart(archRibInst, archIdx, 0, 5.6, 1.45);
       setInstPart(archKneeInst, archIdx, 0, 10.6, 0.15);
+      setInstPart(archBoomInst, archIdx, 0, 11.2, -1.65, -0.18, 0, 0);
+      setInstPart(floodPodInst, archIdx, 0, 8.6, 0.55, 0.34, 0, 0);
+      setInstPart(floodLensInst, archIdx, 0, 8.42, 0.48, 0.34, 0, 0);
+      setInstPart(beamConeInst, archIdx, 0, 5.05, -0.9, 0.34, 0, 0);
       setInstPart(archLightInst, archIdx, 0, 6.2, 0.78);
       setInstPart(beaconCapInst, archIdx, 0, 3.64, 0);
       archIdx++;
@@ -1120,13 +1254,17 @@ export function buildArenaEnvironment(
     monitorFrameInst,
     archRibInst,
     archKneeInst,
+    archBoomInst,
+    floodPodInst,
+    floodLensInst,
+    beamConeInst,
     archLightInst,
     beaconCapInst,
   ]) {
     inst.instanceMatrix.needsUpdate = true;
   }
 
-  // 4B. Package A: Orbital Planet Vista, Outer Station Trusses, Sub-Deck Turbines, Floor Reactor Grates & Overhead Gantries
+  // 4B. Package A + v1.7.0 Vista: Orbital Planet Vista, Drydock Ring Silhouettes, Outer Trusses, Sub-Deck Turbines & Gantries
   const subDeckFans: THREE.Object3D[] = [];
   const orbitalVistaGroup = new THREE.Group();
   orbitalVistaGroup.name = 'NadirOrbitalVistaGroup';
@@ -1157,16 +1295,16 @@ export function buildArenaEnvironment(
       void main() {
         vec3 n = normalize(vNormalDir);
         vec3 v = normalize(vViewPos);
-        vec3 lightDir = normalize(vec3(0.62, 0.54, 0.56));
-        float ndl = clamp(dot(n, lightDir) * 0.72 + 0.14, 0.0, 1.0);
+        vec3 lightDir = normalize(vec3(0.62, 0.56, 0.52));
+        float ndl = clamp(dot(n, lightDir) * 0.85 + 0.18, 0.0, 1.0);
         float lat = vLocalPos.y;
-        float band = sin(lat * 18.0 + sin(vLocalPos.x * 5.0 + uTime * 0.04) * 0.65) * 0.5 + 0.5;
-        vec3 deepBody = vec3(0.035, 0.068, 0.125);
-        vec3 stormBand = mix(vec3(0.065, 0.14, 0.24), uAccent * 0.34, 0.42);
+        float band = sin(lat * 20.0 + sin(vLocalPos.x * 5.2 + uTime * 0.04) * 0.72) * 0.5 + 0.5;
+        vec3 deepBody = vec3(0.055, 0.095, 0.175);
+        vec3 stormBand = mix(vec3(0.10, 0.21, 0.34), uAccent * 0.52, 0.45);
         vec3 baseCol = mix(deepBody, stormBand, band);
-        float fresnel = pow(clamp(1.0 - max(dot(n, v), 0.0), 0.0, 1.0), 2.75);
-        vec3 rim = uAccent * (fresnel * 0.62 * (0.4 + ndl * 0.6));
-        vec3 finalCol = baseCol * (0.24 + ndl * 0.78) + rim;
+        float fresnel = pow(clamp(1.0 - max(dot(n, v), 0.0), 0.0, 1.0), 2.35);
+        vec3 rim = uAccent * (fresnel * 0.88 * (0.45 + ndl * 0.55));
+        vec3 finalCol = baseCol * (0.28 + ndl * 0.92) + rim;
         gl_FragColor = vec4(finalCol, 1.0);
       }
     `,
@@ -1174,10 +1312,10 @@ export function buildArenaEnvironment(
   });
 
   const orbitalPlanetMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(18.5, 36, 26),
+    new THREE.SphereGeometry(16.5, 36, 26),
     planetMat
   );
-  orbitalPlanetMesh.position.set(-38, 10.5, -58);
+  orbitalPlanetMesh.position.set(-24, 11.5, -45);
   orbitalVistaGroup.add(orbitalPlanetMesh);
 
   const planetRingMat = new THREE.ShaderMaterial({
@@ -1196,12 +1334,12 @@ export function buildArenaEnvironment(
       varying vec3 vLocalPos;
       void main() {
         float r = length(vLocalPos.xy);
-        float normR = clamp((r - 22.5) / 9.0, 0.0, 1.0);
-        float bands = sin(normR * 28.0) * 0.5 + 0.5;
+        float normR = clamp((r - 20.0) / 9.5, 0.0, 1.0);
+        float bands = sin(normR * 30.0) * 0.5 + 0.5;
         float gap = smoothstep(0.42, 0.46, normR) * (1.0 - smoothstep(0.52, 0.56, normR));
         float edgeFade = smoothstep(0.0, 0.16, normR) * (1.0 - smoothstep(0.84, 1.0, normR));
-        float alpha = edgeFade * (1.0 - gap * 0.85) * (0.18 + bands * 0.24);
-        vec3 col = mix(vec3(0.16, 0.26, 0.42), uAccent * 0.64, bands * 0.6);
+        float alpha = edgeFade * (1.0 - gap * 0.85) * (0.24 + bands * 0.32);
+        vec3 col = mix(vec3(0.22, 0.34, 0.52), uAccent * 0.78, bands * 0.68);
         gl_FragColor = vec4(col, alpha);
       }
     `,
@@ -1212,12 +1350,50 @@ export function buildArenaEnvironment(
   });
 
   const planetRingMesh = new THREE.Mesh(
-    new THREE.RingGeometry(22.5, 31.5, 64),
+    new THREE.RingGeometry(20.0, 29.5, 64),
     planetRingMat
   );
   planetRingMesh.position.copy(orbitalPlanetMesh.position);
-  planetRingMesh.rotation.set(Math.PI * 0.38, 0.18, -0.26);
+  planetRingMesh.rotation.set(Math.PI * 0.38, 0.2, -0.24);
   orbitalVistaGroup.add(planetRingMesh);
+
+  // Drifting Distant Orbital Drydock Arcs & Relay Beacons (outer Layer 1 silhouettes, fog-exempt)
+  const orbitalDrydockGroup = new THREE.Group();
+  orbitalDrydockGroup.name = 'NadirOrbitalDrydockGroup';
+  const drydockHullMat = new THREE.MeshStandardMaterial({
+    color: 0x1e2c42,
+    roughness: 0.48,
+    metalness: 0.72,
+    fog: false,
+  });
+  const drydockNavMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    fog: false,
+  });
+  const drydockArcGeo = new THREE.BoxGeometry(11.5, 1.35, 1.85);
+  const drydockSpineGeo = new THREE.BoxGeometry(1.1, 4.8, 1.2);
+  const drydockNavGeo = new THREE.BoxGeometry(0.45, 0.45, 0.45);
+  for (let d = 0; d < 4; d++) {
+    const orbitAngle = (d / 4) * Math.PI * 2 + 0.42;
+    const dRadius = 52;
+    const dPivot = new THREE.Group();
+    dPivot.position.set(
+      Math.sin(orbitAngle) * dRadius,
+      6.8 + (d % 2) * 3.4,
+      Math.cos(orbitAngle) * dRadius
+    );
+    dPivot.rotation.y = orbitAngle;
+    const arcHull = new THREE.Mesh(drydockArcGeo, drydockHullMat);
+    const spine = new THREE.Mesh(drydockSpineGeo, drydockHullMat);
+    spine.position.set(3.8 * (d % 2 === 0 ? 1 : -1), 0.4, 0);
+    const navA = new THREE.Mesh(drydockNavGeo, drydockNavMat);
+    navA.position.set(-5.2, 0.75, 0);
+    const navB = new THREE.Mesh(drydockNavGeo, drydockNavMat);
+    navB.position.set(5.2, 0.75, 0);
+    dPivot.add(arcHull, spine, navA, navB);
+    orbitalDrydockGroup.add(dPivot);
+  }
+  orbitalVistaGroup.add(orbitalDrydockGroup);
 
   // 4 Outer Station Superstructure Trusses & Diagonal Sub-Deck Trench Turbine Wells
   const superTrussGeo = new THREE.BoxGeometry(1.8, 16.5, 2.2);
@@ -1413,8 +1589,12 @@ export function buildArenaEnvironment(
     if (obs.id === 'loom-pylon') {
       loomPylonGroup = group;
       const lowerPlinth = new THREE.Mesh(
-        new THREE.CylinderGeometry(obs.radius * 1.06, obs.radius * 1.16, 0.5, 24),
-        deepGraphiteMat
+        applyVerticalVertexAO(
+          new THREE.CylinderGeometry(obs.radius * 1.06, obs.radius * 1.16, 0.5, 24),
+          0.42,
+          1.0
+        ),
+        deepGraphiteAoMat
       );
       lowerPlinth.position.y = 0.25;
       lowerPlinth.castShadow = enableShadows;
@@ -1422,12 +1602,29 @@ export function buildArenaEnvironment(
       group.add(lowerPlinth);
 
       const upperPlinth = new THREE.Mesh(
-        new THREE.CylinderGeometry(obs.radius * 0.9, obs.radius * 1.02, 0.56, 24),
-        steelBlueMat
+        applyVerticalVertexAO(
+          new THREE.CylinderGeometry(obs.radius * 0.9, obs.radius * 1.02, 0.56, 24),
+          0.54,
+          1.0
+        ),
+        steelBlueAoMat
       );
       upperPlinth.position.y = 0.74;
       upperPlinth.castShadow = enableShadows;
       group.add(upperPlinth);
+
+      // 4 Stabilizer Buttress Struts anchoring the Chronicle Loom Core to its armored plinth
+      const strutGeo = new RoundedBoxGeometry(0.2, 1.35, 0.34, 1, 0.04);
+      for (let s = 0; s < 4; s++) {
+        const sAngle = (s / 4) * Math.PI * 2;
+        const strutPivot = new THREE.Group();
+        strutPivot.rotation.y = sAngle;
+        const strut = new THREE.Mesh(strutGeo, steelBlueMat);
+        strut.position.set(0, 0.85, obs.radius * 0.84);
+        strut.rotation.x = 0.42;
+        strutPivot.add(strut);
+        group.add(strutPivot);
+      }
 
       const baseGlowRing = new THREE.Mesh(
         new THREE.TorusGeometry(obs.radius * 0.96, 0.05, 12, 36),
@@ -1518,10 +1715,14 @@ export function buildArenaEnvironment(
       loomInnerRingMesh.rotation.y = Math.PI * 0.3;
       group.add(loomInnerRingMesh);
     } else {
-      // High-Detail Conduit Cover Pillar
+      // High-Detail Conduit Cover Pillar with Analytical Base Vertex-AO Grounding
       const basePedestal = new THREE.Mesh(
-        new THREE.CylinderGeometry(obs.radius * 0.94, obs.radius * 1.04, 0.56, 20),
-        steelBlueMat
+        applyVerticalVertexAO(
+          new THREE.CylinderGeometry(obs.radius * 0.94, obs.radius * 1.04, 0.56, 20),
+          0.42,
+          1.0
+        ),
+        steelBlueAoMat
       );
       basePedestal.position.y = 0.28;
       basePedestal.castShadow = enableShadows;
@@ -1537,8 +1738,12 @@ export function buildArenaEnvironment(
       group.add(baseCollar);
 
       const mainShaft = new THREE.Mesh(
-        new THREE.CylinderGeometry(obs.radius * 0.72, obs.radius * 0.76, obs.height - 0.8, 24),
-        deepGraphiteMat
+        applyVerticalVertexAO(
+          new THREE.CylinderGeometry(obs.radius * 0.72, obs.radius * 0.76, obs.height - 0.8, 24),
+          0.52,
+          1.0
+        ),
+        deepGraphiteAoMat
       );
       mainShaft.position.y = obs.height * 0.5;
       mainShaft.castShadow = enableShadows;
@@ -1610,7 +1815,7 @@ export function buildArenaEnvironment(
   const loomLightShaftMat = new THREE.MeshBasicMaterial({
     color: 0x22d3ee,
     transparent: true,
-    opacity: 0.034,
+    opacity: 0.036,
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -1633,7 +1838,11 @@ export function buildArenaEnvironment(
     subDeckFans,
     conduitGlowMat,
     floorTelemetryMat,
+    skyDomeMat,
     planetMat,
+    planetRingMat,
+    orbitalDrydockGroup,
+    beamConeMat,
     loomLightShaftMat,
     obstacleMeshes,
     obstacleMeshById,
