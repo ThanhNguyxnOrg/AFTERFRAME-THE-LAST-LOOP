@@ -574,7 +574,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   FIRST-TIME OPERATOR BRIEFING
                 </span>
                 <span className="text-[11px] font-mono-tabular text-slate-400">
-                  SECTOR 04 · READY
+                  SECTOR 04 · v1.7.0
                 </span>
               </div>
 
@@ -1598,8 +1598,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <div className="flex items-center gap-3">
           <a
             data-testid="title-download-bundle"
-            href="./AFTERFRAME-v1.6.0-chronicle-complete.bundle"
-            download="AFTERFRAME-v1.6.0-chronicle-complete.bundle"
+            href="./AFTERFRAME-v1.7.0-chronicle-complete.bundle"
+            download="AFTERFRAME-v1.7.0-chronicle-complete.bundle"
             onClick={(e) => {
               e.currentTarget.blur();
               handleMarkBundleDownloaded();
@@ -1608,7 +1608,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           >
             {bundleDownloadStatus === 'saved'
               ? 'SAVED .BUNDLE ✓'
-              : 'DOWNLOAD v1.6.0 .BUNDLE (16 KB)'}
+              : 'DOWNLOAD v1.7.0 .BUNDLE'}
           </a>
           <span className="hidden md:inline text-slate-500">
             CHRONO RIG TELEMETRY · DETERMINISTIC LOCAL SIMULATION

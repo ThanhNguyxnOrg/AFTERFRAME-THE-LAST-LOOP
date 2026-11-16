@@ -41,6 +41,10 @@ import {
   computeBossTelegraphVisuals,
   computeEnemyDeRezState,
 } from './combat-vfx.ts';
+import {
+  CHAPTER_VISUAL_LOOKS,
+  resolveChapterVisualLook,
+} from './visual-palette.ts';
 import type {
   CameraSettings,
   CampaignChapterId,
@@ -346,54 +350,6 @@ const BLENDER_CHAPTER_ASSETS: Partial<
   },
 };
 
-const CHAPTER_LOOKS: Record<
-  CampaignChapterId,
-  {
-    background: number;
-    fogDensity: number;
-    hemi: number;
-    key: number;
-    rim: number;
-    loom: number;
-    conduit: number;
-    practical: number;
-    keyIntensity: number;
-    rimIntensity: number;
-    loomIntensity: number;
-  }
-> = {
-  prologue: {
-    background: 0x080d16, fogDensity: 0.0165, hemi: 0x7dd3fc, key: 0xfffbeb,
-    rim: 0x38bdf8, loom: 0x22d3ee, conduit: 0x22d3ee, practical: 0xf59e0b,
-    keyIntensity: 2.65, rimIntensity: 1.55, loomIntensity: 5.4,
-  },
-  chapter_1_helix: {
-    background: 0x0c0d12, fogDensity: 0.018, hemi: 0xa5b4fc, key: 0xffedd5,
-    rim: 0x38bdf8, loom: 0xf59e0b, conduit: 0x22d3ee, practical: 0xf59e0b,
-    keyIntensity: 2.45, rimIntensity: 1.65, loomIntensity: 5.4,
-  },
-  chapter_2_choir: {
-    background: 0x071217, fogDensity: 0.017, hemi: 0x67e8f9, key: 0xfff3c4,
-    rim: 0xfbbf24, loom: 0x38bdf8, conduit: 0x38bdf8, practical: 0xd97706,
-    keyIntensity: 2.35, rimIntensity: 1.5, loomIntensity: 5.8,
-  },
-  chapter_3_curator: {
-    background: 0x0d0818, fogDensity: 0.019, hemi: 0xc4b5fd, key: 0xede9fe,
-    rim: 0xa855f7, loom: 0xc084fc, conduit: 0xa855f7, practical: 0x7c3aed,
-    keyIntensity: 2.25, rimIntensity: 1.7, loomIntensity: 6.0,
-  },
-  chapter_4_matron: {
-    background: 0x14080d, fogDensity: 0.0185, hemi: 0xfecdd3, key: 0xfff1f2,
-    rim: 0xf43f5e, loom: 0xfb7185, conduit: 0xf43f5e, practical: 0xe11d48,
-    keyIntensity: 2.4, rimIntensity: 1.55, loomIntensity: 5.6,
-  },
-  chapter_5_loom: {
-    background: 0x080d16, fogDensity: 0.0155, hemi: 0x7dd3fc, key: 0xfff7d6,
-    rim: 0xfbbf24, loom: 0x22d3ee, conduit: 0x22d3ee, practical: 0xf59e0b,
-    keyIntensity: 2.55, rimIntensity: 1.65, loomIntensity: 7.6,
-  },
-};
-
 export class ArenaSceneRenderer {
   private renderer: THREE.WebGLRenderer | null = null;
   private webglAvailable = false;
@@ -578,7 +534,11 @@ export class ArenaSceneRenderer {
   private obstacleMeshById?: Map<string, THREE.Object3D>;
   private subDeckFans: THREE.Object3D[] = [];
   private floorTelemetryMat?: THREE.ShaderMaterial;
+  private skyDomeMat?: THREE.ShaderMaterial;
   private planetMat?: THREE.ShaderMaterial;
+  private planetRingMat?: THREE.ShaderMaterial;
+  private orbitalDrydockGroup?: THREE.Group;
+  private beamConeMat?: THREE.MeshBasicMaterial;
   private dynamicObstaclesGroup?: THREE.Group;
   private dynamicObstacleRigs: Array<{
     group: THREE.Group;
@@ -603,6 +563,7 @@ export class ArenaSceneRenderer {
     group: THREE.Group;
     coreMesh: THREE.Mesh;
     coreMat: THREE.MeshBasicMaterial;
+    holoPaneMat: THREE.MeshBasicMaterial;
     ringMesh: THREE.Mesh;
     ringMat: THREE.MeshBasicMaterial;
   }> = [];
@@ -762,7 +723,7 @@ export class ArenaSceneRenderer {
         roomEnv.dispose();
         pmrem.dispose();
         this.scene.environment = this.pmremEnvTarget.texture;
-        this.scene.environmentIntensity = this.isHeadless || this.isSoftwareGl ? 0.54 : 0.58;
+        this.scene.environmentIntensity = this.isHeadless || this.isSoftwareGl ? 0.62 : 0.68;
       } catch {
         if (!this.isHeadless && !this.isSoftwareGl) {
           this.scene.environment = this.studioEnvTex;
@@ -787,7 +748,7 @@ export class ArenaSceneRenderer {
     );
 
     // Balanced 3-Point + Practical Industrial Sci-Fi Lighting Rig
-    const hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x162238, 1.18);
+    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x162235, 1.24);
     hemiLight.position.set(0, 28, 0);
     this.scene.add(hemiLight);
     this.hemiLight = hemiLight;
@@ -851,7 +812,11 @@ export class ArenaSceneRenderer {
     this.subDeckFans = env.subDeckFans;
     this.conduitGlowMat = env.conduitGlowMat;
     this.floorTelemetryMat = env.floorTelemetryMat;
+    this.skyDomeMat = env.skyDomeMat;
     this.planetMat = env.planetMat;
+    this.planetRingMat = env.planetRingMat;
+    this.orbitalDrydockGroup = env.orbitalDrydockGroup;
+    this.beamConeMat = env.beamConeMat;
     this.obstacleMeshes = env.obstacleMeshes;
     this.obstacleMeshById = env.obstacleMeshById;
 
@@ -1108,11 +1073,14 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.loomSealsGroup);
 
-    // Phase 18: Pre-allocate Pooled Environmental Interactable Rigs (Terminals, Power Nodes, Gate Controls, Echo Conduits)
+    // Phase 18: Pre-allocate Pooled Environmental Interactable Rigs (Terminals with Holographic Slabs, Power Nodes, Gate Controls)
     this.interactablesGroup = new THREE.Group();
     this.interactablesGroup.name = 'EnvironmentalInteractablesPool';
     const intPedestalGeo = new THREE.CylinderGeometry(0.28, 0.38, 1.05, 8);
-    const intCoreGeo = new THREE.OctahedronGeometry(0.26, 0);
+    const intCollarGeo = new THREE.CylinderGeometry(0.35, 0.37, 0.1, 8);
+    const intScreenBezelGeo = new THREE.BoxGeometry(0.6, 0.34, 0.042);
+    const intHoloScreenGeo = new THREE.BoxGeometry(0.5, 0.24, 0.016);
+    const intCoreGeo = new THREE.OctahedronGeometry(0.22, 0);
     const intRingGeo = new THREE.RingGeometry(0.55, 0.72, 24);
     intRingGeo.rotateX(-Math.PI * 0.5);
     for (let i = 0; i < 6; i++) {
@@ -1122,13 +1090,33 @@ export class ArenaSceneRenderer {
       ped.position.y = 0.525;
       iGroup.add(ped);
 
+      const collar = new THREE.Mesh(intCollarGeo, pillarStructMat);
+      collar.position.y = 1.05;
+      iGroup.add(collar);
+
+      const screenBezel = new THREE.Mesh(intScreenBezelGeo, pillarStructMat);
+      screenBezel.position.set(0, 1.14, 0.14);
+      screenBezel.rotation.x = -0.52;
+      iGroup.add(screenBezel);
+
+      const holoPaneMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+      });
+      const holoScreen = new THREE.Mesh(intHoloScreenGeo, holoPaneMat);
+      holoScreen.position.set(0, 1.152, 0.158);
+      holoScreen.rotation.x = -0.52;
+      iGroup.add(holoScreen);
+
       const coreMat = new THREE.MeshBasicMaterial({
         color: 0x22d3ee,
         transparent: true,
         opacity: 0.9,
       });
       const coreMesh = new THREE.Mesh(intCoreGeo, coreMat);
-      coreMesh.position.y = 1.42;
+      coreMesh.position.set(0, 1.56, -0.04);
       iGroup.add(coreMesh);
 
       const ringMat = new THREE.MeshBasicMaterial({
@@ -1146,6 +1134,7 @@ export class ArenaSceneRenderer {
         group: iGroup,
         coreMesh,
         coreMat,
+        holoPaneMat,
         ringMesh,
         ringMat,
       });
@@ -1219,15 +1208,18 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.hazardsGroup);
 
-    // v1.5.0 Package B: Pooled Dynamic Chapter Cover Barricades & Destructible Pressurized Capacitors (8 slots)
+    // v1.5.0 Package B + v1.7.0 Composite Silhouettes: Dynamic Cover Barricades & Bolted Pressurized Capacitors
     this.dynamicObstaclesGroup = new THREE.Group();
     this.dynamicObstaclesGroup.name = 'DynamicChapterObstaclesPool';
     const wallBodyGeo = new THREE.BoxGeometry(1.75, 1.15, 0.72);
     const wallCapGeo = new THREE.BoxGeometry(1.88, 0.22, 0.84);
     const wallTrimGeo = new THREE.BoxGeometry(1.62, 0.14, 0.78);
+    const wallButtressGeo = new THREE.BoxGeometry(0.2, 0.72, 1.04);
     const crateShellGeo = new THREE.CylinderGeometry(0.62, 0.72, 1.25, 8);
     const crateCoreGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.34, 8);
     const crateTopGeo = new THREE.CylinderGeometry(0.46, 0.6, 0.22, 8);
+    const crateRibGeo = new THREE.BoxGeometry(0.11, 1.04, 0.16);
+    const crateValveGeo = new THREE.CylinderGeometry(0.24, 0.28, 0.12, 8);
     const dynBodyMat = new THREE.MeshStandardMaterial({
       color: 0x1e293b,
       roughness: 0.44,
@@ -1264,7 +1256,11 @@ export class ArenaSceneRenderer {
       wCap.position.y = 1.24;
       const wTrim = new THREE.Mesh(wallTrimGeo, trimMat);
       wTrim.position.y = 0.96;
-      wallGroup.add(wBody, wCap, wTrim);
+      const wButtressL = new THREE.Mesh(wallButtressGeo, dynFrameMat);
+      wButtressL.position.set(-0.74, 0.36, 0);
+      const wButtressR = new THREE.Mesh(wallButtressGeo, dynFrameMat);
+      wButtressR.position.set(0.74, 0.36, 0);
+      wallGroup.add(wBody, wCap, wTrim, wButtressL, wButtressR);
       dGroup.add(wallGroup);
 
       const crateGroup = new THREE.Group();
@@ -1276,7 +1272,16 @@ export class ArenaSceneRenderer {
       cCore.position.y = 0.68;
       const cTop = new THREE.Mesh(crateTopGeo, dynFrameMat);
       cTop.position.y = 1.36;
-      crateGroup.add(cShell, cCore, cTop);
+      const cValve = new THREE.Mesh(crateValveGeo, dynFrameMat);
+      cValve.position.y = 1.5;
+      crateGroup.add(cShell, cCore, cTop, cValve);
+      for (let r = 0; r < 4; r++) {
+        const ribAngle = (r * Math.PI) / 2;
+        const rib = new THREE.Mesh(crateRibGeo, dynFrameMat);
+        rib.position.set(Math.sin(ribAngle) * 0.65, 0.68, Math.cos(ribAngle) * 0.65);
+        rib.rotation.y = ribAngle;
+        crateGroup.add(rib);
+      }
       dGroup.add(crateGroup);
 
       this.dynamicObstacleRigs.push({
@@ -1293,24 +1298,26 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.dynamicObstaclesGroup);
 
-    // v1.5.0 Package C: Pooled Kinetic Vector Boost Pads (2 Flank Pads)
+    // v1.5.0 Package C + v1.7.0 Octagonal Housing: Pooled Kinetic Vector Boost Pads (2 Flank Pads)
     this.boostPadsGroup = new THREE.Group();
     this.boostPadsGroup.name = 'KineticBoostPadsPool';
-    const padBaseGeo = new THREE.CylinderGeometry(1.22, 1.34, 0.05, 24);
-    const padOuterRingGeo = new THREE.RingGeometry(0.95, 1.18, 28);
+    const padBaseGeo = new THREE.CylinderGeometry(1.24, 1.38, 0.07, 8);
+    const padOuterRingGeo = new THREE.RingGeometry(0.98, 1.18, 28);
     padOuterRingGeo.rotateX(-Math.PI * 0.5);
-    const padChevronGeo = new THREE.RingGeometry(0.45, 0.72, 4);
+    const padInnerHaloGeo = new THREE.RingGeometry(0.68, 0.78, 8);
+    padInnerHaloGeo.rotateX(-Math.PI * 0.5);
+    const padChevronGeo = new THREE.RingGeometry(0.36, 0.58, 4);
     padChevronGeo.rotateX(-Math.PI * 0.5);
     const padBaseMat = new THREE.MeshStandardMaterial({
       color: 0x162234,
-      roughness: 0.4,
-      metalness: 0.78,
+      roughness: 0.36,
+      metalness: 0.8,
     });
     for (let i = 0; i < 2; i++) {
       const pGroup = new THREE.Group();
       pGroup.visible = false;
       const pBase = new THREE.Mesh(padBaseGeo, padBaseMat);
-      pBase.position.y = 0.025;
+      pBase.position.y = 0.035;
       pBase.receiveShadow = !this.isHeadless;
       pGroup.add(pBase);
 
@@ -1322,8 +1329,12 @@ export class ArenaSceneRenderer {
         depthWrite: false,
       });
       const outerRing = new THREE.Mesh(padOuterRingGeo, ringMat);
-      outerRing.position.y = 0.056;
+      outerRing.position.y = 0.074;
       pGroup.add(outerRing);
+
+      const innerHalo = new THREE.Mesh(padInnerHaloGeo, ringMat);
+      innerHalo.position.y = 0.075;
+      pGroup.add(innerHalo);
 
       const chevronMat = new THREE.MeshBasicMaterial({
         color: 0x67e8f9,
@@ -1333,7 +1344,7 @@ export class ArenaSceneRenderer {
         depthWrite: false,
       });
       const chevronMesh = new THREE.Mesh(padChevronGeo, chevronMat);
-      chevronMesh.position.y = 0.06;
+      chevronMesh.position.y = 0.078;
       pGroup.add(chevronMesh);
 
       this.boostPadRigs.push({
@@ -3408,11 +3419,12 @@ export class ArenaSceneRenderer {
         }
       }
 
-      const look = CHAPTER_LOOKS[ch];
+      const look = resolveChapterVisualLook(ch, selectedEnding);
       (this.scene.background as THREE.Color).setHex(look.background);
       this.sceneFog.color.setHex(look.background);
       this.sceneFog.density = look.fogDensity;
       this.hemiLight.color.setHex(look.hemi);
+      this.hemiLight.groundColor?.setHex?.(look.hemiGround);
       this.keyLight.color.setHex(look.key);
       this.keyLight.intensity = look.keyIntensity;
       this.rimLight.color.setHex(look.rim);
@@ -3421,45 +3433,19 @@ export class ArenaSceneRenderer {
       this.loomLight.intensity = look.loomIntensity;
       this.calLight.color.setHex(look.practical);
       this.calLight.visible = this.lightingQuality !== 'lite';
+      if (!this.isHeadless && !this.isSoftwareGl) {
+        this.scene.environmentIntensity = look.envIntensity;
+      }
       this.conduitGlowMat.color.setHex(look.conduit);
       this.floorTelemetryMat?.uniforms?.uColor?.value?.setHex?.(look.conduit);
+      this.skyDomeMat?.uniforms?.uZenith?.value?.setHex?.(look.skyZenith);
+      this.skyDomeMat?.uniforms?.uHorizon?.value?.setHex?.(look.skyHorizon);
+      this.skyDomeMat?.uniforms?.uNebula?.value?.setHex?.(look.nebulaTint);
       this.planetMat?.uniforms?.uAccent?.value?.setHex?.(look.rim);
+      this.planetRingMat?.uniforms?.uAccent?.value?.setHex?.(look.conduit);
+      this.beamConeMat?.color?.setHex?.(look.rim);
       this.loomLightShaftMat?.color.setHex(look.loom);
       this.dustMat?.color.setHex(look.rim);
-
-      if (ch === 'chapter_5_loom' && selectedEnding) {
-        if (selectedEnding === 'silence') {
-          (this.scene.background as THREE.Color).setHex(0x05070a);
-          this.sceneFog.color.setHex(0x05070a);
-          this.sceneFog.density = 0.022;
-          this.hemiLight.color.setHex(0x64748b);
-          this.keyLight.color.setHex(0x94a3b8);
-          this.keyLight.intensity = 1.2;
-          this.rimLight.color.setHex(0x475569);
-          this.loomLight.color.setHex(0x475569);
-          this.loomLight.intensity = 1.25;
-          this.conduitGlowMat.color.setHex(0x475569);
-          this.loomLightShaftMat?.color.setHex(0x475569);
-        } else if (selectedEnding === 'witness') {
-          this.hemiLight.color.setHex(0xe0f2fe);
-          this.keyLight.color.setHex(0xf0f9ff);
-          this.keyLight.intensity = 2.8;
-          this.rimLight.color.setHex(0x38bdf8);
-          this.loomLight.color.setHex(0xffffff);
-          this.loomLight.intensity = 10.5;
-          this.conduitGlowMat.color.setHex(0xe0f2fe);
-          this.loomLightShaftMat?.color.setHex(0xe0f2fe);
-        } else if (selectedEnding === 'continuity') {
-          this.hemiLight.color.setHex(0xfef3c7);
-          this.keyLight.color.setHex(0xfffbeb);
-          this.keyLight.intensity = 2.65;
-          this.rimLight.color.setHex(0xf59e0b);
-          this.loomLight.color.setHex(0xfbbf24);
-          this.loomLight.intensity = 8.2;
-          this.conduitGlowMat.color.setHex(0xfbbf24);
-          this.loomLightShaftMat?.color.setHex(0xfbbf24);
-        }
-      }
     }
 
     if (this.visibleChapterEnv) {
@@ -3483,6 +3469,12 @@ export class ArenaSceneRenderer {
         this.subDeckFans[i].rotation.y += ambientDt * (1.25 + (i % 2) * 0.45) * ringSpeedScale;
       }
     }
+    if (this.orbitalDrydockGroup) {
+      this.orbitalDrydockGroup.rotation.y += ambientDt * 0.016 * ringSpeedScale;
+    }
+    if (this.skyDomeMat?.uniforms?.uTime) {
+      this.skyDomeMat.uniforms.uTime.value = ambientTime;
+    }
     if (this.floorTelemetryMat?.uniforms?.uTime) {
       this.floorTelemetryMat.uniforms.uTime.value = ambientTime;
     }
@@ -3493,13 +3485,19 @@ export class ArenaSceneRenderer {
       selectedEnding === 'silence'
         ? 0.22
         : 0.68 + Math.sin(ambientTime * 3.4) * 0.18 * ambientScale;
+    if (this.beamConeMat) {
+      this.beamConeMat.opacity =
+        selectedEnding === 'silence'
+          ? 0.01
+          : 0.036 + Math.sin(ambientTime * 1.4) * 0.008 * ambientScale;
+    }
     if (this.loomLightShaftMat) {
       this.loomLightShaftMat.opacity =
         selectedEnding === 'silence'
           ? 0.012
           : selectedEnding === 'witness'
             ? 0.072
-            : 0.034 + Math.sin(ambientTime * 1.8) * 0.01 * ambientScale;
+            : 0.036 + Math.sin(ambientTime * 1.8) * 0.01 * ambientScale;
     }
 
     if (this.dustPoints && this.dustPositions && this.dustPhases) {
@@ -3668,15 +3666,30 @@ export class ArenaSceneRenderer {
             : item.status === 'locked'
               ? 0xf59e0b
               : isPrompted
-                ? 0xffffff
+                ? 0xe0f2fe
                 : item.kind === 'echo_conduit'
                   ? 0x38bdf8
                   : 0x22d3ee;
+        const paneHexColor =
+          item.status === 'activated'
+            ? 0x10b981
+            : item.status === 'locked'
+              ? 0xd97706
+              : isPrompted
+                ? 0x67e8f9
+                : 0x0ea5e9;
         rig.coreMat.color.setHex(hexColor);
+        rig.holoPaneMat.color.setHex(paneHexColor);
+        rig.holoPaneMat.opacity =
+          item.status === 'activated'
+            ? 0.24
+            : isPrompted
+              ? 0.52
+              : 0.36;
         rig.ringMat.color.setHex(hexColor);
         rig.coreMesh.rotation.y += ambientDt * (isPrompted ? 2.4 : 1.1);
         rig.coreMesh.position.y =
-          1.42 + Math.sin(ambientTime * 2.8 + i) * 0.08 * ambientScale;
+          1.56 + Math.sin(ambientTime * 2.8 + i) * 0.07 * ambientScale;
         rig.ringMat.opacity =
           item.status === 'activated'
             ? 0.32
@@ -3718,7 +3731,7 @@ export class ArenaSceneRenderer {
 
     // v1.5.0 Package B: Update Dynamic Chapter Cover Barricades & Destructible Capacitors
     if (this.dynamicObstaclesGroup && this.dynamicObstacleRigs && world.obstacles) {
-      const lookAccent = CHAPTER_LOOKS[ch].conduit;
+      const lookAccent = CHAPTER_VISUAL_LOOKS[ch].conduit;
       let rigIdx = 0;
       for (let i = 0; i < world.obstacles.length && rigIdx < this.dynamicObstacleRigs.length; i++) {
         const obs = world.obstacles[i];

@@ -1,7 +1,7 @@
 {
   "name": "afterframe-the-last-loop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.7.0",
   "packageManager": "bun@1.4.4",
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/game/combat-flow.test.ts src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts src/game/performance.test.ts src/game/tactical-hud.test.ts src/game/gamepad.test.ts src/game/adrenaline.test.ts src/game/lock-on.test.ts src/game/combat-vfx.test.ts"
+    "test": "tsx --test src/game/combat-flow.test.ts src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts src/game/performance.test.ts src/game/tactical-hud.test.ts src/game/gamepad.test.ts src/game/adrenaline.test.ts src/game/lock-on.test.ts src/game/combat-vfx.test.ts src/game/visual-palette.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
