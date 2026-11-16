@@ -54,13 +54,13 @@ The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build versi
 
 ## Latest verified itch.io upload
 
-On **2026-11-10**, [GitHub Actions run #7](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/42835952704) completed successfully:
-- Package job: type-check, test suite, production build, ZIP/GLB validation, Chromium smoke test, and artifact upload all passed.
-- Publish job: the exact ZIP from this run was downloaded, revalidated, and pushed with Butler to `thanhnguyxn/afterframe-the-last-loop:html5`.
-- Butler confirmed the first build was pushed to the `html5` channel (13 files; 3.73 MiB transferred) and reported that itch.io was processing the build.
-- The live project page is [publicly reachable](https://thanhnguyxn.itch.io/afterframe-the-last-loop) and exposes **Run game**. Its storefront status remains **In development**.
+On **2026-11-16**, [GitHub Actions run #18](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/43817229463) completed successfully after the automatic-deployment change:
+- Package job: type-check, test suite, production build, GLB/ZIP validation, Chromium smoke test, and artifact upload all passed.
+- Publish job: validated the configured target, downloaded the exact artifact from this run, re-validated the ZIP, installed the official Butler CLI, and pushed to `thanhnguyxn/afterframe-the-last-loop:html5`.
+- Butler accepted the upload and reported that the new channel build was processing. The run confirms a successful Butler push; the hosted iframe still needs a post-processing visual/playability check before claiming the public page has been independently re-tested.
+- The ZIP artifact is retained in GitHub Actions until **2026-12-16**.
 
-This records a successful Butler upload command and a live public project page; it does not certify that every mobile browser/GPU combination has been tested.
+The previous confirmed public-page check was on **2026-11-10**. Keep the storefront status **In development** while the public playtest is being validated.
 
 ## Public playtest and storefront media
 
