@@ -20,14 +20,15 @@ on:
       - "bun.lock"
       - "scripts/**"
       - ".github/workflows/itch-html5.yml"
-      - ".github/README.md"
-      - "docs/ITCH_IO_RELEASE.md"
+      # Documentation-only edits intentionally do not rebuild or republish the game.
 
 permissions:
   contents: read
 
+# Keep itch.io uploads serialized. A newer queued main-branch run supersedes an older
+# pending run, while an active build/deploy is allowed to finish.
 concurrency:
-  group: itch-html5-package
+  group: itch-html5-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -36,9 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Require main branch when publication is requested
-        # Explicit release trigger: opt-in workflow_dispatch input or [publish-itch] on a main-branch commit.
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-itch]')) }}
+      - name: Require main branch when manual publication is requested
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true }}
         shell: bash
         run: |
           set -euo pipefail
@@ -166,13 +166,14 @@ jobs:
           name: AFTERFRAME-THE-LAST-LOOP-itch-html5
           path: AFTERFRAME-THE-LAST-LOOP-itch-html5.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   publish:
     name: Publish verified ZIP to itch.io
     needs: package
-    # A marked main-branch commit is an explicit one-shot release; ordinary pushes remain build-only.
-    if: ${{ github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-itch]'))) }}
+    # Every qualifying push to main auto-publishes after verification.
+    # Manual runs remain package-only unless publish_to_itch is explicitly enabled.
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_to_itch == true)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Project destination is repository-specific; keep ITCHIO_GAME as a repository Actions variable.
