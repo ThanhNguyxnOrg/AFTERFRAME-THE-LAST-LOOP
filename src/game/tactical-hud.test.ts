@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   computePeripheralThreats,
   computeRelativeBearingDeg,
+  computeTacticalRadarSnapshot,
   formatCombatCallouts,
   projectNdcToViewport,
 } from './tactical-hud.ts';
@@ -91,4 +92,42 @@ test('formatCombatCallouts converts combat events cleanly and projectNdcToViewpo
 
   const clippedNear = projectNdcToViewport(0, 0, -1.2, 1440, 900);
   assert.equal(clippedNear.visible, false);
+});
+
+test('computeTacticalRadarSnapshot excludes KOs, clamps coords, preserves Echo & sorts boss/staggered/telegraph first', () => {
+  const radar = computeTacticalRadarSnapshot(
+    { x: 1.5, z: -2.0, rotationY: 0.4 },
+    Math.PI,
+    22,
+    [
+      { id: 'far-idle', x: 18, z: 10, hp: 50, aiState: 'pursue' },
+      { id: 'dead', x: 0, z: 0, hp: 0, aiState: 'ko' },
+      { id: 'stag', x: 6, z: -4, hp: 20, aiState: 'staggered' },
+      { id: 'warn', x: -30, z: 4, hp: 80, aiState: 'telegraph' },
+    ],
+    { id: 'helix-04', x: 0, z: -12, hp: 400, aiState: 'pursue' },
+    { state: 'playback', activeActor: { x: -4.2, z: 3.1 } },
+    { x: -10, z: -14 },
+    [
+      { id: 'relay-1', x: 5, z: 5, status: 'available' },
+      { id: 'relay-done', x: -5, z: -5, status: 'activated' },
+    ],
+    4
+  );
+
+  assert.equal(radar.arenaRadius, 22);
+  assert.equal(radar.echoActive, true);
+  assert.equal(radar.echoX, -4.2);
+  assert.equal(radar.echoZ, 3.1);
+  assert.equal(radar.objectiveX, -10);
+  assert.equal(radar.objectiveZ, -14);
+  assert.equal(radar.blips.length, 4);
+  assert.equal(radar.blips[0].id, 'boss:helix-04');
+  assert.equal(radar.blips[0].kind, 'boss');
+  assert.equal(radar.blips[1].id, 'enemy:stag');
+  assert.equal(radar.blips[1].kind, 'staggered');
+  assert.equal(radar.blips[2].id, 'enemy:warn');
+  assert.equal(radar.blips[2].kind, 'telegraph');
+  assert.equal(radar.blips[2].x, -22); // Clamped cleanly to -arenaRadius
+  assert.equal(radar.blips[3].id, 'enemy:far-idle');
 });

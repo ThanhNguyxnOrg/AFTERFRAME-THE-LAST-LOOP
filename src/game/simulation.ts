@@ -12,7 +12,10 @@ import {
   grantRiposteWindow,
   tickPlayerCombatFlowTimers,
 } from './combat-flow.ts';
-import { computePeripheralThreats } from './tactical-hud.ts';
+import {
+  computePeripheralThreats,
+  computeTacticalRadarSnapshot,
+} from './tactical-hud.ts';
 import {
   ACTIVE_VENT_CONFIG,
   ADRENALINE_GAINS,
@@ -15321,6 +15324,13 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
   }
 
   const echo = world.echo;
+  const explorationSnapshot = cloneWorldExplorationState(world.exploration, world.run.chapter, {
+    completedChapters: world.run.completedChapters,
+    recoveredLogs: world.run.recoveredLogs,
+    prologueBarrierOpen: Boolean(
+      world.puzzle?.finalBarrier?.open || world.puzzle?.completed
+    ),
+  });
 
   return {
     appState: world.appState,
@@ -15495,13 +15505,7 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
         'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
     },
     encounter: cloneEncounterRuntimeState(world.encounter),
-    exploration: cloneWorldExplorationState(world.exploration, world.run.chapter, {
-      completedChapters: world.run.completedChapters,
-      recoveredLogs: world.run.recoveredLogs,
-      prologueBarrierOpen: Boolean(
-        world.puzzle?.finalBarrier?.open || world.puzzle?.completed
-      ),
-    }),
+    exploration: explorationSnapshot,
     enemiesAlive,
     totalEnemies,
     objectiveText,
@@ -15681,6 +15685,17 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
             6
           )
         : [],
+    radar: computeTacticalRadarSnapshot(
+      p,
+      aimYaw ?? p.rotationY,
+      explorationSnapshot.localMap?.arenaRadius ?? GAME_CONFIG.arena.radius,
+      world.enemies,
+      world.boss,
+      echo,
+      explorationSnapshot.localMap?.objectiveTarget ?? null,
+      explorationSnapshot.interactables,
+      16
+    ),
     lockOn: (() => {
       const activeLockTarget = resolveActiveLockOnTarget(world, p.lockOnTargetId);
       const execCand = findExecutionCandidate(world);

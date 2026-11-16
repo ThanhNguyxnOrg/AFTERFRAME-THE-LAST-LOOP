@@ -1907,6 +1907,7 @@ export default function App() {
           totalEnemies={hud.totalEnemies}
           progression={hud.progression}
           exploration={hud.exploration}
+          radar={hud.radar}
           equippedWeaponId={hud.weapon.equippedWeaponId}
           onSelectWeapon={handleSelectWeapon}
           onPurchaseUpgrade={handlePurchaseUpgrade}

@@ -2035,6 +2035,7 @@ export interface HudSnapshot {
   loom: ChronicleLoomState;
   comms: NarrativeCommsState;
   threats?: HudPeripheralThreat[];
+  radar?: HudRadarSnapshot;
   lockOn?: {
     active: boolean;
     targetId: string | null;
@@ -2054,4 +2055,28 @@ export interface HudPeripheralThreat {
   severity: 'urgent' | 'telegraph' | 'hostile';
   distance: number;
   isBoss: boolean;
+}
+
+export type RadarBlipKind = 'boss' | 'staggered' | 'telegraph' | 'enemy' | 'interactable';
+
+export interface HudRadarBlip {
+  id: string;
+  kind: RadarBlipKind;
+  x: number;
+  z: number;
+  distance: number;
+}
+
+export interface HudRadarSnapshot {
+  arenaRadius: number;
+  playerX: number;
+  playerZ: number;
+  aimYaw: number;
+  playerRotationY: number;
+  echoActive: boolean;
+  echoX: number | null;
+  echoZ: number | null;
+  objectiveX: number | null;
+  objectiveZ: number | null;
+  blips: HudRadarBlip[];
 }

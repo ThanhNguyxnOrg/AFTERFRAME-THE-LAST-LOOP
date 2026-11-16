@@ -422,8 +422,10 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         {/* Cluster 1 (Top-Left): Compact Survival Vitals & Adrenaline Sync Pod */}
         <div
           data-testid="player-hud"
-          className="order-1 w-[162px] sm:w-[248px] [@media(max-height:540px)]:w-[200px] bg-[#080d15]/90 border border-slate-700/80 p-2 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
+          className="relative order-1 w-[152px] sm:w-[248px] [@media(max-height:540px)]:w-[200px] bg-[#080d15]/92 border border-slate-700/80 p-2 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
         >
+          <span aria-hidden="true" className="pointer-events-none absolute -top-px -left-px w-2 h-2 border-t-2 border-l-2 border-cyan-400/80" />
+          <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -right-px w-2 h-2 border-b-2 border-r-2 border-cyan-400/80" />
           <div className="grid grid-cols-1 gap-1.5 mb-1.5">
             {/* Integrity */}
             <div>
@@ -1066,10 +1068,11 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
 
         </div>
 
-        {/* Cluster 3 (Top-Right): Clear System & Navigation Controls */}
-        <div className="order-2 md:order-3 flex items-center gap-1 sm:gap-1.5 pointer-events-auto shrink-0">
+        {/* Cluster 3 (Top-Right): System Controls + Live Diegetic Tactical Radar */}
+        <div className="order-2 md:order-3 flex flex-col items-end gap-1.5 pointer-events-none shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 pointer-events-auto">
           {onToggleLockOn && (
-            <div className="flex items-center">
+            <div className={`${hud.lockOn?.active ? 'flex' : 'hidden sm:flex'} items-center`}>
               <button
                 type="button"
                 tabIndex={-1}
@@ -1138,10 +1141,11 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 onTogglePause();
               }
             }}
-            className="h-8 sm:h-9 px-2 flex items-center gap-1 justify-center bg-[#080d15]/90 hover:bg-[#162032] border border-cyan-500/60 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
+            className="h-8 sm:h-9 px-1.5 sm:px-2 flex items-center gap-1 justify-center bg-[#080d15]/90 hover:bg-[#162032] border border-cyan-500/60 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
           >
             <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase">
-              MAP [N]
+              <span className="sm:hidden">MAP</span>
+              <span className="hidden sm:inline">MAP [N]</span>
             </span>
           </button>
           {hud.run.isChapterReplay &&
@@ -1267,6 +1271,239 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               PAUSE [P]
             </span>
           </button>
+          </div>
+
+          {/* Live Diegetic Sector Tactical Radar (Click or [N] for Full Schematic) */}
+          {hud.radar && (
+            <button
+              type="button"
+              tabIndex={-1}
+              data-testid="hud-tactical-radar"
+              data-radar-blips={hud.radar.blips.length}
+              data-echo-active={hud.radar.echoActive ? 'true' : 'false'}
+              aria-label="Sector Tactical Radar — Open Full Sector Map [N]"
+              title="Live Tactical Telemetry Radar — Click or press [N] for Full Schematic"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                if (onOpenMap) {
+                  onOpenMap();
+                } else {
+                  onTogglePause();
+                }
+              }}
+              className="relative group pointer-events-auto w-[62px] sm:w-[136px] [@media(max-height:540px)]:hidden bg-[#070c14]/92 hover:bg-[#0c1626] border border-slate-700/85 hover:border-cyan-400/85 p-1 sm:p-1.5 shadow-[0_8px_22px_rgba(0,0,0,0.7)] transition-colors cursor-pointer text-left"
+            >
+              <span aria-hidden="true" className="pointer-events-none absolute -top-px -left-px w-1.5 h-1.5 border-t border-l border-cyan-400" />
+              <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -right-px w-1.5 h-1.5 border-b border-r border-cyan-400" />
+              <div className="hidden sm:flex items-center justify-between gap-1 text-[8px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-1">
+                <span className="text-cyan-300 font-bold whitespace-nowrap">
+                  SECTOR RADAR
+                </span>
+                <span className="text-slate-500 group-hover:text-cyan-200">[N]</span>
+              </div>
+              <svg
+                viewBox="-24 -24 48 48"
+                className="w-full aspect-square block bg-[#04070c] border border-slate-800/80"
+                aria-hidden="true"
+              >
+                {/* Arena Perimeter & Mid-Range Rings */}
+                <circle
+                  cx="0"
+                  cy="0"
+                  r={hud.radar.arenaRadius}
+                  fill="#060b12"
+                  stroke="#1e3a5f"
+                  strokeWidth="0.7"
+                />
+                <circle
+                  cx="0"
+                  cy="0"
+                  r={hud.radar.arenaRadius * 0.52}
+                  fill="none"
+                  stroke="#132338"
+                  strokeWidth="0.45"
+                  strokeDasharray="1.6 1.6"
+                />
+                <line x1="-22" y1="0" x2="22" y2="0" stroke="#0d1726" strokeWidth="0.35" />
+                <line x1="0" y1="-22" x2="0" y2="22" stroke="#0d1726" strokeWidth="0.35" />
+                <text
+                  x="0"
+                  y="-18.6"
+                  textAnchor="middle"
+                  fill="#475569"
+                  fontSize="3.6"
+                  fontFamily="monospace"
+                >
+                  N
+                </text>
+
+                {/* Timed Energy Hazards */}
+                {(hud.exploration.localMap?.hazards ?? []).map((hz) => (
+                  <circle
+                    key={hz.id}
+                    cx={hz.x}
+                    cy={hz.z}
+                    r={hz.radius}
+                    fill={
+                      hz.phase === 'active'
+                        ? 'rgba(239, 68, 68, 0.34)'
+                        : hz.phase === 'warning'
+                          ? 'rgba(245, 158, 11, 0.24)'
+                          : 'rgba(34, 211, 238, 0.08)'
+                    }
+                    stroke={
+                      hz.phase === 'active'
+                        ? '#ef4444'
+                        : hz.phase === 'warning'
+                          ? '#f59e0b'
+                          : '#164e63'
+                    }
+                    strokeWidth="0.45"
+                  />
+                ))}
+
+                {/* Camera Aim Sight-Cone Wedge */}
+                {(() => {
+                  const coneLen = 11.5;
+                  const halfSpread = 0.44;
+                  const px = hud.radar.playerX;
+                  const pz = hud.radar.playerZ;
+                  const lx = px + Math.sin(hud.radar.aimYaw - halfSpread) * coneLen;
+                  const lz = pz + Math.cos(hud.radar.aimYaw - halfSpread) * coneLen;
+                  const rx = px + Math.sin(hud.radar.aimYaw + halfSpread) * coneLen;
+                  const rz = pz + Math.cos(hud.radar.aimYaw + halfSpread) * coneLen;
+                  return (
+                    <polygon
+                      points={`${px},${pz} ${lx},${lz} ${rx},${rz}`}
+                      fill="rgba(34, 211, 238, 0.14)"
+                    />
+                  );
+                })()}
+
+                {/* Objective Target Diamond */}
+                {hud.radar.objectiveX !== null && hud.radar.objectiveZ !== null && (
+                  <polygon
+                    points={`${hud.radar.objectiveX},${hud.radar.objectiveZ - 1.7} ${hud.radar.objectiveX + 1.7},${hud.radar.objectiveZ} ${hud.radar.objectiveX},${hud.radar.objectiveZ + 1.7} ${hud.radar.objectiveX - 1.7},${hud.radar.objectiveZ}`}
+                    fill="#f59e0b"
+                    stroke="#fffbeb"
+                    strokeWidth="0.35"
+                  />
+                )}
+
+                {/* Enemy / Boss / Stagger / Interactable Telemetry Blips */}
+                {hud.radar.blips.map((blip) => {
+                  if (blip.kind === 'boss') {
+                    return (
+                      <g key={blip.id}>
+                        <circle
+                          cx={blip.x}
+                          cy={blip.z}
+                          r="2.4"
+                          fill="none"
+                          stroke="#f59e0b"
+                          strokeWidth="0.55"
+                        />
+                        <polygon
+                          points={`${blip.x},${blip.z - 1.85} ${blip.x + 1.85},${blip.z} ${blip.x},${blip.z + 1.85} ${blip.x - 1.85},${blip.z}`}
+                          fill="#ef4444"
+                        />
+                      </g>
+                    );
+                  }
+                  if (blip.kind === 'staggered') {
+                    return (
+                      <rect
+                        key={blip.id}
+                        x={blip.x - 1.35}
+                        y={blip.z - 1.35}
+                        width="2.7"
+                        height="2.7"
+                        fill="#fbbf24"
+                        stroke="#ffffff"
+                        strokeWidth="0.4"
+                      />
+                    );
+                  }
+                  if (blip.kind === 'telegraph') {
+                    return (
+                      <circle
+                        key={blip.id}
+                        cx={blip.x}
+                        cy={blip.z}
+                        r="1.45"
+                        fill="#f97316"
+                        stroke="#fef08a"
+                        strokeWidth="0.4"
+                      />
+                    );
+                  }
+                  if (blip.kind === 'interactable') {
+                    return (
+                      <rect
+                        key={blip.id}
+                        x={blip.x - 1.0}
+                        y={blip.z - 1.0}
+                        width="2.0"
+                        height="2.0"
+                        fill="#34d399"
+                      />
+                    );
+                  }
+                  return (
+                    <circle
+                      key={blip.id}
+                      cx={blip.x}
+                      cy={blip.z}
+                      r="1.15"
+                      fill="#fb7185"
+                    />
+                  );
+                })}
+
+                {/* Active Chrono Echo Hologram Marker */}
+                {hud.radar.echoActive &&
+                  hud.radar.echoX !== null &&
+                  hud.radar.echoZ !== null && (
+                    <g>
+                      <circle
+                        cx={hud.radar.echoX}
+                        cy={hud.radar.echoZ}
+                        r="1.95"
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="0.45"
+                      />
+                      <circle
+                        cx={hud.radar.echoX}
+                        cy={hud.radar.echoZ}
+                        r="1.05"
+                        fill="#bae6fd"
+                      />
+                    </g>
+                  )}
+
+                {/* Sera Live Position & Heading Vector */}
+                <g transform={`translate(${hud.radar.playerX}, ${hud.radar.playerZ})`}>
+                  <line
+                    x1="0"
+                    y1="0"
+                    x2={Math.sin(hud.radar.playerRotationY) * 3.1}
+                    y2={Math.cos(hud.radar.playerRotationY) * 3.1}
+                    stroke="#ffffff"
+                    strokeWidth="0.65"
+                  />
+                  <circle
+                    cx="0"
+                    cy="0"
+                    r="1.45"
+                    fill="#22d3ee"
+                    stroke="#ffffff"
+                    strokeWidth="0.45"
+                  />
+                </g>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1803,7 +2040,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               {hud.comms.active.tacticalHint && (
                 <div
                   data-testid="live-comms-hint"
-                  className="text-[9px] sm:text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1 pt-0.5 sm:pt-1 border-t border-slate-800/80 max-sm:truncate"
+                  className="hidden sm:block text-[9px] sm:text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1 pt-1 border-t border-slate-800/80"
                 >
                   TACTICAL: {hud.comms.active.tacticalHint}
                 </div>
@@ -1830,8 +2067,10 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           <div
             data-testid="echo-hud-module"
             data-echo-state={echo.state}
-            className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[264px] bg-[#080d15]/90 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
+            className="relative [@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[264px] bg-[#080d15]/92 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
           >
+            <span aria-hidden="true" className="pointer-events-none absolute -top-px -left-px w-2 h-2 border-t-2 border-l-2 border-cyan-400/75" />
+            <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -right-px w-2 h-2 border-b-2 border-r-2 border-cyan-400/75" />
             <div className="flex items-center justify-between gap-1.5 mb-1">
               <div className="flex items-center gap-1.5 min-w-0">
                 {echo.state === 'recording' ? (
@@ -2075,8 +2314,10 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           {/* Bottom-Right Dock: Arsenal Weapons, Thermal Telemetry & Action Controls */}
           <div
             data-testid="weapon-dock-card"
-            className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:right-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[304px] bg-[#080d15]/90 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
+            className="relative [@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:right-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[304px] bg-[#080d15]/92 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
           >
+            <span aria-hidden="true" className="pointer-events-none absolute -top-px -right-px w-2 h-2 border-t-2 border-r-2 border-amber-400/75" />
+            <span aria-hidden="true" className="pointer-events-none absolute -bottom-px -left-px w-2 h-2 border-b-2 border-l-2 border-amber-400/75" />
             <div
               data-testid="weapon-hud-module"
               data-equipped-weapon={hud.weapon.equippedWeaponId}

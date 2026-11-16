@@ -16,6 +16,7 @@ import type {
   EncounterMode,
   GameAppState,
   GameOutcome,
+  HudRadarSnapshot,
   HudWeaponProgressionSnapshot,
   RunMode,
   RunSummary,
@@ -43,6 +44,7 @@ interface StatusModalProps {
   totalEnemies: number;
   progression?: HudWeaponProgressionSnapshot;
   exploration?: WorldExplorationState;
+  radar?: HudRadarSnapshot;
   initialExplorationTab?: 'missions' | 'map' | 'codex';
   equippedWeaponId?: WeaponId;
   onSelectWeapon?: (weaponId: WeaponId) => void;
@@ -94,6 +96,7 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
   totalEnemies,
   progression,
   exploration,
+  radar,
   initialExplorationTab = 'missions',
   equippedWeaponId = 'chrono_edge',
   onSelectWeapon,
@@ -1060,9 +1063,9 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
               >
                 {/* 2D Top-Down Tactical Sector Schematic SVG */}
                 <div className="sm:col-span-5 bg-[#05080e] border border-slate-800 p-2.5 flex flex-col items-center justify-between">
-                  <div className="w-full flex items-center justify-between text-[9px] font-mono-tabular uppercase text-slate-400 mb-1">
-                    <span>{exploration.localMap.sectorCode} TOP-DOWN SCHEMATIC</span>
-                    <span data-testid="map-current-region" className="text-cyan-300 font-bold truncate">
+                  <div className="w-full flex items-center justify-between gap-2 text-[9px] font-mono-tabular uppercase text-slate-400 mb-1.5">
+                    <span className="shrink-0">{exploration.localMap.sectorCode} SCHEMATIC</span>
+                    <span data-testid="map-current-region" className="text-cyan-300 font-bold truncate text-right">
                       {exploration.localMap.currentRegionLabel}
                     </span>
                   </div>
@@ -1073,7 +1076,7 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                     role="img"
                     aria-label="Sector Tactical Schematic Map"
                   >
-                    {/* Arena Outer Bulkhead Perimeter */}
+                    {/* Arena Outer Bulkhead Perimeter & Range Rings */}
                     <circle
                       cx="0"
                       cy="0"
@@ -1082,9 +1085,31 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                       stroke="#1e293b"
                       strokeWidth="0.6"
                     />
-                    {/* Tactical Grid Crosshairs */}
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r={16}
+                      fill="none"
+                      stroke="#0f172a"
+                      strokeWidth="0.35"
+                      strokeDasharray="1.2 1.2"
+                    />
+                    <circle
+                      cx="0"
+                      cy="0"
+                      r={8}
+                      fill="none"
+                      stroke="#0f172a"
+                      strokeWidth="0.35"
+                      strokeDasharray="1.2 1.2"
+                    />
+                    {/* Tactical Grid Crosshairs & Cardinals */}
                     <line x1="-22" y1="0" x2="22" y2="0" stroke="#0f172a" strokeWidth="0.3" />
                     <line x1="0" y1="-22" x2="0" y2="22" stroke="#0f172a" strokeWidth="0.3" />
+                    <text x="0" y="-19.5" textAnchor="middle" fill="#64748b" fontSize="2.4" fontFamily="monospace">N</text>
+                    <text x="0" y="21.4" textAnchor="middle" fill="#475569" fontSize="2.2" fontFamily="monospace">S</text>
+                    <text x="-20.4" y="0.8" textAnchor="middle" fill="#475569" fontSize="2.2" fontFamily="monospace">W</text>
+                    <text x="20.4" y="0.8" textAnchor="middle" fill="#475569" fontSize="2.2" fontFamily="monospace">E</text>
                     <circle cx="0" cy="-2" r="2.1" fill="#0f172a" stroke="#334155" strokeWidth="0.4" />
 
                     {/* Sector Regions (with Fog-of-Discovery for undiscovered secret alcoves) */}
@@ -1209,11 +1234,60 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                       />
                     )}
 
-                    {/* Sera Venn Live Position & Facing Marker */}
+                    {/* Live Tactical Hostiles & Boss Blips */}
+                    {radar?.blips.map((blip) => {
+                      if (blip.kind === 'interactable') return null;
+                      return (
+                        <g key={blip.id} data-testid="map-radar-blip" data-blip-kind={blip.kind}>
+                          {blip.kind === 'boss' ? (
+                            <>
+                              <circle cx={blip.x} cy={blip.z} r="1.75" fill="none" stroke="#f59e0b" strokeWidth="0.4" />
+                              <polygon
+                                points={`${blip.x},${blip.z - 1.3} ${blip.x + 1.3},${blip.z} ${blip.x},${blip.z + 1.3} ${blip.x - 1.3},${blip.z}`}
+                                fill="#ef4444"
+                              />
+                            </>
+                          ) : blip.kind === 'staggered' ? (
+                            <rect
+                              x={blip.x - 0.95}
+                              y={blip.z - 0.95}
+                              width="1.9"
+                              height="1.9"
+                              fill="#fbbf24"
+                              stroke="#ffffff"
+                              strokeWidth="0.28"
+                            />
+                          ) : (
+                            <circle
+                              cx={blip.x}
+                              cy={blip.z}
+                              r={blip.kind === 'telegraph' ? 1.05 : 0.82}
+                              fill={blip.kind === 'telegraph' ? '#f97316' : '#fb7185'}
+                            />
+                          )}
+                        </g>
+                      );
+                    })}
+
+                    {/* Active Chrono Echo Hologram Marker */}
+                    {radar?.echoActive && radar.echoX !== null && radar.echoZ !== null && (
+                      <g data-testid="map-echo-marker" transform={`translate(${radar.echoX}, ${radar.echoZ})`}>
+                        <circle cx="0" cy="0" r="1.45" fill="none" stroke="#38bdf8" strokeWidth="0.38" />
+                        <circle cx="0" cy="0" r="0.78" fill="#bae6fd" />
+                      </g>
+                    )}
+
+                    {/* Sera Venn Live Position, Camera Cone & Facing Marker */}
                     <g
                       data-testid="map-player-marker"
                       transform={`translate(${exploration.localMap.playerX}, ${exploration.localMap.playerZ})`}
                     >
+                      {radar && (
+                        <polygon
+                          points={`0,0 ${Math.sin(radar.aimYaw - 0.42) * 8.5},${Math.cos(radar.aimYaw - 0.42) * 8.5} ${Math.sin(radar.aimYaw + 0.42) * 8.5},${Math.cos(radar.aimYaw + 0.42) * 8.5}`}
+                          fill="rgba(34, 211, 238, 0.14)"
+                        />
+                      )}
                       <circle cx="0" cy="0" r="1.05" fill="#22d3ee" stroke="#ffffff" strokeWidth="0.35" />
                       <line
                         x1="0"
@@ -1229,9 +1303,10 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                   {/* Compact Legend */}
                   <div className="w-full flex flex-wrap items-center justify-between gap-1 text-[8px] font-mono-tabular uppercase text-slate-400 mt-1.5 pt-1 border-t border-slate-800/80">
                     <span className="text-cyan-300">● SERA</span>
+                    <span className="text-sky-300">◎ ECHO</span>
+                    <span className="text-rose-400">● HOSTILE</span>
                     <span className="text-amber-300">◆ OBJECTIVE</span>
                     <span className="text-emerald-300">━ OPEN ROUTE</span>
-                    <span className="text-slate-400">◌ FOG OF DISCOVERY</span>
                   </div>
 
                   {/* Phase 21: Sector Checkpoint & Armory Cache Status */}

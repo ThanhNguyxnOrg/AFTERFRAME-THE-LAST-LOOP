@@ -2,7 +2,10 @@ import type {
   BossState,
   CombatEvent,
   EnemyState,
+  HudRadarBlip,
+  HudRadarSnapshot,
   PlayerState,
+  RadarBlipKind,
 } from './types.ts';
 
 export type ThreatSeverity = 'urgent' | 'telegraph' | 'hostile';
@@ -355,3 +358,112 @@ export function projectNdcToViewport(
   }
   return { visible: true, x, y };
 }
+
+const RADAR_BLIP_PRIORITY: Record<RadarBlipKind, number> = {
+  boss: 0,
+  staggered: 1,
+  telegraph: 2,
+  enemy: 3,
+  interactable: 4,
+};
+
+function clampToArena(value: number, radius: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Number(Math.max(-radius, Math.min(radius, value)).toFixed(2));
+}
+
+export interface RadarInteractableLike {
+  id: string;
+  x: number;
+  z: number;
+  status: string;
+}
+
+export interface RadarEchoLike {
+  state: string;
+  activeActor?: { x: number; z: number } | null;
+}
+
+export function computeTacticalRadarSnapshot(
+  player: Pick<PlayerState, 'x' | 'z' | 'rotationY'>,
+  aimYaw: number,
+  arenaRadius: number,
+  enemies: readonly Pick<EnemyState, 'id' | 'x' | 'z' | 'hp' | 'aiState'>[],
+  boss: Pick<BossState, 'id' | 'x' | 'z' | 'hp' | 'aiState'> | null | undefined,
+  echo: RadarEchoLike | null | undefined,
+  objectiveTarget: { x: number; z: number } | null | undefined,
+  interactables: readonly RadarInteractableLike[] = [],
+  maxBlips = 16
+): HudRadarSnapshot {
+  const safeRadius = Number.isFinite(arenaRadius) && arenaRadius > 1 ? arenaRadius : 22;
+  const blips: HudRadarBlip[] = [];
+
+  if (boss && boss.hp > 0 && boss.aiState !== 'dormant') {
+    const dist = Math.hypot(boss.x - player.x, boss.z - player.z);
+    blips.push({
+      id: `boss:${boss.id}`,
+      kind: 'boss',
+      x: clampToArena(boss.x, safeRadius),
+      z: clampToArena(boss.z, safeRadius),
+      distance: Number(dist.toFixed(2)),
+    });
+  }
+
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (e.hp <= 0 || e.aiState === 'ko') continue;
+    const dist = Math.hypot(e.x - player.x, e.z - player.z);
+    const kind: RadarBlipKind =
+      e.aiState === 'staggered' || e.aiState === 'recovery'
+        ? 'staggered'
+        : e.aiState === 'telegraph' || e.aiState === 'attack'
+          ? 'telegraph'
+          : 'enemy';
+    blips.push({
+      id: `enemy:${e.id}`,
+      kind,
+      x: clampToArena(e.x, safeRadius),
+      z: clampToArena(e.z, safeRadius),
+      distance: Number(dist.toFixed(2)),
+    });
+  }
+
+  for (let i = 0; i < interactables.length; i++) {
+    const node = interactables[i];
+    if (node.status === 'activated' || node.status === 'locked') continue;
+    const dist = Math.hypot(node.x - player.x, node.z - player.z);
+    blips.push({
+      id: `node:${node.id}`,
+      kind: 'interactable',
+      x: clampToArena(node.x, safeRadius),
+      z: clampToArena(node.z, safeRadius),
+      distance: Number(dist.toFixed(2)),
+    });
+  }
+
+  blips.sort((a, b) => {
+    const prioDiff = RADAR_BLIP_PRIORITY[a.kind] - RADAR_BLIP_PRIORITY[b.kind];
+    if (prioDiff !== 0) return prioDiff;
+    return a.distance - b.distance;
+  });
+
+  if (blips.length > maxBlips) {
+    blips.length = maxBlips;
+  }
+
+  const echoActive = Boolean(echo && echo.state === 'playback' && echo.activeActor);
+  return {
+    arenaRadius: safeRadius,
+    playerX: clampToArena(player.x, safeRadius),
+    playerZ: clampToArena(player.z, safeRadius),
+    aimYaw: Number.isFinite(aimYaw) ? Number(aimYaw.toFixed(3)) : Number(player.rotationY.toFixed(3)),
+    playerRotationY: Number.isFinite(player.rotationY) ? Number(player.rotationY.toFixed(3)) : 0,
+    echoActive,
+    echoX: echoActive && echo?.activeActor ? clampToArena(echo.activeActor.x, safeRadius) : null,
+    echoZ: echoActive && echo?.activeActor ? clampToArena(echo.activeActor.z, safeRadius) : null,
+    objectiveX: objectiveTarget ? clampToArena(objectiveTarget.x, safeRadius) : null,
+    objectiveZ: objectiveTarget ? clampToArena(objectiveTarget.z, safeRadius) : null,
+    blips,
+  };
+}
+

@@ -29,8 +29,11 @@ export interface PlayerRig {
   rightFootPivot: THREE.Group;
   bladeMesh: THREE.Mesh;
   bladeMaterial: THREE.MeshStandardMaterial;
+  chronoAccentMaterial?: THREE.MeshStandardMaterial;
   phaseRailGroup?: THREE.Group;
+  phaseRailCoils?: THREE.Mesh[];
   gravBreakerGroup?: THREE.Group;
+  gravBreakerOrbs?: THREE.Mesh[];
   pulsecasterCoreMesh: THREE.Mesh;
   pulsecasterMaterial: THREE.MeshStandardMaterial;
   slashArcPivot: THREE.Group;
@@ -182,6 +185,64 @@ export function createSlashArcTexture(): THREE.CanvasTexture {
     ctx.fillRect(0, 0, 256, 256);
   }
 
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+export function createScorchDecalTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, size, size);
+    const cx = 64;
+    const cy = 64;
+    const baseGrad = ctx.createRadialGradient(cx, cy, 4, cx, cy, 60);
+    baseGrad.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
+    baseGrad.addColorStop(0.28, 'rgba(255, 255, 255, 0.65)');
+    baseGrad.addColorStop(0.62, 'rgba(148, 163, 184, 0.24)');
+    baseGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = baseGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Jagged radial plasma fracture lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + (i % 2) * 0.22;
+      const r0 = 10 + (i % 3) * 4;
+      const r1 = 44 + ((i * 7) % 14);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+      ctx.lineTo(cx + Math.cos(a + 0.08) * ((r0 + r1) * 0.5), cy + Math.sin(a + 0.08) * ((r0 + r1) * 0.5));
+      ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+export function createDustMoteTexture(): THREE.CanvasTexture {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+    grad.addColorStop(0.35, 'rgba(224, 242, 254, 0.55)');
+    grad.addColorStop(1, 'rgba(224, 242, 254, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -529,6 +590,7 @@ export function buildArenaEnvironment(
   loomOuterRingMesh: THREE.Mesh;
   ventFanMeshes: THREE.Mesh[];
   conduitGlowMat: THREE.MeshBasicMaterial;
+  loomLightShaftMat: THREE.MeshBasicMaterial;
   obstacleMeshes: THREE.Object3D[];
   obstacleMeshById: Map<string, THREE.Object3D>;
 } {
@@ -1269,6 +1331,24 @@ export function buildArenaEnvironment(
     obstacleMeshById.set(obs.id, group);
   }
 
+  // Volumetric additive light shaft anchored to the central Loom Pylon
+  const loomLightShaftMat = new THREE.MeshBasicMaterial({
+    color: 0x22d3ee,
+    transparent: true,
+    opacity: 0.095,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  if (loomPylonGroup) {
+    const shaftCone = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.95, 3.8, 12.5, 24, 1, true),
+      loomLightShaftMat
+    );
+    shaftCone.position.y = 6.3;
+    loomPylonGroup.add(shaftCone);
+  }
+
   return {
     loomPylonGroup: loomPylonGroup || new THREE.Group(),
     loomRingMesh: loomRingMesh || new THREE.Mesh(),
@@ -1276,6 +1356,7 @@ export function buildArenaEnvironment(
     loomOuterRingMesh: loomOuterRingMesh || new THREE.Mesh(),
     ventFanMeshes,
     conduitGlowMat,
+    loomLightShaftMat,
     obstacleMeshes,
     obstacleMeshById,
   };
@@ -2187,13 +2268,15 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
   railCoreBeam.position.set(0, 0, 0.96);
   phaseRailGroup.add(railCoreBeam);
 
+  const phaseRailCoils: THREE.Mesh[] = [];
   for (const rz of [0.55, 1.05, 1.55]) {
     const railCoil = new THREE.Mesh(
       new THREE.TorusGeometry(0.088, 0.016, 8, 20),
-      warmBronzeMat
+      rz === 1.05 ? chronoCyanMat : warmBronzeMat
     );
     railCoil.position.set(0, 0, rz);
     phaseRailGroup.add(railCoil);
+    phaseRailCoils.push(railCoil);
   }
 
   // Phase 21: Grav-Breaker Maul 3D Weapon Assembly (visible when grav_breaker equipped)
@@ -2224,6 +2307,7 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
   maulAnvilFace.position.set(0, 0, 1.42);
   gravBreakerGroup.add(maulAnvilFace);
 
+  const gravBreakerOrbs: THREE.Mesh[] = [];
   for (const mz of [1.22, 1.54]) {
     const singularityRing = new THREE.Mesh(
       new THREE.TorusGeometry(0.22, 0.026, 8, 20),
@@ -2231,7 +2315,15 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
     );
     singularityRing.position.set(0, 0, mz);
     gravBreakerGroup.add(singularityRing);
+    gravBreakerOrbs.push(singularityRing);
   }
+  const maulCoreSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.125, 12, 12),
+    chronoCyanMat
+  );
+  maulCoreSphere.position.set(0, 0, 1.38);
+  gravBreakerGroup.add(maulCoreSphere);
+  gravBreakerOrbs.push(maulCoreSphere);
 
   // --- 7. 3D-Orientable Feathered Weapon Cleave Trail Arc ---
   const slashArcPivot = new THREE.Group();
@@ -2323,8 +2415,11 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
     rightFootPivot: rightLeg.footPivot,
     bladeMesh,
     bladeMaterial,
+    chronoAccentMaterial: chronoCyanMat,
     phaseRailGroup,
+    phaseRailCoils,
     gravBreakerGroup,
+    gravBreakerOrbs,
     pulsecasterCoreMesh: pulsecasterCore,
     pulsecasterMaterial,
     slashArcPivot,
@@ -3066,6 +3161,17 @@ export function createEnemyRig(
       exhaustGlow.position.set(side * 0.47, 1.14, -0.41);
       torsoPivot.add(exhaustGlow);
     }
+
+    // Rotating Dorsal Aegis Projector Halo so heavy shield bearers have unmistakable rear telemetry
+    const aegisHaloPivot = new THREE.Group();
+    aegisHaloPivot.position.set(0, 0.72, -0.58);
+    const aegisRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.42, 0.035, 8, 20),
+      isEraser ? coreMaterial : amberGlowMat
+    );
+    aegisHaloPivot.add(aegisRing);
+    torsoPivot.add(aegisHaloPivot);
+    auxiliaryPivots.push(aegisHaloPivot);
 
     // Articulated Armored Head & Amber Visor Slit
     headPivot.position.set(0, 1.03, 0.12);

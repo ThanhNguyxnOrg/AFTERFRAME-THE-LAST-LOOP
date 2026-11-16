@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GAME_CONFIG } from './config.ts';
 import {
   computeEffectivePixelRatio,
@@ -13,10 +17,12 @@ import {
   buildArenaEnvironment,
   buildChapterEnvironment,
   createChronoPlateAndReceiverRig,
+  createDustMoteTexture,
   createEchoAfterimageGhost,
   createEchoPlayerRig,
   createEnemyRig,
   createRadialShadowTexture,
+  createScorchDecalTexture,
   createSeraPlayerRig,
   createStudioEnvironmentTexture,
   type ChapterEnvironmentRig,
@@ -95,7 +101,7 @@ function disposeMeshResources(root: THREE.Object3D): void {
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
   root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
+    if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Points)) return;
     if (object.geometry) geometries.add(object.geometry);
     const collectMaterial = (material: THREE.Material | undefined) => {
       if (!material) return;
@@ -165,6 +171,18 @@ const ECHO_HISTORY_SIZE = 24;
 const SLASH_RIBBON_POOL_SIZE = 6;
 const DASH_GHOST_POOL_SIZE = 4;
 const EXEC_BEACON_POOL_SIZE = 4;
+const DECAL_POOL_SIZE = 12;
+const DUST_MOTE_COUNT = 120;
+
+interface ScorchDecalSlot {
+  active: boolean;
+  age: number;
+  maxAge: number;
+  baseOpacity: number;
+  targetScale: number;
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+}
 
 interface SlashRibbonSlot {
   active: boolean;
@@ -408,6 +426,10 @@ export class ArenaSceneRenderer {
   private loomWitnessBeamMat: THREE.MeshBasicMaterial;
   private loomContinuityDomeMesh: THREE.Mesh;
   private loomContinuityDomeMat: THREE.MeshBasicMaterial;
+  private composer?: EffectComposer | null = null;
+  private bloomPass?: UnrealBloomPass | null = null;
+  private bloomEnabled = false;
+  private loomLightShaftMat: THREE.MeshBasicMaterial;
   private ventFanMeshes: THREE.Mesh[];
   private conduitGlowMat: THREE.MeshBasicMaterial;
   private hemiLight: THREE.HemisphereLight;
@@ -418,6 +440,16 @@ export class ArenaSceneRenderer {
   private shadowTex: THREE.CanvasTexture;
   private studioEnvTex: THREE.CanvasTexture;
   private pmremEnvTarget?: THREE.WebGLRenderTarget | null = null;
+  private scorchTex: THREE.CanvasTexture;
+  private decalSlots: ScorchDecalSlot[] = [];
+  private decalNextIdx = 0;
+  private dustMoteTex: THREE.CanvasTexture;
+  private dustPoints: THREE.Points;
+  private dustPositions: Float32Array;
+  private dustPhases: Float32Array;
+  private dustMat: THREE.PointsMaterial;
+  private echoTetherMesh: THREE.Mesh;
+  private echoTetherMat: THREE.MeshBasicMaterial;
 
   private particleInstancedMesh: THREE.InstancedMesh;
   private particles: PooledParticle[] = [];
@@ -788,10 +820,35 @@ export class ArenaSceneRenderer {
     this.loomRingMesh = env.loomRingMesh;
     this.loomInnerRingMesh = env.loomInnerRingMesh;
     this.loomOuterRingMesh = env.loomOuterRingMesh;
+    this.loomLightShaftMat = env.loomLightShaftMat;
     this.ventFanMeshes = env.ventFanMeshes;
     this.conduitGlowMat = env.conduitGlowMat;
     this.obstacleMeshes = env.obstacleMeshes;
     this.obstacleMeshById = env.obstacleMeshById;
+
+    // GPU-only HDR Selective Bloom pipeline (bypassed automatically on Headless / Software-GL / Low preset)
+    if (this.renderer && !this.isHeadless && !this.isSoftwareGl) {
+      try {
+        const composer = new EffectComposer(this.renderer);
+        composer.setPixelRatio(this.appliedPixelRatio);
+        composer.setSize(width, height);
+        composer.addPass(new RenderPass(this.scene, this.camera));
+        const bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(width, height),
+          0.26,
+          0.36,
+          0.88
+        );
+        composer.addPass(bloomPass);
+        composer.addPass(new OutputPass());
+        this.composer = composer;
+        this.bloomPass = bloomPass;
+      } catch {
+        this.composer = null;
+        this.bloomPass = null;
+      }
+    }
+    this.syncBloomState();
 
     for (let i = 0; i < CHAPTER_IDS.length; i++) {
       const chapter = CHAPTER_IDS[i];
@@ -1477,6 +1534,78 @@ export class ArenaSceneRenderer {
         pillarMat,
       });
     }
+
+    // v1.4.0: Pooled Ground Impact Scorch & Singularity Decals (12 reusable planes)
+    this.scorchTex = createScorchDecalTexture();
+    const decalGeo = new THREE.PlaneGeometry(1, 1);
+    decalGeo.rotateX(-Math.PI * 0.5);
+    for (let i = 0; i < DECAL_POOL_SIZE; i++) {
+      const dMat = new THREE.MeshBasicMaterial({
+        map: this.scorchTex,
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+      });
+      const dMesh = new THREE.Mesh(decalGeo, dMat);
+      dMesh.visible = false;
+      dMesh.position.y = 0.032;
+      this.scene.add(dMesh);
+      this.decalSlots.push({
+        active: false,
+        age: 0,
+        maxAge: 6.5,
+        baseOpacity: 0.72,
+        targetScale: 1.6,
+        mesh: dMesh,
+        mat: dMat,
+      });
+    }
+
+    // v1.4.0: Atmospheric Orbital Dust Motes (120 soft drifting points)
+    this.dustMoteTex = createDustMoteTexture();
+    this.dustPositions = new Float32Array(DUST_MOTE_COUNT * 3);
+    this.dustPhases = new Float32Array(DUST_MOTE_COUNT);
+    for (let i = 0; i < DUST_MOTE_COUNT; i++) {
+      const r = 3.2 + Math.random() * 17.5;
+      const a = Math.random() * Math.PI * 2;
+      this.dustPositions[i * 3] = Math.cos(a) * r;
+      this.dustPositions[i * 3 + 1] = 0.35 + Math.random() * 7.1;
+      this.dustPositions[i * 3 + 2] = Math.sin(a) * r;
+      this.dustPhases[i] = Math.random() * Math.PI * 2;
+    }
+    const dustGeo = new THREE.BufferGeometry();
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(this.dustPositions, 3));
+    this.dustMat = new THREE.PointsMaterial({
+      map: this.dustMoteTex,
+      color: 0x38bdf8,
+      size: 0.16,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      sizeAttenuation: true,
+    });
+    this.dustPoints = new THREE.Points(dustGeo, this.dustMat);
+    this.dustPoints.frustumCulled = false;
+    this.scene.add(this.dustPoints);
+
+    // v1.4.0: Chrono Echo Sync Tether Beam connecting Sera and active Echo during playback
+    const tetherGeo = new THREE.CylinderGeometry(0.028, 0.028, 1, 8, 1, true);
+    tetherGeo.rotateX(Math.PI * 0.5);
+    this.echoTetherMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.34,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.echoTetherMesh = new THREE.Mesh(tetherGeo, this.echoTetherMat);
+    this.echoTetherMesh.visible = false;
+    this.scene.add(this.echoTetherMesh);
 
     // Chapter II Harmonic Nodes (3 linked acoustic resonator pylons + 3D harmonic tether beams to THE CHOIR)
     this.choirNodesGroup = new THREE.Group();
@@ -2260,10 +2389,12 @@ export class ArenaSceneRenderer {
         case 'boss_attack_strike':
           this.spawnBurst(ev.x, 1.2, ev.z, 22, 0xef4444, 8.6);
           this.triggerImpactRing(ev.x, 0.2, ev.z, 0xef4444, 0.34);
+          this.spawnImpactDecal(ev.x, ev.z, 0xef4444, 2.2, 6.5);
           break;
         case 'boss_shockwave_burst':
           this.spawnBurst(ev.x, 0.35, ev.z, 28, 0xf59e0b, 9.8);
           this.triggerImpactRing(ev.x, 0.16, ev.z, 0xef4444, 0.42);
+          this.spawnImpactDecal(ev.x, ev.z, 0xf59e0b, 3.0, 7.5);
           break;
         case 'boss_core_exposed':
           this.spawnBurst(ev.x, 1.55, ev.z, 16, 0xffffff, 6.2);
@@ -2416,6 +2547,7 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.3, ev.z, 26, 0xffffff, 9.2);
           this.spawnBurst(ev.x, 1.15, ev.z, 20, 0x22d3ee, 7.8);
           this.triggerImpactRing(ev.x, 0.2, ev.z, 0xffffff, 0.38);
+          this.spawnImpactDecal(ev.x, ev.z, 0x22d3ee, 2.5, 7.5);
           if (!this.reducedMotion) {
             this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.055);
             this.fovKick = Math.max(this.fovKick ?? 0, 2.8);
@@ -2461,6 +2593,7 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.25, ev.z, 28, 0xe0f2fe, 9.2);
           this.spawnBurst(ev.x, 1.1, ev.z, 18, 0x22d3ee, 7.4);
           this.triggerImpactRing(ev.x, 0.18, ev.z, 0xffffff, 0.4);
+          this.spawnImpactDecal(ev.x, ev.z, 0x38bdf8, 2.6, 7.0);
           break;
         case 'chronicle_loom_ending_selected':
           this.spawnBurst(0, 2.2, -2, 32, 0x22d3ee, 9.5);
@@ -2509,6 +2642,7 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.15, ev.z, 26, 0xffffff, 9.4);
           this.spawnBurst(ev.x, 1.15, ev.z, 16, 0x22d3ee, 7.6);
           this.triggerImpactRing(ev.x, 0.22, ev.z, 0xffffff, 0.34);
+          this.spawnImpactDecal(ev.x, ev.z, 0x38bdf8, 1.85, 6.0);
           if (this.screenEffectsEnabled !== false && this.railBeamMesh && this.railBeamMat) {
             this.railBeamMesh.position.set(ev.x, 1.15, ev.z);
             this.railBeamMesh.rotation.y = this.playerRig?.root?.rotation?.y ?? 0;
@@ -2539,6 +2673,13 @@ export class ArenaSceneRenderer {
             ev.isHeavy ? 0xf59e0b : 0x38bdf8,
             ev.isHeavy ? 0.44 : 0.3
           );
+          this.spawnImpactDecal(
+            ev.x,
+            ev.z,
+            ev.isHeavy ? 0xf59e0b : 0xfbbf24,
+            ev.isHeavy ? 2.8 : 1.9,
+            7.0
+          );
           this.triggerSlashRibbon(
             ev.x,
             0.95,
@@ -2559,6 +2700,7 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.35, ev.z, 34, 0xfbbf24, 10.6);
           this.spawnBurst(ev.x, 1.25, ev.z, 24, 0x22d3ee, 8.8);
           this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfbbf24, 0.48);
+          this.spawnImpactDecal(ev.x, ev.z, 0xfbbf24, 2.4, 7.5);
           const execYaw =
             typeof ev.originX === 'number' && typeof ev.originZ === 'number'
               ? Math.atan2(ev.x - ev.originX, ev.z - ev.originZ)
@@ -2777,6 +2919,66 @@ export class ArenaSceneRenderer {
       slot.group.scale.setScalar(1 + progress * 0.08);
       slot.mat.opacity = 0.44 * Math.max(0, 1 - progress);
     }
+
+    if (this.decalSlots) {
+      for (let i = 0; i < this.decalSlots.length; i++) {
+        const slot = this.decalSlots[i];
+        if (!slot.active) continue;
+        slot.age += dt;
+        if (slot.age >= slot.maxAge) {
+          slot.active = false;
+          slot.mesh.visible = false;
+          continue;
+        }
+        const progress = slot.age / slot.maxAge;
+        const popAlpha = Math.min(1, slot.age / 0.12);
+        slot.mesh.scale.setScalar(slot.targetScale * (0.65 + 0.35 * popAlpha));
+        const fade = progress > 0.65 ? Math.max(0, 1 - (progress - 0.65) / 0.35) : 1;
+        slot.mat.opacity = slot.baseOpacity * fade;
+      }
+    }
+  }
+
+  private spawnImpactDecal(
+    x: number,
+    z: number,
+    colorHex: number,
+    scale = 1.6,
+    maxAge = 6.5
+  ): void {
+    if (
+      this.screenEffectsEnabled === false ||
+      this.particleQuality === 'low' ||
+      !this.decalSlots ||
+      this.decalSlots.length === 0
+    ) {
+      return;
+    }
+    const slot = this.decalSlots[this.decalNextIdx % DECAL_POOL_SIZE];
+    this.decalNextIdx = (this.decalNextIdx + 1) % DECAL_POOL_SIZE;
+    slot.active = true;
+    slot.age = 0;
+    slot.maxAge = maxAge;
+    slot.baseOpacity = 0.72;
+    slot.targetScale = scale;
+    slot.mesh.position.set(x, 0.032, z);
+    slot.mesh.rotation.y = Math.random() * Math.PI * 2;
+    slot.mesh.scale.setScalar(scale * 0.65);
+    slot.mat.color.setHex(colorHex);
+    slot.mat.opacity = 0.72;
+    slot.mesh.visible = true;
+  }
+
+  private syncBloomState(): void {
+    this.bloomEnabled = Boolean(
+      this.composer &&
+        this.renderer &&
+        !this.isHeadless &&
+        !this.isSoftwareGl &&
+        this.graphicsPreset !== 'performance' &&
+        this.lightingQuality !== 'lite' &&
+        this.screenEffectsEnabled !== false
+    );
   }
 
   private updateLockOnReticle(world: WorldState): void {
@@ -2846,7 +3048,20 @@ export class ArenaSceneRenderer {
           this.staggerBeaconSlots[i].group.visible = false;
         }
       }
+      if (this.decalSlots) {
+        for (let i = 0; i < this.decalSlots.length; i++) {
+          this.decalSlots[i].active = false;
+          this.decalSlots[i].mesh.visible = false;
+        }
+      }
+      if (this.dustPoints) {
+        this.dustPoints.visible = false;
+      }
+      if (this.echoTetherMesh) {
+        this.echoTetherMesh.visible = false;
+      }
     }
+    this.syncBloomState();
   }
 
   public applyPerformanceSettings(settings: Partial<CameraSettings>): void {
@@ -2880,8 +3095,10 @@ export class ArenaSceneRenderer {
     if (Math.abs(nextDpr - (this.appliedPixelRatio ?? 1)) > 0.01) {
       this.appliedPixelRatio = nextDpr;
       this.renderer?.setPixelRatio?.(nextDpr);
+      this.composer?.setPixelRatio?.(nextDpr);
       if (this.viewportWidth > 0 && this.viewportHeight > 0) {
         this.renderer?.setSize?.(this.viewportWidth, this.viewportHeight, false);
+        this.composer?.setSize?.(this.viewportWidth, this.viewportHeight);
       }
     }
 
@@ -2911,11 +3128,26 @@ export class ArenaSceneRenderer {
             ? 0.48
             : 0.88;
     }
-    if (resolved.particleQuality === 'low' && this.echoGhosts) {
-      for (let g = 0; g < this.echoGhosts.length; g++) {
-        this.echoGhosts[g].root.visible = false;
+    if (resolved.particleQuality === 'low') {
+      if (this.echoGhosts) {
+        for (let g = 0; g < this.echoGhosts.length; g++) {
+          this.echoGhosts[g].root.visible = false;
+        }
+      }
+      if (this.decalSlots) {
+        for (let i = 0; i < this.decalSlots.length; i++) {
+          this.decalSlots[i].active = false;
+          this.decalSlots[i].mesh.visible = false;
+        }
+      }
+      if (this.dustPoints) {
+        this.dustPoints.visible = false;
+      }
+      if (this.echoTetherMesh) {
+        this.echoTetherMesh.visible = false;
       }
     }
+    this.syncBloomState();
   }
 
   private updateEnvironmentPresentation(world: WorldState, dt: number): void {
@@ -2996,6 +3228,8 @@ export class ArenaSceneRenderer {
       this.calLight.color.setHex(look.practical);
       this.calLight.visible = this.lightingQuality !== 'lite';
       this.conduitGlowMat.color.setHex(look.conduit);
+      this.loomLightShaftMat?.color.setHex(look.loom);
+      this.dustMat?.color.setHex(look.rim);
 
       if (ch === 'chapter_5_loom' && selectedEnding) {
         if (selectedEnding === 'silence') {
@@ -3009,6 +3243,7 @@ export class ArenaSceneRenderer {
           this.loomLight.color.setHex(0x475569);
           this.loomLight.intensity = 1.25;
           this.conduitGlowMat.color.setHex(0x475569);
+          this.loomLightShaftMat?.color.setHex(0x475569);
         } else if (selectedEnding === 'witness') {
           this.hemiLight.color.setHex(0xe0f2fe);
           this.keyLight.color.setHex(0xf0f9ff);
@@ -3017,6 +3252,7 @@ export class ArenaSceneRenderer {
           this.loomLight.color.setHex(0xffffff);
           this.loomLight.intensity = 10.5;
           this.conduitGlowMat.color.setHex(0xe0f2fe);
+          this.loomLightShaftMat?.color.setHex(0xe0f2fe);
         } else if (selectedEnding === 'continuity') {
           this.hemiLight.color.setHex(0xfef3c7);
           this.keyLight.color.setHex(0xfffbeb);
@@ -3025,6 +3261,7 @@ export class ArenaSceneRenderer {
           this.loomLight.color.setHex(0xfbbf24);
           this.loomLight.intensity = 8.2;
           this.conduitGlowMat.color.setHex(0xfbbf24);
+          this.loomLightShaftMat?.color.setHex(0xfbbf24);
         }
       }
     }
@@ -3049,6 +3286,32 @@ export class ArenaSceneRenderer {
       selectedEnding === 'silence'
         ? 0.22
         : 0.68 + Math.sin(ambientTime * 3.4) * 0.18 * ambientScale;
+    if (this.loomLightShaftMat) {
+      this.loomLightShaftMat.opacity =
+        selectedEnding === 'silence'
+          ? 0.015
+          : selectedEnding === 'witness'
+            ? 0.14
+            : 0.068 + Math.sin(ambientTime * 1.8) * 0.018 * ambientScale;
+    }
+
+    if (this.dustPoints && this.dustPositions && this.dustPhases) {
+      const showDust = this.particleQuality !== 'low' && this.screenEffectsEnabled !== false;
+      this.dustPoints.visible = showDust;
+      if (showDust && !this.reducedMotion) {
+        for (let i = 0; i < DUST_MOTE_COUNT; i++) {
+          const idx = i * 3;
+          let y = this.dustPositions[idx + 1] + ambientDt * (0.22 + (i % 5) * 0.04);
+          if (y > 7.6) y = 0.35;
+          this.dustPositions[idx + 1] = y;
+          const phase = this.dustPhases[i] + ambientTime * 0.55;
+          this.dustPositions[idx] += Math.sin(phase) * ambientDt * 0.14;
+          this.dustPositions[idx + 2] += Math.cos(phase) * ambientDt * 0.14;
+        }
+        const posAttr = this.dustPoints.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+        if (posAttr) posAttr.needsUpdate = true;
+      }
+    }
 
     // Update Phase 11 Sector Storytelling 3D Landmarks (Gameplay-Reactive)
     const activeBossId = world.boss?.id ?? null;
@@ -3490,6 +3753,30 @@ export class ArenaSceneRenderer {
 
     const adrTier = Math.min(5, Math.max(0, Math.floor(p.adrenalineScore ?? 0)));
     const adrGlowBoost = adrTier * 0.14;
+
+    if (this.playerRig.chronoAccentMaterial) {
+      this.playerRig.chronoAccentMaterial.emissive.setHex(
+        adrTier >= 5 ? 0xfbbf24 : adrTier >= 3 ? 0x38bdf8 : 0x22d3ee
+      );
+      this.playerRig.chronoAccentMaterial.emissiveIntensity = 1.2 + adrTier * 0.24;
+    }
+    if (isPhaseRail && this.playerRig.phaseRailCoils) {
+      const coilSpin = p.actionState === 'charging_heavy' ? 8.5 : 2.1 + adrTier * 0.4;
+      for (let c = 0; c < this.playerRig.phaseRailCoils.length; c++) {
+        this.playerRig.phaseRailCoils[c].rotation.z += dt * coilSpin * (c % 2 === 0 ? 1 : -1);
+      }
+    }
+    if (isGravBreaker && this.playerRig.gravBreakerOrbs) {
+      const chargeScale = p.actionState === 'charging_heavy' ? 1.28 : 1 + Math.sin(world.elapsedTime * 6) * 0.08;
+      for (let g = 0; g < this.playerRig.gravBreakerOrbs.length; g++) {
+        const orb = this.playerRig.gravBreakerOrbs[g];
+        orb.rotation.y += dt * (g === 0 ? 2.6 : -3.4);
+        orb.rotation.x += dt * (g === 1 ? 1.8 : 0.9);
+        if (g === this.playerRig.gravBreakerOrbs.length - 1) {
+          orb.scale.setScalar(chargeScale);
+        }
+      }
+    }
 
     if (isPulsecaster) {
       this.playerRig.bladeMesh.scale.set(0.72, 0.72, 0.28);
@@ -4402,10 +4689,31 @@ export class ArenaSceneRenderer {
           }
         }
       }
+      if (this.echoTetherMesh && this.echoTetherMat) {
+        const dx = actor.x - p.x;
+        const dz = actor.z - p.z;
+        const dist = Math.hypot(dx, dz);
+        if (
+          dist > 0.35 &&
+          this.screenEffectsEnabled !== false &&
+          this.particleQuality !== 'low'
+        ) {
+          this.echoTetherMesh.visible = true;
+          this.echoTetherMesh.position.set((p.x + actor.x) * 0.5, 1.05, (p.z + actor.z) * 0.5);
+          this.echoTetherMesh.lookAt(actor.x, 1.05, actor.z);
+          this.echoTetherMesh.scale.set(1, 1, dist);
+          this.echoTetherMat.opacity = 0.24 + Math.sin(world.elapsedTime * 10) * 0.08;
+        } else {
+          this.echoTetherMesh.visible = false;
+        }
+      }
     } else {
       this.echoRig.root.visible = false;
       for (let g = 0; g < this.echoGhosts.length; g++) {
         this.echoGhosts[g].root.visible = false;
+      }
+      if (this.echoTetherMesh) {
+        this.echoTetherMesh.visible = false;
       }
     }
 
@@ -5695,7 +6003,11 @@ export class ArenaSceneRenderer {
     this.updateCameraPresentation(world, aimYaw, aimPitch, dt);
 
     if (shouldRender && this.renderer && !this.webglContextLost) {
-      this.renderer.render(this.scene, this.camera);
+      if (this.bloomEnabled && this.composer) {
+        this.composer.render();
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
     }
     this.updateCallouts(dt, world.appState);
     this.updateLockOnReticle(world);
@@ -5841,6 +6153,8 @@ export class ArenaSceneRenderer {
     this.camera.fov = this.camera.aspect < 0.75 ? 60 : 52;
     this.camera.updateProjectionMatrix();
     this.renderer?.setSize(width, height);
+    this.composer?.setSize(width, height);
+    this.bloomPass?.resolution.set(width, height);
   }
 
   public dispose(): void {
@@ -5863,10 +6177,15 @@ export class ArenaSceneRenderer {
     disposeMeshResources(this.scene);
     this.enemyRigs?.clear();
     this.enemyGuardRecoilTimers?.clear();
-    this.shadowTex.dispose();
-    this.studioEnvTex.dispose();
+    this.shadowTex?.dispose?.();
+    this.studioEnvTex?.dispose?.();
+    this.scorchTex?.dispose?.();
+    this.dustMoteTex?.dispose?.();
     this.pmremEnvTarget?.dispose();
     this.pmremEnvTarget = null;
+    this.composer?.dispose();
+    this.composer = null;
+    this.bloomPass = null;
     this.renderer?.dispose();
   }
 }
