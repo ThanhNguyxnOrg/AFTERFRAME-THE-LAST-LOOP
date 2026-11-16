@@ -404,6 +404,12 @@ export class SoundEngine {
             this.playAdrenalineTierUp(ev.amount ?? 1);
           }
           break;
+        case 'chrono_execution_finisher':
+          this.playChronoExecutionFinisher();
+          break;
+        case 'lock_on_engaged':
+          this.playLockOnPing(Boolean(ev.amount === 1));
+          break;
       }
     }
   }
@@ -1614,6 +1620,63 @@ export class SoundEngine {
     } catch {
       // Never block gameplay if Web Audio scheduling fails
     }
+  }
+
+  private playLockOnPing(engaged: boolean): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    if (engaged) {
+      osc.frequency.setValueAtTime(640, now);
+      osc.frequency.exponentialRampToValueAtTime(1120, now + 0.065);
+    } else {
+      osc.frequency.setValueAtTime(760, now);
+      osc.frequency.exponentialRampToValueAtTime(420, now + 0.065);
+    }
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.075, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    osc.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+
+  private playChronoExecutionFinisher(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Deep sub impact drop
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = 'triangle';
+    sub.frequency.setValueAtTime(175, now);
+    sub.frequency.exponentialRampToValueAtTime(38, now + 0.32);
+    subGain.gain.setValueAtTime(0.001, now);
+    subGain.gain.linearRampToValueAtTime(0.28, now + 0.014);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+    sub.connect(subGain);
+    subGain.connect(this.getOutputNode(ctx));
+    sub.start(now);
+    sub.stop(now + 0.38);
+
+    // Crystalline execution harmonic slash chime
+    const chime = ctx.createOscillator();
+    const chimeGain = ctx.createGain();
+    chime.type = 'sawtooth';
+    chime.frequency.setValueAtTime(980, now + 0.02);
+    chime.frequency.exponentialRampToValueAtTime(490, now + 0.24);
+    chimeGain.gain.setValueAtTime(0.001, now + 0.02);
+    chimeGain.gain.linearRampToValueAtTime(0.14, now + 0.04);
+    chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    chime.connect(chimeGain);
+    chimeGain.connect(this.getOutputNode(ctx));
+    chime.start(now + 0.02);
+    chime.stop(now + 0.3);
   }
 
   public dispose(): void {

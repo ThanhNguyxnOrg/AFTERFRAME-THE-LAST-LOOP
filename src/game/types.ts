@@ -857,6 +857,7 @@ export interface PlayerInputFrame {
   gravityPinJustPressed?: boolean; // [G] Chapter III+ Gravity Pin crowd-control field
   echoCollapseJustPressed?: boolean; // [X] Chapter IV+ Echo Collapse tactical detonation
   interactJustPressed?: boolean; // [I] Contextual environmental interaction
+  lockOnToggleJustPressed?: boolean; // [O / Middle Click] Tactical target lock-on toggle
 }
 
 export interface PlayerState {
@@ -912,6 +913,7 @@ export interface PlayerState {
   adrenalineDecayGraceTimer?: number;
   activeVentAttempted?: boolean;
   activeVentEmpoweredShots?: number;
+  lockOnTargetId?: string | null;
 }
 
 export interface EnemyState {
@@ -1090,7 +1092,9 @@ export interface CombatEvent {
     | 'player_perfect_dodge'
     | 'adrenaline_tier_changed'
     | 'active_vent_success'
-    | 'active_vent_missed';
+    | 'active_vent_missed'
+    | 'chrono_execution_finisher'
+    | 'lock_on_engaged';
   x: number;
   z: number;
   originX?: number;
@@ -2030,6 +2034,15 @@ export interface HudSnapshot {
   loom: ChronicleLoomState;
   comms: NarrativeCommsState;
   threats?: HudPeripheralThreat[];
+  lockOn?: {
+    active: boolean;
+    targetId: string | null;
+    targetName: string | null;
+    isBoss: boolean;
+    isStaggered: boolean;
+    canExecute: boolean;
+    executeTargetName: string | null;
+  };
   elapsedTime: number;
   summary: RunSummary | null;
 }

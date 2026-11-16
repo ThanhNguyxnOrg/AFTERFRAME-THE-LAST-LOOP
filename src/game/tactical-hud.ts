@@ -312,6 +312,19 @@ export function formatCombatCallouts(
         }
         break;
       }
+      case 'chrono_execution_finisher': {
+        const dmg = typeof ev.amount === 'number' && ev.amount > 0 ? ` ${Math.round(ev.amount)}` : '';
+        out.push({
+          text: `CHRONO BREAK!${dmg}`,
+          tone: 'crit',
+          worldX: ev.x,
+          worldY: 2.35,
+          worldZ: ev.z,
+          scale: 1.38,
+          duration: 0.95,
+        });
+        break;
+      }
     }
   }
   return out;

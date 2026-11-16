@@ -21,6 +21,13 @@ import {
   getAdrenalineModifiers,
   tickAdrenalineDecay,
 } from './adrenaline.ts';
+import {
+  CHRONO_EXECUTION_CONFIG,
+  findExecutionCandidate,
+  resolveActiveLockOnTarget,
+  selectBestLockOnTarget,
+  type ExecutionCandidate,
+} from './lock-on.ts';
 import type {
   BossAiState,
   BossAttackType,
@@ -3842,6 +3849,7 @@ export function createInitialPlayer(): PlayerState {
     adrenalineDecayGraceTimer: 0,
     activeVentAttempted: false,
     activeVentEmpoweredShots: 0,
+    lockOnTargetId: null,
   };
 }
 
@@ -8905,6 +8913,11 @@ function resolveCombatAimAngle(
   assistRange: number
 ): number {
   const p = world.player;
+  const lockedTarget = resolveActiveLockOnTarget(world, p.lockOnTargetId);
+  if (lockedTarget) {
+    return Math.atan2(lockedTarget.x - p.x, lockedTarget.z - p.z);
+  }
+
   let baseAngle: number;
 
   if (moveVec.length > 0.1) {
@@ -8963,6 +8976,140 @@ function startLightAttack(
   }
 
   recordEchoActionEvent(world, isBreaker ? 'breaker_slam' : 'light_swing');
+}
+
+const _scratchExecPos = { x: 0, z: 0, radius: GAME_CONFIG.player.radius };
+
+function performChronoExecutionFinisher(
+  world: WorldState,
+  candidate: ExecutionCandidate
+): boolean {
+  const p = world.player;
+  let enemy: EnemyState | undefined;
+  for (let i = 0; i < world.enemies.length; i++) {
+    if (world.enemies[i].id === candidate.id) {
+      enemy = world.enemies[i];
+      break;
+    }
+  }
+  if (!enemy || enemy.hp <= 0 || enemy.aiState === 'ko') {
+    return false;
+  }
+
+  const bossState = world.boss && world.boss.id === enemy.id ? world.boss : null;
+  const startX = p.x;
+  const startZ = p.z;
+  const execYaw = Math.atan2(enemy.x - p.x, enemy.z - p.z);
+
+  clearActiveStrikeFlow(p);
+  p.rotationY = execYaw;
+  p.chargeTime = 0;
+  p.comboWindowTimer = 0;
+  p.vx = 0;
+  p.vz = 0;
+  p.attackHitIds = [enemy.id];
+
+  // Motion-warped lunge to optimal close-execution stance outside target hull
+  const fromTargetX = p.x - enemy.x;
+  const fromTargetZ = p.z - enemy.z;
+  const fromLen = Math.hypot(fromTargetX, fromTargetZ);
+  const standDist = enemy.radius + GAME_CONFIG.player.radius + 0.52;
+  if (fromLen > standDist && fromLen > 0.001) {
+    _scratchExecPos.x = enemy.x + (fromTargetX / fromLen) * standDist;
+    _scratchExecPos.z = enemy.z + (fromTargetZ / fromLen) * standDist;
+  } else {
+    _scratchExecPos.x = p.x;
+    _scratchExecPos.z = p.z;
+  }
+  _scratchExecPos.radius = GAME_CONFIG.player.radius;
+  resolveCircleObstacleCollisions(
+    _scratchExecPos,
+    world.obstacles,
+    GAME_CONFIG.arena.radius
+  );
+  p.x = _scratchExecPos.x;
+  p.z = _scratchExecPos.z;
+
+  p.actionState = 'heavy_recovery';
+  p.stateTimer = CHRONO_EXECUTION_CONFIG.recoveryDuration;
+  p.invulnTimer = Math.max(
+    p.invulnTimer,
+    CHRONO_EXECUTION_CONFIG.recoveryDuration + 0.14
+  );
+  p.squashX = 1.28;
+  p.squashY = 0.76;
+
+  // Armor-bypassing execution burst
+  const baseHeavyDmg = GAME_CONFIG.player.heavyAttack.baseDamage;
+  const execDamage = bossState
+    ? Math.max(
+        Math.round(baseHeavyDmg * 2.4),
+        Math.round(bossState.maxHp * CHRONO_EXECUTION_CONFIG.bossPercentHpBurst)
+      )
+    : Math.round(baseHeavyDmg * CHRONO_EXECUTION_CONFIG.mobDamageMult);
+
+  enemy.hp = Math.max(0, enemy.hp - execDamage);
+  enemy.hitFlashTimer = 0.28;
+  world.stats.damageDealt += execDamage;
+  world.stats.vulnerableHits += 1;
+
+  if (bossState) {
+    bossState.hp = enemy.hp;
+    bossState.hitFlashTimer = 0.28;
+  }
+
+  // Reward Flux, Integrity, Adrenaline, and cinematic impact feel
+  p.flux = Math.min(p.maxFlux, p.flux + CHRONO_EXECUTION_CONFIG.fluxGain);
+  p.integrity = Math.min(p.maxIntegrity, p.integrity + CHRONO_EXECUTION_CONFIG.integrityHeal);
+  const execAdr = applyAdrenalineDelta(p, CHRONO_EXECUTION_CONFIG.adrenalineGain);
+  if (execAdr.tierDelta !== 0) {
+    world.events.push({
+      type: 'adrenaline_tier_changed',
+      x: p.x,
+      z: p.z,
+      amount: execAdr.nextTier,
+      postureBonus: execAdr.tierDelta,
+    });
+  }
+
+  world.hitstopTimer = Math.max(world.hitstopTimer, CHRONO_EXECUTION_CONFIG.hitstopSeconds);
+  world.cameraTrauma = Math.min(1, world.cameraTrauma + CHRONO_EXECUTION_CONFIG.trauma);
+
+  world.events.push({
+    type: 'chrono_execution_finisher',
+    x: enemy.x,
+    z: enemy.z,
+    originX: startX,
+    originZ: startZ,
+    amount: execDamage,
+    isHeavy: true,
+    isCriticalOrVulnerable: true,
+    enemyId: enemy.id,
+    weaponId: p.equippedWeaponId,
+  });
+
+  if (enemy.hp <= 0) {
+    handleEnemyZeroHpDefeat(world, enemy, execDamage, true, true, false);
+  } else if (bossState) {
+    bossState.stagger = 0;
+    bossState.coreExposed = false;
+    bossState.aiState = 'recovery';
+    bossState.stateDuration = 0.55;
+    bossState.stateTimer = 0.55;
+    bossState.statusLabel = 'RECOVERY · CHRONO CORE SEALED';
+    enemy.stagger = 0;
+    enemy.aiState = 'recovery';
+    enemy.stateDuration = 0.55;
+    enemy.stateTimer = 0.55;
+    checkAndTriggerBossPhase2(world, bossState, enemy);
+  } else {
+    enemy.stagger = 0;
+    enemy.aiState = 'recovery';
+    enemy.stateDuration = 0.5;
+    enemy.stateTimer = 0.5;
+  }
+
+  return true;
 }
 
 function startHeavyWindup(
@@ -9103,6 +9250,10 @@ function resolvePulsecasterAimAngle(
   moveVec: { dirX: number; dirZ: number; length: number }
 ): number {
   const p = world.player;
+  const lockedTarget = resolveActiveLockOnTarget(world, p.lockOnTargetId);
+  if (lockedTarget) {
+    return Math.atan2(lockedTarget.x - p.x, lockedTarget.z - p.z);
+  }
   const isRail = p.equippedWeaponId === 'phase_rail';
   const rangedCfg = isRail
     ? GAME_CONFIG.weapons.phase_rail
@@ -11890,6 +12041,31 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     switchPlayerWeapon(world, target);
   }
 
+  if (input.lockOnToggleJustPressed) {
+    if (p.lockOnTargetId) {
+      p.lockOnTargetId = null;
+      world.events.push({ type: 'lock_on_engaged', x: p.x, z: p.z, amount: 0 });
+    } else {
+      const picked = selectBestLockOnTarget(world, input.aimYaw);
+      if (picked) {
+        p.lockOnTargetId = picked.id;
+        world.events.push({
+          type: 'lock_on_engaged',
+          x: picked.x,
+          z: picked.z,
+          amount: 1,
+          enemyId: picked.id,
+        });
+      }
+    }
+  }
+  if (p.lockOnTargetId) {
+    const validLock = resolveActiveLockOnTarget(world, p.lockOnTargetId);
+    if (!validLock) {
+      p.lockOnTargetId = null;
+    }
+  }
+
   if (input.dodgeJustPressed) {
     p.bufferedAction = 'dodge';
     p.bufferTimer = 0.16;
@@ -11968,6 +12144,13 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     p.bufferedAction === 'heavy' &&
     (isNeutralState || canChainCancelRecovery || canFlowCancelHeavy)
   ) {
+    const execCandidate = findExecutionCandidate(world);
+    if (execCandidate) {
+      p.bufferedAction = 'none';
+      if (performChronoExecutionFinisher(world, execCandidate)) {
+        return;
+      }
+    }
     p.bufferedAction = 'none';
     if (isRangedWeapon) {
       if (p.weaponOverheated || p.weaponHeat >= p.maxWeaponHeat) {
@@ -14764,6 +14947,7 @@ export function stepWorld(world: WorldState, input: PlayerInputFrame, rawDt: num
   _scratchSubstepInput.gravityPinJustPressed = false;
   _scratchSubstepInput.echoCollapseJustPressed = false;
   _scratchSubstepInput.interactJustPressed = false;
+  _scratchSubstepInput.lockOnToggleJustPressed = false;
   _scratchSubstepInput.switchWeaponJustPressed = false;
   _scratchSubstepInput.selectWeaponId = null;
 
@@ -15483,6 +15667,19 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
             6
           )
         : [],
+    lockOn: (() => {
+      const activeLockTarget = resolveActiveLockOnTarget(world, p.lockOnTargetId);
+      const execCand = findExecutionCandidate(world);
+      return {
+        active: activeLockTarget !== null,
+        targetId: activeLockTarget?.id ?? null,
+        targetName: activeLockTarget?.name ?? null,
+        isBoss: activeLockTarget?.isBoss ?? false,
+        isStaggered: activeLockTarget?.isStaggered ?? false,
+        canExecute: execCand !== null,
+        executeTargetName: execCand?.name ?? null,
+      };
+    })(),
     elapsedTime: world.elapsedTime,
     summary: world.frozenSummary,
   };

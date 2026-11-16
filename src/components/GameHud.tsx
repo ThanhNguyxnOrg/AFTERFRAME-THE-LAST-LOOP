@@ -31,6 +31,7 @@ interface GameHudProps {
   onParry?: () => void;
   onGravityPin?: () => void;
   onEchoCollapse?: () => void;
+  onToggleLockOn?: () => void;
   onSwitchWeapon?: () => void;
   onSelectWeapon?: (weaponId: WeaponId) => void;
   onInteract?: () => void;
@@ -162,6 +163,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
   onParry,
   onGravityPin,
   onEchoCollapse,
+  onToggleLockOn,
   onSwitchWeapon,
   onSelectWeapon,
   onInteract,
@@ -1794,6 +1796,33 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
 
         {/* Cluster 3 (Top-Right): Clear System & Navigation Controls (Fits on Row 1 beside Cluster 1 on 390px mobile) */}
         <div className="order-2 md:order-3 flex items-center gap-1 sm:gap-1.5 pointer-events-auto shrink-0">
+          {onToggleLockOn && (
+            <button
+              type="button"
+              tabIndex={-1}
+              data-testid="lock-on-hud-badge"
+              data-locked={hud.lockOn?.active ? 'true' : 'false'}
+              aria-label="Toggle Target Lock-On [O / MMB]"
+              title="Toggle Target Lock-On [O / Middle Mouse]"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onToggleLockOn();
+              }}
+              className={`h-8 sm:h-9 px-2 flex items-center gap-1 justify-center border font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase transition-colors cursor-pointer whitespace-nowrap ${
+                hud.lockOn?.active
+                  ? hud.lockOn.isStaggered
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                    : 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                  : 'bg-[#090d14]/90 hover:bg-[#162032] border-slate-700/90 text-slate-300'
+              }`}
+            >
+              <span className="max-w-[136px] truncate">
+                {hud.lockOn?.active
+                  ? `LOCK · ${(hud.lockOn.targetName ?? 'TARGET').split('·')[0].trim()}`
+                  : 'LOCK [O]'}
+              </span>
+            </button>
+          )}
           <button
             type="button"
             tabIndex={-1}
@@ -1974,6 +2003,32 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
           />
         </svg>
       </div>
+
+      {/* Contextual Chrono Break Execution Prompt on Staggered Target */}
+      {hud.lockOn?.canExecute && (
+        <div
+          data-testid="chrono-execution-prompt"
+          data-target-id={hud.lockOn.targetId ?? ''}
+          className="fixed left-1/2 top-[60%] -translate-x-1/2 z-25 pointer-events-auto"
+        >
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onHeavyAttack?.();
+            }}
+            className="px-3.5 py-1.5 bg-[#120e06]/95 hover:bg-[#221909] border-2 border-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.4)] flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
+          >
+            <span className="px-1.5 py-0.5 bg-amber-400 text-slate-950 text-[10px] font-mono-tabular font-bold uppercase">
+              [E]
+            </span>
+            <span className="text-[11px] sm:text-xs font-mono-tabular font-bold uppercase tracking-wider text-amber-200">
+              CHRONO BREAK · EXECUTE {hud.lockOn.executeTargetName ?? 'TARGET'}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Skippable Campaign Opening Transmission Card (Stage: intro) */}
       {hud.run.stage === 'intro' && (
@@ -2736,7 +2791,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         {/* Quiet Desktop Shortcut Reminder (Only shown when Tutorial Banner is hidden or completed, never duplicated or clipped on mobile) */}
         {(!hud.tutorial.enabled || hud.tutorial.step === 'completed') && (
           <div className="hidden sm:block text-center text-[10px] font-mono-tabular text-slate-400/90 bg-[#090d14]/85 border border-slate-800/80 px-3 py-1 whitespace-nowrap">
-            [WASD] Move · [Tab/Z] Weapon · [Tap LMB/F] Light · [E] Heavy · [Space] Dodge · [Q] Parry · [T] Record · [Y] Replay · [V] Relay · [H] Hints · [P] Pause
+            [WASD] Move · [O/MMB] Lock-On · [Tab/Z] Weapon · [Tap LMB/F] Light · [E] Heavy/Exec · [Space] Dodge · [Q] Parry · [T] Rec · [Y] Replay · [V] Relay
           </div>
         )}
       </div>

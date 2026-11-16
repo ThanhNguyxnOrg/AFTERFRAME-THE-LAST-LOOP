@@ -30,6 +30,7 @@ import {
   projectNdcToViewport,
   type CombatCalloutTone,
 } from './tactical-hud.ts';
+import { resolveActiveLockOnTarget } from './lock-on.ts';
 import type {
   CameraSettings,
   CampaignChapterId,
@@ -161,6 +162,28 @@ interface EchoPoseSample {
 
 const PARTICLE_POOL_SIZE = 144;
 const ECHO_HISTORY_SIZE = 24;
+const SLASH_RIBBON_POOL_SIZE = 6;
+const DASH_GHOST_POOL_SIZE = 4;
+
+interface SlashRibbonSlot {
+  active: boolean;
+  age: number;
+  maxAge: number;
+  spinDir: number;
+  startScale: number;
+  baseOpacity: number;
+  group: THREE.Group;
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+}
+
+interface DashGhostSlot {
+  active: boolean;
+  age: number;
+  maxAge: number;
+  group: THREE.Group;
+  mat: THREE.MeshBasicMaterial;
+}
 
 function dampAngle(current: number, target: number, alpha: number): number {
   let diff = target - current;
@@ -437,6 +460,14 @@ export class ArenaSceneRenderer {
   private railBeamTimer = 0;
   private hitstopTimer = 0;
   private fovKick = 0;
+
+  // v1.2.0 Pooled Weapon Slash Arc Ribbons, Dash Afterimage Ghosts & 60fps Lock-On Reticle DOM Ref
+  private slashRibbonSlots: SlashRibbonSlot[] = [];
+  private slashRibbonNextIdx = 0;
+  private dashGhostSlots: DashGhostSlot[] = [];
+  private dashGhostNextIdx = 0;
+  private dashGhostSpawnCooldown = 0;
+  private lockOnEl: HTMLDivElement | null = null;
 
   // Phase 14 Pooled Pulsecaster Projectile Meshes
   private projectilesGroup: THREE.Group;
@@ -1314,6 +1345,80 @@ export class ArenaSceneRenderer {
     this.railBeamMesh.visible = false;
     this.scene.add(this.railBeamMesh);
 
+    // v1.2.0: Pooled Weapon Slash Arc Ribbons (6 additive crescent slots)
+    const slashRibbonGeo = new THREE.RingGeometry(
+      0.95,
+      2.05,
+      20,
+      1,
+      -Math.PI * 0.45,
+      Math.PI * 0.9
+    );
+    slashRibbonGeo.rotateX(-Math.PI * 0.5);
+    for (let i = 0; i < SLASH_RIBBON_POOL_SIZE; i++) {
+      const rGroup = new THREE.Group();
+      rGroup.visible = false;
+      const rMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const rMesh = new THREE.Mesh(slashRibbonGeo, rMat);
+      rMesh.rotation.y = Math.PI * 0.5;
+      rGroup.add(rMesh);
+      this.scene.add(rGroup);
+      this.slashRibbonSlots.push({
+        active: false,
+        age: 0,
+        maxAge: 0.18,
+        spinDir: 1,
+        startScale: 1,
+        baseOpacity: 0.85,
+        group: rGroup,
+        mesh: rMesh,
+        mat: rMat,
+      });
+    }
+
+    // v1.2.0: Pooled Dash & Execution Afterimage Ghosts (4 additive silhouettes)
+    const ghostTorsoGeo = new THREE.CapsuleGeometry(0.18, 0.44, 4, 8);
+    const ghostHeadGeo = new THREE.SphereGeometry(0.14, 8, 8);
+    const ghostPauldronGeo = new THREE.BoxGeometry(0.18, 0.12, 0.18);
+    for (let i = 0; i < DASH_GHOST_POOL_SIZE; i++) {
+      const gGroup = new THREE.Group();
+      gGroup.visible = false;
+      const gMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const torsoMesh = new THREE.Mesh(ghostTorsoGeo, gMat);
+      torsoMesh.position.y = 1.05;
+      gGroup.add(torsoMesh);
+      const headMesh = new THREE.Mesh(ghostHeadGeo, gMat);
+      headMesh.position.y = 1.56;
+      gGroup.add(headMesh);
+      const leftPad = new THREE.Mesh(ghostPauldronGeo, gMat);
+      leftPad.position.set(-0.26, 1.32, 0);
+      gGroup.add(leftPad);
+      const rightPad = new THREE.Mesh(ghostPauldronGeo, gMat);
+      rightPad.position.set(0.26, 1.32, 0);
+      gGroup.add(rightPad);
+      this.scene.add(gGroup);
+      this.dashGhostSlots.push({
+        active: false,
+        age: 0,
+        maxAge: 0.24,
+        group: gGroup,
+        mat: gMat,
+      });
+    }
+
     // Chapter II Harmonic Nodes (3 linked acoustic resonator pylons + 3D harmonic tether beams to THE CHOIR)
     this.choirNodesGroup = new THREE.Group();
     this.choirNodesGroup.visible = false;
@@ -1997,6 +2102,17 @@ export class ArenaSceneRenderer {
       switch (ev.type) {
         case 'player_light_swing':
           this.spawnBurst(ev.x, 1.1, ev.z, 6, 0x22d3ee, 4.2);
+          this.triggerSlashRibbon(
+            ev.x,
+            1.08,
+            ev.z,
+            this.playerRig?.root?.rotation?.y ?? 0,
+            this.slashRibbonNextIdx % 2 === 0 ? 0.26 : -0.3,
+            0x22d3ee,
+            1.02,
+            0.16,
+            this.slashRibbonNextIdx % 2 === 0 ? 1 : -1
+          );
           break;
         case 'player_heavy_charge_ready':
           this.spawnBurst(ev.x, 1.0, ev.z, 12, 0xf59e0b, 4.8);
@@ -2004,6 +2120,17 @@ export class ArenaSceneRenderer {
           break;
         case 'player_heavy_swing':
           this.spawnBurst(ev.x, 1.1, ev.z, 16, 0x38bdf8, 7.0);
+          this.triggerSlashRibbon(
+            ev.x,
+            1.12,
+            ev.z,
+            this.playerRig?.root?.rotation?.y ?? 0,
+            -0.22,
+            0x38bdf8,
+            1.36,
+            0.24,
+            1
+          );
           break;
         case 'player_hit_enemy':
           this.spawnBurst(
@@ -2335,11 +2462,47 @@ export class ArenaSceneRenderer {
             ev.isHeavy ? 0xf59e0b : 0x38bdf8,
             ev.isHeavy ? 0.44 : 0.3
           );
+          this.triggerSlashRibbon(
+            ev.x,
+            0.95,
+            ev.z,
+            this.playerRig?.root?.rotation?.y ?? 0,
+            0.08,
+            ev.isHeavy ? 0xf59e0b : 0xfbbf24,
+            ev.isHeavy ? 1.62 : 1.24,
+            0.24,
+            1
+          );
           if (!this.reducedMotion) {
             this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, ev.isHeavy ? 0.052 : 0.036);
             this.fovKick = Math.max(this.fovKick ?? 0, ev.isHeavy ? 2.6 : 1.6);
           }
           break;
+        case 'chrono_execution_finisher': {
+          this.spawnBurst(ev.x, 1.35, ev.z, 34, 0xfbbf24, 10.6);
+          this.spawnBurst(ev.x, 1.25, ev.z, 24, 0x22d3ee, 8.8);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfbbf24, 0.48);
+          const execYaw =
+            typeof ev.originX === 'number' && typeof ev.originZ === 'number'
+              ? Math.atan2(ev.x - ev.originX, ev.z - ev.originZ)
+              : (this.playerRig?.root?.rotation?.y ?? 0);
+          this.triggerSlashRibbon(ev.x, 1.2, ev.z, execYaw, 0.44, 0xfbbf24, 1.55, 0.34, 1);
+          this.triggerSlashRibbon(ev.x, 1.2, ev.z, execYaw, -0.44, 0x22d3ee, 1.45, 0.3, -1);
+          if (typeof ev.originX === 'number' && typeof ev.originZ === 'number') {
+            this.spawnDashGhost(ev.originX, ev.originZ, execYaw, 0xfbbf24);
+            this.spawnDashGhost(
+              (ev.originX + ev.x) * 0.5,
+              (ev.originZ + ev.z) * 0.5,
+              execYaw,
+              0x22d3ee
+            );
+          }
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.085);
+            this.fovKick = Math.max(this.fovKick ?? 0, 3.8);
+          }
+          break;
+        }
         case 'pulse_overheated':
           this.spawnBurst(ev.x, 1.2, ev.z, 14, 0xef4444, 5.5);
           break;
@@ -2446,6 +2609,133 @@ export class ArenaSceneRenderer {
     }
   }
 
+  public attachLockOnElement(el: HTMLDivElement | null): void {
+    this.lockOnEl = el;
+    if (el) {
+      el.dataset.active = 'false';
+      el.style.opacity = '0';
+    }
+  }
+
+  private triggerSlashRibbon(
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    rollTilt: number,
+    colorHex: number,
+    scale: number,
+    duration: number,
+    spinDir: number
+  ): void {
+    if (this.reducedMotion || this.screenEffectsEnabled === false) return;
+    if (!this.slashRibbonSlots || this.slashRibbonSlots.length === 0) return;
+    const slot = this.slashRibbonSlots[this.slashRibbonNextIdx % SLASH_RIBBON_POOL_SIZE];
+    this.slashRibbonNextIdx = (this.slashRibbonNextIdx + 1) % SLASH_RIBBON_POOL_SIZE;
+    slot.active = true;
+    slot.age = 0;
+    slot.maxAge = Math.max(0.08, duration);
+    slot.spinDir = spinDir >= 0 ? 1 : -1;
+    slot.startScale = scale;
+    slot.baseOpacity = 0.88;
+    slot.group.position.set(x, y, z);
+    slot.group.rotation.set(0, yaw, rollTilt);
+    slot.mesh.rotation.y = Math.PI * 0.5 - slot.spinDir * 0.45;
+    slot.group.scale.setScalar(scale * 0.72);
+    slot.mat.color.setHex(colorHex);
+    slot.mat.opacity = 0.88;
+    slot.group.visible = true;
+  }
+
+  private spawnDashGhost(
+    x: number,
+    z: number,
+    yaw: number,
+    colorHex = 0x22d3ee
+  ): void {
+    if (this.reducedMotion || this.screenEffectsEnabled === false || this.particleQuality === 'low') {
+      return;
+    }
+    if (!this.dashGhostSlots || this.dashGhostSlots.length === 0) return;
+    const slot = this.dashGhostSlots[this.dashGhostNextIdx % DASH_GHOST_POOL_SIZE];
+    this.dashGhostNextIdx = (this.dashGhostNextIdx + 1) % DASH_GHOST_POOL_SIZE;
+    slot.active = true;
+    slot.age = 0;
+    slot.maxAge = 0.24;
+    slot.group.position.set(x, 0, z);
+    slot.group.rotation.y = yaw;
+    slot.group.scale.setScalar(1);
+    slot.mat.color.setHex(colorHex);
+    slot.mat.opacity = 0.44;
+    slot.group.visible = true;
+  }
+
+  private updateSlashRibbonsAndGhosts(dt: number): void {
+    for (let i = 0; i < this.slashRibbonSlots.length; i++) {
+      const slot = this.slashRibbonSlots[i];
+      if (!slot.active) continue;
+      slot.age += dt;
+      if (slot.age >= slot.maxAge) {
+        slot.active = false;
+        slot.group.visible = false;
+        continue;
+      }
+      const progress = slot.age / slot.maxAge;
+      const eased = 1 - Math.pow(1 - progress, 2);
+      slot.group.scale.setScalar(slot.startScale * (0.72 + eased * 0.48));
+      slot.mesh.rotation.y += slot.spinDir * dt * 10.5;
+      slot.mat.opacity = slot.baseOpacity * Math.max(0, 1 - progress * progress);
+    }
+
+    for (let i = 0; i < this.dashGhostSlots.length; i++) {
+      const slot = this.dashGhostSlots[i];
+      if (!slot.active) continue;
+      slot.age += dt;
+      if (slot.age >= slot.maxAge) {
+        slot.active = false;
+        slot.group.visible = false;
+        continue;
+      }
+      const progress = slot.age / slot.maxAge;
+      slot.group.scale.setScalar(1 + progress * 0.08);
+      slot.mat.opacity = 0.44 * Math.max(0, 1 - progress);
+    }
+  }
+
+  private updateLockOnReticle(world: WorldState): void {
+    const el = this.lockOnEl;
+    if (!el) return;
+    if (world.appState !== 'playing') {
+      el.dataset.active = 'false';
+      el.style.opacity = '0';
+      return;
+    }
+    const target = resolveActiveLockOnTarget(world, world.player.lockOnTargetId);
+    if (!target) {
+      el.dataset.active = 'false';
+      el.style.opacity = '0';
+      return;
+    }
+    const vw = this.viewportWidth || (typeof window !== 'undefined' ? window.innerWidth : 1280);
+    const vh = this.viewportHeight || (typeof window !== 'undefined' ? window.innerHeight : 720);
+    _projVec
+      .set(target.x, target.isBoss ? 1.65 : 1.08, target.z)
+      .project(this.camera);
+    const projected = projectNdcToViewport(_projVec.x, _projVec.y, _projVec.z, vw, vh);
+    if (!projected.visible) {
+      el.dataset.active = 'true';
+      el.dataset.staggered = target.isStaggered ? 'true' : 'false';
+      el.dataset.targetId = target.id;
+      el.style.opacity = '0';
+      return;
+    }
+    el.dataset.active = 'true';
+    el.dataset.staggered = target.isStaggered ? 'true' : 'false';
+    el.dataset.targetId = target.id;
+    el.style.opacity = '1';
+    el.style.transform = `translate3d(${projected.x.toFixed(1)}px, ${projected.y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+  }
+
   public setReducedMotion(enabled: boolean): void {
     this.reducedMotion = Boolean(enabled);
   }
@@ -2462,6 +2752,18 @@ export class ArenaSceneRenderer {
       if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
       if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
       if (this.impactRingMesh) this.impactRingMesh.visible = false;
+      if (this.slashRibbonSlots) {
+        for (let i = 0; i < this.slashRibbonSlots.length; i++) {
+          this.slashRibbonSlots[i].active = false;
+          this.slashRibbonSlots[i].group.visible = false;
+        }
+      }
+      if (this.dashGhostSlots) {
+        for (let i = 0; i < this.dashGhostSlots.length; i++) {
+          this.dashGhostSlots[i].active = false;
+          this.dashGhostSlots[i].group.visible = false;
+        }
+      }
     }
   }
 
@@ -3530,6 +3832,10 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'dodging': {
+        if (this.dashGhostSpawnCooldown <= 0 && world.appState === 'playing') {
+          this.spawnDashGhost(p.x, p.z, p.rotationY, 0x22d3ee);
+          this.dashGhostSpawnCooldown = 0.042;
+        }
         targetBodyY = -0.14;
         targetBodyRotX = 0.48;
         targetBodyRotZ = turnBank * 1.45;
@@ -5242,6 +5548,10 @@ export class ArenaSceneRenderer {
       }
     }
 
+    if (this.dashGhostSpawnCooldown > 0) {
+      this.dashGhostSpawnCooldown = Math.max(0, this.dashGhostSpawnCooldown - dt);
+    }
+    this.updateSlashRibbonsAndGhosts(dt);
     this.updateParticles(dt);
 
     this.updateCameraPresentation(world, aimYaw, aimPitch, dt);
@@ -5250,6 +5560,7 @@ export class ArenaSceneRenderer {
       this.renderer.render(this.scene, this.camera);
     }
     this.updateCallouts(dt, world.appState);
+    this.updateLockOnReticle(world);
   }
 
   private updateCameraPresentation(
@@ -5391,6 +5702,7 @@ export class ArenaSceneRenderer {
     if (this.disposed) return;
     this.disposed = true;
     this.attachCalloutLayer(null);
+    this.attachLockOnElement(null);
     if (this.renderer?.domElement) {
       this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLostBound);
       this.renderer.domElement.removeEventListener(

@@ -10,6 +10,11 @@ import { TitleScreen } from './components/TitleScreen.tsx';
 import { SoundEngine } from './game/audio.ts';
 import { InputController } from './game/input.ts';
 import {
+  computeLockedCameraYaw,
+  findExecutionCandidate,
+  resolveActiveLockOnTarget,
+} from './game/lock-on.ts';
+import {
   getDefaultGraphicsSettings,
   shouldSkipRedundantStaticRender,
   shouldStepPacedFrame,
@@ -120,6 +125,7 @@ function savePersistedCampaignProgress(world: WorldState): void {
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
   const calloutMountRef = useRef<HTMLDivElement | null>(null);
+  const lockOnReticleRef = useRef<HTMLDivElement | null>(null);
   const perfOverlayRef = useRef<HTMLDivElement | null>(null);
   const perfVisibleRef = useRef<boolean>(false);
 
@@ -618,6 +624,10 @@ export default function App() {
     inputRef.current?.triggerEchoCollapse();
   }, []);
 
+  const handleToggleLockOn = useCallback(() => {
+    inputRef.current?.triggerToggleLockOn();
+  }, []);
+
   const handleSelectWeapon = useCallback(
     (weaponId?: WeaponId) => {
       const w = worldRef.current;
@@ -765,6 +775,7 @@ export default function App() {
 
     const sceneRenderer = new ArenaSceneRenderer(mountEl, world);
     sceneRenderer.attachCalloutLayer(calloutMountRef.current);
+    sceneRenderer.attachLockOnElement(lockOnReticleRef.current);
     const initialCamSettings = input.getCameraSettings();
     sceneRenderer.setReducedMotion(initialCamSettings.reducedMotion);
     sceneRenderer.setCameraShake(initialCamSettings.cameraShake ?? true);
@@ -868,6 +879,9 @@ export default function App() {
     let prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
     let prevPromptId = world.exploration.prompt.interactableId;
     let prevPromptStatus = world.exploration.prompt.status;
+    let prevLockOnTargetId: string | null = world.player.lockOnTargetId ?? null;
+    let prevLockOnStaggered = false;
+    let prevCanExecute = false;
 
     const handleVisibilityResume = () => {
       if (!document.hidden) {
@@ -918,6 +932,10 @@ export default function App() {
         if (input.isGamepadConnected() && cameraShakeRef.current && !reducedMotionRef.current) {
           for (let i = 0; i < world.events.length; i++) {
             const evType = world.events[i].type;
+            if (evType === 'chrono_execution_finisher') {
+              input.triggerGamepadRumble(0.95, 0.72, 190);
+              break;
+            }
             if (evType === 'player_parry_success' || evType === 'resonance_convergence') {
               input.triggerGamepadRumble(0.65, 0.4, 130);
               break;
@@ -937,6 +955,21 @@ export default function App() {
             }
           }
         }
+      }
+
+      const activeLockTarget =
+        world.appState === 'playing' && world.player.lockOnTargetId
+          ? resolveActiveLockOnTarget(world, world.player.lockOnTargetId)
+          : null;
+      if (activeLockTarget) {
+        input.aimYaw = computeLockedCameraYaw(
+          input.aimYaw,
+          world.player.x,
+          world.player.z,
+          activeLockTarget.x,
+          activeLockTarget.z,
+          dt
+        );
       }
 
       if (world.appState !== 'paused' && world.appState !== 'gameover') {
@@ -1010,6 +1043,11 @@ export default function App() {
         world.exploration.unlockedRouteIds.length !== prevUnlockedRoutesCount ||
         world.exploration.completedNarrativeEventIds.length !== prevCompletedNarrativeCount;
 
+      const currLockOnTargetId = activeLockTarget?.id ?? null;
+      const currLockOnStaggered = Boolean(activeLockTarget?.isStaggered);
+      const currCanExecute =
+        world.appState === 'playing' && findExecutionCandidate(world) !== null;
+
       const stateChanged =
         persistenceChanged ||
         world.tutorial.step !== prevTutorialStep ||
@@ -1042,6 +1080,9 @@ export default function App() {
         (world.exploration.lastDiscoveryBanner?.secretId ?? null) !== prevDiscoveryBannerId ||
         world.exploration.prompt.interactableId !== prevPromptId ||
         world.exploration.prompt.status !== prevPromptStatus ||
+        currLockOnTargetId !== prevLockOnTargetId ||
+        currLockOnStaggered !== prevLockOnStaggered ||
+        currCanExecute !== prevCanExecute ||
         Math.ceil(world.player.integrity) !== Math.ceil(prevIntegrity);
 
       const hasActiveHostiles =
@@ -1050,6 +1091,8 @@ export default function App() {
       const hasLiveContinuousHud =
         world.appState === 'playing' &&
         (hasActiveHostiles ||
+          Boolean(currLockOnTargetId) ||
+          currCanExecute ||
           world.echo.state === 'recording' ||
           world.echo.state === 'playback' ||
           world.player.chargeTime > 0 ||
@@ -1141,6 +1184,9 @@ export default function App() {
         prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
         prevPromptId = world.exploration.prompt.interactableId;
         prevPromptStatus = world.exploration.prompt.status;
+        prevLockOnTargetId = currLockOnTargetId;
+        prevLockOnStaggered = currLockOnStaggered;
+        prevCanExecute = currCanExecute;
         document.body.dataset.state = world.appState;
         document.body.dataset.encounter = world.encounterMode;
         document.body.dataset.runMode = world.run.mode;
@@ -1714,6 +1760,25 @@ export default function App() {
         className="fixed inset-0 z-20 pointer-events-none overflow-hidden select-none"
       />
 
+      {/* Projected 60fps Tactical Target Lock-On Diamond Reticle (Zero React re-renders) */}
+      <div
+        ref={lockOnReticleRef}
+        data-testid="lock-on-reticle"
+        data-active="false"
+        data-staggered="false"
+        style={{ opacity: 0 }}
+        className="group/reticle fixed left-0 top-0 z-25 pointer-events-none select-none will-change-transform"
+        aria-hidden="true"
+      >
+        <div className="relative w-11 h-11 flex items-center justify-center">
+          <div className="w-7 h-7 rotate-45 border-2 border-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.65)] group-data-[staggered=true]/reticle:border-amber-300 group-data-[staggered=true]/reticle:shadow-[0_0_20px_rgba(251,191,36,0.9)]" />
+          <div className="absolute w-1.5 h-1.5 bg-white rotate-45 group-data-[staggered=true]/reticle:bg-amber-300" />
+          <span className="hidden group-data-[staggered=true]/reticle:block absolute -bottom-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-amber-400 text-slate-950 text-[9px] font-mono-tabular font-bold uppercase tracking-wider whitespace-nowrap">
+            [E] EXEC
+          </span>
+        </div>
+      </div>
+
       {/* Development-Only Performance Overlay (Toggled by F3, hidden by default, zero React re-renders) */}
       <div
         ref={perfOverlayRef}
@@ -1790,6 +1855,7 @@ export default function App() {
           onParry={handleParry}
           onGravityPin={handleGravityPin}
           onEchoCollapse={handleEchoCollapse}
+          onToggleLockOn={handleToggleLockOn}
           onSwitchWeapon={handleSwitchWeapon}
           onSelectWeapon={handleSelectWeapon}
           onInteract={handleInteract}

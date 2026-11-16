@@ -36,6 +36,9 @@ export class InputController {
   private isDraggingCamera = false;
   private cameraDragJustStarted = false;
   private dragDistancePx = 0;
+  private middleMouseDown = false;
+  private middleMouseDragDist = 0;
+  private middleMouseTapJustPressed = false;
   private pointerLocked = false;
 
   private touchHoldX = 0;
@@ -348,6 +351,9 @@ export class InputController {
     this.isDraggingCamera = false;
     this.cameraDragJustStarted = false;
     this.dragDistancePx = 0;
+    this.middleMouseDown = false;
+    this.middleMouseDragDist = 0;
+    this.middleMouseTapJustPressed = false;
     this.lastPointerX = null;
     this.lastPointerY = null;
     this.touchHoldX = 0;
@@ -511,6 +517,25 @@ export class InputController {
         return 'KeyU';
       case 'p':
         return 'KeyP';
+      case 'o':
+      case 'ó':
+      case 'ò':
+      case 'ỏ':
+      case 'õ':
+      case 'ọ':
+      case 'ô':
+      case 'ố':
+      case 'ồ':
+      case 'ổ':
+      case 'ỗ':
+      case 'ộ':
+      case 'ơ':
+      case 'ớ':
+      case 'ờ':
+      case 'ở':
+      case 'ỡ':
+      case 'ợ':
+        return 'KeyO';
       case 'n':
         return 'KeyN';
       case 'm':
@@ -762,7 +787,10 @@ export class InputController {
     } else if (e.button === 2) {
       this.rightMouseJustPressed = true;
     } else if (e.button === 1) {
+      e.preventDefault();
       this.isDraggingCamera = true;
+      this.middleMouseDown = true;
+      this.middleMouseDragDist = 0;
     }
     this.lastPointerX = e.clientX;
     this.lastPointerY = e.clientY;
@@ -777,6 +805,11 @@ export class InputController {
       this.isDraggingCamera = false;
       this.dragDistancePx = 0;
     } else if (e.button === 1) {
+      if (this.middleMouseDown && this.middleMouseDragDist < 6) {
+        this.middleMouseTapJustPressed = true;
+      }
+      this.middleMouseDown = false;
+      this.middleMouseDragDist = 0;
       this.isDraggingCamera = false;
     }
   }
@@ -822,6 +855,10 @@ export class InputController {
 
     this.lastPointerX = e.clientX;
     this.lastPointerY = e.clientY;
+
+    if (this.middleMouseDown) {
+      this.middleMouseDragDist += Math.hypot(dx, dy);
+    }
 
     const shouldRotateUnlockedCamera = this.isDraggingCamera || (e.buttons & 4) !== 0;
     if ((isLocked || shouldRotateUnlockedCamera) && (dx !== 0 || dy !== 0)) {
@@ -1034,6 +1071,8 @@ export class InputController {
       this.justPressedKeys.has('KeyX') || (gpPlaying && gp.justPressed.echoCollapse);
     const interactJustPressed =
       this.justPressedKeys.has('KeyI') || (gpPlaying && gp.justPressed.interact);
+    const lockOnToggleJustPressed =
+      this.justPressedKeys.has('KeyO') || this.middleMouseTapJustPressed;
     const cameraDragJustStarted = this.cameraDragJustStarted;
 
     // Clear one-shot edge triggers
@@ -1042,6 +1081,7 @@ export class InputController {
     this.leftMouseJustPressed = false;
     this.leftMouseJustReleased = false;
     this.rightMouseJustPressed = false;
+    this.middleMouseTapJustPressed = false;
     this.cameraDragJustStarted = false;
 
     return {
@@ -1065,11 +1105,16 @@ export class InputController {
       gravityPinJustPressed,
       echoCollapseJustPressed,
       interactJustPressed,
+      lockOnToggleJustPressed,
     };
   }
 
   public triggerInteract(): void {
     this.justPressedKeys.add('KeyI');
+  }
+
+  public triggerToggleLockOn(): void {
+    this.justPressedKeys.add('KeyO');
   }
 
   public triggerSwitchWeapon(): void {
