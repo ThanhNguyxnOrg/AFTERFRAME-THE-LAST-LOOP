@@ -54,11 +54,12 @@ The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build versi
 
 ## Latest verified itch.io upload
 
-On **2026-11-16**, [GitHub Actions run #18](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/43817229463) completed successfully after the automatic-deployment change:
+On **2026-11-16**, [GitHub Actions run #19](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/43818121599) completed successfully after the workflow and artifact-action updates:
 - Package job: type-check, test suite, production build, GLB/ZIP validation, Chromium smoke test, and artifact upload all passed.
 - Publish job: validated the configured target, downloaded the exact artifact from this run, re-validated the ZIP, installed the official Butler CLI, and pushed to `thanhnguyxn/afterframe-the-last-loop:html5`.
 - Butler accepted the upload and reported that the new channel build was processing. The run confirms a successful Butler push; the hosted iframe still needs a post-processing visual/playability check before claiming the public page has been independently re-tested.
 - The ZIP artifact is retained in GitHub Actions until **2026-12-16**.
+- Artifact actions are now `actions/upload-artifact@v7` and `actions/download-artifact@v8`, using the Node 24 runtime.
 
 The previous confirmed public-page check was on **2026-11-10**. Keep the storefront status **In development** while the public playtest is being validated.
 
