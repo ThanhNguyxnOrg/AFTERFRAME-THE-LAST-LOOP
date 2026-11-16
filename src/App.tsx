@@ -628,6 +628,10 @@ export default function App() {
     inputRef.current?.triggerToggleLockOn();
   }, []);
 
+  const handleCycleLockOn = useCallback(() => {
+    inputRef.current?.triggerCycleLockOn();
+  }, []);
+
   const handleSelectWeapon = useCallback(
     (weaponId?: WeaponId) => {
       const w = worldRef.current;
@@ -1856,6 +1860,7 @@ export default function App() {
           onGravityPin={handleGravityPin}
           onEchoCollapse={handleEchoCollapse}
           onToggleLockOn={handleToggleLockOn}
+          onCycleLockOn={handleCycleLockOn}
           onSwitchWeapon={handleSwitchWeapon}
           onSelectWeapon={handleSelectWeapon}
           onInteract={handleInteract}

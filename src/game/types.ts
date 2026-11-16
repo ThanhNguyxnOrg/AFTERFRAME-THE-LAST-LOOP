@@ -858,6 +858,7 @@ export interface PlayerInputFrame {
   echoCollapseJustPressed?: boolean; // [X] Chapter IV+ Echo Collapse tactical detonation
   interactJustPressed?: boolean; // [I] Contextual environmental interaction
   lockOnToggleJustPressed?: boolean; // [O / Middle Click] Tactical target lock-on toggle
+  lockOnCycleJustPressed?: boolean; // [Wheel / ]] Cycle active lock-on target
 }
 
 export interface PlayerState {

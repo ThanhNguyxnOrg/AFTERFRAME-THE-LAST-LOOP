@@ -11,7 +11,7 @@ import {
   resolveActiveLockOnTarget,
   selectBestLockOnTarget,
 } from './lock-on.ts';
-import { createInitialWorld } from './simulation.ts';
+import { createEmptyInput, createInitialWorld, stepWorld } from './simulation.ts';
 
 test('selectBestLockOnTarget prioritizes aligned hostiles within acquire range', () => {
   const world = createInitialWorld('playing');
@@ -92,6 +92,26 @@ test('cycleLockOnTarget steps deterministically through active hostiles', () => 
   assert.equal(next?.id, 'e2');
   const wrapped = cycleLockOnTarget(world, 'e2', Math.PI);
   assert.equal(wrapped?.id, 'e1');
+});
+
+test('stepWorld switches lock-on target via lockOnCycleJustPressed only when already locked', () => {
+  const world = createInitialWorld('playing');
+  world.player.x = 0;
+  world.player.z = 0;
+  world.player.lockOnTargetId = null;
+  world.enemies = [
+    { ...world.enemies[0], id: 'e1', name: 'Unit A', x: 0, z: -4, hp: 60, aiState: 'pursue' },
+    { ...world.enemies[0], id: 'e2', name: 'Unit B', x: 1.5, z: -6, hp: 60, aiState: 'pursue' },
+  ];
+
+  const unlockedCycle = { ...createEmptyInput(Math.PI), lockOnCycleJustPressed: true };
+  stepWorld(world, unlockedCycle, 1 / 60);
+  assert.equal(world.player.lockOnTargetId, null);
+
+  world.player.lockOnTargetId = 'e1';
+  stepWorld(world, unlockedCycle, 1 / 60);
+  assert.equal(world.player.lockOnTargetId, 'e2');
+  assert.ok(world.events.some((ev) => ev.type === 'lock_on_engaged' && ev.enemyId === 'e2'));
 });
 
 test('computeLockedCameraYaw rotates smoothly without wrap discontinuity', () => {

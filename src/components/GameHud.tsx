@@ -32,6 +32,7 @@ interface GameHudProps {
   onGravityPin?: () => void;
   onEchoCollapse?: () => void;
   onToggleLockOn?: () => void;
+  onCycleLockOn?: () => void;
   onSwitchWeapon?: () => void;
   onSelectWeapon?: (weaponId: WeaponId) => void;
   onInteract?: () => void;
@@ -164,6 +165,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
   onGravityPin,
   onEchoCollapse,
   onToggleLockOn,
+  onCycleLockOn,
   onSwitchWeapon,
   onSelectWeapon,
   onInteract,
@@ -409,21 +411,20 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         </div>
       )}
 
-      {/* Top Perimeter Row: Low-Occlusion Layout for Mobile (390x844) & Desktop (1280x800) */}
+      {/* Top Perimeter Row: Slim Vitals, Consolidated Objective/Boss Telemetry & Top-Right System Strip */}
       <div
-        className={`flex flex-wrap md:flex-nowrap items-start justify-between w-full p-2 sm:p-4 md:p-5 [@media(max-height:540px)]:p-2 gap-1.5 sm:gap-3 transition-opacity duration-150 ${
+        className={`flex flex-wrap md:flex-nowrap items-start justify-between w-full p-2 sm:p-4 [@media(max-height:540px)]:p-2 gap-1.5 sm:gap-3 transition-opacity duration-150 ${
           hud.loom.active && hud.run.stage === 'chronicle_loom' && !inspectingLoomChamber
             ? 'opacity-20 pointer-events-none'
             : ''
         }`}
       >
-        {/* Cluster 1 (Top-Left): Compact Survival Bars, Chrono Echo & Action Deck */}
+        {/* Cluster 1 (Top-Left): Compact Survival Vitals & Adrenaline Sync Pod */}
         <div
           data-testid="player-hud"
-          className="order-1 w-[236px] sm:w-68 md:w-76 [@media(max-height:540px)]:w-[236px] bg-[#080c13]/92 border border-slate-700/80 p-2 sm:p-3 [@media(max-height:540px)]:p-2 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
+          className="order-1 w-[162px] sm:w-[248px] [@media(max-height:540px)]:w-[200px] bg-[#080d15]/90 border border-slate-700/80 p-2 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] shrink-0"
         >
-          {/* Compact Integrity & Flux Bars (Side-by-side on mobile to save vertical space, stacked on sm+) */}
-          <div className="grid grid-cols-2 sm:grid-cols-1 [@media(max-height:540px)]:grid-cols-2 gap-2 sm:gap-1.5 mb-1.5 sm:mb-2 [@media(max-height:540px)]:mb-1.5">
+          <div className="grid grid-cols-1 gap-1.5 mb-1.5">
             {/* Integrity */}
             <div>
               <div className="flex items-baseline justify-between mb-0.5">
@@ -432,7 +433,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 </span>
                 <div className="flex items-baseline gap-0.5 font-mono-tabular">
                   <span
-                    className={`text-sm sm:text-xl font-bold leading-none ${
+                    className={`text-sm sm:text-lg font-bold leading-none ${
                       isLowHp ? 'text-red-400' : 'text-slate-100'
                     }`}
                   >
@@ -467,7 +468,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                       data-testid="hud-flux-dampened-badge"
                       className="px-1 py-0.2 text-[8px] font-mono-tabular bg-fuchsia-950/90 border border-fuchsia-500/70 text-fuchsia-300"
                     >
-                      DAMPENED {(hud.fluxDampenedTimer ?? 0).toFixed(1)}s
+                      DAMP {(hud.fluxDampenedTimer ?? 0).toFixed(1)}s
                     </span>
                   )}
                 </span>
@@ -477,7 +478,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 </span>
               </div>
               <div
-                className={`relative h-1.5 sm:h-2 w-full bg-[#05080c] border overflow-hidden ${
+                className={`relative h-1.5 w-full bg-[#05080c] border overflow-hidden ${
                   (hud.fluxDampenedTimer ?? 0) > 0 ? 'border-fuchsia-500/70' : 'border-slate-800'
                 }`}
               >
@@ -507,11 +508,11 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               <div
                 data-testid="adrenaline-hud-bar"
                 data-tier={adr.tier}
-                className="pt-1 border-t border-slate-800/85 mb-1.5"
+                className="pt-1 border-t border-slate-800/85"
               >
                 <div className="flex items-center justify-between gap-1 mb-0.5">
                   <span
-                    className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-wider ${
+                    className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-wider whitespace-nowrap ${
                       isOverdrive
                         ? 'text-amber-300'
                         : isActiveTier
@@ -521,7 +522,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   >
                     {adr.label}
                   </span>
-                  <span className="text-[8px] font-mono-tabular uppercase tracking-wide text-slate-400 truncate">
+                  <span className="hidden sm:inline text-[8px] font-mono-tabular uppercase tracking-wide text-slate-400 truncate">
                     {adr.perkLabel}
                   </span>
                 </div>
@@ -551,697 +552,27 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
             );
           })()}
 
-          {/* Chrono Echo Track Module */}
-          <div
-            data-testid="echo-hud-module"
-            data-echo-state={echo.state}
-            className="pt-1.5 border-t border-slate-800/85 mb-1.5"
-          >
-            <div className="flex items-center justify-between gap-1.5 mb-1">
-              <div className="flex items-center gap-1.5 min-w-0">
-                {echo.state === 'recording' ? (
-                  <span
-                    aria-hidden="true"
-                    className="inline-block w-2 h-2 bg-amber-400 shrink-0"
-                  />
-                ) : echo.state === 'playback' ? (
-                  <svg
-                    viewBox="0 0 12 12"
-                    className="w-2.5 h-2.5 text-cyan-300 shrink-0"
-                    fill="currentColor"
-                  >
-                    <polygon points="2,1 11,6 2,11" />
-                  </svg>
-                ) : echo.hasClip ? (
-                  <span
-                    aria-hidden="true"
-                    className="inline-block w-2 h-2 rotate-45 bg-cyan-400 shrink-0"
-                  />
-                ) : (
-                  <span
-                    aria-hidden="true"
-                    className="inline-block w-2 h-2 border border-slate-500 shrink-0"
-                  />
-                )}
-                <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-300 truncate">
-                  ECHO RIG
-                </span>
-              </div>
-              <span
-                data-testid="echo-state-badge"
-                className={`text-[9px] sm:text-[10px] font-mono-tabular font-bold uppercase whitespace-nowrap shrink-0 ${
-                  echo.state === 'recording'
-                    ? 'text-amber-400'
-                    : echo.state === 'playback'
-                      ? 'text-cyan-300'
-                      : echo.hasClip
-                        ? 'text-cyan-400'
-                        : 'text-slate-400'
-                }`}
-              >
-                {echoStateBadge}
-              </span>
-            </div>
-
-            {/* Echo Timeline Progress Bar */}
-            <div className="relative h-1 w-full bg-[#05080c] border border-slate-800 overflow-hidden mb-1.5">
-              <div
-                className={`absolute inset-y-0 left-0 ${
-                  echo.state === 'recording'
-                    ? 'bg-amber-400'
-                    : echo.state === 'playback'
-                      ? 'bg-cyan-300'
-                      : echo.hasClip
-                        ? 'bg-cyan-500/80'
-                        : 'bg-slate-700'
-                }`}
-                style={{ width: `${echoPct}%` }}
-              />
-            </div>
-
-            {/* Tactical Echo Controls ([T] REC · [Y] PLAY · [V] RELAY · [C] CLR) */}
-            <div className="grid grid-cols-4 gap-1 pointer-events-auto">
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="echo-btn-record"
-                title="Record or Stop Chrono Echo [T]"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onEchoRecord();
-                }}
-                className={`px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
-                  echo.state === 'recording'
-                    ? 'bg-amber-500/25 border-amber-400 text-amber-200'
-                    : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
-                }`}
-              >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[T] </span>
-                {echo.state === 'recording' ? 'STOP' : 'REC'}
-              </button>
-
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="echo-btn-replay"
-                title={
-                  echo.hasClip
-                    ? 'Replay recorded Chrono Echo [Y]'
-                    : 'Record an Echo with [T] first'
-                }
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onEchoReplay();
-                }}
-                className={`px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
-                  echo.state === 'playback' || echo.hasClip
-                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                    : 'bg-[#0a0f17] border-slate-800/80 text-slate-500'
-                }`}
-              >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Y] </span>PLAY
-              </button>
-
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="echo-btn-relay"
-                title={`Relay Teleport to active Echo [V] (${relay.fluxCost} Flux)`}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onEchoRelay();
-                }}
-                className={`px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
-                  relay.canRelay
+          {hud.combatFlow?.active && (
+            <div
+              data-testid="combat-flow-indicator"
+              data-flow-kind={hud.combatFlow.kind}
+              className={`mt-1.5 px-1.5 py-0.5 border text-[9px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
+                hud.combatFlow.kind === 'riposte'
+                  ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                  : hud.combatFlow.kind === 'chrono_slip'
                     ? 'bg-cyan-400/25 border-cyan-300 text-white'
-                    : echo.state === 'playback'
-                      ? 'bg-amber-500/15 border-amber-500/70 text-amber-300'
-                      : 'bg-[#0a0f17] border-slate-800/80 text-slate-500'
-                }`}
-              >
-                {relay.cooldownTimer > 0 ? (
-                  <>
-                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>
-                    {relay.cooldownTimer.toFixed(1)}s
-                  </>
-                ) : (
-                  <>
-                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>RELAY
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="echo-btn-clear"
-                title="Clear Echo Track [C]"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onEchoClear();
-                }}
-                className="px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-400 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[C] </span>CLR
-              </button>
-            </div>
-
-            {/* Contextual Relay & Resonance Telemetry (Hidden on small mobile when idle to prevent arena occlusion; always in DOM for tests) */}
-            <div
-              className={
-                showContextualRelayOrResonance
-                  ? 'mt-1.5 pt-1 border-t border-slate-800/70 space-y-0.5'
-                  : 'hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-1 pt-1 border-t border-slate-800/60 space-y-0.5'
-              }
+                    : hud.combatFlow.kind === 'relay_momentum'
+                      ? 'bg-cyan-500/20 border-cyan-300 text-cyan-200'
+                      : 'bg-sky-500/20 border-sky-400 text-sky-200'
+              }`}
             >
-              <div
-                data-testid="relay-status-readout"
-                data-relay-status={relay.status}
-                data-can-relay={relay.canRelay ? 'true' : 'false'}
-                className="flex items-center justify-between gap-1 text-[9px] font-mono-tabular uppercase"
-              >
-                <span className="text-slate-400 whitespace-nowrap shrink-0">
-                  RELAY [V] · {relay.fluxCost}F
-                </span>
-                <span className="sr-only"> · </span>
-                <span
-                  className={`font-bold truncate ${
-                    relay.canRelay
-                      ? 'text-cyan-300'
-                      : relay.status === 'no_active_echo'
-                        ? 'text-slate-500'
-                        : 'text-amber-300'
-                  }`}
-                >
-                  {relay.canRelay
-                    ? `READY (${relay.distance.toFixed(1)}m)`
-                    : relay.status === 'on_cooldown'
-                      ? `COOLDOWN ${relay.cooldownTimer.toFixed(1)}s`
-                      : relay.status === 'insufficient_flux'
-                        ? 'LOW FLUX'
-                        : relay.status === 'out_of_range'
-                          ? `RANGE ${relay.distance.toFixed(1)}m/${relay.maxRange.toFixed(0)}m`
-                          : relay.status === 'path_blocked'
-                            ? 'PATH BLOCKED'
-                            : relay.status === 'no_safe_landing'
-                              ? 'NO SAFE SPOT'
-                              : relay.status === 'action_locked'
-                                ? 'ACTION BUSY'
-                                : 'NEED REPLAY'}
-                </span>
-              </div>
-
-              <div
-                data-testid="resonance-status-readout"
-                data-resonance-status={resonance.status}
-                data-resonance-primed={resonance.primed ? 'true' : 'false'}
-                data-can-converge={resonance.canConverge ? 'true' : 'false'}
-                data-resonance-outcome={resonance.lastOutcome}
-                className="flex items-center justify-between gap-1 text-[9px] font-mono-tabular uppercase"
-              >
-                <span className="text-slate-400 whitespace-nowrap shrink-0">
-                  SYNC · {resonance.fluxCost}F
-                </span>
-                <span className="sr-only"> · </span>
-                <span
-                  className={`font-bold truncate ${
-                    resonance.primed
-                      ? resonance.canConverge
-                        ? 'text-white'
-                        : 'text-amber-300'
-                      : resonance.status === 'on_cooldown'
-                        ? 'text-amber-300'
-                        : resonance.lastOutcome === 'expired' ||
-                            resonance.lastOutcome === 'insufficient_flux'
-                          ? 'text-amber-300'
-                          : resonance.convergenceCount > 0
-                            ? 'text-cyan-300'
-                            : 'text-slate-500'
-                  }`}
-                >
-                  {resonance.primed
-                    ? resonance.canConverge
-                      ? `PRIMED ${resonance.remainingWindow.toFixed(1)}s · HIT [E]`
-                      : `PRIMED ${resonance.remainingWindow.toFixed(1)}s · LOW FLUX`
-                    : resonance.status === 'on_cooldown'
-                      ? `COOLDOWN ${resonance.cooldownTimer.toFixed(1)}s`
-                      : resonance.lastOutcome === 'expired'
-                        ? 'EXPIRED · REPLAY [Y]'
-                        : resonance.lastOutcome === 'insufficient_flux'
-                          ? `LOW FLUX (${resonance.fluxCost} REQ)`
-                          : resonance.convergenceCount > 0
-                            ? `CONVERGED ×${resonance.convergenceCount}`
-                            : 'ECHO HEAVY -> [E]'}
-                </span>
-              </div>
+              {hud.combatFlow.label}
             </div>
-          </div>
-
-          {/* Interactive Combat & Weapon Deck */}
-          <div className="pt-1 border-t border-slate-800/80">
-            {/* Active Weapon Selector + Pulsecaster Heat Readout */}
-            <div
-              data-testid="weapon-hud-module"
-              data-equipped-weapon={hud.weapon.equippedWeaponId}
-              data-equipped-upgrade={hud.weapon.equippedUpgradeId ?? 'none'}
-              data-overheated={hud.weapon.overheated ? 'true' : 'false'}
-              className="mb-1"
-            >
-              <div className="flex items-center justify-between gap-1 mb-0.5 pointer-events-auto">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    aria-hidden="true"
-                    className={`inline-block w-1.5 h-1.5 shrink-0 ${
-                      hud.weapon.overheated
-                        ? 'bg-red-500 rotate-45'
-                        : hud.weapon.equippedWeaponId === 'pulsecaster'
-                          ? 'bg-sky-400 rounded-full'
-                          : 'bg-cyan-400 rotate-45'
-                    }`}
-                  />
-                  <span
-                    data-testid="weapon-active-label"
-                    className={`text-[9px] sm:text-[10px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
-                      hud.weapon.overheated
-                        ? 'text-red-400'
-                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                            hud.weapon.equippedWeaponId === 'phase_rail'
-                          ? 'text-sky-300'
-                          : hud.weapon.equippedWeaponId === 'grav_breaker'
-                            ? 'text-amber-300'
-                            : 'text-cyan-300'
-                    }`}
-                  >
-                    {hud.weapon.label}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    data-testid="weapon-switch-btn"
-                    aria-label={`Switch Weapon [Tab / Z] (Currently ${hud.weapon.label})`}
-                    title="Cycle Unlocked Arsenal Weapon [Tab / Z / 1-4]"
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onSwitchWeapon?.();
-                    }}
-                    className={`px-1.5 py-0.5 text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                      hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                      hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-400 text-sky-200'
-                        : hud.weapon.equippedWeaponId === 'grav_breaker'
-                          ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400 text-amber-200'
-                          : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
-                    }`}
-                  >
-                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
-                    {(() => {
-                      const cycleList: readonly WeaponId[] =
-                        hud.progression.unlockedWeaponIds.length > 0
-                          ? hud.progression.unlockedWeaponIds
-                          : ['chrono_edge', 'pulsecaster'];
-                      const curIdx = cycleList.indexOf(hud.weapon.equippedWeaponId);
-                      const nextW =
-                        curIdx >= 0
-                          ? cycleList[(curIdx + 1) % cycleList.length]
-                          : cycleList[0];
-                      return nextW === 'pulsecaster'
-                        ? '→ PULSE'
-                        : nextW === 'phase_rail'
-                          ? '→ RAIL'
-                          : nextW === 'grav_breaker'
-                            ? '→ MAUL'
-                            : '→ EDGE';
-                    })()}
-                  </button>
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    data-testid="hud-btn-upgrade-bench"
-                    aria-label={`Open Chrono Rig Upgrade Bench [U] (${hud.progression.memoryFragments} Memory Fragments)`}
-                    title="Open Chrono Rig Upgrade Bench [U / P]"
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onTogglePause();
-                    }}
-                    className={`px-1.5 py-0.5 text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                      hud.progression.memoryFragments >= 2
-                        ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400 text-amber-200'
-                        : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-300'
-                    }`}
-                  >
-                    <span
-                      data-testid="hud-memory-fragments"
-                      data-fragments={hud.progression.memoryFragments}
-                    >
-                      {hud.progression.memoryFragments} FRAG
-                    </span>
-                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">
-                      {' '}
-                      [U]
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Phase 21: 4-Slot Arsenal Quick-Select Strip ([1] Edge · [2] Pulse · [3] Rail · [4] Breaker) */}
-              <div
-                data-testid="weapon-arsenal-slots"
-                className="grid grid-cols-4 gap-1 mb-0.5 pointer-events-auto"
-              >
-                {(
-                  [
-                    { id: 'chrono_edge', key: '1', short: 'EDGE' },
-                    { id: 'pulsecaster', key: '2', short: 'PULSE' },
-                    { id: 'phase_rail', key: '3', short: 'RAIL' },
-                    { id: 'grav_breaker', key: '4', short: 'MAUL' },
-                  ] as const
-                ).map((slot) => {
-                  const unlockedList = hud.progression.unlockedWeaponIds ?? [
-                    'chrono_edge',
-                    'pulsecaster',
-                  ];
-                  const unlocked = unlockedList.includes(slot.id);
-                  const active = hud.weapon.equippedWeaponId === slot.id;
-                  return (
-                    <button
-                      key={slot.id}
-                      type="button"
-                      tabIndex={-1}
-                      disabled={!unlocked}
-                      data-testid={`weapon-slot-${slot.id}`}
-                      data-unlocked={unlocked ? 'true' : 'false'}
-                      data-active={active ? 'true' : 'false'}
-                      onClick={(e) => {
-                        e.currentTarget.blur();
-                        if (unlocked) {
-                          onSelectWeapon?.(slot.id);
-                        }
-                      }}
-                      className={`px-1 py-0.5 text-[8px] font-mono-tabular font-bold uppercase border transition-colors truncate ${
-                        active
-                          ? 'bg-cyan-500/25 border-cyan-300 text-white cursor-pointer'
-                          : unlocked
-                            ? 'bg-[#0b121e] hover:bg-[#142238] border-slate-700 text-slate-300 cursor-pointer'
-                            : 'bg-[#06090f] border-slate-800/70 text-slate-600 cursor-not-allowed'
-                      }`}
-                    >
-                      [{slot.key}] {slot.short}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Active Weapon Upgrade Modification Readout */}
-              <div className="flex items-center justify-between gap-1 text-[8px] sm:text-[9px] font-mono-tabular uppercase mb-0.5">
-                <span className="text-slate-500 whitespace-nowrap shrink-0">MOD CORE</span>
-                <span
-                  data-testid="weapon-active-upgrade"
-                  data-upgrade-id={hud.weapon.equippedUpgradeId ?? 'none'}
-                  className={`truncate font-semibold ${
-                    hud.weapon.equippedUpgradeId
-                      ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                        hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? 'text-sky-300'
-                        : hud.weapon.equippedWeaponId === 'grav_breaker'
-                          ? 'text-amber-300'
-                          : 'text-cyan-300'
-                      : 'text-slate-500'
-                  }`}
-                >
-                  {hud.weapon.equippedUpgradeLabel ?? 'STANDARD · NO MOD'}
-                </span>
-              </div>
-
-              {/* Pulsecaster / Rail Heat & Status Bar (Always mounted in DOM for deterministic telemetry) */}
-              <div
-                data-testid="pulsecaster-heat-bar"
-                data-heat={hud.weapon.heat}
-                data-max-heat={hud.weapon.maxHeat}
-                data-overheated={hud.weapon.overheated ? 'true' : 'false'}
-                className="flex items-center gap-1.5"
-              >
-                <div className="relative h-1.5 flex-1 bg-[#05080c] border border-slate-800 overflow-hidden">
-                  {hud.weapon.overheated && hud.weapon.activeVent && !hud.weapon.activeVent.attempted && (
-                    <div
-                      className="absolute inset-y-0 bg-cyan-400/40 border-x border-cyan-300 z-10"
-                      style={{
-                        left: `${Math.round(hud.weapon.activeVent.windowStart * 100)}%`,
-                        width: `${Math.round(
-                          (hud.weapon.activeVent.windowEnd - hud.weapon.activeVent.windowStart) * 100
-                        )}%`,
-                      }}
-                    />
-                  )}
-                  <div
-                    className={`absolute inset-y-0 left-0 transition-all duration-75 ${
-                      hud.weapon.overheated
-                        ? 'bg-red-500'
-                        : hud.weapon.heat >= 70
-                          ? 'bg-amber-400'
-                          : 'bg-sky-400'
-                    }`}
-                    style={{ width: `${Math.round(hud.weapon.heatRatio * 100)}%` }}
-                  />
-                  {hud.weapon.overheated && hud.weapon.activeVent && (
-                    <div
-                      className="absolute inset-y-0 w-0.5 bg-white z-20"
-                      style={{ left: `${Math.round(hud.weapon.activeVent.progress * 100)}%` }}
-                    />
-                  )}
-                </div>
-                <span
-                  data-testid="weapon-status-readout"
-                  className={`text-[8px] sm:text-[9px] font-mono-tabular uppercase whitespace-nowrap shrink-0 ${
-                    hud.weapon.overheated
-                      ? 'text-red-400 font-bold'
-                      : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
-                        ? 'text-cyan-300 font-bold'
-                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                            hud.weapon.equippedWeaponId === 'phase_rail'
-                          ? hud.weapon.heat >= 70
-                            ? 'text-amber-300 font-semibold'
-                            : 'text-sky-300'
-                          : 'text-slate-400'
-                  }`}
-                >
-                  {hud.weapon.overheated
-                    ? hud.weapon.activeVent && !hud.weapon.activeVent.attempted
-                      ? `VENT [F] ${hud.weapon.overheatTimer.toFixed(1)}s`
-                      : `OVERHEAT ${hud.weapon.overheatTimer.toFixed(1)}s`
-                    : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
-                      ? `OVERCHARGED ×${hud.weapon.activeVent?.empoweredShots}`
-                      : hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                          hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? `HEAT ${hud.weapon.heat}%`
-                        : `COMBO ${hud.comboStep}/3`}
-                </span>
-              </div>
-            </div>
-
-            {hud.combatFlow?.active && (
-              <div
-                data-testid="combat-flow-indicator"
-                data-flow-kind={hud.combatFlow.kind}
-                className={`mb-1 px-1.5 py-0.5 border text-[9px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
-                  hud.combatFlow.kind === 'riposte'
-                    ? 'bg-amber-500/20 border-amber-400 text-amber-200'
-                    : hud.combatFlow.kind === 'chrono_slip'
-                      ? 'bg-cyan-400/25 border-cyan-300 text-white'
-                      : hud.combatFlow.kind === 'relay_momentum'
-                        ? 'bg-cyan-500/20 border-cyan-300 text-cyan-200'
-                        : 'bg-sky-500/20 border-sky-400 text-sky-200'
-                }`}
-              >
-                {hud.combatFlow.label}
-              </div>
-            )}
-
-            <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-2 text-[9px] sm:text-[10px] font-mono-tabular text-slate-400 mb-1">
-              <span className="whitespace-nowrap shrink-0">
-                {hud.weapon.equippedWeaponId === 'pulsecaster'
-                  ? 'RANGED · 12.5m'
-                  : hud.weapon.equippedWeaponId === 'phase_rail'
-                    ? 'RAIL · 17.0m'
-                    : hud.weapon.equippedWeaponId === 'grav_breaker'
-                      ? 'BREAKER · 85% PIERCE'
-                      : `COMBO ${hud.comboStep}/3`}
-              </span>
-              <span
-                className={`whitespace-nowrap shrink-0 ${
-                  resonance.primed && resonance.canConverge
-                    ? 'text-white font-semibold'
-                    : isEmpoweredReady
-                      ? 'text-amber-300 font-medium'
-                      : 'text-slate-500'
-                }`}
-              >
-                {resonance.primed && resonance.canConverge
-                  ? `CONVERGE [E] ${resonance.fluxCost} FLUX`
-                  : isEmpoweredReady
-                    ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
-                      hud.weapon.equippedWeaponId === 'phase_rail'
-                      ? 'LANCE [E] EMPOWERED'
-                      : 'HEAVY [E] EMPOWERED'
-                    : hud.weapon.equippedWeaponId === 'pulsecaster'
-                      ? 'LANCE [E] 20 FLUX'
-                      : hud.weapon.equippedWeaponId === 'phase_rail'
-                        ? 'NULL LANCE [E] 22 FLUX'
-                        : hud.weapon.equippedWeaponId === 'grav_breaker'
-                          ? 'CRUSH [E] 28 FLUX'
-                          : `HEAVY [E] ${
-                              hud.weapon.equippedUpgradeId === 'edge_harmonic_conductor' ? 30 : 25
-                            } FLUX`}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1 pointer-events-auto">
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="combat-btn-light"
-                title="Light combo — tap LMB / F / J"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onLightAttack?.();
-                }}
-                className="px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[F] </span>LIGHT
-              </button>
-
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="combat-btn-heavy"
-                title="Charged Heavy — hold LMB / J then release, or tap E / K / RMB"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onHeavyAttack?.();
-                }}
-                className={`px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
-                  resonance.primed && resonance.canConverge
-                    ? 'bg-cyan-400/25 border-white text-white'
-                    : isEmpoweredReady
-                      ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                      : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
-                }`}
-              >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[E] </span>HEAVY
-              </button>
-
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="combat-btn-dodge"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onDodge?.();
-                }}
-                className="px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                DODGE
-              </button>
-
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="combat-btn-parry"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onParry?.();
-                }}
-                className="px-1 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Q] </span>PARRY
-              </button>
-            </div>
-
-            {/* Chapter III Gravity Pin [G] & Chapter IV Echo Collapse [X] Controls */}
-            {(hud.gravityPin.unlocked || hud.echoCollapse.unlocked) && (
-              <div className="grid grid-cols-2 gap-1 mt-1 pointer-events-auto">
-                {hud.gravityPin.unlocked && (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    data-testid="combat-btn-gravity-pin"
-                    data-can-activate={hud.gravityPin.status === 'ready' ? 'true' : 'false'}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onGravityPin?.();
-                    }}
-                    className={`px-1.5 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
-                      hud.gravityPin.status === 'active'
-                        ? 'bg-purple-500/25 border-purple-300 text-purple-200'
-                        : hud.gravityPin.status === 'ready'
-                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                          : 'bg-[#0d131d] border-slate-800 text-slate-500'
-                    }`}
-                  >
-                    {hud.gravityPin.status === 'active'
-                      ? `[G] PIN ${hud.gravityPin.activeDurationTimer.toFixed(1)}s`
-                      : hud.gravityPin.cooldownTimer > 0
-                        ? `[G] PIN ${hud.gravityPin.cooldownTimer.toFixed(1)}s`
-                        : `[G] PIN (${hud.gravityPin.fluxCost})`}
-                  </button>
-                )}
-                {hud.echoCollapse.unlocked && (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    data-testid="combat-btn-echo-collapse"
-                    data-can-activate={hud.echoCollapse.status === 'ready' ? 'true' : 'false'}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onEchoCollapse?.();
-                    }}
-                    className={`px-1.5 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
-                      hud.echoCollapse.status === 'ready'
-                        ? 'bg-rose-500/25 border-rose-300 text-white'
-                        : 'bg-[#0d131d] border-slate-800 text-slate-500'
-                    }`}
-                  >
-                    {hud.echoCollapse.cooldownTimer > 0
-                      ? `[X] COLLAPSE ${hud.echoCollapse.cooldownTimer.toFixed(1)}s`
-                      : `[X] COLLAPSE (${hud.echoCollapse.fluxCost})`}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Phase 18: Dedicated Environmental Interaction Action [I] */}
-            <div className="mt-1 pointer-events-auto">
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="hud-btn-interact"
-                data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
-                data-interactable-id={hud.exploration.prompt.interactableId ?? 'none'}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onInteract?.();
-                }}
-                className={`w-full px-1.5 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
-                  hud.exploration.prompt.canInteract
-                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-400 text-emerald-200'
-                    : hud.exploration.prompt.interactableId
-                      ? 'bg-amber-500/15 border-amber-400/70 text-amber-200'
-                      : 'bg-[#0d131d] hover:bg-[#162032] border-slate-800 text-slate-400'
-                }`}
-              >
-                {hud.exploration.prompt.canInteract && hud.exploration.prompt.label
-                  ? `[I] INTERACT · ${hud.exploration.prompt.label}`
-                  : '[I] INTERACT · SCAN NODE'}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Cluster 2 (Top-Center): Progressive Objective Tracker OR Consolidated Boss HUD */}
-        <div className="order-3 md:order-2 flex flex-col items-center w-full md:max-w-lg">
+        <div className="order-3 md:order-2 flex flex-col items-center w-full md:max-w-[440px] lg:max-w-[464px]">
           {/* Standard / Calibration / Loom Objective Card (Hidden when Boss HUD is active so top-center doesn't double-stack!) */}
           <div
             className={
@@ -1733,95 +1064,65 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
             )
           )}
 
-          {/* Phase 18: Contextual Environmental Interaction Prompt Banner */}
-          {hud.exploration.prompt.interactableId && (
-            <div
-              data-testid="hud-interaction-prompt"
-              data-interactable-id={hud.exploration.prompt.interactableId}
-              data-interaction-status={hud.exploration.prompt.status}
-              data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
-              className={`mt-1 w-full bg-[#090d14]/94 border px-2.5 sm:px-3.5 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)] pointer-events-auto ${
-                hud.exploration.prompt.canInteract
-                  ? 'border-emerald-400/90 text-emerald-200'
-                  : hud.exploration.prompt.status === 'already_activated'
-                    ? 'border-cyan-500/60 text-cyan-200'
-                    : 'border-amber-400/80 text-amber-200'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold">
-                <span className="truncate">{hud.exploration.prompt.promptText}</span>
-                {hud.exploration.prompt.canInteract && (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onInteract?.();
-                    }}
-                    className="px-2 py-0.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[9px] font-bold uppercase tracking-wider cursor-pointer shrink-0"
-                  >
-                    ACTIVATE [I]
-                  </button>
-                )}
-              </div>
-              {hud.exploration.prompt.detailText && (
-                <div className="text-[9px] sm:text-[10px] font-mono-tabular text-slate-300 truncate mt-0.5">
-                  {hud.exploration.prompt.detailText}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Phase 19: Restrained Secret Area Discovery Banner */}
-          {hud.exploration.lastDiscoveryBanner && (
-            <div
-              data-testid="hud-secret-discovery-banner"
-              data-secret-id={hud.exploration.lastDiscoveryBanner.secretId}
-              className="mt-1 w-full bg-[#071518]/95 border border-emerald-400 px-3 py-1.5 shadow-[0_8px_24px_rgba(16,185,129,0.28)]"
-            >
-              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold text-emerald-300">
-                <span className="truncate">
-                  SECRET DISCOVERED · {hud.exploration.lastDiscoveryBanner.title}
-                </span>
-                <span className="text-cyan-200 whitespace-nowrap shrink-0">
-                  {hud.exploration.lastDiscoveryBanner.rewardSummary}
-                </span>
-              </div>
-              <div className="text-[9px] font-mono-tabular text-slate-300 truncate mt-0.5">
-                {hud.exploration.lastDiscoveryBanner.subtitle} · LOGGED TO SECTOR MAP [N]
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Cluster 3 (Top-Right): Clear System & Navigation Controls (Fits on Row 1 beside Cluster 1 on 390px mobile) */}
+        {/* Cluster 3 (Top-Right): Clear System & Navigation Controls */}
         <div className="order-2 md:order-3 flex items-center gap-1 sm:gap-1.5 pointer-events-auto shrink-0">
           {onToggleLockOn && (
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="lock-on-hud-badge"
-              data-locked={hud.lockOn?.active ? 'true' : 'false'}
-              aria-label="Toggle Target Lock-On [O / MMB]"
-              title="Toggle Target Lock-On [O / Middle Mouse]"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onToggleLockOn();
-              }}
-              className={`h-8 sm:h-9 px-2 flex items-center gap-1 justify-center border font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase transition-colors cursor-pointer whitespace-nowrap ${
-                hud.lockOn?.active
-                  ? hud.lockOn.isStaggered
-                    ? 'bg-amber-500/25 border-amber-400 text-amber-200'
-                    : 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-                  : 'bg-[#090d14]/90 hover:bg-[#162032] border-slate-700/90 text-slate-300'
-              }`}
-            >
-              <span className="max-w-[136px] truncate">
-                {hud.lockOn?.active
-                  ? `LOCK · ${(hud.lockOn.targetName ?? 'TARGET').split('·')[0].trim()}`
-                  : 'LOCK [O]'}
-              </span>
-            </button>
+            <div className="flex items-center">
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="lock-on-hud-badge"
+                data-locked={hud.lockOn?.active ? 'true' : 'false'}
+                aria-label="Toggle Target Lock-On [O / MMB]"
+                title="Toggle Target Lock-On [O / Middle Mouse]"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onToggleLockOn();
+                }}
+                className={`h-8 sm:h-9 px-2 flex items-center gap-1 justify-center border font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase transition-colors cursor-pointer whitespace-nowrap ${
+                  hud.lockOn?.active
+                    ? hud.lockOn.isStaggered
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                      : 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                    : 'bg-[#080d15]/90 hover:bg-[#162032] border-slate-700/90 text-slate-300'
+                }`}
+              >
+                <span className="max-w-[92px] sm:max-w-[136px] truncate">
+                  {hud.lockOn?.active
+                    ? `LOCK · ${(hud.lockOn.targetName ?? 'TARGET').split('·')[0].trim()}`
+                    : 'LOCK [O]'}
+                </span>
+              </button>
+              {hud.lockOn?.active && onCycleLockOn && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="lock-on-cycle-btn"
+                  aria-label="Cycle Lock-On Target [Wheel / ]]"
+                  title="Switch Lock-On Target [Mouse Wheel / ] ]"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onCycleLockOn();
+                  }}
+                  className="h-8 sm:h-9 px-1.5 flex items-center justify-center bg-[#080d15]/90 hover:bg-[#162032] border border-l-0 border-cyan-400/80 text-cyan-200 transition-colors cursor-pointer"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                  >
+                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+                    <path d="M16 16h5v5" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
           <button
             type="button"
@@ -1837,7 +1138,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 onTogglePause();
               }
             }}
-            className="h-8 sm:h-9 px-2 flex items-center gap-1 justify-center bg-[#090d14]/90 hover:bg-[#162032] border border-cyan-500/60 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
+            className="h-8 sm:h-9 px-2 flex items-center gap-1 justify-center bg-[#080d15]/90 hover:bg-[#162032] border border-cyan-500/60 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
           >
             <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase">
               MAP [N]
@@ -1871,10 +1172,10 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 e.currentTarget.blur();
                 onStartBoss();
               }}
-              className={`hidden lg:flex h-8 sm:h-9 px-2 items-center justify-center font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+              className={`hidden xl:flex h-8 sm:h-9 px-2 items-center justify-center font-mono-tabular text-[9px] sm:text-[10px] font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
                 hud.run.mode === 'practice_boss'
                   ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                  : 'bg-[#090d14]/85 hover:bg-[#162032] border-slate-700/80 text-slate-400 hover:text-amber-300'
+                  : 'bg-[#080d15]/90 hover:bg-[#162032] border-slate-700/80 text-slate-400 hover:text-amber-300'
               }`}
             >
               <span>PRACTICE [B]</span>
@@ -2009,7 +1310,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         <div
           data-testid="chrono-execution-prompt"
           data-target-id={hud.lockOn.targetId ?? ''}
-          className="fixed left-1/2 top-[60%] -translate-x-1/2 z-25 pointer-events-auto"
+          className="fixed left-1/2 top-[56%] -translate-x-1/2 z-25 pointer-events-auto"
         >
           <button
             type="button"
@@ -2018,7 +1319,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               e.currentTarget.blur();
               onHeavyAttack?.();
             }}
-            className="px-3.5 py-1.5 bg-[#120e06]/95 hover:bg-[#221909] border-2 border-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.4)] flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
+            className="px-3.5 py-1.5 bg-[#120e06]/95 hover:bg-[#221909] border border-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.45)] flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap"
           >
             <span className="px-1.5 py-0.5 bg-amber-400 text-slate-950 text-[10px] font-mono-tabular font-bold uppercase">
               [E]
@@ -2073,97 +1374,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         </div>
       )}
 
-      {/* In-World Live Narrative Comms Feed (Non-blocking during active exploration & combat) */}
-      {hud.comms.active &&
-        (cameraSettings?.subtitlesEnabled ?? true) &&
-        hud.run.stage !== 'intro' &&
-        hud.run.stage !== 'boss_intro' &&
-        hud.run.stage !== 'transition_to_boss' &&
-        (!hud.loom.active || inspectingLoomChamber) && (
-          <div
-            data-testid="live-comms-banner"
-            data-comms-id={hud.comms.active.id}
-            data-comms-classification={hud.comms.active.classification}
-            className="fixed left-2 sm:left-5 bottom-36 sm:bottom-28 [@media(max-height:540px)]:left-2.5 [@media(max-height:540px)]:right-auto [@media(max-height:540px)]:bottom-2 [@media(max-height:540px)]:w-[348px] [@media(max-height:540px)]:p-2 z-15 w-[92vw] sm:w-92 max-w-md bg-[#080c13]/94 border border-cyan-400/75 p-2.5 sm:p-3 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
-          >
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span
-                  className={`inline-block w-1.5 h-1.5 rotate-45 shrink-0 ${
-                    hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
-                      ? 'bg-red-400'
-                      : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
-                        ? 'bg-amber-400'
-                        : 'bg-cyan-400'
-                  }`}
-                />
-                <span
-                  data-testid="live-comms-classification"
-                  className={`text-[9px] font-mono-tabular font-bold uppercase tracking-widest px-1.5 py-0.5 border shrink-0 ${
-                    hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
-                      ? 'text-red-300 border-red-500/50 bg-red-950/40'
-                      : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
-                        ? 'text-amber-300 border-amber-500/50 bg-amber-950/40'
-                        : hud.comms.active.classification === 'LIVE NEURAL TRACE'
-                          ? 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40'
-                          : 'text-cyan-300 border-cyan-500/50 bg-cyan-950/40'
-                  }`}
-                >
-                  {hud.comms.active.classification}
-                </span>
-                <span className="text-[10px] font-mono-tabular font-semibold text-slate-300 truncate">
-                  {hud.comms.active.speaker}
-                </span>
-              </div>
-              <button
-                type="button"
-                tabIndex={-1}
-                data-testid="btn-dismiss-comms"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onDismissComms?.();
-                }}
-                className="px-1.5 py-0.5 text-[9px] font-mono-tabular uppercase text-slate-400 hover:text-white bg-[#0e1624] border border-slate-700/80 cursor-pointer shrink-0"
-              >
-                ACK
-              </button>
-            </div>
-            <div
-              data-testid="live-comms-headline"
-              className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-slate-100 mb-0.5"
-            >
-              {hud.comms.active.headline}
-            </div>
-            <p
-              data-testid="live-comms-body"
-              className="text-[11px] text-slate-200 leading-snug mb-1.5"
-            >
-              {hud.comms.active.body}
-            </p>
-            {hud.comms.active.tacticalHint && (
-              <div
-                data-testid="live-comms-hint"
-                className="text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1.5 pt-1 border-t border-slate-800/80"
-              >
-                TACTICAL: {hud.comms.active.tacticalHint}
-              </div>
-            )}
-            <div className="relative h-0.5 w-full bg-[#05080c] overflow-hidden">
-              <div
-                className="absolute inset-y-0 left-0 bg-cyan-400 transition-all duration-75"
-                style={{
-                  width: `${Math.max(
-                    0,
-                    Math.min(
-                      100,
-                      (hud.comms.active.remainingTime / Math.max(0.1, hud.comms.active.maxDuration)) * 100
-                    )
-                  )}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
+
 
       {/* Skippable Sector Arrival & Marshal Awakening Banner (Stage: boss_intro) */}
       {hud.encounterMode === 'boss' && hud.run.stage === 'boss_intro' && (
@@ -2514,286 +1725,1123 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
         </div>
       )}
 
-      {/* Bottom Cluster: Checkpoint Toast + Contextual Tutorial Prompt + Mobile Touch Directional Pad */}
+      {/* Bottom Perimeter Docks: Comms, Echo Rig (Left), Context/Hints/Touch (Center), Weapon & Action Dock (Right) */}
       <div
-        data-testid="hud-bottom-cluster"
-        data-run-mode={hud.run.mode}
-        data-run-stage={hud.run.stage}
-        className="fixed bottom-2 sm:bottom-3.5 [@media(max-height:540px)]:bottom-2 left-1/2 -translate-x-1/2 [@media(max-height:540px)]:left-auto [@media(max-height:540px)]:right-2.5 [@media(max-height:540px)]:translate-x-0 w-[94vw] sm:w-auto max-w-[94vw] [@media(max-height:540px)]:w-[calc(100vw-264px)] [@media(max-height:540px)]:max-w-[540px] flex flex-col items-center [@media(max-height:540px)]:items-end gap-1.5"
+        className={`fixed inset-x-2 bottom-1.5 z-20 flex flex-col gap-1 pointer-events-none [@media(min-width:640px)_and_(min-height:541px)]:contents transition-opacity duration-150 ${
+          hud.loom.active && hud.run.stage === 'chronicle_loom' && !inspectingLoomChamber
+            ? 'opacity-20'
+            : ''
+        }`}
       >
-        {/* Checkpoint Saved / Restored Notice Toast */}
-        {hud.run.checkpointNotice &&
-          hud.run.checkpointNoticeTimer > 0 &&
+        {/* In-World Live Narrative Comms Feed (Stacks above Echo/Weapon dock on mobile; floats cleanly above Echo Rig on desktop) */}
+        {hud.comms.active &&
+          (cameraSettings?.subtitlesEnabled ?? true) &&
+          hud.run.stage !== 'intro' &&
+          hud.run.stage !== 'boss_intro' &&
           hud.run.stage !== 'transition_to_boss' &&
-          hud.run.stage !== 'boss_intro' && (
+          (!hud.loom.active || inspectingLoomChamber) && (
             <div
-              data-testid="checkpoint-notice-banner"
-              className="bg-[#09121e]/95 border border-cyan-400/80 px-3 py-1 text-[10px] sm:text-[11px] font-mono-tabular font-bold text-cyan-300 tracking-wider uppercase shadow-md max-w-full truncate"
+              data-testid="live-comms-banner"
+              data-comms-id={hud.comms.active.id}
+              data-comms-classification={hud.comms.active.classification}
+              className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:bottom-[146px] [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[348px] w-full bg-[#080c13]/94 border border-cyan-400/75 p-2 sm:p-2.5 pointer-events-auto shadow-[0_10px_28px_rgba(0,0,0,0.82)]"
             >
-              {hud.run.checkpointNotice}
-            </div>
-          )}
-
-        {/* Contextual Gameplay Tutorial Prompt Banner (Hidden while opening intro card is up so they never overlap) */}
-        <div
-          data-testid="tutorial-prompt-banner"
-          data-tutorial-step={hud.tutorial.step}
-          data-tutorial-enabled={hud.tutorial.enabled ? 'true' : 'false'}
-          data-tutorial-stuck={hud.tutorial.stuckHintActive ? 'true' : 'false'}
-          className={
-            hud.run.stage === 'intro' || hud.loom.active
-              ? 'sr-only'
-              : 'w-full max-w-xl [@media(max-height:540px)]:max-w-[460px] pointer-events-auto'
-          }
-        >
-          {hud.tutorial.enabled && hud.tutorial.step !== 'completed' ? (
-            <div className="bg-[#090e17]/92 border border-slate-700/90 px-3 py-1.5 sm:px-3.5 sm:py-2 [@media(max-height:540px)]:px-3 [@media(max-height:540px)]:py-1.5 shadow-[0_8px_22px_rgba(0,0,0,0.7)]">
-              <div className="flex items-center justify-between gap-2 mb-0.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[9px] font-mono-tabular font-bold uppercase tracking-widest text-amber-300 shrink-0">
-                    {tutorialMeta.badge}
-                  </span>
-                  <span aria-hidden="true" className="text-slate-600">
-                    ·
-                  </span>
+              <div className="flex items-center justify-between gap-2 mb-0.5 sm:mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <span
-                    data-testid="tutorial-step-title"
-                    className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-400 truncate"
+                    className={`inline-block w-1.5 h-1.5 rotate-45 shrink-0 ${
+                      hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
+                        ? 'bg-red-400'
+                        : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
+                          ? 'bg-amber-400'
+                          : 'bg-cyan-400'
+                    }`}
+                  />
+                  <span
+                    data-testid="live-comms-classification"
+                    className={`text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-widest px-1.5 py-0.5 border shrink-0 ${
+                      hud.comms.active.classification === 'LIVE WARDEN DIRECTIVE'
+                        ? 'text-red-300 border-red-500/50 bg-red-950/40'
+                        : hud.comms.active.classification === 'RECONSTRUCTED TRACE'
+                          ? 'text-amber-300 border-amber-500/50 bg-amber-950/40'
+                          : hud.comms.active.classification === 'LIVE NEURAL TRACE'
+                            ? 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40'
+                            : 'text-cyan-300 border-cyan-500/50 bg-cyan-950/40'
+                    }`}
                   >
-                    {hud.tutorial.title.replace(
-                      /^(STEP\s+\d+|CALIBRATION\s+\d\/\d|CHAPTER\s+[IVX]+)\s*·\s*/i,
-                      ''
-                    )}
+                    {hud.comms.active.classification}
+                  </span>
+                  <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold text-slate-300 truncate">
+                    {hud.comms.active.speaker}
                   </span>
                 </div>
                 <button
                   type="button"
                   tabIndex={-1}
-                  data-testid="tutorial-toggle-btn"
+                  data-testid="btn-dismiss-comms"
                   onClick={(e) => {
                     e.currentTarget.blur();
-                    onToggleTutorial?.();
+                    onDismissComms?.();
                   }}
-                  className="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0f1726] hover:bg-[#19253b] border border-slate-700 text-slate-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  className="px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular uppercase text-slate-400 hover:text-white bg-[#0e1624] border border-slate-700/80 cursor-pointer shrink-0"
                 >
-                  HIDE [H]
+                  ACK
                 </button>
               </div>
-              <p
-                data-testid="tutorial-desktop-prompt"
-                className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block text-[11px] text-slate-100 leading-snug"
+              <div
+                data-testid="live-comms-headline"
+                className="text-[10px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-slate-100 mb-0.5 truncate"
               >
-                {hud.tutorial.desktopPrompt}
-              </p>
+                {hud.comms.active.headline}
+              </div>
               <p
-                data-testid="tutorial-mobile-prompt"
-                className="[@media(min-width:640px)_and_(min-height:541px)]:hidden text-[10px] text-slate-100 leading-snug"
+                data-testid="live-comms-body"
+                className="text-[10px] sm:text-[11px] text-slate-200 leading-snug mb-1 max-sm:line-clamp-2"
               >
-                {hud.tutorial.mobilePrompt}
+                {hud.comms.active.body}
               </p>
-              {tutorialMeta.whyItMatters && (
-                <p
-                  data-testid="tutorial-why-context"
-                  className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-0.5 text-[10px] text-slate-400 leading-snug"
+              {hud.comms.active.tacticalHint && (
+                <div
+                  data-testid="live-comms-hint"
+                  className="text-[9px] sm:text-[10px] font-mono-tabular text-amber-300 leading-snug mb-1 pt-0.5 sm:pt-1 border-t border-slate-800/80 max-sm:truncate"
                 >
-                  {tutorialMeta.whyItMatters}
-                </p>
+                  TACTICAL: {hud.comms.active.tacticalHint}
+                </div>
               )}
-              {hud.tutorial.stuckHintActive && hud.tutorial.stuckHint && (
-                <p
-                  data-testid="tutorial-stuck-hint"
-                  className="mt-1 pt-1 border-t border-amber-500/40 text-[10px] font-mono-tabular text-amber-300 leading-snug"
+              <div className="relative h-0.5 w-full bg-[#05080c] overflow-hidden">
+                <div
+                  className="absolute inset-y-0 left-0 bg-cyan-400 transition-all duration-75"
+                  style={{
+                    width: `${Math.max(
+                      0,
+                      Math.min(
+                        100,
+                        (hud.comms.active.remainingTime / Math.max(0.1, hud.comms.active.maxDuration)) * 100
+                      )
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+        <div className="grid grid-cols-2 gap-1 items-end [@media(min-width:640px)_and_(min-height:541px)]:contents">
+          {/* Bottom-Left Dock: Chrono Echo Rig Module */}
+          <div
+            data-testid="echo-hud-module"
+            data-echo-state={echo.state}
+            className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:left-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[264px] bg-[#080d15]/90 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
+          >
+            <div className="flex items-center justify-between gap-1.5 mb-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                {echo.state === 'recording' ? (
+                  <span
+                    aria-hidden="true"
+                    className="inline-block w-2 h-2 bg-amber-400 shrink-0"
+                  />
+                ) : echo.state === 'playback' ? (
+                  <svg
+                    viewBox="0 0 12 12"
+                    className="w-2.5 h-2.5 text-cyan-300 shrink-0"
+                    fill="currentColor"
+                  >
+                    <polygon points="2,1 11,6 2,11" />
+                  </svg>
+                ) : echo.hasClip ? (
+                  <span
+                    aria-hidden="true"
+                    className="inline-block w-2 h-2 rotate-45 bg-cyan-400 shrink-0"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="inline-block w-2 h-2 border border-slate-500 shrink-0"
+                  />
+                )}
+                <span className="text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase tracking-wider text-slate-300 truncate">
+                  ECHO RIG
+                </span>
+              </div>
+              <span
+                data-testid="echo-state-badge"
+                className={`text-[8px] sm:text-[10px] font-mono-tabular font-bold uppercase whitespace-nowrap shrink-0 ${
+                  echo.state === 'recording'
+                    ? 'text-amber-400'
+                    : echo.state === 'playback'
+                      ? 'text-cyan-300'
+                      : echo.hasClip
+                        ? 'text-cyan-400'
+                        : 'text-slate-400'
+                }`}
+              >
+                {echoStateBadge}
+              </span>
+            </div>
+
+            {/* Echo Timeline Progress Bar */}
+            <div className="relative h-1 w-full bg-[#05080c] border border-slate-800 overflow-hidden mb-1.5">
+              <div
+                className={`absolute inset-y-0 left-0 ${
+                  echo.state === 'recording'
+                    ? 'bg-amber-400'
+                    : echo.state === 'playback'
+                      ? 'bg-cyan-300'
+                      : echo.hasClip
+                        ? 'bg-cyan-500/80'
+                        : 'bg-slate-700'
+                }`}
+                style={{ width: `${echoPct}%` }}
+              />
+            </div>
+
+            {/* Tactical Echo Controls ([T] REC · [Y] PLAY · [V] RELAY · [C] CLR) */}
+            <div className="grid grid-cols-4 gap-1">
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="echo-btn-record"
+                title="Record or Stop Chrono Echo [T]"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onEchoRecord();
+                }}
+                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                  echo.state === 'recording'
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                    : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
+                }`}
+              >
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[T] </span>
+                {echo.state === 'recording' ? 'STOP' : 'REC'}
+              </button>
+
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="echo-btn-replay"
+                title={
+                  echo.hasClip
+                    ? 'Replay recorded Chrono Echo [Y]'
+                    : 'Record an Echo with [T] first'
+                }
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onEchoReplay();
+                }}
+                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                  echo.state === 'playback' || echo.hasClip
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                    : 'bg-[#0a0f17] border-slate-800/80 text-slate-500'
+                }`}
+              >
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Y] </span>PLAY
+              </button>
+
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="echo-btn-relay"
+                title={`Relay Teleport to active Echo [V] (${relay.fluxCost} Flux)`}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onEchoRelay();
+                }}
+                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                  relay.canRelay
+                    ? 'bg-cyan-400/25 border-cyan-300 text-white'
+                    : echo.state === 'playback'
+                      ? 'bg-amber-500/15 border-amber-500/70 text-amber-300'
+                      : 'bg-[#0a0f17] border-slate-800/80 text-slate-500'
+                }`}
+              >
+                {relay.cooldownTimer > 0 ? (
+                  <>
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>
+                    {relay.cooldownTimer.toFixed(1)}s
+                  </>
+                ) : (
+                  <>
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[V] </span>RELAY
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="echo-btn-clear"
+                title="Clear Echo Track [C]"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onEchoClear();
+                }}
+                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-400 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[C] </span>CLR
+              </button>
+            </div>
+
+            {/* Contextual Relay & Resonance Telemetry */}
+            <div
+              className={
+                showContextualRelayOrResonance
+                  ? 'mt-1 pt-1 border-t border-slate-800/70 space-y-0.5'
+                  : 'hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-1.5 pt-1 border-t border-slate-800/70 space-y-0.5'
+              }
+            >
+              <div
+                data-testid="relay-status-readout"
+                data-relay-status={relay.status}
+                data-can-relay={relay.canRelay ? 'true' : 'false'}
+                className="flex items-center justify-between gap-1 text-[8px] sm:text-[9px] font-mono-tabular uppercase"
+              >
+                <span className="text-slate-400 whitespace-nowrap shrink-0">
+                  RELAY [V] · {relay.fluxCost}F
+                </span>
+                <span className="sr-only"> · </span>
+                <span
+                  className={`font-bold truncate ${
+                    relay.canRelay
+                      ? 'text-cyan-300'
+                      : relay.status === 'no_active_echo'
+                        ? 'text-slate-500'
+                        : 'text-amber-300'
+                  }`}
                 >
-                  HINT: {hud.tutorial.stuckHint}
-                </p>
+                  {relay.canRelay
+                    ? `READY (${relay.distance.toFixed(1)}m)`
+                    : relay.status === 'on_cooldown'
+                      ? `COOLDOWN ${relay.cooldownTimer.toFixed(1)}s`
+                      : relay.status === 'insufficient_flux'
+                        ? 'LOW FLUX'
+                        : relay.status === 'out_of_range'
+                          ? `RANGE ${relay.distance.toFixed(1)}m/${relay.maxRange.toFixed(0)}m`
+                          : relay.status === 'path_blocked'
+                            ? 'PATH BLOCKED'
+                            : relay.status === 'no_safe_landing'
+                              ? 'NO SAFE SPOT'
+                              : relay.status === 'action_locked'
+                                ? 'ACTION BUSY'
+                                : 'NEED REPLAY'}
+                </span>
+              </div>
+
+              <div
+                data-testid="resonance-status-readout"
+                data-resonance-status={resonance.status}
+                data-resonance-primed={resonance.primed ? 'true' : 'false'}
+                data-can-converge={resonance.canConverge ? 'true' : 'false'}
+                data-resonance-outcome={resonance.lastOutcome}
+                className="flex items-center justify-between gap-1 text-[8px] sm:text-[9px] font-mono-tabular uppercase"
+              >
+                <span className="text-slate-400 whitespace-nowrap shrink-0">
+                  SYNC · {resonance.fluxCost}F
+                </span>
+                <span className="sr-only"> · </span>
+                <span
+                  className={`font-bold truncate ${
+                    resonance.primed
+                      ? resonance.canConverge
+                        ? 'text-white'
+                        : 'text-amber-300'
+                      : resonance.status === 'on_cooldown'
+                        ? 'text-amber-300'
+                        : resonance.lastOutcome === 'expired' ||
+                            resonance.lastOutcome === 'insufficient_flux'
+                          ? 'text-amber-300'
+                          : resonance.convergenceCount > 0
+                            ? 'text-cyan-300'
+                            : 'text-slate-500'
+                  }`}
+                >
+                  {resonance.primed
+                    ? resonance.canConverge
+                      ? `PRIMED ${resonance.remainingWindow.toFixed(1)}s · HIT [E]`
+                      : `PRIMED ${resonance.remainingWindow.toFixed(1)}s · LOW FLUX`
+                    : resonance.status === 'on_cooldown'
+                      ? `COOLDOWN ${resonance.cooldownTimer.toFixed(1)}s`
+                      : resonance.lastOutcome === 'expired'
+                        ? 'EXPIRED · REPLAY [Y]'
+                        : resonance.lastOutcome === 'insufficient_flux'
+                          ? `LOW FLUX (${resonance.fluxCost} REQ)`
+                          : resonance.convergenceCount > 0
+                            ? `CONVERGED ×${resonance.convergenceCount}`
+                            : 'ECHO HEAVY -> [E]'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom-Right Dock: Arsenal Weapons, Thermal Telemetry & Action Controls */}
+          <div
+            data-testid="weapon-dock-card"
+            className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:right-4 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-[304px] bg-[#080d15]/90 border border-slate-700/80 p-1.5 sm:p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.65)] pointer-events-auto"
+          >
+            <div
+              data-testid="weapon-hud-module"
+              data-equipped-weapon={hud.weapon.equippedWeaponId}
+              data-equipped-upgrade={hud.weapon.equippedUpgradeId ?? 'none'}
+              data-overheated={hud.weapon.overheated ? 'true' : 'false'}
+              className="mb-1"
+            >
+              <div className="flex items-center justify-between gap-1 mb-0.5">
+                <div className="flex items-center gap-1 min-w-0">
+                  <span
+                    aria-hidden="true"
+                    className={`inline-block w-1.5 h-1.5 shrink-0 ${
+                      hud.weapon.overheated
+                        ? 'bg-red-500 rotate-45'
+                        : hud.weapon.equippedWeaponId === 'pulsecaster'
+                          ? 'bg-sky-400 rounded-full'
+                          : 'bg-cyan-400 rotate-45'
+                    }`}
+                  />
+                  <span
+                    data-testid="weapon-active-label"
+                    className={`text-[8px] sm:text-[10px] font-mono-tabular font-bold uppercase tracking-wider truncate ${
+                      hud.weapon.overheated
+                        ? 'text-red-400'
+                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                            hud.weapon.equippedWeaponId === 'phase_rail'
+                          ? 'text-sky-300'
+                          : hud.weapon.equippedWeaponId === 'grav_breaker'
+                            ? 'text-amber-300'
+                            : 'text-cyan-300'
+                    }`}
+                  >
+                    {hud.weapon.label}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="weapon-switch-btn"
+                    aria-label={`Switch Weapon [Tab / Z] (Currently ${hud.weapon.label})`}
+                    title="Cycle Unlocked Arsenal Weapon [Tab / Z / 1-4]"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onSwitchWeapon?.();
+                    }}
+                    className={`px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                      hud.weapon.equippedWeaponId === 'phase_rail'
+                        ? 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-400 text-sky-200'
+                        : hud.weapon.equippedWeaponId === 'grav_breaker'
+                          ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400 text-amber-200'
+                          : 'bg-[#0d1522] hover:bg-[#17243a] border-cyan-500/60 text-cyan-200'
+                    }`}
+                  >
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[TAB] </span>
+                    {(() => {
+                      const cycleList: readonly WeaponId[] =
+                        hud.progression.unlockedWeaponIds.length > 0
+                          ? hud.progression.unlockedWeaponIds
+                          : ['chrono_edge', 'pulsecaster'];
+                      const curIdx = cycleList.indexOf(hud.weapon.equippedWeaponId);
+                      const nextW =
+                        curIdx >= 0
+                          ? cycleList[(curIdx + 1) % cycleList.length]
+                          : cycleList[0];
+                      return nextW === 'pulsecaster'
+                        ? '→ PULSE'
+                        : nextW === 'phase_rail'
+                          ? '→ RAIL'
+                          : nextW === 'grav_breaker'
+                            ? '→ MAUL'
+                            : '→ EDGE';
+                    })()}
+                  </button>
+
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="hud-btn-upgrade-bench"
+                    aria-label={`Open Chrono Rig Upgrade Bench [U] (${hud.progression.memoryFragments} Memory Fragments)`}
+                    title="Open Chrono Rig Upgrade Bench [U / P]"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onTogglePause();
+                    }}
+                    className={`px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      hud.progression.memoryFragments >= 2
+                        ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400 text-amber-200'
+                        : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-300'
+                    }`}
+                  >
+                    <span
+                      data-testid="hud-memory-fragments"
+                      data-fragments={hud.progression.memoryFragments}
+                    >
+                      {hud.progression.memoryFragments} FRAG
+                    </span>
+                    <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">
+                      {' '}
+                      [U]
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4-Slot Arsenal Quick-Select Bar */}
+              <div
+                data-testid="weapon-arsenal-slots"
+                className="grid grid-cols-4 gap-1 mb-0.5"
+              >
+                {(
+                  [
+                    { id: 'chrono_edge', key: '1', short: 'EDGE' },
+                    { id: 'pulsecaster', key: '2', short: 'PULSE' },
+                    { id: 'phase_rail', key: '3', short: 'RAIL' },
+                    { id: 'grav_breaker', key: '4', short: 'MAUL' },
+                  ] as const
+                ).map((slot) => {
+                  const unlockedList = hud.progression.unlockedWeaponIds ?? [
+                    'chrono_edge',
+                    'pulsecaster',
+                  ];
+                  const unlocked = unlockedList.includes(slot.id);
+                  const active = hud.weapon.equippedWeaponId === slot.id;
+                  return (
+                    <button
+                      key={slot.id}
+                      type="button"
+                      tabIndex={-1}
+                      disabled={!unlocked}
+                      data-testid={`weapon-slot-${slot.id}`}
+                      data-unlocked={unlocked ? 'true' : 'false'}
+                      data-active={active ? 'true' : 'false'}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        if (unlocked) {
+                          onSelectWeapon?.(slot.id);
+                        }
+                      }}
+                      className={`px-0.5 py-0.5 text-[7px] sm:text-[8px] font-mono-tabular font-bold uppercase border transition-colors truncate ${
+                        active
+                          ? 'bg-cyan-500/25 border-cyan-300 text-white cursor-pointer'
+                          : unlocked
+                            ? 'bg-[#0b121e] hover:bg-[#142238] border-slate-700 text-slate-300 cursor-pointer'
+                            : 'bg-[#06090f] border-slate-800/70 text-slate-600 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="hidden sm:inline">[{slot.key}] </span>
+                      {slot.short}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active Mod Core + Thermal / Combo Bar (Single unified readout, no duplicate COMBO label) */}
+              <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-1 text-[9px] font-mono-tabular uppercase mb-0.5">
+                <span className="text-slate-500 whitespace-nowrap shrink-0">MOD CORE</span>
+                <span
+                  data-testid="weapon-active-upgrade"
+                  data-upgrade-id={hud.weapon.equippedUpgradeId ?? 'none'}
+                  className={`truncate font-semibold ${
+                    hud.weapon.equippedUpgradeId
+                      ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                        hud.weapon.equippedWeaponId === 'phase_rail'
+                        ? 'text-sky-300'
+                        : hud.weapon.equippedWeaponId === 'grav_breaker'
+                          ? 'text-amber-300'
+                          : 'text-cyan-300'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  {hud.weapon.equippedUpgradeLabel ?? 'STANDARD · NO MOD'}
+                </span>
+              </div>
+
+              <div
+                data-testid="pulsecaster-heat-bar"
+                data-heat={hud.weapon.heat}
+                data-max-heat={hud.weapon.maxHeat}
+                data-overheated={hud.weapon.overheated ? 'true' : 'false'}
+                className="flex items-center gap-1.5"
+              >
+                <div className="relative h-1.5 flex-1 bg-[#05080c] border border-slate-800 overflow-hidden">
+                  {hud.weapon.overheated && hud.weapon.activeVent && !hud.weapon.activeVent.attempted && (
+                    <div
+                      className="absolute inset-y-0 bg-cyan-400/40 border-x border-cyan-300 z-10"
+                      style={{
+                        left: `${Math.round(hud.weapon.activeVent.windowStart * 100)}%`,
+                        width: `${Math.round(
+                          (hud.weapon.activeVent.windowEnd - hud.weapon.activeVent.windowStart) * 100
+                        )}%`,
+                      }}
+                    />
+                  )}
+                  <div
+                    className={`absolute inset-y-0 left-0 transition-all duration-75 ${
+                      hud.weapon.overheated
+                        ? 'bg-red-500'
+                        : hud.weapon.heat >= 70
+                          ? 'bg-amber-400'
+                          : 'bg-sky-400'
+                    }`}
+                    style={{ width: `${Math.round(hud.weapon.heatRatio * 100)}%` }}
+                  />
+                  {hud.weapon.overheated && hud.weapon.activeVent && (
+                    <div
+                      className="absolute inset-y-0 w-0.5 bg-white z-20"
+                      style={{ left: `${Math.round(hud.weapon.activeVent.progress * 100)}%` }}
+                    />
+                  )}
+                </div>
+                <span
+                  data-testid="weapon-status-readout"
+                  className={`text-[8px] sm:text-[9px] font-mono-tabular uppercase whitespace-nowrap shrink-0 ${
+                    hud.weapon.overheated
+                      ? 'text-red-400 font-bold'
+                      : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
+                        ? 'text-cyan-300 font-bold'
+                        : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                            hud.weapon.equippedWeaponId === 'phase_rail'
+                          ? hud.weapon.heat >= 70
+                            ? 'text-amber-300 font-semibold'
+                            : 'text-sky-300'
+                          : 'text-slate-400'
+                  }`}
+                >
+                  {hud.weapon.overheated
+                    ? hud.weapon.activeVent && !hud.weapon.activeVent.attempted
+                      ? `VENT [F] ${hud.weapon.overheatTimer.toFixed(1)}s`
+                      : `OVERHEAT ${hud.weapon.overheatTimer.toFixed(1)}s`
+                    : (hud.weapon.activeVent?.empoweredShots ?? 0) > 0
+                      ? `OVERCHARGED ×${hud.weapon.activeVent?.empoweredShots}`
+                      : hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                          hud.weapon.equippedWeaponId === 'phase_rail'
+                        ? `HEAT ${hud.weapon.heat}%`
+                        : `COMBO ${hud.comboStep}/3`}
+                </span>
+              </div>
+            </div>
+
+            {/* Weapon Range & Heavy Strike Flux Cue (Desktop) */}
+            <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:flex items-center justify-between gap-2 text-[9px] font-mono-tabular text-slate-400 mb-1">
+              <span className="whitespace-nowrap shrink-0">
+                {hud.weapon.equippedWeaponId === 'pulsecaster'
+                  ? 'RANGED · 12.5m'
+                  : hud.weapon.equippedWeaponId === 'phase_rail'
+                    ? 'RAIL · 17.0m'
+                    : hud.weapon.equippedWeaponId === 'grav_breaker'
+                      ? 'BREAKER · 85% PIERCE'
+                      : 'MELEE · CHRONO BLADE'}
+              </span>
+              <span
+                className={`whitespace-nowrap shrink-0 ${
+                  resonance.primed && resonance.canConverge
+                    ? 'text-white font-semibold'
+                    : isEmpoweredReady
+                      ? 'text-amber-300 font-medium'
+                      : 'text-slate-500'
+                }`}
+              >
+                {resonance.primed && resonance.canConverge
+                  ? `CONVERGE [E] ${resonance.fluxCost}F`
+                  : isEmpoweredReady
+                    ? hud.weapon.equippedWeaponId === 'pulsecaster' ||
+                      hud.weapon.equippedWeaponId === 'phase_rail'
+                      ? 'LANCE [E] EMPOWERED'
+                      : 'HEAVY [E] EMPOWERED'
+                    : hud.weapon.equippedWeaponId === 'pulsecaster'
+                      ? 'LANCE [E] 20F'
+                      : hud.weapon.equippedWeaponId === 'phase_rail'
+                        ? 'NULL LANCE [E] 22F'
+                        : hud.weapon.equippedWeaponId === 'grav_breaker'
+                          ? 'CRUSH [E] 28F'
+                          : `HEAVY [E] ${
+                              hud.weapon.equippedUpgradeId === 'edge_harmonic_conductor' ? 30 : 25
+                            }F`}
+              </span>
+            </div>
+
+            {/* 4-Action Combat Bar */}
+            <div className="grid grid-cols-4 gap-1">
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="combat-btn-light"
+                title="Light combo — tap LMB / F / J"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onLightAttack?.();
+                }}
+                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[F] </span>LIGHT
+              </button>
+
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="combat-btn-heavy"
+                title="Charged Heavy — hold LMB / J then release, or tap E / K / RMB"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onHeavyAttack?.();
+                }}
+                className={`px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap ${
+                  resonance.primed && resonance.canConverge
+                    ? 'bg-cyan-400/25 border-white text-white'
+                    : isEmpoweredReady
+                      ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                      : 'bg-[#0d131d] hover:bg-[#162032] border-slate-700/80 text-slate-200'
+                }`}
+              >
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[E] </span>HEAVY
+              </button>
+
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="combat-btn-dodge"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onDodge?.();
+                }}
+                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                DODGE
+              </button>
+
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="combat-btn-parry"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onParry?.();
+                }}
+                className="px-0.5 sm:px-1 py-1 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] hover:bg-[#162032] border border-slate-800 text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <span className="hidden [@media(min-width:640px)_and_(min-height:541px)]:inline">[Q] </span>PARRY
+              </button>
+            </div>
+
+            {/* Chapter III Gravity Pin [G] & Chapter IV Echo Collapse [X] Controls */}
+            {(hud.gravityPin.unlocked || hud.echoCollapse.unlocked) && (
+              <div className="grid grid-cols-2 gap-1 mt-1">
+                {hud.gravityPin.unlocked && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="combat-btn-gravity-pin"
+                    data-can-activate={hud.gravityPin.status === 'ready' ? 'true' : 'false'}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onGravityPin?.();
+                    }}
+                    className={`px-1 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
+                      hud.gravityPin.status === 'active'
+                        ? 'bg-purple-500/25 border-purple-300 text-purple-200'
+                        : hud.gravityPin.status === 'ready'
+                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                          : 'bg-[#0d131d] border-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {hud.gravityPin.status === 'active'
+                      ? `[G] PIN ${hud.gravityPin.activeDurationTimer.toFixed(1)}s`
+                      : hud.gravityPin.cooldownTimer > 0
+                        ? `[G] PIN ${hud.gravityPin.cooldownTimer.toFixed(1)}s`
+                        : `[G] PIN (${hud.gravityPin.fluxCost})`}
+                  </button>
+                )}
+                {hud.echoCollapse.unlocked && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="combat-btn-echo-collapse"
+                    data-can-activate={hud.echoCollapse.status === 'ready' ? 'true' : 'false'}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onEchoCollapse?.();
+                    }}
+                    className={`px-1 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
+                      hud.echoCollapse.status === 'ready'
+                        ? 'bg-rose-500/25 border-rose-300 text-white'
+                        : 'bg-[#0d131d] border-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {hud.echoCollapse.cooldownTimer > 0
+                      ? `[X] COLLAPSE ${hud.echoCollapse.cooldownTimer.toFixed(1)}s`
+                      : `[X] COLLAPSE (${hud.echoCollapse.fluxCost})`}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Environmental Interaction Action [I] */}
+            <div className="mt-1">
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="hud-btn-interact"
+                data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
+                data-interactable-id={hud.exploration.prompt.interactableId ?? 'none'}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onInteract?.();
+                }}
+                className={`w-full px-1.5 py-0.5 text-[8px] sm:text-[9px] font-mono-tabular font-semibold uppercase border transition-colors cursor-pointer whitespace-nowrap truncate ${
+                  hud.exploration.prompt.canInteract
+                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-400 text-emerald-200'
+                    : hud.exploration.prompt.interactableId
+                      ? 'bg-amber-500/15 border-amber-400/70 text-amber-200'
+                      : 'bg-[#0d131d] hover:bg-[#162032] border-slate-800 text-slate-400'
+                }`}
+              >
+                {hud.exploration.prompt.canInteract && hud.exploration.prompt.label
+                  ? `[I] INTERACT · ${hud.exploration.prompt.label}`
+                  : '[I] INTERACT · SCAN NODE'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom-Center Cluster: Context Prompt + Discovery Toast + Checkpoint + Tutorial + Mobile Touch Controls */}
+        <div
+          data-testid="hud-bottom-cluster"
+          data-run-mode={hud.run.mode}
+          data-run-stage={hud.run.stage}
+          className="[@media(min-width:640px)_and_(min-height:541px)]:fixed [@media(min-width:640px)_and_(min-height:541px)]:bottom-3.5 [@media(min-width:640px)_and_(min-height:541px)]:left-1/2 [@media(min-width:640px)_and_(min-height:541px)]:-translate-x-1/2 [@media(min-width:640px)_and_(min-height:541px)]:z-20 [@media(min-width:640px)_and_(min-height:541px)]:w-auto [@media(min-width:640px)_and_(min-height:541px)]:max-w-[calc(100vw-620px)] flex flex-col items-center gap-1"
+        >
+          {/* Contextual Environmental Interaction Prompt Banner (Moved here so Top-Center stays slim) */}
+          {hud.exploration.prompt.interactableId && (
+            <div
+              data-testid="hud-interaction-prompt"
+              data-interactable-id={hud.exploration.prompt.interactableId}
+              data-interaction-status={hud.exploration.prompt.status}
+              data-can-interact={hud.exploration.prompt.canInteract ? 'true' : 'false'}
+              className={`w-full max-w-md bg-[#080d15]/95 border px-2.5 sm:px-3.5 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)] pointer-events-auto ${
+                hud.exploration.prompt.canInteract
+                  ? 'border-emerald-400/90 text-emerald-200'
+                  : hud.exploration.prompt.status === 'already_activated'
+                    ? 'border-cyan-500/60 text-cyan-200'
+                    : 'border-amber-400/80 text-amber-200'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold">
+                <span className="truncate">{hud.exploration.prompt.promptText}</span>
+                {hud.exploration.prompt.canInteract && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onInteract?.();
+                    }}
+                    className="px-2 py-0.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[9px] font-bold uppercase tracking-wider cursor-pointer shrink-0 whitespace-nowrap"
+                  >
+                    ACTIVATE [I]
+                  </button>
+                )}
+              </div>
+              {hud.exploration.prompt.detailText && (
+                <div className="text-[9px] sm:text-[10px] font-mono-tabular text-slate-300 truncate mt-0.5">
+                  {hud.exploration.prompt.detailText}
+                </div>
               )}
             </div>
-          ) : (
-            hud.tutorial.step !== 'completed' && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  data-testid="tutorial-toggle-btn"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onToggleTutorial?.();
-                  }}
-                  className="px-2.5 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#090d14]/90 hover:bg-[#162032] border border-slate-700/80 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  SHOW HINTS [H]
-                </button>
+          )}
+
+          {/* Secret Area Discovery Banner */}
+          {hud.exploration.lastDiscoveryBanner && (
+            <div
+              data-testid="hud-secret-discovery-banner"
+              data-secret-id={hud.exploration.lastDiscoveryBanner.secretId}
+              className="w-full max-w-md bg-[#071518]/95 border border-emerald-400 px-3 py-1.5 shadow-[0_8px_24px_rgba(16,185,129,0.28)]"
+            >
+              <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-mono-tabular uppercase font-bold text-emerald-300">
+                <span className="truncate">
+                  SECRET DISCOVERED · {hud.exploration.lastDiscoveryBanner.title}
+                </span>
+                <span className="text-cyan-200 whitespace-nowrap shrink-0">
+                  {hud.exploration.lastDiscoveryBanner.rewardSummary}
+                </span>
               </div>
-            )
+              <div className="text-[9px] font-mono-tabular text-slate-300 truncate mt-0.5">
+                {hud.exploration.lastDiscoveryBanner.subtitle} · LOGGED TO SECTOR MAP [N]
+              </div>
+            </div>
+          )}
+
+          {/* Checkpoint Saved / Restored Notice Toast */}
+          {hud.run.checkpointNotice &&
+            hud.run.checkpointNoticeTimer > 0 &&
+            hud.run.stage !== 'transition_to_boss' &&
+            hud.run.stage !== 'boss_intro' && (
+              <div
+                data-testid="checkpoint-notice-banner"
+                className="bg-[#09121e]/95 border border-cyan-400/80 px-3 py-1 text-[10px] sm:text-[11px] font-mono-tabular font-bold text-cyan-300 tracking-wider uppercase shadow-md max-w-full truncate"
+              >
+                {hud.run.checkpointNotice}
+              </div>
+            )}
+
+          {/* Contextual Gameplay Tutorial Prompt Banner */}
+          <div
+            data-testid="tutorial-prompt-banner"
+            data-tutorial-step={hud.tutorial.step}
+            data-tutorial-enabled={hud.tutorial.enabled ? 'true' : 'false'}
+            data-tutorial-stuck={hud.tutorial.stuckHintActive ? 'true' : 'false'}
+            className={
+              hud.run.stage === 'intro' || hud.loom.active
+                ? 'sr-only'
+                : 'w-full max-w-lg pointer-events-auto'
+            }
+          >
+            {hud.tutorial.enabled && hud.tutorial.step !== 'completed' ? (
+              <div className="bg-[#080d15]/92 border border-slate-700/90 px-2.5 py-1.5 sm:px-3.5 sm:py-2 shadow-[0_8px_22px_rgba(0,0,0,0.7)]">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-[8px] sm:text-[9px] font-mono-tabular font-bold uppercase tracking-widest text-amber-300 shrink-0">
+                      {tutorialMeta.badge}
+                    </span>
+                    <span aria-hidden="true" className="text-slate-600">
+                      ·
+                    </span>
+                    <span
+                      data-testid="tutorial-step-title"
+                      className="text-[9px] sm:text-[11px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-400 truncate"
+                    >
+                      {hud.tutorial.title.replace(
+                        /^(STEP\s+\d+|CALIBRATION\s+\d\/\d|CHAPTER\s+[IVX]+)\s*·\s*/i,
+                        ''
+                      )}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="tutorial-toggle-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onToggleTutorial?.();
+                    }}
+                    className="px-1.5 py-0.5 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0f1726] hover:bg-[#19253b] border border-slate-700 text-slate-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    HIDE [H]
+                  </button>
+                </div>
+                <p
+                  data-testid="tutorial-desktop-prompt"
+                  className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block text-[11px] text-slate-100 leading-snug"
+                >
+                  {hud.tutorial.desktopPrompt}
+                </p>
+                <p
+                  data-testid="tutorial-mobile-prompt"
+                  className="[@media(min-width:640px)_and_(min-height:541px)]:hidden text-[10px] text-slate-100 leading-snug line-clamp-2"
+                >
+                  {hud.tutorial.mobilePrompt}
+                </p>
+                {tutorialMeta.whyItMatters && (
+                  <p
+                    data-testid="tutorial-why-context"
+                    className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block mt-0.5 text-[10px] text-slate-400 leading-snug"
+                  >
+                    {tutorialMeta.whyItMatters}
+                  </p>
+                )}
+                {hud.tutorial.stuckHintActive && hud.tutorial.stuckHint && (
+                  <p
+                    data-testid="tutorial-stuck-hint"
+                    className="mt-1 pt-1 border-t border-amber-500/40 text-[10px] font-mono-tabular text-amber-300 leading-snug"
+                  >
+                    HINT: {hud.tutorial.stuckHint}
+                  </p>
+                )}
+              </div>
+            ) : (
+              hud.tutorial.step !== 'completed' && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    data-testid="tutorial-toggle-btn"
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onToggleTutorial?.();
+                    }}
+                    className="px-2.5 py-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#080d15]/90 hover:bg-[#162032] border border-slate-700/80 text-cyan-300 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    SHOW HINTS [H]
+                  </button>
+                </div>
+              )
+            )}
+          </div>
+
+          {/* Mobile Touch Controls Row: 4-Direction Pad + Dedicated Touch Camera Orbit Pad */}
+          <div className="[@media(min-width:640px)_and_(min-height:541px)]:hidden flex items-stretch justify-center gap-1 w-full pointer-events-auto">
+            <div
+              data-testid="touch-move-pad"
+              style={{ touchAction: 'none' }}
+              className="grid grid-cols-4 gap-1 flex-1 min-w-0 bg-[#080d15]/92 border border-slate-800/90 p-1 shadow-[0_8px_20px_rgba(0,0,0,0.65)]"
+            >
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="touch-move-up"
+                aria-label="Move Forward [W]"
+                style={{ touchAction: 'none' }}
+                onPointerDown={() => onTouchMoveHold?.(0, -1)}
+                onPointerUp={() => onTouchMoveHold?.(0, 0)}
+                onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+                onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+                onTouchStart={() => onTouchMoveHold?.(0, -1)}
+                onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+                onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onTouchMovePulse?.(0, -1);
+                }}
+                className="py-1.5 px-0.5 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+              >
+                [W] FWD
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="touch-move-left"
+                aria-label="Strafe Left [A]"
+                style={{ touchAction: 'none' }}
+                onPointerDown={() => onTouchMoveHold?.(-1, 0)}
+                onPointerUp={() => onTouchMoveHold?.(0, 0)}
+                onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+                onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+                onTouchStart={() => onTouchMoveHold?.(-1, 0)}
+                onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+                onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onTouchMovePulse?.(-1, 0);
+                }}
+                className="py-1.5 px-0.5 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+              >
+                [A] LEFT
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="touch-move-down"
+                aria-label="Move Backward [S]"
+                style={{ touchAction: 'none' }}
+                onPointerDown={() => onTouchMoveHold?.(0, 1)}
+                onPointerUp={() => onTouchMoveHold?.(0, 0)}
+                onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+                onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+                onTouchStart={() => onTouchMoveHold?.(0, 1)}
+                onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+                onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onTouchMovePulse?.(0, 1);
+                }}
+                className="py-1.5 px-0.5 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+              >
+                [S] BACK
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="touch-move-right"
+                aria-label="Strafe Right [D]"
+                style={{ touchAction: 'none' }}
+                onPointerDown={() => onTouchMoveHold?.(1, 0)}
+                onPointerUp={() => onTouchMoveHold?.(0, 0)}
+                onPointerCancel={() => onTouchMoveHold?.(0, 0)}
+                onPointerLeave={() => onTouchMoveHold?.(0, 0)}
+                onTouchStart={() => onTouchMoveHold?.(1, 0)}
+                onTouchEnd={() => onTouchMoveHold?.(0, 0)}
+                onTouchCancel={() => onTouchMoveHold?.(0, 0)}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onTouchMovePulse?.(1, 0);
+                }}
+                className="py-1.5 px-0.5 text-[8px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
+              >
+                [D] RIGHT
+              </button>
+            </div>
+
+            {/* Dedicated Touch Camera Orbit Pad */}
+            <div
+              role="application"
+              tabIndex={-1}
+              data-testid="touch-camera-look"
+              aria-label="Touch Camera Orbit [Drag to Look]"
+              style={{ touchAction: 'none' }}
+              onPointerDown={(e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  // Ignore if synthetic event does not have an active pointerId
+                }
+                onTouchCameraStart?.(e.pointerId, e.clientX, e.clientY, 'pointer');
+              }}
+              onPointerMove={(e) => {
+                onTouchCameraMove?.(e.pointerId, e.clientX, e.clientY, 'pointer');
+              }}
+              onPointerUp={(e) => {
+                onTouchCameraEnd?.(e.pointerId, 'pointer');
+              }}
+              onPointerCancel={(e) => {
+                onTouchCameraEnd?.(e.pointerId, 'pointer');
+              }}
+              onTouchStart={(e) => {
+                const t = e.changedTouches[0];
+                if (!t) return;
+                onTouchCameraStart?.(t.identifier, t.clientX, t.clientY, 'touch');
+              }}
+              onTouchMove={(e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                  const t = e.changedTouches[i];
+                  onTouchCameraMove?.(t.identifier, t.clientX, t.clientY, 'touch');
+                }
+              }}
+              onTouchEnd={(e) => {
+                if (e.changedTouches.length === 0) {
+                  onTouchCameraEnd?.(undefined, 'touch');
+                  return;
+                }
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                  const t = e.changedTouches[i];
+                  onTouchCameraEnd?.(t.identifier, 'touch');
+                }
+              }}
+              onTouchCancel={(e) => {
+                if (e.changedTouches.length === 0) {
+                  onTouchCameraEnd?.(undefined, 'touch');
+                  return;
+                }
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                  const t = e.changedTouches[i];
+                  onTouchCameraEnd?.(t.identifier, 'touch');
+                }
+              }}
+              className="w-[88px] shrink-0 flex flex-col items-center justify-center bg-[#080d15]/92 active:bg-cyan-500/20 border border-cyan-500/50 px-1.5 py-1 shadow-[0_8px_20px_rgba(0,0,0,0.65)] select-none cursor-grab active:cursor-grabbing"
+            >
+              <span className="text-[8px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300 leading-tight whitespace-nowrap">
+                [CAM ORBIT]
+              </span>
+              <span className="text-[7px] font-mono-tabular uppercase tracking-widest text-slate-400 leading-tight whitespace-nowrap">
+                DRAG LOOK
+              </span>
+            </div>
+          </div>
+
+          {/* Quiet Desktop Shortcut Reminder */}
+          {(!hud.tutorial.enabled || hud.tutorial.step === 'completed') && (
+            <div className="hidden [@media(min-width:640px)_and_(min-height:541px)]:block text-center text-[10px] font-mono-tabular text-slate-400/90 bg-[#080d15]/88 border border-slate-800/80 px-3 py-1 whitespace-nowrap">
+              [WASD] Move · [O/Wheel] Lock · [Tab/1-4] Weapon · [F/E] Strike/Exec · [Space] Dodge · [Q] Parry · [T/Y/V] Echo
+            </div>
           )}
         </div>
-
-        {/* Mobile Touch Controls Row: 4-Direction Pad + Dedicated Touch Camera Orbit Pad */}
-        <div className="[@media(min-width:640px)_and_(min-height:541px)]:hidden flex items-stretch justify-center gap-1.5 w-full max-w-[460px] pointer-events-auto">
-          <div
-            data-testid="touch-move-pad"
-            style={{ touchAction: 'none' }}
-            className="grid grid-cols-4 gap-1 flex-1 min-w-0 bg-[#090d14]/92 border border-slate-800/90 p-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)]"
-          >
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="touch-move-up"
-              aria-label="Move Forward [W]"
-              style={{ touchAction: 'none' }}
-              onPointerDown={() => onTouchMoveHold?.(0, -1)}
-              onPointerUp={() => onTouchMoveHold?.(0, 0)}
-              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-              onTouchStart={() => onTouchMoveHold?.(0, -1)}
-              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
-              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onTouchMovePulse?.(0, -1);
-              }}
-              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
-            >
-              [W] FWD
-            </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="touch-move-left"
-              aria-label="Strafe Left [A]"
-              style={{ touchAction: 'none' }}
-              onPointerDown={() => onTouchMoveHold?.(-1, 0)}
-              onPointerUp={() => onTouchMoveHold?.(0, 0)}
-              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-              onTouchStart={() => onTouchMoveHold?.(-1, 0)}
-              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
-              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onTouchMovePulse?.(-1, 0);
-              }}
-              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
-            >
-              [A] LEFT
-            </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="touch-move-down"
-              aria-label="Move Backward [S]"
-              style={{ touchAction: 'none' }}
-              onPointerDown={() => onTouchMoveHold?.(0, 1)}
-              onPointerUp={() => onTouchMoveHold?.(0, 0)}
-              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-              onTouchStart={() => onTouchMoveHold?.(0, 1)}
-              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
-              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onTouchMovePulse?.(0, 1);
-              }}
-              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
-            >
-              [S] BACK
-            </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="touch-move-right"
-              aria-label="Strafe Right [D]"
-              style={{ touchAction: 'none' }}
-              onPointerDown={() => onTouchMoveHold?.(1, 0)}
-              onPointerUp={() => onTouchMoveHold?.(0, 0)}
-              onPointerCancel={() => onTouchMoveHold?.(0, 0)}
-              onPointerLeave={() => onTouchMoveHold?.(0, 0)}
-              onTouchStart={() => onTouchMoveHold?.(1, 0)}
-              onTouchEnd={() => onTouchMoveHold?.(0, 0)}
-              onTouchCancel={() => onTouchMoveHold?.(0, 0)}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onTouchMovePulse?.(1, 0);
-              }}
-              className="py-2 px-1 text-[9px] sm:text-[10px] font-mono-tabular font-semibold uppercase bg-[#0d131d] active:bg-cyan-500/25 border border-slate-700/80 text-slate-200 transition-colors cursor-pointer whitespace-nowrap select-none"
-            >
-              [D] RIGHT
-            </button>
-          </div>
-
-          {/* Dedicated Touch Camera Orbit Pad */}
-          <div
-            role="application"
-            tabIndex={-1}
-            data-testid="touch-camera-look"
-            aria-label="Touch Camera Orbit [Drag to Look]"
-            style={{ touchAction: 'none' }}
-            onPointerDown={(e) => {
-              if (e.pointerType === 'mouse' && e.button !== 0) return;
-              try {
-                e.currentTarget.setPointerCapture(e.pointerId);
-              } catch {
-                // Ignore if synthetic event does not have an active pointerId
-              }
-              onTouchCameraStart?.(e.pointerId, e.clientX, e.clientY, 'pointer');
-            }}
-            onPointerMove={(e) => {
-              onTouchCameraMove?.(e.pointerId, e.clientX, e.clientY, 'pointer');
-            }}
-            onPointerUp={(e) => {
-              onTouchCameraEnd?.(e.pointerId, 'pointer');
-            }}
-            onPointerCancel={(e) => {
-              onTouchCameraEnd?.(e.pointerId, 'pointer');
-            }}
-            onTouchStart={(e) => {
-              const t = e.changedTouches[0];
-              if (!t) return;
-              onTouchCameraStart?.(t.identifier, t.clientX, t.clientY, 'touch');
-            }}
-            onTouchMove={(e) => {
-              for (let i = 0; i < e.changedTouches.length; i++) {
-                const t = e.changedTouches[i];
-                onTouchCameraMove?.(t.identifier, t.clientX, t.clientY, 'touch');
-              }
-            }}
-            onTouchEnd={(e) => {
-              if (e.changedTouches.length === 0) {
-                onTouchCameraEnd?.(undefined, 'touch');
-                return;
-              }
-              for (let i = 0; i < e.changedTouches.length; i++) {
-                const t = e.changedTouches[i];
-                onTouchCameraEnd?.(t.identifier, 'touch');
-              }
-            }}
-            onTouchCancel={(e) => {
-              if (e.changedTouches.length === 0) {
-                onTouchCameraEnd?.(undefined, 'touch');
-                return;
-              }
-              for (let i = 0; i < e.changedTouches.length; i++) {
-                const t = e.changedTouches[i];
-                onTouchCameraEnd?.(t.identifier, 'touch');
-              }
-            }}
-            className="w-[104px] shrink-0 flex flex-col items-center justify-center bg-[#090d14]/92 active:bg-cyan-500/20 border border-cyan-500/50 px-2 py-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.65)] select-none cursor-grab active:cursor-grabbing"
-          >
-            <span className="text-[9px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300 leading-tight whitespace-nowrap">
-              [CAM ORBIT]
-            </span>
-            <span className="text-[8px] font-mono-tabular uppercase tracking-widest text-slate-400 leading-tight whitespace-nowrap">
-              DRAG LOOK
-            </span>
-          </div>
-        </div>
-
-        {/* Quiet Desktop Shortcut Reminder (Only shown when Tutorial Banner is hidden or completed, never duplicated or clipped on mobile) */}
-        {(!hud.tutorial.enabled || hud.tutorial.step === 'completed') && (
-          <div className="hidden sm:block text-center text-[10px] font-mono-tabular text-slate-400/90 bg-[#090d14]/85 border border-slate-800/80 px-3 py-1 whitespace-nowrap">
-            [WASD] Move · [O/MMB] Lock-On · [Tab/Z] Weapon · [Tap LMB/F] Light · [E] Heavy/Exec · [Space] Dodge · [Q] Parry · [T] Rec · [Y] Replay · [V] Relay
-          </div>
-        )}
       </div>
     </div>
   );

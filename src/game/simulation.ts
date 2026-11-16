@@ -23,6 +23,7 @@ import {
 } from './adrenaline.ts';
 import {
   CHRONO_EXECUTION_CONFIG,
+  cycleLockOnTarget,
   findExecutionCandidate,
   resolveActiveLockOnTarget,
   selectBestLockOnTarget,
@@ -12058,6 +12059,18 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         });
       }
     }
+  } else if (input.lockOnCycleJustPressed && p.lockOnTargetId) {
+    const cycled = cycleLockOnTarget(world, p.lockOnTargetId, input.aimYaw);
+    if (cycled && cycled.id !== p.lockOnTargetId) {
+      p.lockOnTargetId = cycled.id;
+      world.events.push({
+        type: 'lock_on_engaged',
+        x: cycled.x,
+        z: cycled.z,
+        amount: 1,
+        enemyId: cycled.id,
+      });
+    }
   }
   if (p.lockOnTargetId) {
     const validLock = resolveActiveLockOnTarget(world, p.lockOnTargetId);
@@ -14948,6 +14961,7 @@ export function stepWorld(world: WorldState, input: PlayerInputFrame, rawDt: num
   _scratchSubstepInput.echoCollapseJustPressed = false;
   _scratchSubstepInput.interactJustPressed = false;
   _scratchSubstepInput.lockOnToggleJustPressed = false;
+  _scratchSubstepInput.lockOnCycleJustPressed = false;
   _scratchSubstepInput.switchWeaponJustPressed = false;
   _scratchSubstepInput.selectWeaponId = null;
 

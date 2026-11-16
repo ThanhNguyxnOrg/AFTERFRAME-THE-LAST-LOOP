@@ -39,6 +39,7 @@ export class InputController {
   private middleMouseDown = false;
   private middleMouseDragDist = 0;
   private middleMouseTapJustPressed = false;
+  private wheelCycleQueued = false;
   private pointerLocked = false;
 
   private touchHoldX = 0;
@@ -61,6 +62,7 @@ export class InputController {
   private onMouseDownBound: (e: MouseEvent) => void;
   private onMouseUpBound: (e: MouseEvent) => void;
   private onMouseMoveBound: (e: MouseEvent) => void;
+  private onWheelBound: (e: WheelEvent) => void;
   private onContextMenuBound: (e: MouseEvent) => void;
   private onBlurBound: () => void;
   private onVisibilityChangeBound: () => void;
@@ -88,6 +90,7 @@ export class InputController {
     this.onMouseDownBound = this.handleMouseDown.bind(this);
     this.onMouseUpBound = this.handleMouseUp.bind(this);
     this.onMouseMoveBound = this.handleMouseMove.bind(this);
+    this.onWheelBound = this.handleWheel.bind(this);
     this.onContextMenuBound = (e: MouseEvent) => e.preventDefault();
     this.onBlurBound = this.clearAllInputs.bind(this);
     this.onVisibilityChangeBound = () => {
@@ -313,6 +316,7 @@ export class InputController {
     window.addEventListener('mousedown', this.onMouseDownBound);
     window.addEventListener('mouseup', this.onMouseUpBound);
     window.addEventListener('mousemove', this.onMouseMoveBound);
+    window.addEventListener('wheel', this.onWheelBound, { passive: true });
     window.addEventListener('contextmenu', this.onContextMenuBound);
     window.addEventListener('blur', this.onBlurBound);
     document.addEventListener('visibilitychange', this.onVisibilityChangeBound);
@@ -327,6 +331,7 @@ export class InputController {
     window.removeEventListener('mousedown', this.onMouseDownBound);
     window.removeEventListener('mouseup', this.onMouseUpBound);
     window.removeEventListener('mousemove', this.onMouseMoveBound);
+    window.removeEventListener('wheel', this.onWheelBound);
     window.removeEventListener('contextmenu', this.onContextMenuBound);
     window.removeEventListener('blur', this.onBlurBound);
     document.removeEventListener('visibilitychange', this.onVisibilityChangeBound);
@@ -354,6 +359,7 @@ export class InputController {
     this.middleMouseDown = false;
     this.middleMouseDragDist = 0;
     this.middleMouseTapJustPressed = false;
+    this.wheelCycleQueued = false;
     this.lastPointerX = null;
     this.lastPointerY = null;
     this.touchHoldX = 0;
@@ -866,6 +872,18 @@ export class InputController {
     }
   }
 
+  private handleWheel(e: WheelEvent): void {
+    const state = document.body.dataset.state;
+    if (state !== 'playing') return;
+    const target = e.target as HTMLElement | null;
+    if (target && typeof target.closest === 'function' && target.closest('[role="dialog"]')) {
+      return;
+    }
+    if (Math.abs(e.deltaY) >= 4 || Math.abs(e.deltaX) >= 4) {
+      this.wheelCycleQueued = true;
+    }
+  }
+
   public consumeFrameInput(dt: number): PlayerInputFrame {
     let activePad: Gamepad | null = null;
     if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
@@ -1073,6 +1091,8 @@ export class InputController {
       this.justPressedKeys.has('KeyI') || (gpPlaying && gp.justPressed.interact);
     const lockOnToggleJustPressed =
       this.justPressedKeys.has('KeyO') || this.middleMouseTapJustPressed;
+    const lockOnCycleJustPressed =
+      this.justPressedKeys.has('BracketRight') || this.wheelCycleQueued;
     const cameraDragJustStarted = this.cameraDragJustStarted;
 
     // Clear one-shot edge triggers
@@ -1082,6 +1102,7 @@ export class InputController {
     this.leftMouseJustReleased = false;
     this.rightMouseJustPressed = false;
     this.middleMouseTapJustPressed = false;
+    this.wheelCycleQueued = false;
     this.cameraDragJustStarted = false;
 
     return {
@@ -1106,6 +1127,7 @@ export class InputController {
       echoCollapseJustPressed,
       interactJustPressed,
       lockOnToggleJustPressed,
+      lockOnCycleJustPressed,
     };
   }
 
@@ -1115,6 +1137,10 @@ export class InputController {
 
   public triggerToggleLockOn(): void {
     this.justPressedKeys.add('KeyO');
+  }
+
+  public triggerCycleLockOn(): void {
+    this.justPressedKeys.add('BracketRight');
   }
 
   public triggerSwitchWeapon(): void {

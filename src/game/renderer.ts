@@ -164,6 +164,7 @@ const PARTICLE_POOL_SIZE = 144;
 const ECHO_HISTORY_SIZE = 24;
 const SLASH_RIBBON_POOL_SIZE = 6;
 const DASH_GHOST_POOL_SIZE = 4;
+const EXEC_BEACON_POOL_SIZE = 4;
 
 interface SlashRibbonSlot {
   active: boolean;
@@ -183,6 +184,15 @@ interface DashGhostSlot {
   maxAge: number;
   group: THREE.Group;
   mat: THREE.MeshBasicMaterial;
+}
+
+interface StaggerBeaconSlot {
+  group: THREE.Group;
+  outerRing: THREE.Mesh;
+  innerRing: THREE.Mesh;
+  pillar: THREE.Mesh;
+  ringMat: THREE.MeshBasicMaterial;
+  pillarMat: THREE.MeshBasicMaterial;
 }
 
 function dampAngle(current: number, target: number, alpha: number): number {
@@ -467,6 +477,7 @@ export class ArenaSceneRenderer {
   private dashGhostSlots: DashGhostSlot[] = [];
   private dashGhostNextIdx = 0;
   private dashGhostSpawnCooldown = 0;
+  private staggerBeaconSlots: StaggerBeaconSlot[] = [];
   private lockOnEl: HTMLDivElement | null = null;
 
   // Phase 14 Pooled Pulsecaster Projectile Meshes
@@ -1419,6 +1430,54 @@ export class ArenaSceneRenderer {
       });
     }
 
+    // v1.3.0: Pooled Stagger Execution Floor Beacons (4 additive execution halos beneath staggered targets)
+    const beaconOuterGeo = new THREE.RingGeometry(0.95, 1.26, 32);
+    beaconOuterGeo.rotateX(-Math.PI * 0.5);
+    const beaconInnerGeo = new THREE.RingGeometry(0.42, 0.66, 24);
+    beaconInnerGeo.rotateX(-Math.PI * 0.5);
+    const beaconPillarGeo = new THREE.CylinderGeometry(0.86, 1.04, 1.45, 24, 1, true);
+    for (let i = 0; i < EXEC_BEACON_POOL_SIZE; i++) {
+      const bGroup = new THREE.Group();
+      bGroup.visible = false;
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const outerRing = new THREE.Mesh(beaconOuterGeo, ringMat);
+      outerRing.position.y = 0.04;
+      bGroup.add(outerRing);
+
+      const innerRing = new THREE.Mesh(beaconInnerGeo, ringMat);
+      innerRing.position.y = 0.05;
+      bGroup.add(innerRing);
+
+      const pillarMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.14,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const pillar = new THREE.Mesh(beaconPillarGeo, pillarMat);
+      pillar.position.y = 0.74;
+      bGroup.add(pillar);
+
+      this.scene.add(bGroup);
+      this.staggerBeaconSlots.push({
+        group: bGroup,
+        outerRing,
+        innerRing,
+        pillar,
+        ringMat,
+        pillarMat,
+      });
+    }
+
     // Chapter II Harmonic Nodes (3 linked acoustic resonator pylons + 3D harmonic tether beams to THE CHOIR)
     this.choirNodesGroup = new THREE.Group();
     this.choirNodesGroup.visible = false;
@@ -1852,6 +1911,11 @@ export class ArenaSceneRenderer {
     if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
     if (this.impactRingMesh) this.impactRingMesh.visible = false;
     if (this.railBeamMesh) this.railBeamMesh.visible = false;
+    if (this.staggerBeaconSlots) {
+      for (let i = 0; i < this.staggerBeaconSlots.length; i++) {
+        this.staggerBeaconSlots[i].group.visible = false;
+      }
+    }
     this.reconcileEnemyRigs(world);
     if (this.enemyRigs) {
       for (const rig of this.enemyRigs.values()) {
@@ -2149,6 +2213,7 @@ export class ArenaSceneRenderer {
             if (ev.enemyId) {
               this.enemyGuardRecoilTimers.set(ev.enemyId, 0.22);
             }
+            this.spawnBurst(ev.x, 1.28, ev.z, 6, 0xfef08a, 6.4);
             this.triggerImpactRing(ev.x, 1.15, ev.z, 0xf59e0b, 0.22);
           } else if (ev.isHeavy || ev.isCriticalOrVulnerable) {
             this.triggerImpactRing(
@@ -2220,7 +2285,19 @@ export class ArenaSceneRenderer {
           break;
         case 'player_parry_success':
           this.spawnBurst(ev.x, 1.2, ev.z, 18, 0x38bdf8, 8.0);
+          this.spawnBurst(ev.x, 1.24, ev.z, 10, 0xfef08a, 6.8);
           this.triggerImpactRing(ev.x, 1.15, ev.z, 0xe0f2fe, 0.3);
+          this.triggerSlashRibbon(
+            ev.x,
+            1.18,
+            ev.z,
+            this.playerRig?.root?.rotation?.y ?? 0,
+            0.32,
+            0xe0f2fe,
+            1.15,
+            0.18,
+            1
+          );
           if (!this.reducedMotion) {
             this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.052);
             this.fovKick = Math.max(this.fovKick ?? 0, 2.2);
@@ -2762,6 +2839,11 @@ export class ArenaSceneRenderer {
         for (let i = 0; i < this.dashGhostSlots.length; i++) {
           this.dashGhostSlots[i].active = false;
           this.dashGhostSlots[i].group.visible = false;
+        }
+      }
+      if (this.staggerBeaconSlots) {
+        for (let i = 0; i < this.staggerBeaconSlots.length; i++) {
+          this.staggerBeaconSlots[i].group.visible = false;
         }
       }
     }
@@ -3406,9 +3488,12 @@ export class ArenaSceneRenderer {
       this.playerRig.gravBreakerGroup.visible = isGravBreaker;
     }
 
+    const adrTier = Math.min(5, Math.max(0, Math.floor(p.adrenalineScore ?? 0)));
+    const adrGlowBoost = adrTier * 0.14;
+
     if (isPulsecaster) {
       this.playerRig.bladeMesh.scale.set(0.72, 0.72, 0.28);
-      this.playerRig.bladeMaterial.emissiveIntensity = 0.42;
+      this.playerRig.bladeMaterial.emissiveIntensity = 0.42 + adrGlowBoost * 0.4;
       if (p.weaponOverheated) {
         this.playerRig.pulsecasterMaterial.color.setHex(0xfca5a5);
         this.playerRig.pulsecasterMaterial.emissive.setHex(0xef4444);
@@ -3416,11 +3501,11 @@ export class ArenaSceneRenderer {
       } else if (p.actionState === 'charging_heavy' || p.actionState.startsWith('heavy_')) {
         this.playerRig.pulsecasterMaterial.color.setHex(0xfde68a);
         this.playerRig.pulsecasterMaterial.emissive.setHex(0xf59e0b);
-        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.5;
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.5 + adrGlowBoost * 0.5;
       } else {
         this.playerRig.pulsecasterMaterial.color.setHex(0xe0f2fe);
-        this.playerRig.pulsecasterMaterial.emissive.setHex(0x38bdf8);
-        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.15;
+        this.playerRig.pulsecasterMaterial.emissive.setHex(adrTier >= 4 ? 0xfbbf24 : 0x38bdf8);
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.15 + adrGlowBoost * 0.6;
       }
       // Ready the left-forearm projector or right-hand Rail Lance forward in neutral/moving states
       targetLeftArmX = -0.58 - swing * 0.18;
@@ -3433,31 +3518,31 @@ export class ArenaSceneRenderer {
       targetRightForearmX = -0.48;
     } else {
       this.playerRig.bladeMesh.scale.set(1, 1, 1);
-      this.playerRig.bladeMaterial.emissiveIntensity = 1.72;
+      this.playerRig.bladeMaterial.emissiveIntensity = 1.72 + adrGlowBoost;
       this.playerRig.pulsecasterMaterial.color.setHex(0x67e8f9);
       this.playerRig.pulsecasterMaterial.emissive.setHex(0x06b6d4);
-      this.playerRig.pulsecasterMaterial.emissiveIntensity = 0.85;
+      this.playerRig.pulsecasterMaterial.emissiveIntensity = 0.85 + adrGlowBoost * 0.5;
     }
 
     if (p.hurtFlashTimer > 0) {
       this.playerRig.bladeMaterial.emissive.setHex(0xef4444);
     } else if ((p.riposteTimer ?? 0) > 0) {
       this.playerRig.bladeMaterial.emissive.setHex(0xfbbf24);
-      this.playerRig.bladeMaterial.emissiveIntensity = 2.35;
+      this.playerRig.bladeMaterial.emissiveIntensity = 2.35 + adrGlowBoost * 0.4;
       if (isPulsecaster) {
         this.playerRig.pulsecasterMaterial.emissive.setHex(0xfbbf24);
-        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.6;
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.6 + adrGlowBoost * 0.4;
       }
     } else if ((p.chronoSlipTimer ?? 0) > 0) {
       this.playerRig.bladeMaterial.emissive.setHex(0x67e8f9);
-      this.playerRig.bladeMaterial.emissiveIntensity = 2.45;
+      this.playerRig.bladeMaterial.emissiveIntensity = 2.45 + adrGlowBoost * 0.4;
       if (isPulsecaster) {
         this.playerRig.pulsecasterMaterial.emissive.setHex(0x67e8f9);
-        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.65;
+        this.playerRig.pulsecasterMaterial.emissiveIntensity = 2.65 + adrGlowBoost * 0.4;
       }
     } else if ((p.relayMomentumTimer ?? 0) > 0) {
       this.playerRig.bladeMaterial.emissive.setHex(0x38bdf8);
-      this.playerRig.bladeMaterial.emissiveIntensity = 2.15;
+      this.playerRig.bladeMaterial.emissiveIntensity = 2.15 + adrGlowBoost * 0.4;
     } else if (
       isGravBreaker ||
       p.actionState === 'charging_heavy' ||
@@ -3465,7 +3550,9 @@ export class ArenaSceneRenderer {
     ) {
       this.playerRig.bladeMaterial.emissive.setHex(0xf59e0b);
     } else {
-      this.playerRig.bladeMaterial.emissive.setHex(0x06b6d4);
+      this.playerRig.bladeMaterial.emissive.setHex(
+        adrTier >= 5 ? 0xfbbf24 : adrTier >= 3 ? 0x38bdf8 : 0x06b6d4
+      );
     }
 
     switch (p.actionState) {
@@ -4830,6 +4917,10 @@ export class ArenaSceneRenderer {
     // 4. ENEMY & BOSS VISUAL RIGS: BASTION, SCRAPPER, SCOUT & HELIX-04 MOTION
     // =========================================================================
     this.reconcileEnemyRigs(world);
+    let staggerBeaconUsed = 0;
+    const beaconPoolEnabled =
+      this.screenEffectsEnabled !== false &&
+      Boolean(this.staggerBeaconSlots && this.staggerBeaconSlots.length > 0);
 
     for (let i = 0; i < world.enemies.length; i++) {
       const enemy = world.enemies[i];
@@ -4843,6 +4934,44 @@ export class ArenaSceneRenderer {
       if (guardRecoil > 0) {
         guardRecoil = Math.max(0, guardRecoil - dt);
         this.enemyGuardRecoilTimers.set(enemy.id, guardRecoil);
+      }
+
+      if (guardRecoil > 0) {
+        const gRatio = Math.min(1, guardRecoil / 0.22);
+        rig.bodyGroup.scale.set(1 + 0.05 * gRatio, 1 - 0.06 * gRatio, 1 + 0.05 * gRatio);
+      } else {
+        rig.bodyGroup.scale.set(1, 1, 1);
+      }
+
+      const isBossEnemy = Boolean(world.boss && world.boss.id === enemy.id);
+      const isExecutableWindow =
+        enemy.aiState !== 'ko' &&
+        enemy.hp > 0 &&
+        (enemy.aiState === 'staggered' ||
+          (isBossEnemy && Boolean(world.boss?.coreExposed)));
+      if (
+        beaconPoolEnabled &&
+        isExecutableWindow &&
+        staggerBeaconUsed < this.staggerBeaconSlots.length
+      ) {
+        const bSlot = this.staggerBeaconSlots[staggerBeaconUsed++];
+        const pulseScale = isBossEnemy ? 1.48 : 1.0;
+        const animPulse = this.reducedMotion
+          ? 1
+          : 1 + Math.sin(world.elapsedTime * 7.2 + staggerBeaconUsed) * 0.07;
+        bSlot.group.visible = true;
+        bSlot.group.position.set(enemy.x, 0, enemy.z);
+        bSlot.group.scale.setScalar(pulseScale * animPulse);
+        bSlot.outerRing.rotation.y = this.reducedMotion ? 0 : world.elapsedTime * 1.4;
+        bSlot.innerRing.rotation.y = this.reducedMotion ? 0 : -world.elapsedTime * 2.2;
+        const isResReady =
+          world.resonance?.activeMark?.enemyId === enemy.id &&
+          world.resonance.activeMark.remainingTime > 0;
+        bSlot.ringMat.color.setHex(isResReady ? 0x22d3ee : 0xfbbf24);
+        bSlot.pillarMat.color.setHex(isResReady ? 0x38bdf8 : 0xf59e0b);
+        bSlot.ringMat.opacity = this.reducedMotion
+          ? 0.78
+          : 0.7 + Math.sin(world.elapsedTime * 8) * 0.18;
       }
 
       if (rig.ramLaneGroup) rig.ramLaneGroup.visible = false;
@@ -5491,13 +5620,22 @@ export class ArenaSceneRenderer {
         if (rig.laserSightMaterial) rig.laserSightMaterial.opacity = 0;
       }
 
-      // Hit-flash recoil jolt on enemy chassis
+      // Hit-flash & guard recoil jolt on enemy chassis
+      if (guardRecoil > 0) {
+        rig.bodyGroup.rotation.x -= 0.14 * Math.min(1, guardRecoil / 0.22);
+      }
       if (enemy.hitFlashTimer > 0) {
         const hitRatio = Math.min(1, enemy.hitFlashTimer / 0.14);
         rig.bodyGroup.rotation.x -= 0.2 * hitRatio;
         if (rig.torsoPivot) {
           rig.torsoPivot.rotation.x -= 0.18 * hitRatio;
         }
+      }
+    }
+
+    if (this.staggerBeaconSlots) {
+      for (let i = staggerBeaconUsed; i < this.staggerBeaconSlots.length; i++) {
+        this.staggerBeaconSlots[i].group.visible = false;
       }
     }
 
@@ -5645,14 +5783,21 @@ export class ArenaSceneRenderer {
           this.camera.fov = baseFov;
           this.camera.updateProjectionMatrix();
         }
-      } else if ((this.fovKick ?? 0) > 0.01) {
-        this.fovKick = Math.max(0, (this.fovKick ?? 0) * Math.exp(-14 * dt));
-        this.camera.fov = baseFov + this.fovKick;
-        this.camera.updateProjectionMatrix();
-      } else if (this.camera.fov !== baseFov) {
-        this.fovKick = 0;
-        this.camera.fov = baseFov;
-        this.camera.updateProjectionMatrix();
+      } else {
+        const adrTier = Math.min(5, Math.max(0, Math.floor(p.adrenalineScore ?? 0)));
+        const speedFov = adrTier * 0.55 + (p.actionState === 'dodging' ? 2.2 : 0);
+        if ((this.fovKick ?? 0) > 0.01) {
+          this.fovKick = Math.max(0, (this.fovKick ?? 0) * Math.exp(-14 * dt));
+        } else {
+          this.fovKick = 0;
+        }
+        const targetFov = baseFov + speedFov + this.fovKick;
+        const fovAlpha = 1 - Math.exp(-10 * dt);
+        const nextFov = this.camera.fov + (targetFov - this.camera.fov) * fovAlpha;
+        if (Math.abs(this.camera.fov - nextFov) > 0.02) {
+          this.camera.fov = nextFov;
+          this.camera.updateProjectionMatrix();
+        }
       }
     }
 
