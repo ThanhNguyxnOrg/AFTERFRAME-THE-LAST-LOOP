@@ -572,6 +572,28 @@ export class ArenaSceneRenderer {
   private chapterEnvironments = new Map<CampaignChapterId, ChapterEnvironmentRig>();
   private obstacleMeshes: THREE.Object3D[] = [];
   private obstacleMeshById?: Map<string, THREE.Object3D>;
+  private subDeckFans: THREE.Object3D[] = [];
+  private floorTelemetryMat?: THREE.ShaderMaterial;
+  private planetMat?: THREE.ShaderMaterial;
+  private dynamicObstaclesGroup?: THREE.Group;
+  private dynamicObstacleRigs: Array<{
+    group: THREE.Group;
+    wallGroup: THREE.Group;
+    crateGroup: THREE.Group;
+    trimMat: THREE.MeshStandardMaterial;
+    coreMat: THREE.MeshBasicMaterial;
+    hitTimer: number;
+    lastHp: number;
+    lastObstacleId: string | null;
+  }> = [];
+  private boostPadsGroup?: THREE.Group;
+  private boostPadRigs: Array<{
+    group: THREE.Group;
+    outerRing: THREE.Mesh;
+    chevronMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+    chevronMat: THREE.MeshBasicMaterial;
+  }> = [];
   private interactablesGroup: THREE.Group;
   private interactableRigs: Array<{
     group: THREE.Group;
@@ -586,7 +608,7 @@ export class ArenaSceneRenderer {
     ringMesh: THREE.Mesh;
     ringMat: THREE.MeshBasicMaterial;
     columnMesh: THREE.Mesh;
-    columnMat: THREE.MeshBasicMaterial;
+    columnMat: THREE.ShaderMaterial;
   }> = [];
   private secretsGroup: THREE.Group;
   private secretRigs: Array<{
@@ -695,7 +717,7 @@ export class ArenaSceneRenderer {
       this.renderer.setPixelRatio(this.appliedPixelRatio);
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.22;
+      this.renderer.toneMappingExposure = 1.02;
       this.renderer.shadowMap.enabled =
         !this.isHeadless && !this.isSoftwareGl && this.shadowQuality !== 'off';
       this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -736,7 +758,7 @@ export class ArenaSceneRenderer {
         roomEnv.dispose();
         pmrem.dispose();
         this.scene.environment = this.pmremEnvTarget.texture;
-        this.scene.environmentIntensity = this.isHeadless || this.isSoftwareGl ? 0.72 : 0.88;
+        this.scene.environmentIntensity = this.isHeadless || this.isSoftwareGl ? 0.54 : 0.58;
       } catch {
         if (!this.isHeadless && !this.isSoftwareGl) {
           this.scene.environment = this.studioEnvTex;
@@ -761,7 +783,7 @@ export class ArenaSceneRenderer {
     );
 
     // Balanced 3-Point + Practical Industrial Sci-Fi Lighting Rig
-    const hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x162238, 1.48);
+    const hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x162238, 1.18);
     hemiLight.position.set(0, 28, 0);
     this.scene.add(hemiLight);
     this.hemiLight = hemiLight;
@@ -822,7 +844,10 @@ export class ArenaSceneRenderer {
     this.loomOuterRingMesh = env.loomOuterRingMesh;
     this.loomLightShaftMat = env.loomLightShaftMat;
     this.ventFanMeshes = env.ventFanMeshes;
+    this.subDeckFans = env.subDeckFans;
     this.conduitGlowMat = env.conduitGlowMat;
+    this.floorTelemetryMat = env.floorTelemetryMat;
+    this.planetMat = env.planetMat;
     this.obstacleMeshes = env.obstacleMeshes;
     this.obstacleMeshById = env.obstacleMeshById;
 
@@ -835,9 +860,9 @@ export class ArenaSceneRenderer {
         composer.addPass(new RenderPass(this.scene, this.camera));
         const bloomPass = new UnrealBloomPass(
           new THREE.Vector2(width, height),
-          0.26,
-          0.36,
-          0.88
+          0.12,
+          0.22,
+          0.94
         );
         composer.addPass(bloomPass);
         composer.addPass(new OutputPass());
@@ -1124,12 +1149,12 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.interactablesGroup);
 
-    // Phase 19: Pre-allocate Pooled 3D Timed Energy Passages & Secret Area Beacons
+    // Phase 19: Pre-allocate Pooled 3D Timed Energy Passages (Upgraded with Scrolling GLSL Energy Field Shader) & Secret Area Beacons
     this.hazardsGroup = new THREE.Group();
     this.hazardsGroup.name = 'TimedEnergyHazardsGroup';
     const hazRingGeo = new THREE.RingGeometry(0.75, 1.0, 28);
     hazRingGeo.rotateX(-Math.PI * 0.5);
-    const hazColGeo = new THREE.CylinderGeometry(0.85, 0.95, 2.2, 20, 1, true);
+    const hazColGeo = new THREE.CylinderGeometry(0.85, 0.95, 2.2, 24, 1, true);
     for (let i = 0; i < 2; i++) {
       const hGroup = new THREE.Group();
       hGroup.visible = false;
@@ -1144,10 +1169,34 @@ export class ArenaSceneRenderer {
       ringMesh.position.y = 0.045;
       hGroup.add(ringMesh);
 
-      const columnMat = new THREE.MeshBasicMaterial({
-        color: 0xef4444,
+      const columnMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: new THREE.Color(0xef4444) },
+          uOpacity: { value: 0 },
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uTime;
+          uniform vec3 uColor;
+          uniform float uOpacity;
+          varying vec2 vUv;
+          void main() {
+            float scroll = sin((vUv.y * 16.0 - uTime * 5.2)) * 0.5 + 0.5;
+            float rib = smoothstep(0.65, 0.95, cos(vUv.x * 37.699 + uTime * 1.4));
+            float edgeFade = smoothstep(0.0, 0.18, vUv.y) * (1.0 - smoothstep(0.76, 1.0, vUv.y));
+            float alpha = uOpacity * edgeFade * (0.42 + scroll * 0.42 + rib * 0.25);
+            if (alpha < 0.01) discard;
+            gl_FragColor = vec4(uColor, alpha);
+          }
+        `,
         transparent: true,
-        opacity: 0,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
@@ -1165,6 +1214,134 @@ export class ArenaSceneRenderer {
       this.hazardsGroup.add(hGroup);
     }
     this.scene.add(this.hazardsGroup);
+
+    // v1.5.0 Package B: Pooled Dynamic Chapter Cover Barricades & Destructible Pressurized Capacitors (8 slots)
+    this.dynamicObstaclesGroup = new THREE.Group();
+    this.dynamicObstaclesGroup.name = 'DynamicChapterObstaclesPool';
+    const wallBodyGeo = new THREE.BoxGeometry(1.75, 1.15, 0.72);
+    const wallCapGeo = new THREE.BoxGeometry(1.88, 0.22, 0.84);
+    const wallTrimGeo = new THREE.BoxGeometry(1.62, 0.14, 0.78);
+    const crateShellGeo = new THREE.CylinderGeometry(0.62, 0.72, 1.25, 8);
+    const crateCoreGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.34, 8);
+    const crateTopGeo = new THREE.CylinderGeometry(0.46, 0.6, 0.22, 8);
+    const dynBodyMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.44,
+      metalness: 0.68,
+    });
+    const dynFrameMat = new THREE.MeshStandardMaterial({
+      color: 0x64748b,
+      roughness: 0.28,
+      metalness: 0.82,
+    });
+    for (let i = 0; i < 8; i++) {
+      const dGroup = new THREE.Group();
+      dGroup.visible = false;
+
+      const trimMat = new THREE.MeshStandardMaterial({
+        color: 0x0ea5e9,
+        emissive: 0x0891b2,
+        emissiveIntensity: 0.55,
+        roughness: 0.3,
+        metalness: 0.5,
+      });
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.88,
+      });
+
+      const wallGroup = new THREE.Group();
+      const wBody = new THREE.Mesh(wallBodyGeo, dynBodyMat);
+      wBody.position.y = 0.58;
+      wBody.castShadow = !this.isHeadless;
+      wBody.receiveShadow = !this.isHeadless;
+      const wCap = new THREE.Mesh(wallCapGeo, dynFrameMat);
+      wCap.position.y = 1.24;
+      const wTrim = new THREE.Mesh(wallTrimGeo, trimMat);
+      wTrim.position.y = 0.96;
+      wallGroup.add(wBody, wCap, wTrim);
+      dGroup.add(wallGroup);
+
+      const crateGroup = new THREE.Group();
+      const cShell = new THREE.Mesh(crateShellGeo, dynBodyMat);
+      cShell.position.y = 0.64;
+      cShell.castShadow = !this.isHeadless;
+      cShell.receiveShadow = !this.isHeadless;
+      const cCore = new THREE.Mesh(crateCoreGeo, coreMat);
+      cCore.position.y = 0.68;
+      const cTop = new THREE.Mesh(crateTopGeo, dynFrameMat);
+      cTop.position.y = 1.36;
+      crateGroup.add(cShell, cCore, cTop);
+      dGroup.add(crateGroup);
+
+      this.dynamicObstacleRigs.push({
+        group: dGroup,
+        wallGroup,
+        crateGroup,
+        trimMat,
+        coreMat,
+        hitTimer: 0,
+        lastHp: -1,
+        lastObstacleId: null,
+      });
+      this.dynamicObstaclesGroup.add(dGroup);
+    }
+    this.scene.add(this.dynamicObstaclesGroup);
+
+    // v1.5.0 Package C: Pooled Kinetic Vector Boost Pads (2 Flank Pads)
+    this.boostPadsGroup = new THREE.Group();
+    this.boostPadsGroup.name = 'KineticBoostPadsPool';
+    const padBaseGeo = new THREE.CylinderGeometry(1.22, 1.34, 0.05, 24);
+    const padOuterRingGeo = new THREE.RingGeometry(0.95, 1.18, 28);
+    padOuterRingGeo.rotateX(-Math.PI * 0.5);
+    const padChevronGeo = new THREE.RingGeometry(0.45, 0.72, 4);
+    padChevronGeo.rotateX(-Math.PI * 0.5);
+    const padBaseMat = new THREE.MeshStandardMaterial({
+      color: 0x162234,
+      roughness: 0.4,
+      metalness: 0.78,
+    });
+    for (let i = 0; i < 2; i++) {
+      const pGroup = new THREE.Group();
+      pGroup.visible = false;
+      const pBase = new THREE.Mesh(padBaseGeo, padBaseMat);
+      pBase.position.y = 0.025;
+      pBase.receiveShadow = !this.isHeadless;
+      pGroup.add(pBase);
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.72,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const outerRing = new THREE.Mesh(padOuterRingGeo, ringMat);
+      outerRing.position.y = 0.056;
+      pGroup.add(outerRing);
+
+      const chevronMat = new THREE.MeshBasicMaterial({
+        color: 0x67e8f9,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const chevronMesh = new THREE.Mesh(padChevronGeo, chevronMat);
+      chevronMesh.position.y = 0.06;
+      pGroup.add(chevronMesh);
+
+      this.boostPadRigs.push({
+        group: pGroup,
+        outerRing,
+        chevronMesh,
+        ringMat,
+        chevronMat,
+      });
+      this.boostPadsGroup.add(pGroup);
+    }
+    this.scene.add(this.boostPadsGroup);
 
     this.secretsGroup = new THREE.Group();
     this.secretsGroup.name = 'SecretAreasGroup';
@@ -1557,7 +1734,7 @@ export class ArenaSceneRenderer {
         active: false,
         age: 0,
         maxAge: 6.5,
-        baseOpacity: 0.72,
+        baseOpacity: 0.46,
         targetScale: 1.6,
         mesh: dMesh,
         mat: dMat,
@@ -1581,9 +1758,9 @@ export class ArenaSceneRenderer {
     this.dustMat = new THREE.PointsMaterial({
       map: this.dustMoteTex,
       color: 0x38bdf8,
-      size: 0.16,
+      size: 0.13,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.24,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       sizeAttenuation: true,
@@ -1598,7 +1775,7 @@ export class ArenaSceneRenderer {
     this.echoTetherMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       transparent: true,
-      opacity: 0.34,
+      opacity: 0.2,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -2599,6 +2776,19 @@ export class ArenaSceneRenderer {
           this.spawnBurst(0, 2.2, -2, 32, 0x22d3ee, 9.5);
           this.triggerImpactRing(0, 0.2, -2, 0xffffff, 0.5);
           break;
+        case 'obstacle_damaged':
+          this.spawnBurst(ev.x, 0.85, ev.z, 10, 0xf59e0b, 5.2);
+          break;
+        case 'obstacle_destroyed':
+          this.spawnBurst(ev.x, 1.0, ev.z, 26, 0x22d3ee, 9.2);
+          this.spawnBurst(ev.x, 0.8, ev.z, 16, 0xf59e0b, 7.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x22d3ee, 0.42);
+          this.spawnImpactDecal(ev.x, ev.z, 0xf59e0b, 3.2, 7.0);
+          break;
+        case 'boost_pad_triggered':
+          this.spawnBurst(ev.x, 0.45, ev.z, 18, 0x38bdf8, 6.8);
+          this.triggerImpactRing(ev.x, 0.14, ev.z, 0x22d3ee, 0.34);
+          break;
         case 'weapon_switched':
           this.spawnBurst(
             ev.x,
@@ -2959,13 +3149,13 @@ export class ArenaSceneRenderer {
     slot.active = true;
     slot.age = 0;
     slot.maxAge = maxAge;
-    slot.baseOpacity = 0.72;
+    slot.baseOpacity = 0.46;
     slot.targetScale = scale;
     slot.mesh.position.set(x, 0.032, z);
     slot.mesh.rotation.y = Math.random() * Math.PI * 2;
     slot.mesh.scale.setScalar(scale * 0.65);
     slot.mat.color.setHex(colorHex);
-    slot.mat.opacity = 0.72;
+    slot.mat.opacity = 0.46;
     slot.mesh.visible = true;
   }
 
@@ -3122,11 +3312,11 @@ export class ArenaSceneRenderer {
       this.scene.environmentIntensity =
         this.isHeadless || this.isSoftwareGl
           ? resolved.lightingQuality === 'lite'
-            ? 0.45
-            : 0.72
+            ? 0.36
+            : 0.54
           : resolved.lightingQuality === 'lite'
-            ? 0.48
-            : 0.88;
+            ? 0.38
+            : 0.58;
     }
     if (resolved.particleQuality === 'low') {
       if (this.echoGhosts) {
@@ -3228,6 +3418,8 @@ export class ArenaSceneRenderer {
       this.calLight.color.setHex(look.practical);
       this.calLight.visible = this.lightingQuality !== 'lite';
       this.conduitGlowMat.color.setHex(look.conduit);
+      this.floorTelemetryMat?.uniforms?.uColor?.value?.setHex?.(look.conduit);
+      this.planetMat?.uniforms?.uAccent?.value?.setHex?.(look.rim);
       this.loomLightShaftMat?.color.setHex(look.loom);
       this.dustMat?.color.setHex(look.rim);
 
@@ -3282,6 +3474,17 @@ export class ArenaSceneRenderer {
     for (let i = 0; i < this.ventFanMeshes.length; i++) {
       this.ventFanMeshes[i].rotation.z += ambientDt * (2.6 + (i % 2) * 0.6) * ringSpeedScale;
     }
+    if (this.subDeckFans) {
+      for (let i = 0; i < this.subDeckFans.length; i++) {
+        this.subDeckFans[i].rotation.y += ambientDt * (1.25 + (i % 2) * 0.45) * ringSpeedScale;
+      }
+    }
+    if (this.floorTelemetryMat?.uniforms?.uTime) {
+      this.floorTelemetryMat.uniforms.uTime.value = ambientTime;
+    }
+    if (this.planetMat?.uniforms?.uTime) {
+      this.planetMat.uniforms.uTime.value = ambientTime;
+    }
     this.conduitGlowMat.opacity =
       selectedEnding === 'silence'
         ? 0.22
@@ -3289,10 +3492,10 @@ export class ArenaSceneRenderer {
     if (this.loomLightShaftMat) {
       this.loomLightShaftMat.opacity =
         selectedEnding === 'silence'
-          ? 0.015
+          ? 0.012
           : selectedEnding === 'witness'
-            ? 0.14
-            : 0.068 + Math.sin(ambientTime * 1.8) * 0.018 * ambientScale;
+            ? 0.072
+            : 0.034 + Math.sin(ambientTime * 1.8) * 0.01 * ambientScale;
     }
 
     if (this.dustPoints && this.dustPositions && this.dustPhases) {
@@ -3509,7 +3712,75 @@ export class ArenaSceneRenderer {
       }
     }
 
-    // Phase 19: Update Pooled Timed Energy Passages
+    // v1.5.0 Package B: Update Dynamic Chapter Cover Barricades & Destructible Capacitors
+    if (this.dynamicObstaclesGroup && this.dynamicObstacleRigs && world.obstacles) {
+      const lookAccent = CHAPTER_LOOKS[ch].conduit;
+      let rigIdx = 0;
+      for (let i = 0; i < world.obstacles.length && rigIdx < this.dynamicObstacleRigs.length; i++) {
+        const obs = world.obstacles[i];
+        if (obs.disabled || (obs.kind !== 'cover_wall' && obs.kind !== 'destructible_crate')) {
+          continue;
+        }
+        const rig = this.dynamicObstacleRigs[rigIdx++];
+        rig.group.visible = true;
+        rig.group.position.set(obs.x, 0, obs.z);
+        const faceCenterYaw = Math.atan2(-obs.x, -obs.z);
+        rig.group.rotation.y = obs.kind === 'cover_wall' ? faceCenterYaw : 0;
+        rig.wallGroup.visible = obs.kind === 'cover_wall';
+        rig.crateGroup.visible = obs.kind === 'destructible_crate';
+        rig.trimMat.color.setHex(lookAccent);
+        rig.trimMat.emissive.setHex(lookAccent);
+
+        const curHp = obs.hp ?? obs.maxHp ?? 45;
+        if (rig.lastObstacleId !== obs.id) {
+          rig.lastObstacleId = obs.id;
+          rig.lastHp = curHp;
+          rig.hitTimer = 0;
+        } else if (curHp < rig.lastHp) {
+          rig.lastHp = curHp;
+          rig.hitTimer = 0.16;
+        }
+        if (rig.hitTimer > 0) {
+          rig.hitTimer = Math.max(0, rig.hitTimer - dt);
+        }
+        const wobble = rig.hitTimer > 0 && !this.reducedMotion ? Math.sin(rig.hitTimer * 52) * 0.06 : 0;
+        rig.group.rotation.z = wobble;
+
+        const maxHp = Math.max(1, obs.maxHp ?? 45);
+        const hpRatio = obs.destructible ? curHp / maxHp : 1;
+        rig.coreMat.color.setHex(
+          rig.hitTimer > 0 ? 0xffffff : hpRatio < 0.6 ? 0xef4444 : 0xf59e0b
+        );
+      }
+      for (; rigIdx < this.dynamicObstacleRigs.length; rigIdx++) {
+        this.dynamicObstacleRigs[rigIdx].group.visible = false;
+      }
+    }
+
+    // v1.5.0 Package C: Update Kinetic Vector Boost Pads
+    if (this.boostPadsGroup && this.boostPadRigs) {
+      const pads = world.boostPads ?? [];
+      for (let i = 0; i < this.boostPadRigs.length; i++) {
+        const bRig = this.boostPadRigs[i];
+        const pad = pads[i];
+        if (!pad) {
+          bRig.group.visible = false;
+          continue;
+        }
+        bRig.group.visible = true;
+        bRig.group.position.set(pad.x, 0, pad.z);
+        const ready = pad.cooldown <= 0;
+        bRig.chevronMesh.rotation.y += ambientDt * (ready ? 2.4 : 0.35);
+        bRig.ringMat.color.setHex(ready ? 0x22d3ee : 0x475569);
+        bRig.ringMat.opacity = ready
+          ? 0.56 + Math.sin(ambientTime * 4.2 + i) * 0.14 * ambientScale
+          : 0.24;
+        bRig.chevronMat.color.setHex(ready ? 0x67e8f9 : 0x64748b);
+        bRig.chevronMat.opacity = ready ? 0.8 : 0.26;
+      }
+    }
+
+    // Phase 19: Update Pooled Timed Energy Passages (with Scrolling GLSL Energy Field Shader)
     if (this.hazardsGroup) {
       const hazards = world.exploration?.hazards ?? [];
       for (let i = 0; i < this.hazardRigs.length; i++) {
@@ -3524,25 +3795,35 @@ export class ArenaSceneRenderer {
         hRig.ringMesh.scale.setScalar(h.radius);
         hRig.columnMesh.scale.set(h.radius * 0.85, 1, h.radius * 0.85);
         hRig.ringMesh.rotation.z += ambientDt * (h.active ? 3.6 : 1.4);
+        if (hRig.columnMat.uniforms?.uTime) {
+          hRig.columnMat.uniforms.uTime.value = ambientTime;
+        }
 
         if (h.phase === 'active') {
           hRig.ringMat.color.setHex(0xef4444);
-          hRig.ringMat.opacity = 0.92;
+          hRig.ringMat.opacity = 0.88;
           hRig.columnMesh.visible = true;
-          hRig.columnMat.color.setHex(0xef4444);
-          hRig.columnMat.opacity =
-            0.38 + Math.sin(ambientTime * 14) * 0.12 * ambientScale;
+          hRig.columnMat.uniforms?.uColor?.value?.setHex?.(0xef4444);
+          if (hRig.columnMat.uniforms?.uOpacity) {
+            hRig.columnMat.uniforms.uOpacity.value =
+              0.42 + Math.sin(ambientTime * 14) * 0.1 * ambientScale;
+          }
         } else if (h.phase === 'warning') {
           hRig.ringMat.color.setHex(0xf59e0b);
           hRig.ringMat.opacity =
-            0.68 + Math.sin(ambientTime * 10) * 0.18 * ambientScale;
+            0.64 + Math.sin(ambientTime * 10) * 0.16 * ambientScale;
           hRig.columnMesh.visible = true;
-          hRig.columnMat.color.setHex(0xf59e0b);
-          hRig.columnMat.opacity = 0.16;
+          hRig.columnMat.uniforms?.uColor?.value?.setHex?.(0xf59e0b);
+          if (hRig.columnMat.uniforms?.uOpacity) {
+            hRig.columnMat.uniforms.uOpacity.value = 0.2;
+          }
         } else {
           hRig.ringMat.color.setHex(0x22d3ee);
           hRig.ringMat.opacity = 0.36;
           hRig.columnMesh.visible = false;
+          if (hRig.columnMat.uniforms?.uOpacity) {
+            hRig.columnMat.uniforms.uOpacity.value = 0;
+          }
         }
       }
     }
@@ -4702,7 +4983,7 @@ export class ArenaSceneRenderer {
           this.echoTetherMesh.position.set((p.x + actor.x) * 0.5, 1.05, (p.z + actor.z) * 0.5);
           this.echoTetherMesh.lookAt(actor.x, 1.05, actor.z);
           this.echoTetherMesh.scale.set(1, 1, dist);
-          this.echoTetherMat.opacity = 0.24 + Math.sin(world.elapsedTime * 10) * 0.08;
+          this.echoTetherMat.opacity = 0.15 + Math.sin(world.elapsedTime * 10) * 0.045;
         } else {
           this.echoTetherMesh.visible = false;
         }

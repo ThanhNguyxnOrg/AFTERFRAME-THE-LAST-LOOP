@@ -244,6 +244,30 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onEquipUpgrade,
 }) => {
   const [activeDrawer, setActiveDrawer] = useState<ActiveTitleDrawer>('none');
+  const [bundleDownloadStatus, setBundleDownloadStatus] = useState<'idle' | 'downloading' | 'saved' | 'error'>('idle');
+
+  const handleDownloadBundle = async () => {
+    if (bundleDownloadStatus === 'downloading') return;
+    setBundleDownloadStatus('downloading');
+    try {
+      const res = await fetch('/AFTERFRAME-v1.5.0-orbital-upgrade.bundle');
+      if (!res.ok) throw new Error('Bundle fetch failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'AFTERFRAME-v1.5.0-orbital-upgrade.bundle';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      setBundleDownloadStatus('saved');
+      setTimeout(() => setBundleDownloadStatus('idle'), 3000);
+    } catch {
+      setBundleDownloadStatus('error');
+      setTimeout(() => setBundleDownloadStatus('idle'), 3000);
+    }
+  };
 
   const toggleDrawer = (drawer: Exclude<ActiveTitleDrawer, 'none'>) => {
     setActiveDrawer((prev) => (prev === drawer ? 'none' : drawer));
@@ -1583,15 +1607,34 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </section>
       </div>
 
-      {/* Restrained Footer Bar: Chapter Status & Quick Prompt */}
-      <footer className="flex items-center justify-between text-[11px] font-mono-tabular text-slate-400 border-t border-slate-800/60 pt-3 shrink-0">
+      {/* Restrained Footer Bar: Chapter Status, Quick Prompt & Bundle Export */}
+      <footer className="pointer-events-auto flex items-center justify-between gap-3 text-[11px] font-mono-tabular text-slate-400 border-t border-slate-800/60 pt-3 shrink-0">
         <span>
           PRESS <strong className="text-cyan-300">[ENTER]</strong> TO LAUNCH CAMPAIGN ·{' '}
           <strong className="text-slate-300">[M]</strong> AUDIO
         </span>
-        <span className="hidden sm:inline text-slate-500">
-          CHRONO RIG TELEMETRY · DETERMINISTIC LOCAL SIMULATION
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            data-testid="title-download-bundle"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              void handleDownloadBundle();
+            }}
+            className="pointer-events-auto px-2.5 py-1 bg-[#0b1320] hover:bg-cyan-950/70 active:bg-cyan-900/80 border border-cyan-500/60 text-cyan-300 font-bold tracking-wider uppercase transition-colors cursor-pointer"
+          >
+            {bundleDownloadStatus === 'downloading'
+              ? 'PACKING .BUNDLE...'
+              : bundleDownloadStatus === 'saved'
+                ? 'SAVED .BUNDLE ✓'
+                : bundleDownloadStatus === 'error'
+                  ? 'RETRY .BUNDLE'
+                  : 'DOWNLOAD v1.5.0 .BUNDLE'}
+          </button>
+          <span className="hidden md:inline text-slate-500">
+            CHRONO RIG TELEMETRY · DETERMINISTIC LOCAL SIMULATION
+          </span>
+        </div>
       </footer>
     </div>
   );

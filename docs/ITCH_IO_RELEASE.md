@@ -4,9 +4,7 @@ AFTERFRAME is a static Vite browser game. The package workflow type-checks the p
 
 ## Build and verification
 
-Pushes to `main` that change game source, public assets, build configuration, dependencies, packaging scripts, or this workflow automatically run the full package pipeline and publish the verified ZIP to the itch.io `html5` channel. Pull requests never publish. Documentation-only edits do not trigger this workflow.
-
-A manual **Run workflow** with `publish_to_itch` left unchecked runs package and verification only. Enable the checkbox to deliberately publish a verified build from `main`.
+Normal pushes to `main` that touch game source, public assets, build configuration, dependencies, packaging scripts, or this workflow run the package pipeline only. A manual **Run workflow** with `publish_to_itch` left unchecked also runs package and verification only.
 
 The package job verifies:
 - TypeScript type-check and the full test suite.
@@ -16,7 +14,7 @@ The package job verifies:
 - The actual packaged ZIP in Chromium over HTTP: React title screen, WebGL2 canvas, all four GLB responses, and the New Campaign transition into `playing`.
 - No failed same-origin asset requests, HTTP 4xx/5xx responses, uncaught page errors, or fatal game/WebGL console errors.
 
-The exact tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Actions artifact for 30 days. The publish job downloads that same artifact from the same workflow run and re-validates it before uploading; it does not rebuild a second, potentially different ZIP.
+The tested game ZIP is uploaded as the `AFTERFRAME-THE-LAST-LOOP-itch-html5` Actions artifact for 14 days. Ordinary pushes never publish.
 
 ## One-time itch.io setup
 
@@ -33,35 +31,24 @@ After the first upload creates the `html5` channel, open the itch.io project's E
 
 ## Publish a verified build
 
-## Automatic deployment
+Publication can be deliberately triggered in either of two ways, always from `main`:
 
-Every qualifying push to `main` follows this sequence:
+1. **Manual:** Open **Actions → Package and publish itch.io HTML5 build**, select **Run workflow**, and enable `publish_to_itch`.
+2. **Explicit release commit:** Include the exact marker `[publish-itch]` in a commit message on `main`. This is reserved for intentional releases; a normal commit never publishes.
 
-1. Install the locked dependencies and run the TypeScript check and full test suite.
-2. Build the Vite site, validate the required GLB files and ZIP structure, and run the Chromium smoke test against the exact packaged ZIP.
-3. Upload the verified ZIP as a workflow artifact.
-4. Only after the package job succeeds, download and re-validate that same artifact, then publish it with the official Butler CLI to `thanhnguyxn/afterframe-the-last-loop:html5`.
-
-The workflow has no `pull_request` trigger, so PRs cannot publish. Its push trigger is restricted to `main` and game/build-related paths; documentation-only edits do not deploy. An active run is allowed to finish, and itch.io uploads are serialized so two Butler pushes cannot race each other.
-
-For a manual run, leave `publish_to_itch` unchecked to build and test without changing the public game. Enable it to publish the verified build, and run it from `main`.
-
-The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. Butler orders channel builds by upload order, so the GitHub run and commit are the audit trail for each deployment. A failed type-check, test, build, browser smoke test, artifact validation, or Butler upload is visible as a failed Actions run. The previous successful itch.io channel build remains the public build unless a new upload completes.
-
-Artifacts are retained for 30 days. To roll back, download a previously verified ZIP from its successful Actions run and push that ZIP again to the same `html5` channel with Butler; this creates a new channel build containing the older game files.
+For either trigger, GitHub first runs the full package and browser verification job. Only if it succeeds does the publish job download the artifact from that same workflow run, validate the ZIP again, install the current stable Butler CLI from itch.io's official Broth distribution, and push the ZIP to `thanhnguyxn/afterframe-the-last-loop:html5`.
 
 The Butler upload uses `GITHUB_RUN_NUMBER.GITHUB_RUN_ATTEMPT` as its build version. A failed build, failed smoke test, unavailable publishing credential, or missing/invalid project variable prevents publication.
 
 ## Latest verified itch.io upload
 
-On **2026-11-16**, [GitHub Actions run #19](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/43818121599) completed successfully after the workflow and artifact-action updates:
-- Package job: type-check, test suite, production build, GLB/ZIP validation, Chromium smoke test, and artifact upload all passed.
-- Publish job: validated the configured target, downloaded the exact artifact from this run, re-validated the ZIP, installed the official Butler CLI, and pushed to `thanhnguyxn/afterframe-the-last-loop:html5`.
-- Butler accepted the upload and reported that the new channel build was processing. The run confirms a successful Butler push; the hosted iframe still needs a post-processing visual/playability check before claiming the public page has been independently re-tested.
-- The ZIP artifact is retained in GitHub Actions until **2026-12-16**.
-- Artifact actions are now `actions/upload-artifact@v7` and `actions/download-artifact@v8`, using the Node 24 runtime.
+On **2026-11-10**, [GitHub Actions run #7](https://github.com/ThanhNguyxnOrg/AFTERFRAME-THE-LAST-LOOP/actions/runs/42835952704) completed successfully:
+- Package job: type-check, test suite, production build, ZIP/GLB validation, Chromium smoke test, and artifact upload all passed.
+- Publish job: the exact ZIP from this run was downloaded, revalidated, and pushed with Butler to `thanhnguyxn/afterframe-the-last-loop:html5`.
+- Butler confirmed the first build was pushed to the `html5` channel (13 files; 3.73 MiB transferred) and reported that itch.io was processing the build.
+- The live project page is [publicly reachable](https://thanhnguyxn.itch.io/afterframe-the-last-loop) and exposes **Run game**. Its storefront status remains **In development**.
 
-The previous confirmed public-page check was on **2026-11-10**. Keep the storefront status **In development** while the public playtest is being validated.
+This records a successful Butler upload command and a live public project page; it does not certify that every mobile browser/GPU combination has been tested.
 
 ## Public playtest and storefront media
 

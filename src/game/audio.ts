@@ -410,8 +410,66 @@ export class SoundEngine {
         case 'lock_on_engaged':
           this.playLockOnPing(Boolean(ev.amount === 1));
           break;
+        case 'obstacle_damaged':
+          this.playPulsecasterObstacleImpact();
+          break;
+        case 'obstacle_destroyed':
+          this.playCapacitorOverloadExplosion();
+          break;
+        case 'boost_pad_triggered':
+          this.playBoostPadSurge();
+          break;
       }
     }
+  }
+
+  private playCapacitorOverloadExplosion(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const sub = ctx.createOscillator();
+    const crackle = ctx.createOscillator();
+    const gain = ctx.createGain();
+    sub.type = 'sawtooth';
+    sub.frequency.setValueAtTime(165, now);
+    sub.frequency.exponentialRampToValueAtTime(38, now + 0.34);
+    crackle.type = 'square';
+    crackle.frequency.setValueAtTime(620, now);
+    crackle.frequency.exponentialRampToValueAtTime(120, now + 0.16);
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+    sub.connect(gain);
+    crackle.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    sub.start(now);
+    crackle.start(now);
+    sub.stop(now + 0.37);
+    crackle.stop(now + 0.18);
+  }
+
+  private playBoostPadSurge(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const shimmer = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(340, now);
+    osc.frequency.exponentialRampToValueAtTime(980, now + 0.18);
+    shimmer.type = 'sine';
+    shimmer.frequency.setValueAtTime(680, now + 0.02);
+    shimmer.frequency.exponentialRampToValueAtTime(1420, now + 0.2);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.14, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc.connect(gain);
+    shimmer.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    shimmer.start(now + 0.02);
+    osc.stop(now + 0.23);
+    shimmer.stop(now + 0.23);
   }
 
   private playActiveVentSuccess(): void {

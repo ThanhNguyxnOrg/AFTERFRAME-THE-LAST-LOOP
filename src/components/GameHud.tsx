@@ -1362,6 +1362,65 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   />
                 ))}
 
+                {/* Tactical Arena Boost Pads (West/East Flanks) */}
+                {(hud.radar.boostPads ?? []).map((pad) => (
+                  <g key={pad.id} data-testid={`radar-boost-${pad.id}`}>
+                    <circle
+                      cx={pad.x}
+                      cy={pad.z}
+                      r="1.45"
+                      fill={pad.ready ? 'rgba(34, 211, 238, 0.22)' : 'rgba(51, 65, 85, 0.22)'}
+                      stroke={pad.ready ? '#22d3ee' : '#475569'}
+                      strokeWidth="0.45"
+                    />
+                    <polygon
+                      points={`${pad.x},${pad.z - 0.85} ${pad.x + 0.72},${pad.z + 0.55} ${pad.x},${pad.z + 0.12} ${pad.x - 0.72},${pad.z + 0.55}`}
+                      fill={pad.ready ? '#67e8f9' : '#64748b'}
+                    />
+                  </g>
+                ))}
+
+                {/* Live Structural Pillars, Blast Cover & Destructible Capacitors */}
+                {(hud.radar.obstacles ?? []).map((obs) => {
+                  if (obs.kind === 'destructible_crate') {
+                    return (
+                      <polygon
+                        key={obs.id}
+                        points={`${obs.x},${obs.z - 1.1} ${obs.x + 1.1},${obs.z} ${obs.x},${obs.z + 1.1} ${obs.x - 1.1},${obs.z}`}
+                        fill={obs.hpRatio < 0.6 ? '#f97316' : '#f59e0b'}
+                        stroke="#020617"
+                        strokeWidth="0.3"
+                      />
+                    );
+                  }
+                  if (obs.kind === 'cover_wall') {
+                    return (
+                      <rect
+                        key={obs.id}
+                        x={obs.x - 1.15}
+                        y={obs.z - 0.6}
+                        width="2.3"
+                        height="1.2"
+                        rx="0.25"
+                        fill="#334155"
+                        stroke="#64748b"
+                        strokeWidth="0.35"
+                      />
+                    );
+                  }
+                  return (
+                    <circle
+                      key={obs.id}
+                      cx={obs.x}
+                      cy={obs.z}
+                      r={Math.max(0.9, obs.radius * 0.88)}
+                      fill="#1e293b"
+                      stroke="#475569"
+                      strokeWidth="0.35"
+                    />
+                  );
+                })}
+
                 {/* Camera Aim Sight-Cone Wedge */}
                 {(() => {
                   const coneLen = 11.5;

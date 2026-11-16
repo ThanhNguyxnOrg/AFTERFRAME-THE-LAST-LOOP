@@ -7,6 +7,28 @@ import {
   formatCombatCallouts,
   projectNdcToViewport,
 } from './tactical-hud.ts';
+import {
+  advanceArenaBoostPads,
+  applyDamageToDestructibleObstacle,
+  buildObstaclesForChapter,
+  createInitialWorld,
+  startBossEncounter,
+  stepWorld,
+} from './simulation.ts';
+import type { PlayerInputFrame } from './types.ts';
+
+const IDLE_INPUT: PlayerInputFrame = {
+  moveX: 0,
+  moveZ: 0,
+  aimYaw: Math.PI,
+  aimPitch: 0.35,
+  lightAttackJustPressed: false,
+  heavyHoldActive: false,
+  heavyJustReleased: false,
+  heavyAttackJustPressed: false,
+  dodgeJustPressed: false,
+  parryJustPressed: false,
+};
 
 test('computeRelativeBearingDeg matches Three.js camera forward & right conventions across cardinals', () => {
   const player = { x: 0, z: 0 };
@@ -112,7 +134,16 @@ test('computeTacticalRadarSnapshot excludes KOs, clamps coords, preserves Echo &
       { id: 'relay-1', x: 5, z: 5, status: 'available' },
       { id: 'relay-done', x: -5, z: -5, status: 'activated' },
     ],
-    4
+    4,
+    [
+      { id: 'cover-1', x: -4, z: -5, radius: 1.0, disabled: false, kind: 'cover_wall' },
+      { id: 'broken-crate', x: 5, z: 0, radius: 0.85, disabled: true, kind: 'destructible_crate', hp: 0, maxHp: 45 },
+      { id: 'teach-barrier', x: -6, z: 7, radius: 1.1, disabled: false, kind: 'barrier' },
+    ],
+    [
+      { id: 'boost_pad_west', x: -14, z: 0, cooldown: 0 },
+      { id: 'boost_pad_east', x: 14, z: 0, cooldown: 3.2 },
+    ]
   );
 
   assert.equal(radar.arenaRadius, 22);
@@ -130,4 +161,82 @@ test('computeTacticalRadarSnapshot excludes KOs, clamps coords, preserves Echo &
   assert.equal(radar.blips[2].kind, 'telegraph');
   assert.equal(radar.blips[2].x, -22); // Clamped cleanly to -arenaRadius
   assert.equal(radar.blips[3].id, 'enemy:far-idle');
+  assert.equal(radar.obstacles?.length, 1);
+  assert.equal(radar.obstacles?.[0].id, 'cover-1');
+  assert.equal(radar.boostPads?.length, 2);
+  assert.equal(radar.boostPads?.[0].ready, true);
+  assert.equal(radar.boostPads?.[1].ready, false);
 });
+
+test('buildObstaclesForChapter and startBossEncounter deploy distinct chapter cover and destructible capacitors', () => {
+  const prologueObs = buildObstaclesForChapter('prologue', false);
+  const ch1Obs = buildObstaclesForChapter('chapter_1_helix', false);
+  const ch3Obs = buildObstaclesForChapter('chapter_3_curator', false);
+
+  assert.ok(prologueObs.some((o) => o.id === 'prop_prologue_crate_e'));
+  assert.ok(ch1Obs.some((o) => o.id === 'cover_ch1_barricade_w'));
+  assert.ok(!ch1Obs.some((o) => o.id === 'prop_prologue_crate_e'));
+  assert.ok(ch3Obs.some((o) => o.id === 'cover_ch3_stack_w'));
+
+  const world = createInitialWorld('playing');
+  startBossEncounter(world, true, 'helix-04');
+  assert.ok(world.obstacles.some((o) => o.id === 'prop_ch1_cap_w' && o.destructible));
+  assert.equal(world.obstacles.find((o) => o.id === 'loom-pylon')?.disabled, true);
+  assert.equal(world.boostPads?.length, 2);
+});
+
+test('Destructible capacitors shatter into +12 Flux and 3.8m shockwave damage & stagger on nearby enemies', () => {
+  const world = createInitialWorld('playing');
+  const crate = world.obstacles.find((o) => o.id === 'prop_prologue_crate_e' && o.destructible)!;
+  assert.ok(crate);
+  const enemy = world.enemies[0];
+  enemy.x = crate.x + 1.8;
+  enemy.z = crate.z;
+  const hpBefore = enemy.hp;
+  const staggerBefore = enemy.stagger;
+  world.player.flux = 20;
+
+  applyDamageToDestructibleObstacle(world, crate, 20, true);
+  assert.equal(crate.disabled, false);
+  assert.equal(crate.hp, 25);
+  assert.equal(world.events.some((e) => e.type === 'obstacle_damaged' && e.obstacleId === crate.id), true);
+
+  applyDamageToDestructibleObstacle(world, crate, 30, true);
+  assert.equal(crate.disabled, true);
+  assert.equal(crate.hp, 0);
+  assert.equal(world.player.flux, 32);
+  assert.equal(enemy.hp, Math.max(0, hpBefore - 18));
+  assert.equal(enemy.stagger, Math.min(enemy.maxStagger, staggerBefore + 14));
+  assert.equal(world.events.some((e) => e.type === 'obstacle_destroyed' && e.obstacleId === crate.id), true);
+});
+
+test('Kinetic boost pads grant 1.6s surge (+24% speed), trim dodge cooldown, reward +8 Flux, and enforce cooldown', () => {
+  const world = createInitialWorld('playing');
+  const westPad = world.boostPads!.find((p) => p.id === 'boost_pad_west')!;
+  world.player.x = westPad.x;
+  world.player.z = westPad.z;
+  world.player.flux = 10;
+  world.player.dodgeCooldownTimer = 0.8;
+
+  advanceArenaBoostPads(world, 1 / 60);
+  assert.ok(westPad.cooldown > 8.5);
+  assert.ok((world.player.surgeTimer ?? 0) > 1.5);
+  assert.equal(world.player.flux, 18);
+  assert.ok(Math.abs(world.player.dodgeCooldownTimer - 0.3) < 0.01);
+  assert.equal(world.events.some((e) => e.type === 'boost_pad_triggered' && e.boostPadId === westPad.id), true);
+
+  // Verify surge accelerates Sera movement velocity cleanly during stepSimulation
+  world.enemies = [];
+  world.obstacles = [];
+  world.player.x = 0;
+  world.player.z = 0;
+  world.player.surgeTimer = 1.0;
+  stepWorld(world, { ...IDLE_INPUT, moveZ: -1 }, 1 / 60);
+  const surgedSpeed = Math.hypot(world.player.vx, world.player.vz);
+
+  world.player.surgeTimer = 0;
+  stepWorld(world, { ...IDLE_INPUT, moveZ: -1 }, 1 / 60);
+  const baseSpeed = Math.hypot(world.player.vx, world.player.vz);
+  assert.ok(surgedSpeed > baseSpeed * 1.2, `Expected surged speed (${surgedSpeed}) > base*1.2 (${baseSpeed * 1.2})`);
+});
+

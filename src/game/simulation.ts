@@ -33,6 +33,7 @@ import {
   type ExecutionCandidate,
 } from './lock-on.ts';
 import type {
+  ArenaBoostPad,
   BossAiState,
   BossAttackType,
   BossCheckpointState,
@@ -3854,6 +3855,7 @@ export function createInitialPlayer(): PlayerState {
     activeVentAttempted: false,
     activeVentEmpoweredShots: 0,
     lockOnTargetId: null,
+    surgeTimer: 0,
   };
 }
 
@@ -4930,11 +4932,19 @@ export function toggleTutorialHints(world: WorldState): boolean {
   return world.tutorial.enabled;
 }
 
-export function createInitialWorld(initialAppState: GameAppState = 'title'): WorldState {
+export function buildObstaclesForChapter(
+  chapter: CampaignChapterId,
+  disableLoomPylon = false
+): ObstacleCollider[] {
   const plateCfg = GAME_CONFIG.arena.chronoPlate;
   const finalBarrierCfg = GAME_CONFIG.arena.chronoPuzzle.finalBarrier;
-  const obstacles: ObstacleCollider[] = [
-    ...GAME_CONFIG.arena.obstacles.map((o) => ({ ...o, disabled: false })),
+  const chapterProps = GAME_CONFIG.arena.chapterObstacles[chapter] ?? [];
+  return [
+    ...GAME_CONFIG.arena.obstacles.map((o) => ({
+      ...o,
+      kind: 'pillar' as const,
+      disabled: disableLoomPylon && o.id === 'loom-pylon',
+    })),
     {
       id: plateCfg.receiverId,
       x: plateCfg.receiverX,
@@ -4942,6 +4952,7 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
       radius: plateCfg.receiverRadius,
       height: plateCfg.receiverHeight,
       label: plateCfg.receiverLabel,
+      kind: 'barrier' as const,
       disabled: false,
     },
     {
@@ -4951,9 +4962,26 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
       radius: finalBarrierCfg.radius,
       height: finalBarrierCfg.height,
       label: finalBarrierCfg.label,
+      kind: 'barrier' as const,
       disabled: false,
     },
+    ...chapterProps.map((prop) => ({
+      ...prop,
+      disabled: false,
+    })),
   ];
+}
+
+export function createInitialBoostPads(): ArenaBoostPad[] {
+  return GAME_CONFIG.arena.boostPads.map((pad) => ({
+    ...pad,
+    cooldown: 0,
+  }));
+}
+
+export function createInitialWorld(initialAppState: GameAppState = 'title'): WorldState {
+  const obstacles = buildObstaclesForChapter('prologue', false);
+  const boostPads = createInitialBoostPads();
 
   // Canonical 3-unit Standard Security Roster in Test Bay 04
   const enemies: EnemyState[] = [
@@ -4984,6 +5012,7 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
     enemies,
     boss: null,
     obstacles,
+    boostPads,
     echo: createInitialEchoState(),
     relay: createInitialRelayState(),
     resonance: createInitialResonanceState(),
@@ -5379,9 +5408,8 @@ export function startBossEncounter(
   world.nextProjectileId = 1;
   world.enemies = enemies;
   world.boss = boss;
-  world.obstacles = fresh.obstacles.map((o) =>
-    o.id === 'loom-pylon' ? { ...o, disabled: true } : o
-  );
+  world.obstacles = buildObstaclesForChapter(chapter, true);
+  world.boostPads = createInitialBoostPads();
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -5485,6 +5513,7 @@ export function startCampaignRun(
   world.enemies = fresh.enemies;
   world.boss = null;
   world.obstacles = fresh.obstacles;
+  world.boostPads = fresh.boostPads;
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -5560,7 +5589,8 @@ export function startAuthoredEncounter(
   world.player.equippedWeaponId = preservedEquippedWeapon;
   world.projectiles = [];
   world.nextProjectileId = 1;
-  world.obstacles = fresh.obstacles;
+  world.obstacles = buildObstaclesForChapter(def.chapterContext, false);
+  world.boostPads = createInitialBoostPads();
   world.enemies = spawnWaveUnitsForEncounter(
     def.id,
     1,
@@ -6022,7 +6052,8 @@ export function enterChronicleLoomChapter(
   world.nextProjectileId = 1;
   world.enemies = [];
   world.boss = null;
-  world.obstacles = fresh.obstacles;
+  world.obstacles = buildObstaclesForChapter('chapter_5_loom', false);
+  world.boostPads = createInitialBoostPads();
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -10730,6 +10761,124 @@ export function triggerBossDefeat(world: WorldState): boolean {
   return true;
 }
 
+export function applyDamageToDestructibleObstacle(
+  world: WorldState,
+  obs: ObstacleCollider,
+  damage: number,
+  rewardFluxToPlayer = false
+): void {
+  if (!obs.destructible || obs.disabled) return;
+  const maxHp = Math.max(1, obs.maxHp ?? 45);
+  const applied = Math.max(1, Math.round(damage));
+  const nextHp = Math.max(0, (obs.hp ?? maxHp) - applied);
+  obs.hp = nextHp;
+  if (nextHp > 0) {
+    world.events.push({
+      type: 'obstacle_damaged',
+      x: obs.x,
+      z: obs.z,
+      amount: applied,
+      obstacleId: obs.id,
+    });
+    return;
+  }
+
+  obs.disabled = true;
+  if (rewardFluxToPlayer) {
+    world.player.flux = Math.min(world.player.maxFlux, world.player.flux + 12);
+  }
+  world.hitstopTimer = Math.max(world.hitstopTimer, 0.045);
+  world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.32);
+  world.events.push({
+    type: 'obstacle_destroyed',
+    x: obs.x,
+    z: obs.z,
+    obstacleId: obs.id,
+  });
+
+  // Kinetic shock overload pulse (3.8m radius, 18 dmg + 14 stagger to nearby non-decoy enemies)
+  const blastRadius = 3.8;
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
+    if (e.aiState === 'ko' || e.hp <= 0 || e.isDecoy) continue;
+    if (
+      world.boss &&
+      world.boss.id === e.id &&
+      (world.boss.aiState === 'dormant' ||
+        world.boss.aiState === 'phase_transition' ||
+        world.boss.aiState === 'ko' ||
+        world.boss.aiState === 'defeated')
+    ) {
+      continue;
+    }
+    const dist = Math.hypot(e.x - obs.x, e.z - obs.z);
+    if (dist > blastRadius + e.radius) continue;
+    const shockDmg = 18;
+    e.hp = Math.max(0, e.hp - shockDmg);
+    e.hitFlashTimer = Math.max(e.hitFlashTimer, 0.14);
+    e.stagger = Math.min(e.maxStagger, e.stagger + 14);
+    world.stats.damageDealt += shockDmg;
+    const bossState = world.boss && world.boss.id === e.id ? world.boss : null;
+    if (bossState) {
+      checkAndTriggerBossPhase2(world, bossState, e);
+    }
+    if (e.hp <= 0) {
+      handleEnemyZeroHpDefeat(world, e, shockDmg, true, true, false);
+    } else {
+      world.events.push({
+        type: 'player_hit_enemy',
+        x: e.x,
+        z: e.z,
+        amount: shockDmg,
+        isCriticalOrVulnerable: true,
+        isHeavy: true,
+        isGuarded: false,
+        enemyId: e.id,
+      });
+    }
+    if (bossState) {
+      bossState.hp = e.hp;
+      bossState.stagger = e.stagger;
+      bossState.hitFlashTimer = e.hitFlashTimer;
+    }
+  }
+}
+
+export function advanceArenaBoostPads(world: WorldState, dt: number): void {
+  const p = world.player;
+  if (p) {
+    p.surgeTimer = Math.max(0, (p.surgeTimer ?? 0) - Math.max(0, dt));
+  }
+  if (
+    world.appState !== 'playing' ||
+    world.outcome !== 'none' ||
+    !world.boostPads ||
+    dt <= 0
+  ) {
+    return;
+  }
+  for (let i = 0; i < world.boostPads.length; i++) {
+    const pad = world.boostPads[i];
+    pad.cooldown = Math.max(0, pad.cooldown - dt);
+    if (
+      pad.cooldown <= 0 &&
+      p.actionState !== 'dead' &&
+      Math.hypot(p.x - pad.x, p.z - pad.z) <= pad.radius
+    ) {
+      pad.cooldown = pad.maxCooldown;
+      p.surgeTimer = 1.6;
+      p.dodgeCooldownTimer = Math.max(0, p.dodgeCooldownTimer - 0.5);
+      p.flux = Math.min(p.maxFlux, p.flux + 8);
+      world.events.push({
+        type: 'boost_pad_triggered',
+        x: pad.x,
+        z: pad.z,
+        boostPadId: pad.id,
+      });
+    }
+  }
+}
+
 function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
   const p = world.player;
   const isBreaker = p.equippedWeaponId === 'grav_breaker';
@@ -10815,6 +10964,25 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
   }
 
   evaluateLivePlayerStrikeOnChoirNodes(world, isHeavy);
+
+  for (let o = 0; o < world.obstacles.length; o++) {
+    const obs = world.obstacles[o];
+    if (!obs.destructible || obs.disabled) continue;
+    if (p.attackHitIds.includes(obs.id)) continue;
+    const dxObs = obs.x - p.x;
+    const dzObs = obs.z - p.z;
+    const distObs = Math.hypot(dxObs, dzObs);
+    if (distObs > range + obs.radius) continue;
+    const angleToObs = Math.atan2(dxObs, dzObs);
+    const diffObs = Math.abs(angleDiff(p.rotationY, angleToObs));
+    if (
+      diffObs <= arcRadians * 0.5 + 0.35 ||
+      distObs <= obs.radius + GAME_CONFIG.player.radius + 0.7
+    ) {
+      p.attackHitIds.push(obs.id);
+      applyDamageToDestructibleObstacle(world, obs, baseDamage, true);
+    }
+  }
 
   for (let i = 0; i < world.enemies.length; i++) {
     const enemy = world.enemies[i];
@@ -11715,6 +11883,7 @@ function advanceProjectiles(world: WorldState, dt: number): void {
 
     let earliestT = 2;
     let hitKind: 'none' | 'obstacle' | 'node' | 'enemy' = 'none';
+    let hitObstacle: ObstacleCollider | null = null;
     let hitNode: HarmonicNodeState | null = null;
     let hitEnemy: EnemyState | null = null;
 
@@ -11734,6 +11903,7 @@ function advanceProjectiles(world: WorldState, dt: number): void {
       if (t !== null && t < earliestT) {
         earliestT = t;
         hitKind = 'obstacle';
+        hitObstacle = obs;
         hitNode = null;
         hitEnemy = null;
       }
@@ -11811,6 +11981,14 @@ function advanceProjectiles(world: WorldState, dt: number): void {
             ? 'phase_rail'
             : 'pulsecaster',
       });
+      if (hitObstacle?.destructible && !hitObstacle.disabled) {
+        applyDamageToDestructibleObstacle(
+          world,
+          hitObstacle,
+          proj.damage,
+          proj.owner === 'player'
+        );
+      }
       continue;
     }
 
@@ -12290,9 +12468,11 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     case 'moving': {
       if (moveVec.length > 0.05) {
         p.actionState = 'moving';
+        const surgeMult = (p.surgeTimer ?? 0) > 0 ? 1.24 : 1.0;
         const speed =
           GAME_CONFIG.player.moveSpeed *
           getCombatFlowMovementSpeedMultiplier(p) *
+          surgeMult *
           moveVec.length;
         p.vx = moveVec.dirX * speed;
         p.vz = moveVec.dirZ * speed;
@@ -14813,7 +14993,8 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     world.relay.statusMessage = world.relay.preview.message;
   }
 
-  // Update timed energy hazards, contextual tutorial state machine, exploration objectives & live narrative comms
+  // Update timed energy hazards, arena kinetic boost pads, contextual tutorial state machine, exploration objectives & live narrative comms
+  advanceArenaBoostPads(world, dt);
   advanceTimedEnergyHazards(world, dt);
   advanceMissionAndExplorationSystem(world);
   updateTutorialSystem(world, input, dt);
@@ -15694,7 +15875,9 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
       echo,
       explorationSnapshot.localMap?.objectiveTarget ?? null,
       explorationSnapshot.interactables,
-      16
+      16,
+      world.obstacles,
+      world.boostPads ?? []
     ),
     lockOn: (() => {
       const activeLockTarget = resolveActiveLockOnTarget(world, p.lockOnTargetId);

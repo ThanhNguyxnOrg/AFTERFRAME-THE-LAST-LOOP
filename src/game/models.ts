@@ -589,7 +589,10 @@ export function buildArenaEnvironment(
   loomInnerRingMesh: THREE.Mesh;
   loomOuterRingMesh: THREE.Mesh;
   ventFanMeshes: THREE.Mesh[];
+  subDeckFans: THREE.Object3D[];
   conduitGlowMat: THREE.MeshBasicMaterial;
+  floorTelemetryMat: THREE.ShaderMaterial;
+  planetMat: THREE.ShaderMaterial;
   loomLightShaftMat: THREE.MeshBasicMaterial;
   obstacleMeshes: THREE.Object3D[];
   obstacleMeshById: Map<string, THREE.Object3D>;
@@ -765,9 +768,49 @@ export function buildArenaEnvironment(
   loomCenterRingGlow.matrixAutoUpdate = false;
   scene.add(loomCenterRingGlow);
 
-  const midArenaRing = new THREE.Mesh(new THREE.RingGeometry(12.22, 12.36, 64), tealSubtleMat);
+  const floorTelemetryMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uColor: { value: new THREE.Color(0x0891b2) },
+    },
+    vertexShader: `
+      varying vec3 vLocalPos;
+      void main() {
+        vLocalPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uColor;
+      varying vec3 vLocalPos;
+      void main() {
+        float r = length(vLocalPos.xy);
+        float ang = atan(vLocalPos.y, vLocalPos.x);
+        float innerEdge = smoothstep(12.01, 12.06, r) * (1.0 - smoothstep(12.08, 12.13, r));
+        float outerEdge = smoothstep(12.60, 12.65, r) * (1.0 - smoothstep(12.67, 12.72, r));
+        float ticks = smoothstep(0.65, 0.92, cos(ang * 36.0)) * smoothstep(12.16, 12.22, r) * (1.0 - smoothstep(12.50, 12.56, r));
+        float sweepPhase = fract((ang - uTime * 0.45) / 6.2831853);
+        float sweep = smoothstep(0.84, 1.0, sweepPhase) * 0.85;
+        float alpha = clamp((innerEdge * 0.55 + outerEdge * 0.45 + ticks * 0.55 + sweep * 0.4) * 0.34, 0.0, 0.28);
+        if (alpha < 0.01) discard;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+
+  const midArenaRing = new THREE.Mesh(
+    new THREE.RingGeometry(11.98, 12.74, 72),
+    floorTelemetryMat
+  );
   midArenaRing.rotation.x = -Math.PI / 2;
-  midArenaRing.position.set(0, 0.016, 0);
+  midArenaRing.position.set(0, 0.017, 0);
   midArenaRing.updateMatrix();
   midArenaRing.matrixAutoUpdate = false;
   scene.add(midArenaRing);
@@ -782,14 +825,16 @@ export function buildArenaEnvironment(
   outerCircuit.matrixAutoUpdate = false;
   scene.add(outerCircuit);
 
-  // Radial Energy Conduit Channels linking the Central Loom Pylon (0, -2) to each Conduit Pillar (Instanced)
+  // Radial Energy Conduit Channels linking the Central Loom Pylon (0, -2) to the 4 structural corner pillars (Instanced)
   const teachBarrierId = GAME_CONFIG.arena.chronoPlate.receiverId;
   const combineBarrierId = GAME_CONFIG.arena.chronoPuzzle.finalBarrier.id;
   const radialObstacles = obstacles.filter(
     (obs) =>
       obs.id !== 'loom-pylon' &&
       obs.id !== teachBarrierId &&
-      obs.id !== combineBarrierId
+      obs.id !== combineBarrierId &&
+      obs.kind !== 'cover_wall' &&
+      obs.kind !== 'destructible_crate'
   );
   if (radialObstacles.length > 0) {
     const channelHousingInst = new THREE.InstancedMesh(
@@ -1079,6 +1124,229 @@ export function buildArenaEnvironment(
     inst.instanceMatrix.needsUpdate = true;
   }
 
+  // 4B. Package A: Orbital Planet Vista, Outer Station Trusses, Sub-Deck Turbines, Floor Reactor Grates & Overhead Gantries
+  const subDeckFans: THREE.Object3D[] = [];
+  const orbitalVistaGroup = new THREE.Group();
+  orbitalVistaGroup.name = 'NadirOrbitalVistaGroup';
+
+  const planetMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uAccent: { value: new THREE.Color(0x0ea5e9) },
+    },
+    vertexShader: `
+      varying vec3 vNormalDir;
+      varying vec3 vViewPos;
+      varying vec3 vLocalPos;
+      void main() {
+        vLocalPos = normalize(position);
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        vViewPos = -mvPos.xyz;
+        vNormalDir = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uAccent;
+      varying vec3 vNormalDir;
+      varying vec3 vViewPos;
+      varying vec3 vLocalPos;
+      void main() {
+        vec3 n = normalize(vNormalDir);
+        vec3 v = normalize(vViewPos);
+        vec3 lightDir = normalize(vec3(0.62, 0.54, 0.56));
+        float ndl = clamp(dot(n, lightDir) * 0.72 + 0.14, 0.0, 1.0);
+        float lat = vLocalPos.y;
+        float band = sin(lat * 18.0 + sin(vLocalPos.x * 5.0 + uTime * 0.04) * 0.65) * 0.5 + 0.5;
+        vec3 deepBody = vec3(0.035, 0.068, 0.125);
+        vec3 stormBand = mix(vec3(0.065, 0.14, 0.24), uAccent * 0.34, 0.42);
+        vec3 baseCol = mix(deepBody, stormBand, band);
+        float fresnel = pow(clamp(1.0 - max(dot(n, v), 0.0), 0.0, 1.0), 2.75);
+        vec3 rim = uAccent * (fresnel * 0.62 * (0.4 + ndl * 0.6));
+        vec3 finalCol = baseCol * (0.24 + ndl * 0.78) + rim;
+        gl_FragColor = vec4(finalCol, 1.0);
+      }
+    `,
+    fog: false,
+  });
+
+  const orbitalPlanetMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(18.5, 36, 26),
+    planetMat
+  );
+  orbitalPlanetMesh.position.set(-38, 10.5, -58);
+  orbitalVistaGroup.add(orbitalPlanetMesh);
+
+  const planetRingMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uAccent: { value: new THREE.Color(0x38bdf8) },
+    },
+    vertexShader: `
+      varying vec3 vLocalPos;
+      void main() {
+        vLocalPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uAccent;
+      varying vec3 vLocalPos;
+      void main() {
+        float r = length(vLocalPos.xy);
+        float normR = clamp((r - 22.5) / 9.0, 0.0, 1.0);
+        float bands = sin(normR * 28.0) * 0.5 + 0.5;
+        float gap = smoothstep(0.42, 0.46, normR) * (1.0 - smoothstep(0.52, 0.56, normR));
+        float edgeFade = smoothstep(0.0, 0.16, normR) * (1.0 - smoothstep(0.84, 1.0, normR));
+        float alpha = edgeFade * (1.0 - gap * 0.85) * (0.18 + bands * 0.24);
+        vec3 col = mix(vec3(0.16, 0.26, 0.42), uAccent * 0.64, bands * 0.6);
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+
+  const planetRingMesh = new THREE.Mesh(
+    new THREE.RingGeometry(22.5, 31.5, 64),
+    planetRingMat
+  );
+  planetRingMesh.position.copy(orbitalPlanetMesh.position);
+  planetRingMesh.rotation.set(Math.PI * 0.38, 0.18, -0.26);
+  orbitalVistaGroup.add(planetRingMesh);
+
+  // 4 Outer Station Superstructure Trusses & Diagonal Sub-Deck Trench Turbine Wells
+  const superTrussGeo = new THREE.BoxGeometry(1.8, 16.5, 2.2);
+  const turbineRimGeo = new THREE.TorusGeometry(2.55, 0.22, 10, 28);
+  const turbineBladeGeo = new THREE.BoxGeometry(4.3, 0.12, 0.46);
+  for (let i = 0; i < 4; i++) {
+    const diagAngle = Math.PI * 0.25 + (i * Math.PI) / 2;
+    const tx = Math.sin(diagAngle) * 41.5;
+    const tz = Math.cos(diagAngle) * 41.5;
+    const trussPivot = new THREE.Group();
+    trussPivot.position.set(tx, -3.2, tz);
+    trussPivot.rotation.y = diagAngle;
+    const mast = new THREE.Mesh(superTrussGeo, deepGraphiteMat);
+    mast.rotation.x = 0.22;
+    trussPivot.add(mast);
+    const navStrip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 8.5, 0.22),
+      tealSubtleMat
+    );
+    navStrip.position.set(0, 1.5, -1.12);
+    navStrip.rotation.x = 0.22;
+    trussPivot.add(navStrip);
+    orbitalVistaGroup.add(trussPivot);
+
+    // Sub-Deck Maintenance Trench Turbine Well (r = 26.5m, y = -1.75m)
+    const wx = Math.sin(diagAngle) * 26.5;
+    const wz = Math.cos(diagAngle) * 26.5;
+    const wellRim = new THREE.Mesh(turbineRimGeo, steelBlueMat);
+    wellRim.rotation.x = Math.PI / 2;
+    wellRim.position.set(wx, -1.72, wz);
+    orbitalVistaGroup.add(wellRim);
+
+    const turbineHub = new THREE.Group();
+    turbineHub.position.set(wx, -1.84, wz);
+    const bladeA = new THREE.Mesh(turbineBladeGeo, paleAlloyTrimMat);
+    const bladeB = new THREE.Mesh(turbineBladeGeo, paleAlloyTrimMat);
+    bladeB.rotation.y = Math.PI * 0.5;
+    turbineHub.add(bladeA, bladeB);
+    orbitalVistaGroup.add(turbineHub);
+    subDeckFans.push(turbineHub);
+  }
+
+  // 2 Recessed Sub-Deck Reactor Grate Inspection Windows on the North Deck Floor ((±4.4, 0, -12.6))
+  const grateFrameGeo = new THREE.BoxGeometry(2.35, 0.04, 0.14);
+  const grateBarGeo = new THREE.BoxGeometry(2.08, 0.024, 0.055);
+  const gratePaneMat = new THREE.MeshBasicMaterial({
+    color: 0x040912,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+  });
+  const subDeckCoolantMat = new THREE.MeshBasicMaterial({
+    color: 0x0891b2,
+    transparent: true,
+    opacity: 0.45,
+  });
+  for (const gx of [-4.4, 4.4]) {
+    const grateGroup = new THREE.Group();
+    grateGroup.position.set(gx, 0, -12.6);
+
+    const pitFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.15, 2.15),
+      darkRubberMat
+    );
+    pitFloor.rotation.x = -Math.PI / 2;
+    pitFloor.position.y = -0.68;
+    grateGroup.add(pitFloor);
+
+    const coolantPipe = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.11, 2.0, 10),
+      subDeckCoolantMat
+    );
+    coolantPipe.rotation.z = Math.PI / 2;
+    coolantPipe.position.y = -0.45;
+    grateGroup.add(coolantPipe);
+
+    const underRotor = new THREE.Group();
+    underRotor.position.y = -0.3;
+    const rb1 = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.05, 0.22), paleAlloyTrimMat);
+    const rb2 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 1.55), paleAlloyTrimMat);
+    underRotor.add(rb1, rb2);
+    grateGroup.add(underRotor);
+    subDeckFans.push(underRotor);
+
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(2.08, 2.08), gratePaneMat);
+    pane.rotation.x = -Math.PI / 2;
+    pane.position.y = 0.011;
+    grateGroup.add(pane);
+
+    for (const s of [-1.1, 1.1]) {
+      const fBarH = new THREE.Mesh(grateFrameGeo, conduitEdgeMat);
+      fBarH.position.set(0, 0.02, s);
+      const fBarV = new THREE.Mesh(grateFrameGeo, conduitEdgeMat);
+      fBarV.rotation.y = Math.PI / 2;
+      fBarV.position.set(s, 0.02, 0);
+      grateGroup.add(fBarH, fBarV);
+    }
+    for (const gOff of [-0.66, -0.22, 0.22, 0.66]) {
+      const bar = new THREE.Mesh(grateBarGeo, steelBlueMat);
+      bar.position.set(0, 0.014, gOff);
+      grateGroup.add(bar);
+    }
+    orbitalVistaGroup.add(grateGroup);
+  }
+
+  // 4 Cantilevered Perimeter Overhead Gantry Cranes (perimeter only r > 19m, y = 9.4–10.8m -> zero camera clipping)
+  const gantryBoomGeo = new RoundedBoxGeometry(1.1, 0.68, 3.2, 1, 0.08);
+  const gantryHoistGeo = new THREE.BoxGeometry(0.62, 0.42, 0.9);
+  for (let i = 0; i < 4; i++) {
+    const archAngle = (i * Math.PI) / 2;
+    const gantryPivot = new THREE.Group();
+    gantryPivot.position.set(
+      Math.sin(archAngle) * (arenaRadius - 0.8),
+      9.95,
+      Math.cos(archAngle) * (arenaRadius - 0.8)
+    );
+    gantryPivot.rotation.y = archAngle;
+    const boom = new THREE.Mesh(gantryBoomGeo, deepGraphiteMat);
+    const hoist = new THREE.Mesh(gantryHoistGeo, warmBronzeTrimMat);
+    hoist.position.set(0, -0.45, -1.0);
+    const gantryLamp = new THREE.Mesh(
+      new THREE.BoxGeometry(0.45, 0.08, 0.22),
+      tealSubtleMat
+    );
+    gantryLamp.position.set(0, -0.68, -1.0);
+    gantryPivot.add(boom, hoist, gantryLamp);
+    orbitalVistaGroup.add(gantryPivot);
+  }
+
+  scene.add(orbitalVistaGroup);
+
   // 5. Central Chronicle Loom Pylon & 4 Retractable Conduit Cover Pillars
   let loomPylonGroup: THREE.Group | null = null;
   let loomRingMesh: THREE.Mesh | null = null;
@@ -1090,7 +1358,12 @@ export function buildArenaEnvironment(
   const pillarClampGeo = new RoundedBoxGeometry(0.36, 0.2, 0.5, 1, 0.04);
 
   for (const obs of obstacles) {
-    if (obs.id === teachBarrierId || obs.id === combineBarrierId) {
+    if (
+      obs.id === teachBarrierId ||
+      obs.id === combineBarrierId ||
+      obs.kind === 'cover_wall' ||
+      obs.kind === 'destructible_crate'
+    ) {
       continue;
     }
 
@@ -1335,7 +1608,7 @@ export function buildArenaEnvironment(
   const loomLightShaftMat = new THREE.MeshBasicMaterial({
     color: 0x22d3ee,
     transparent: true,
-    opacity: 0.095,
+    opacity: 0.034,
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -1355,7 +1628,10 @@ export function buildArenaEnvironment(
     loomInnerRingMesh: loomInnerRingMesh || new THREE.Mesh(),
     loomOuterRingMesh: loomOuterRingMesh || new THREE.Mesh(),
     ventFanMeshes,
+    subDeckFans,
     conduitGlowMat,
+    floorTelemetryMat,
+    planetMat,
     loomLightShaftMat,
     obstacleMeshes,
     obstacleMeshById,

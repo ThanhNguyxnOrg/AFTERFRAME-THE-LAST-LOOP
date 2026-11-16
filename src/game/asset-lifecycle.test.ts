@@ -580,7 +580,12 @@ test('Phase 24: buildArenaEnvironment registers obstacleMeshById excluding perim
   const env = buildArenaEnvironment(scene, world.obstacles, shadowTex, 1, false);
 
   const pillarObstacles = world.obstacles.filter(
-    (o) => o.id !== 'teach-barrier' && o.id !== 'combine-barrier' && !o.id.includes('barrier')
+    (o) =>
+      o.id !== 'teach-barrier' &&
+      o.id !== 'combine-barrier' &&
+      !o.id.includes('barrier') &&
+      o.kind !== 'cover_wall' &&
+      o.kind !== 'destructible_crate'
   );
   assert.equal(env.obstacleMeshes.length, pillarObstacles.length, 'obstacleMeshes must match the 5 non-barrier obstacles');
   assert.equal(env.obstacleMeshById.size, pillarObstacles.length, 'obstacleMeshById must contain all 5 non-barrier obstacles');

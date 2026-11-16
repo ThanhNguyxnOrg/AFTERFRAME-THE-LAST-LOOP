@@ -799,6 +799,8 @@ export interface ChronicleLoomState {
   completedAtTime: number | null;
 }
 
+export type ObstacleKind = 'pillar' | 'barrier' | 'cover_wall' | 'destructible_crate';
+
 export interface ObstacleCollider {
   id: string;
   x: number;
@@ -807,6 +809,20 @@ export interface ObstacleCollider {
   height: number;
   label: string;
   disabled?: boolean;
+  kind?: ObstacleKind;
+  destructible?: boolean;
+  hp?: number;
+  maxHp?: number;
+}
+
+export interface ArenaBoostPad {
+  id: string;
+  label: string;
+  x: number;
+  z: number;
+  radius: number;
+  cooldown: number;
+  maxCooldown: number;
 }
 
 export type GraphicsPreset = 'performance' | 'balanced' | 'quality' | 'custom';
@@ -915,6 +931,7 @@ export interface PlayerState {
   activeVentAttempted?: boolean;
   activeVentEmpoweredShots?: number;
   lockOnTargetId?: string | null;
+  surgeTimer?: number;
 }
 
 export interface EnemyState {
@@ -1095,7 +1112,10 @@ export interface CombatEvent {
     | 'active_vent_success'
     | 'active_vent_missed'
     | 'chrono_execution_finisher'
-    | 'lock_on_engaged';
+    | 'lock_on_engaged'
+    | 'obstacle_damaged'
+    | 'obstacle_destroyed'
+    | 'boost_pad_triggered';
   x: number;
   z: number;
   originX?: number;
@@ -1106,6 +1126,8 @@ export interface CombatEvent {
   isHeavy?: boolean;
   isGuarded?: boolean;
   enemyId?: string;
+  obstacleId?: string;
+  boostPadId?: string;
   weaponId?: WeaponId;
   upgradeId?: WeaponUpgradeId | null;
   rewardId?: WeaponProgressionRewardId;
@@ -1823,6 +1845,7 @@ export interface WorldState {
   enemies: EnemyState[];
   boss: BossState | null;
   obstacles: ObstacleCollider[];
+  boostPads?: ArenaBoostPad[];
   echo: EchoSystemState;
   relay: RelaySystemState;
   resonance: ResonanceSystemState;
@@ -2067,6 +2090,23 @@ export interface HudRadarBlip {
   distance: number;
 }
 
+export interface HudRadarObstacle {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  kind: ObstacleKind;
+  destructible: boolean;
+  hpRatio: number;
+}
+
+export interface HudRadarBoostPad {
+  id: string;
+  x: number;
+  z: number;
+  ready: boolean;
+}
+
 export interface HudRadarSnapshot {
   arenaRadius: number;
   playerX: number;
@@ -2079,4 +2119,6 @@ export interface HudRadarSnapshot {
   objectiveX: number | null;
   objectiveZ: number | null;
   blips: HudRadarBlip[];
+  obstacles?: HudRadarObstacle[];
+  boostPads?: HudRadarBoostPad[];
 }

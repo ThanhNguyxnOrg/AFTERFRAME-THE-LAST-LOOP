@@ -1,9 +1,13 @@
 import type {
+  ArenaBoostPad,
   BossState,
   CombatEvent,
   EnemyState,
   HudRadarBlip,
+  HudRadarBoostPad,
+  HudRadarObstacle,
   HudRadarSnapshot,
+  ObstacleCollider,
   PlayerState,
   RadarBlipKind,
 } from './types.ts';
@@ -328,6 +332,28 @@ export function formatCombatCallouts(
         });
         break;
       }
+      case 'obstacle_destroyed':
+        out.push({
+          text: 'OVERLOAD! +12F',
+          tone: 'crit',
+          worldX: ev.x,
+          worldY: 1.85,
+          worldZ: ev.z,
+          scale: 1.16,
+          duration: 0.8,
+        });
+        break;
+      case 'boost_pad_triggered':
+        out.push({
+          text: 'SURGE +24% SPD · +8F',
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 1.9,
+          worldZ: ev.z,
+          scale: 1.08,
+          duration: 0.72,
+        });
+        break;
     }
   }
   return out;
@@ -393,7 +419,12 @@ export function computeTacticalRadarSnapshot(
   echo: RadarEchoLike | null | undefined,
   objectiveTarget: { x: number; z: number } | null | undefined,
   interactables: readonly RadarInteractableLike[] = [],
-  maxBlips = 16
+  maxBlips = 16,
+  obstacles: readonly Pick<
+    ObstacleCollider,
+    'id' | 'x' | 'z' | 'radius' | 'disabled' | 'kind' | 'destructible' | 'hp' | 'maxHp'
+  >[] = [],
+  boostPads: readonly Pick<ArenaBoostPad, 'id' | 'x' | 'z' | 'cooldown'>[] = []
 ): HudRadarSnapshot {
   const safeRadius = Number.isFinite(arenaRadius) && arenaRadius > 1 ? arenaRadius : 22;
   const blips: HudRadarBlip[] = [];
@@ -451,6 +482,38 @@ export function computeTacticalRadarSnapshot(
     blips.length = maxBlips;
   }
 
+  const radarObstacles: HudRadarObstacle[] = [];
+  for (let i = 0; i < obstacles.length; i++) {
+    const obs = obstacles[i];
+    if (obs.disabled) continue;
+    const kind = obs.kind ?? 'pillar';
+    if (kind === 'barrier') continue;
+    const maxHp = Math.max(1, obs.maxHp ?? 1);
+    const hpRatio = obs.destructible
+      ? Number(Math.max(0, Math.min(1, (obs.hp ?? maxHp) / maxHp)).toFixed(2))
+      : 1;
+    radarObstacles.push({
+      id: obs.id,
+      x: clampToArena(obs.x, safeRadius),
+      z: clampToArena(obs.z, safeRadius),
+      radius: Number(Math.max(0.4, obs.radius).toFixed(2)),
+      kind,
+      destructible: Boolean(obs.destructible),
+      hpRatio,
+    });
+  }
+
+  const radarBoostPads: HudRadarBoostPad[] = [];
+  for (let i = 0; i < boostPads.length; i++) {
+    const pad = boostPads[i];
+    radarBoostPads.push({
+      id: pad.id,
+      x: clampToArena(pad.x, safeRadius),
+      z: clampToArena(pad.z, safeRadius),
+      ready: pad.cooldown <= 0,
+    });
+  }
+
   const echoActive = Boolean(echo && echo.state === 'playback' && echo.activeActor);
   return {
     arenaRadius: safeRadius,
@@ -464,6 +527,8 @@ export function computeTacticalRadarSnapshot(
     objectiveX: objectiveTarget ? clampToArena(objectiveTarget.x, safeRadius) : null,
     objectiveZ: objectiveTarget ? clampToArena(objectiveTarget.z, safeRadius) : null,
     blips,
+    obstacles: radarObstacles,
+    boostPads: radarBoostPads,
   };
 }
 

@@ -1203,6 +1203,75 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                       />
                     ))}
 
+                    {/* Kinetic Vector Boost Pads */}
+                    {(radar?.boostPads ?? []).map((pad) => (
+                      <g
+                        key={pad.id}
+                        data-testid={`map-boost-pad-${pad.id}`}
+                        data-pad-ready={pad.ready ? 'true' : 'false'}
+                      >
+                        <circle
+                          cx={pad.x}
+                          cy={pad.z}
+                          r="1.35"
+                          fill={pad.ready ? 'rgba(34, 211, 238, 0.22)' : 'rgba(51, 65, 85, 0.22)'}
+                          stroke={pad.ready ? '#22d3ee' : '#475569'}
+                          strokeWidth="0.4"
+                        />
+                        <polygon
+                          points={`${pad.x},${pad.z - 0.8} ${pad.x + 0.65},${pad.z + 0.45} ${pad.x},${pad.z + 0.1} ${pad.x - 0.65},${pad.z + 0.45}`}
+                          fill={pad.ready ? '#67e8f9' : '#64748b'}
+                        />
+                      </g>
+                    ))}
+
+                    {/* Chapter Cover Barricades, Pillars & Destructible Capacitors */}
+                    {(radar?.obstacles ?? []).map((obs) => {
+                      if (obs.kind === 'destructible_crate') {
+                        return (
+                          <polygon
+                            key={obs.id}
+                            data-testid={`map-obstacle-${obs.id}`}
+                            data-obstacle-kind={obs.kind}
+                            points={`${obs.x},${obs.z - 0.95} ${obs.x + 0.95},${obs.z} ${obs.x},${obs.z + 0.95} ${obs.x - 0.95},${obs.z}`}
+                            fill={obs.hpRatio < 0.6 ? '#f97316' : '#f59e0b'}
+                            stroke="#020617"
+                            strokeWidth="0.25"
+                          />
+                        );
+                      }
+                      if (obs.kind === 'cover_wall') {
+                        return (
+                          <rect
+                            key={obs.id}
+                            data-testid={`map-obstacle-${obs.id}`}
+                            data-obstacle-kind={obs.kind}
+                            x={obs.x - 1.05}
+                            y={obs.z - 0.55}
+                            width="2.1"
+                            height="1.1"
+                            rx="0.2"
+                            fill="#334155"
+                            stroke="#94a3b8"
+                            strokeWidth="0.3"
+                          />
+                        );
+                      }
+                      return (
+                        <circle
+                          key={obs.id}
+                          data-testid={`map-obstacle-${obs.id}`}
+                          data-obstacle-kind={obs.kind}
+                          cx={obs.x}
+                          cy={obs.z}
+                          r={Math.max(0.85, obs.radius * 0.85)}
+                          fill="#1e293b"
+                          stroke="#475569"
+                          strokeWidth="0.35"
+                        />
+                      );
+                    })}
+
                     {/* Environmental Interactable Nodes */}
                     {exploration.interactables.map((node) => (
                       <rect
@@ -1285,7 +1354,7 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                       {radar && (
                         <polygon
                           points={`0,0 ${Math.sin(radar.aimYaw - 0.42) * 8.5},${Math.cos(radar.aimYaw - 0.42) * 8.5} ${Math.sin(radar.aimYaw + 0.42) * 8.5},${Math.cos(radar.aimYaw + 0.42) * 8.5}`}
-                          fill="rgba(34, 211, 238, 0.14)"
+                          fill="rgba(34, 211, 238, 0.10)"
                         />
                       )}
                       <circle cx="0" cy="0" r="1.05" fill="#22d3ee" stroke="#ffffff" strokeWidth="0.35" />
@@ -1305,7 +1374,8 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                     <span className="text-cyan-300">● SERA</span>
                     <span className="text-sky-300">◎ ECHO</span>
                     <span className="text-rose-400">● HOSTILE</span>
-                    <span className="text-amber-300">◆ OBJECTIVE</span>
+                    <span className="text-amber-300">◆ CAP / OBJ</span>
+                    <span className="text-cyan-200">▲ BOOST</span>
                     <span className="text-emerald-300">━ OPEN ROUTE</span>
                   </div>
 
