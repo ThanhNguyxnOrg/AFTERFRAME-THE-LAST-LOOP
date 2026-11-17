@@ -39,10 +39,12 @@ import {
 import { resolveActiveLockOnTarget } from './lock-on.ts';
 import {
   computeBossTelegraphVisuals,
+  computeChronoAuraVisuals,
   computeEnemyDeRezState,
 } from './combat-vfx.ts';
 import {
   CHAPTER_VISUAL_LOOKS,
+  computeArenaMoodModulation,
   resolveChapterVisualLook,
 } from './visual-palette.ts';
 import type {
@@ -462,6 +464,7 @@ export class ArenaSceneRenderer {
   private railBeamTimer = 0;
   private hitstopTimer = 0;
   private fovKick = 0;
+  private resonanceFlash = 0;
 
   // v1.2.0 Pooled Weapon Slash Arc Ribbons, Dash Afterimage Ghosts & 60fps Lock-On Reticle DOM Ref
   private slashRibbonSlots: SlashRibbonSlot[] = [];
@@ -2228,6 +2231,7 @@ export class ArenaSceneRenderer {
     this.railBeamTimer = 0;
     this.hitstopTimer = 0;
     this.fovKick = 0;
+    this.resonanceFlash = 0;
     if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
     if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
     if (this.impactRingMesh) this.impactRingMesh.visible = false;
@@ -2591,6 +2595,7 @@ export class ArenaSceneRenderer {
         case 'boss_core_exposed':
           this.spawnBurst(ev.x, 1.55, ev.z, 16, 0xffffff, 6.2);
           this.triggerImpactRing(ev.x, 1.35, ev.z, 0x22d3ee, 0.28);
+          this.resonanceFlash = Math.max(this.resonanceFlash ?? 0, 0.85);
           if (!this.reducedMotion) {
             this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.048);
             this.fovKick = Math.max(this.fovKick ?? 0, 2.0);
@@ -2600,6 +2605,10 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.65, ev.z, 32, 0xef4444, 10.4);
           this.spawnBurst(ev.x, 1.85, ev.z, 20, 0xf59e0b, 8.2);
           this.triggerImpactRing(ev.x, 0.24, ev.z, 0xef4444, 0.48);
+          this.resonanceFlash = 1.0;
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.8);
+          }
           break;
         case 'boss_defeated':
           this.spawnBurst(ev.x, 1.6, ev.z, 36, 0xffffff, 11.0);
@@ -2740,6 +2749,7 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.15, ev.z, 20, 0x22d3ee, 7.8);
           this.triggerImpactRing(ev.x, 0.2, ev.z, 0xffffff, 0.38);
           this.spawnImpactDecal(ev.x, ev.z, 0x22d3ee, 2.5, 7.5);
+          this.resonanceFlash = Math.max(this.resonanceFlash ?? 0, 0.9);
           if (!this.reducedMotion) {
             this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.055);
             this.fovKick = Math.max(this.fovKick ?? 0, 2.8);
@@ -2949,6 +2959,9 @@ export class ArenaSceneRenderer {
             const tierColor = (ev.amount ?? 0) >= 4 ? 0xfbbf24 : 0x22d3ee;
             this.spawnBurst(ev.x, 1.15, ev.z, 14, tierColor, 5.4);
             this.triggerImpactRing(ev.x, 0.14, ev.z, tierColor, 0.28);
+            if ((ev.amount ?? 0) >= 4) {
+              this.resonanceFlash = Math.max(this.resonanceFlash ?? 0, 0.65);
+            }
           }
           break;
         case 'pulse_impact_obstacle':
@@ -3485,11 +3498,41 @@ export class ArenaSceneRenderer {
       selectedEnding === 'silence'
         ? 0.22
         : 0.68 + Math.sin(ambientTime * 3.4) * 0.18 * ambientScale;
+
+    if ((this.resonanceFlash ?? 0) > 0.005) {
+      this.resonanceFlash = Math.max(0, (this.resonanceFlash ?? 0) * Math.exp(-4.2 * Math.max(0.001, dt)));
+    } else {
+      this.resonanceFlash = 0;
+    }
+    const baseChapterLook = resolveChapterVisualLook(ch, selectedEnding);
+    const isBossActive = Boolean(
+      world.boss && world.boss.hp > 0 && world.boss.aiState !== 'defeated'
+    );
+    const mood = computeArenaMoodModulation(baseChapterLook, {
+      bossPhase: isBossActive ? world.boss!.phase : 1,
+      bossCoreExposed: Boolean(isBossActive && world.boss?.coreExposed),
+      adrenalineTier: Math.min(5, Math.max(0, Math.floor(world.player?.adrenalineScore ?? 0))),
+      resonanceFlash: this.resonanceFlash ?? 0,
+      reducedMotion: this.reducedMotion,
+    });
+    if (selectedEnding !== 'silence') {
+      if (this.rimLight) {
+        this.rimLight.color?.setHex?.(mood.rimHex);
+        this.rimLight.intensity = mood.rimIntensity;
+      }
+      if (this.loomLight) {
+        this.loomLight.intensity = mood.loomIntensity;
+      }
+    }
     if (this.beamConeMat) {
+      this.beamConeMat.color?.setHex?.(mood.beamHex);
       this.beamConeMat.opacity =
         selectedEnding === 'silence'
           ? 0.01
-          : 0.036 + Math.sin(ambientTime * 1.4) * 0.008 * ambientScale;
+          : Math.min(
+              0.22,
+              mood.beamOpacity * 0.45 + Math.sin(ambientTime * 1.4) * 0.008 * ambientScale
+            );
     }
     if (this.loomLightShaftMat) {
       this.loomLightShaftMat.opacity =
@@ -3951,11 +3994,36 @@ export class ArenaSceneRenderer {
     this.smoothedFwdAccel += (rawFwdAccel - this.smoothedFwdAccel) * Math.min(1, dt * 10);
     this.smoothedSideAccel += (rawSideAccel - this.smoothedSideAccel) * Math.min(1, dt * 10);
 
-    // Rotate Dorsal Chrono Rig harmonic rings (accelerated during Riposte / Chrono Slip flow windows)
-    const flowSpinBoost =
-      (p.riposteTimer ?? 0) > 0 || (p.chronoSlipTimer ?? 0) > 0 ? 3.2 : 1;
-    this.playerRig.chronoRingMesh.rotation.z += dt * 0.92 * flowSpinBoost;
-    this.playerRig.chronoInnerRingMesh.rotation.z -= dt * 1.55 * flowSpinBoost;
+    // Rotate Dorsal Chrono Rig harmonic rings & drive Adrenaline Overdrive ground halo
+    const auraSpec = computeChronoAuraVisuals({
+      adrenalineScore: p.adrenalineScore ?? 0,
+      riposteActive: (p.riposteTimer ?? 0) > 0,
+      chronoSlipActive: (p.chronoSlipTimer ?? 0) > 0,
+      kineticSurgeActive: (p.surgeTimer ?? 0) > 0,
+      isRecording: world.echo?.state === 'recording',
+      reducedMotion: this.reducedMotion,
+      timeSec: world.elapsedTime ?? 0,
+    });
+    this.playerRig.chronoRingMesh.rotation.z += dt * 0.92 * auraSpec.spinMultiplier;
+    this.playerRig.chronoInnerRingMesh.rotation.z -= dt * 1.55 * auraSpec.spinMultiplier;
+    if (this.playerRig.chronoAccentMaterial) {
+      this.playerRig.chronoAccentMaterial.color?.setHex?.(auraSpec.ringHex);
+      this.playerRig.chronoAccentMaterial.emissive?.setHex?.(auraSpec.ringHex);
+      this.playerRig.chronoAccentMaterial.emissiveIntensity = auraSpec.emissiveIntensity;
+    }
+    if (this.playerRig.chronoAuraMesh && this.playerRig.chronoAuraMaterial) {
+      const showGroundAura =
+        this.screenEffectsEnabled !== false && auraSpec.groundAuraOpacity > 0.01;
+      this.playerRig.chronoAuraMesh.visible = showGroundAura;
+      if (showGroundAura) {
+        this.playerRig.chronoAuraMaterial.color.setHex(auraSpec.ringHex);
+        this.playerRig.chronoAuraMaterial.opacity = auraSpec.groundAuraOpacity;
+        this.playerRig.chronoAuraMesh.scale.setScalar(auraSpec.groundAuraScale);
+        if (!this.reducedMotion) {
+          this.playerRig.chronoAuraMesh.rotation.z -= dt * 1.15 * auraSpec.spinMultiplier;
+        }
+      }
+    }
 
     // Velocity-proportional locomotion stride, knee bend, ankle planting & pelvis weight shift
     const moveSpeed = Math.hypot(p.vx, p.vz);
@@ -4690,6 +4758,10 @@ export class ArenaSceneRenderer {
         this.echoRig.echoBaseRippleMesh.rotation.z += dt * 1.8;
         const ripplePulse = 0.92 + Math.sin(world.elapsedTime * 6.5) * 0.1;
         this.echoRig.echoBaseRippleMesh.scale.setScalar(ripplePulse);
+        const rippleMat = this.echoRig.echoBaseRippleMesh.material as THREE.MeshBasicMaterial | undefined;
+        if (rippleMat) {
+          rippleMat.opacity = auraSpec.echoShimmerOpacity;
+        }
       }
 
       const echoMoving =

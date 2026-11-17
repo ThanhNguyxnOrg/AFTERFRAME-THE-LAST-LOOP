@@ -195,3 +195,82 @@ export function computeScreenFlashTint(
   };
 }
 
+export interface ChronoAuraVisualInput {
+  adrenalineScore: number;
+  riposteActive: boolean;
+  chronoSlipActive: boolean;
+  kineticSurgeActive: boolean;
+  isRecording: boolean;
+  reducedMotion: boolean;
+  timeSec: number;
+}
+
+export interface ChronoAuraVisualState {
+  tier: number;
+  ringHex: number;
+  emissiveIntensity: number;
+  spinMultiplier: number;
+  groundAuraOpacity: number;
+  groundAuraScale: number;
+  echoShimmerOpacity: number;
+}
+
+export function computeChronoAuraVisuals(
+  input: ChronoAuraVisualInput
+): ChronoAuraVisualState {
+  const score = Number.isFinite(input.adrenalineScore)
+    ? Math.max(0, Math.min(5.95, input.adrenalineScore))
+    : 0;
+  const tier = Math.min(5, Math.floor(score));
+  const wave = input.reducedMotion ? 0 : Math.sin(input.timeSec * 5.2);
+
+  let ringHex = 0x38bdf8;
+  if (input.riposteActive || input.chronoSlipActive) {
+    ringHex = 0xfef08a;
+  } else if (tier >= 4) {
+    ringHex = 0xfbbf24;
+  } else if (input.kineticSurgeActive) {
+    ringHex = 0x34d399;
+  } else if (tier === 3) {
+    ringHex = 0x67e8f9;
+  } else if (input.isRecording) {
+    ringHex = 0xf59e0b;
+  }
+
+  const boost =
+    input.riposteActive || input.chronoSlipActive
+      ? 0.65
+      : input.kineticSurgeActive
+        ? 0.35
+        : 0;
+
+  const emissiveIntensity = Number(
+    (1.25 + tier * 0.24 + boost + wave * 0.12).toFixed(3)
+  );
+  const spinMultiplier = Number(
+    (1 + tier * 0.26 + (input.riposteActive || input.chronoSlipActive ? 1.45 : input.kineticSurgeActive ? 0.65 : 0)).toFixed(3)
+  );
+
+  const baseAuraOpacity =
+    tier > 0 || input.riposteActive || input.chronoSlipActive || input.kineticSurgeActive || input.isRecording
+      ? Math.min(0.56, 0.12 + tier * 0.068 + boost * 0.2 + wave * 0.03)
+      : 0;
+  const groundAuraOpacity = Math.max(0, Number(baseAuraOpacity.toFixed(3)));
+  const groundAuraScale = Number(
+    (0.84 + tier * 0.068 + boost * 0.12 + wave * 0.025).toFixed(3)
+  );
+  const echoShimmerOpacity = input.reducedMotion
+    ? 0.48
+    : Number((0.46 + Math.sin(input.timeSec * 6.4) * 0.12).toFixed(3));
+
+  return {
+    tier,
+    ringHex,
+    emissiveIntensity,
+    spinMultiplier,
+    groundAuraOpacity,
+    groundAuraScale,
+    echoShimmerOpacity,
+  };
+}
+

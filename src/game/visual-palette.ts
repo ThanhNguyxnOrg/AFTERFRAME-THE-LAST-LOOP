@@ -244,3 +244,57 @@ export function applyVerticalVertexAO(
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   return geometry;
 }
+
+export interface ArenaMoodInput {
+  bossPhase: number;
+  bossCoreExposed: boolean;
+  adrenalineTier: number;
+  resonanceFlash: number;
+  reducedMotion: boolean;
+}
+
+export interface ArenaMoodModulation {
+  rimIntensity: number;
+  loomIntensity: number;
+  beamOpacity: number;
+  beamHex: number;
+  rimHex: number;
+}
+
+export function computeArenaMoodModulation(
+  look: ChapterVisualLook,
+  input: ArenaMoodInput
+): ArenaMoodModulation {
+  const phase2Surge = input.bossPhase >= 2 ? 1 : 0;
+  const flash = Math.max(0, Math.min(1, input.resonanceFlash)) * (input.reducedMotion ? 0.3 : 1);
+  const adrBonus = Math.max(0, Math.min(5, Math.floor(input.adrenalineTier))) * 0.04;
+
+  const rimIntensity = Number(
+    (look.rimIntensity * (1 + phase2Surge * 0.24 + adrBonus + flash * 0.28)).toFixed(3)
+  );
+  const loomIntensity = Number(
+    (look.loomIntensity * (1 + phase2Surge * 0.14 + (input.bossCoreExposed ? 0.18 : 0) + flash * 0.22)).toFixed(3)
+  );
+  const beamOpacity = Number(
+    Math.min(0.22, 0.085 + phase2Surge * 0.038 + (input.bossCoreExposed ? 0.028 : 0) + flash * 0.04).toFixed(4)
+  );
+
+  let beamHex = look.conduit;
+  let rimHex = look.rim;
+  if (input.bossCoreExposed) {
+    beamHex = 0xe0f2fe;
+    rimHex = 0x67e8f9;
+  } else if (phase2Surge) {
+    beamHex = 0xf59e0b;
+    rimHex = look.rim === 0x38bdf8 ? 0xf59e0b : look.rim;
+  }
+
+  return {
+    rimIntensity,
+    loomIntensity,
+    beamOpacity,
+    beamHex,
+    rimHex,
+  };
+}
+

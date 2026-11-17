@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   CHAPTER_VISUAL_LOOKS,
   applyVerticalVertexAO,
+  computeArenaMoodModulation,
   resolveChapterVisualLook,
 } from './visual-palette.ts';
 import type { CampaignChapterId, ChronicleLoomEndingId } from './types.ts';
@@ -87,3 +88,39 @@ test('applyVerticalVertexAO attaches normalized linear-space vertex AO gradient 
   }
   assert.ok(minFound <= 0.41 && maxFound >= 0.99);
 });
+
+test('computeArenaMoodModulation intensifies rim, beams, and loom during Boss Phase II and Core Exposed', () => {
+  const baseLook = resolveChapterVisualLook('prologue', null);
+  const calm = computeArenaMoodModulation(baseLook, {
+    bossPhase: 1,
+    bossCoreExposed: false,
+    adrenalineTier: 0,
+    resonanceFlash: 0,
+    reducedMotion: false,
+  });
+  assert.equal(calm.rimIntensity, baseLook.rimIntensity);
+  assert.equal(calm.beamHex, baseLook.conduit);
+
+  const phase2 = computeArenaMoodModulation(baseLook, {
+    bossPhase: 2,
+    bossCoreExposed: false,
+    adrenalineTier: 4,
+    resonanceFlash: 0.5,
+    reducedMotion: false,
+  });
+  assert.ok(phase2.rimIntensity > calm.rimIntensity);
+  assert.ok(phase2.beamOpacity > calm.beamOpacity);
+  assert.equal(phase2.beamHex, 0xf59e0b);
+
+  const exposed = computeArenaMoodModulation(baseLook, {
+    bossPhase: 2,
+    bossCoreExposed: true,
+    adrenalineTier: 2,
+    resonanceFlash: 0,
+    reducedMotion: true,
+  });
+  assert.equal(exposed.beamHex, 0xe0f2fe);
+  assert.equal(exposed.rimHex, 0x67e8f9);
+  assert.ok(exposed.loomIntensity > calm.loomIntensity);
+});
+

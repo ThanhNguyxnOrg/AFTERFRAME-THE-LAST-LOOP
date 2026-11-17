@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeBossTelegraphVisuals,
+  computeChronoAuraVisuals,
   computeEnemyDeRezState,
   computeScreenFlashTint,
 } from './combat-vfx';
@@ -105,4 +106,60 @@ test('computeScreenFlashTint prioritizes parry, convergence, finisher, dodge, an
   assert.ok(finisherReduced.maxOpacity <= 0.14);
   assert.ok(finisherReduced.durationMs <= 140);
 });
+
+test('computeChronoAuraVisuals scales dorsal ring intensity, ground aura, and overdrive gold cleanly', () => {
+  const idle = computeChronoAuraVisuals({
+    adrenalineScore: 0,
+    riposteActive: false,
+    chronoSlipActive: false,
+    kineticSurgeActive: false,
+    isRecording: false,
+    reducedMotion: false,
+    timeSec: 1.0,
+  });
+  assert.equal(idle.tier, 0);
+  assert.equal(idle.groundAuraOpacity, 0);
+  assert.equal(idle.ringHex, 0x38bdf8);
+
+  const recording = computeChronoAuraVisuals({
+    adrenalineScore: 0,
+    riposteActive: false,
+    chronoSlipActive: false,
+    kineticSurgeActive: false,
+    isRecording: true,
+    reducedMotion: false,
+    timeSec: 1.0,
+  });
+  assert.equal(recording.ringHex, 0xf59e0b);
+  assert.ok(recording.groundAuraOpacity > 0);
+
+  const overdrive = computeChronoAuraVisuals({
+    adrenalineScore: 5.4,
+    riposteActive: false,
+    chronoSlipActive: false,
+    kineticSurgeActive: false,
+    isRecording: false,
+    reducedMotion: false,
+    timeSec: 1.0,
+  });
+  assert.equal(overdrive.tier, 5);
+  assert.equal(overdrive.ringHex, 0xfbbf24);
+  assert.ok(overdrive.emissiveIntensity > idle.emissiveIntensity);
+  assert.ok(overdrive.spinMultiplier > 2.0);
+  assert.ok(overdrive.groundAuraOpacity > 0.3);
+  assert.ok(overdrive.groundAuraScale > idle.groundAuraScale);
+
+  const reduced = computeChronoAuraVisuals({
+    adrenalineScore: 3.1,
+    riposteActive: true,
+    chronoSlipActive: false,
+    kineticSurgeActive: false,
+    isRecording: false,
+    reducedMotion: true,
+    timeSec: 2.3,
+  });
+  assert.equal(reduced.ringHex, 0xfef08a);
+  assert.equal(reduced.echoShimmerOpacity, 0.48);
+});
+
 

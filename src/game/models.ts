@@ -44,6 +44,8 @@ export interface PlayerRig {
   parryShieldMaterial: THREE.MeshBasicMaterial;
   chargeRingMesh: THREE.Mesh;
   chargeRingMaterial: THREE.MeshBasicMaterial;
+  chronoAuraMesh?: THREE.Mesh;
+  chronoAuraMaterial?: THREE.MeshBasicMaterial;
   echoPhaseRingMesh?: THREE.Mesh;
   echoSecondPhaseRingMesh?: THREE.Mesh;
   echoInnerWireMesh?: THREE.Mesh;
@@ -2876,6 +2878,22 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
   chargeRingMesh.position.y = 0.03;
   root.add(chargeRingMesh);
 
+  // --- 10. Ground Adrenaline Chrono Sync Aura Halo ---
+  const chronoAuraGeo = new THREE.RingGeometry(0.56, 0.72, 36);
+  const chronoAuraMaterial = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const chronoAuraMesh = new THREE.Mesh(chronoAuraGeo, chronoAuraMaterial);
+  chronoAuraMesh.rotation.x = -Math.PI / 2;
+  chronoAuraMesh.position.y = 0.024;
+  chronoAuraMesh.visible = false;
+  root.add(chronoAuraMesh);
+
   return {
     root,
     bodyGroup,
@@ -2916,6 +2934,8 @@ export function createSeraPlayerRig(shadowTex: THREE.Texture, enableShadows: boo
     parryShieldMaterial,
     chargeRingMesh,
     chargeRingMaterial,
+    chronoAuraMesh,
+    chronoAuraMaterial,
   };
 }
 

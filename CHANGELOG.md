@@ -5,6 +5,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [`1.8.0`] — Overdrive Aura, Boss Phase Lighting & Title Framing
+
+### ⚡ Combat Readability & Reactive Arena Lighting
+- **3D Adrenaline Overdrive Aura (`computeChronoAuraVisuals`)**: Sera's dorsal Chrono Rig rings, accent emitters, and a ground-level additive Chrono Sync Halo scale dynamically in color, intensity, and rotation velocity across Sync Levels `0–5`, Riposte, Chrono Slip, Recording, and Kinetic Boost surges.
+- **Echo Hologram Shimmer**: Active Chrono Echoes modulate ground ripple and hologram phase opacity cleanly for unmistakable foreground separation in dense multi-target encounters.
+- **Dynamic Boss Phase II & Core Exposed Lighting (`computeArenaMoodModulation`)**: Overhead volumetric floodlight cones, rim lighting, and Chronicle Loom emitters escalate smoothly during Warden Phase II transitions, Core Exposed windows, and Resonance Convergence detonations.
+- **Title Framing & Control Clarity**: Compacted the desktop Operator Briefing card to keep Nadir-9 and Sera prominent in the upper viewport, and replaced ornamental footer text with live tactical Chrono keybind reminders.
+
+## [`1.7.0`] — 3dviz-pro-max Map Overhaul & Streamlined Tactical HUD
+
+### 🎨 3D Visual Architecture & HUD Consolidation
+- **GLSL Orbital Sky Dome & Visual Palette (`visual-palette.ts`)**: Per-chapter sky gradients, nebula tints, ground-bounce hemisphere lighting, vertical Vertex AO on walls/pillars/plinths, N/S/E/W fiber raceways, overhead gantry booms, and beveled console pedestals with translucent hologram glass.
+- **4-Corner Tactical HUD**: Consolidated peripheral threat cues, corner radar, compact Echo deck, and weapon deck to maximize unobstructed center combat space.
+
 ## [`1.0.0`] — Official Release
 
 ### 🌐 Public HTML5 Playtest

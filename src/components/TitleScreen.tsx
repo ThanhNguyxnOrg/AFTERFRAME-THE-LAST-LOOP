@@ -562,19 +562,23 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </section>
 
         {/* Right Column: Purposeful Contextual Drawer or Restrained Mission Briefing Card */}
-        <section className="lg:col-span-6 flex flex-col lg:items-end pointer-events-auto">
-          {/* Default Mission Briefing Overview (Desktop right column; hidden on small mobile to preserve 3D viewport) */}
+        <section
+          className={`lg:col-span-6 flex flex-col lg:items-end pointer-events-auto ${
+            activeDrawer === 'none' ? 'lg:self-end' : ''
+          }`}
+        >
+          {/* Default Mission Briefing Overview (Desktop right column; compact lower-right framing to preserve 3D viewport) */}
           {activeDrawer === 'none' && (
             <div
               data-testid="title-mission-overview"
-              className="hidden lg:block w-full max-w-lg bg-[#090e17]/85 border border-slate-800/90 p-5 text-slate-300 shadow-[0_16px_40px_rgba(0,0,0,0.65)]"
+              className="hidden lg:block w-full max-w-md bg-[#090e17]/82 border border-slate-800/90 p-4 text-slate-300 shadow-[0_16px_40px_rgba(0,0,0,0.65)]"
             >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
                 <span className="text-xs font-mono-tabular font-semibold uppercase tracking-widest text-cyan-400">
                   FIRST-TIME OPERATOR BRIEFING
                 </span>
                 <span className="text-[11px] font-mono-tabular text-slate-400">
-                  SECTOR 04 · v1.7.0
+                  SECTOR 04 · v1.8.0
                 </span>
               </div>
 
@@ -1598,8 +1602,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <div className="flex items-center gap-3">
           <a
             data-testid="title-download-bundle"
-            href="./AFTERFRAME-v1.7.0-chronicle-complete.bundle"
-            download="AFTERFRAME-v1.7.0-chronicle-complete.bundle"
+            href="./AFTERFRAME-v1.8.0-chronicle-complete.bundle"
+            download="AFTERFRAME-v1.8.0-chronicle-complete.bundle"
             onClick={(e) => {
               e.currentTarget.blur();
               handleMarkBundleDownloaded();
@@ -1608,10 +1612,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           >
             {bundleDownloadStatus === 'saved'
               ? 'SAVED .BUNDLE ✓'
-              : 'DOWNLOAD v1.7.0 .BUNDLE'}
+              : 'DOWNLOAD v1.8.0 .BUNDLE'}
           </a>
-          <span className="hidden md:inline text-slate-500">
-            CHRONO RIG TELEMETRY · DETERMINISTIC LOCAL SIMULATION
+          <span className="hidden md:inline text-slate-300">
+            RECORD [T] · ECHO [Y] · RELAY [V] · PIN [G] · COLLAPSE [X]
           </span>
         </div>
       </footer>
