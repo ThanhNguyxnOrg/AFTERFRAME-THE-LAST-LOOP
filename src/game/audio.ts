@@ -1,6 +1,99 @@
-import type { BossAttackType, CombatEvent } from './types.ts';
+import type {
+  BossAttackType,
+  CampaignChapterId,
+  ChronicleLoomEndingId,
+  CombatEvent,
+  GameAppState,
+} from './types.ts';
 
 const MUTE_STORAGE_KEY = 'afterframe_audio_muted_v1';
+
+export interface AmbientMixState {
+  appState: GameAppState;
+  chapter: CampaignChapterId;
+  bossActive: boolean;
+  bossPhase: number;
+  bossCoreExposed: boolean;
+  adrenalineTier: number;
+  selectedEnding: ChronicleLoomEndingId | null;
+}
+
+export interface AmbientPulseVoice {
+  intervalSec: number;
+  durationSec: number;
+  bassFreq: number;
+  padFreq: number;
+  shimmerFreq: number | null;
+  bassGain: number;
+  padGain: number;
+  shimmerGain: number;
+  waveform: 'sine' | 'triangle';
+}
+
+const CHAPTER_BASE_ROOTS: Record<CampaignChapterId, number> = {
+  prologue: 73.42, // D2 — Orbital drydock cold hum
+  chapter_1_helix: 69.3, // C#2 — Containment tension
+  chapter_2_choir: 82.41, // E2 — Acoustic harmonic choir
+  chapter_3_curator: 77.78, // D#2 — Vault resonance
+  chapter_4_matron: 61.74, // B1 — Deep ward pulse
+  chapter_5_loom: 73.42, // D2 — Loom convergence
+};
+
+const COMBAT_RATIOS = [1, 1.5, 1.189, 1.335, 1.5, 1.782, 1.498, 2];
+const CALM_RATIOS = [1, 1.5, 2, 1.335];
+
+export function computeAmbientPulseVoice(
+  state: AmbientMixState,
+  stepIndex: number
+): AmbientPulseVoice | null {
+  if (state.appState !== 'playing' || state.selectedEnding === 'silence') {
+    return null;
+  }
+
+  const baseRoot = CHAPTER_BASE_ROOTS[state.chapter] ?? 73.42;
+  const adrTier = Math.max(0, Math.min(5, Math.floor(state.adrenalineTier || 0)));
+  const highTension = state.bossActive || adrTier >= 3;
+  const phaseTwo = state.bossActive && state.bossPhase >= 2;
+  const step = Math.abs(Math.floor(stepIndex));
+
+  const intervalSec =
+    state.selectedEnding === 'witness'
+      ? 0.54
+      : state.selectedEnding === 'continuity'
+        ? 0.68
+        : phaseTwo
+          ? 0.44
+          : highTension
+            ? 0.52
+            : 0.78;
+
+  const ratios = highTension ? COMBAT_RATIOS : CALM_RATIOS;
+  const ratio = ratios[step % ratios.length];
+  const octaveBoost = state.selectedEnding === 'witness' ? 2 : state.bossCoreExposed ? 1.5 : 1;
+
+  const bassFreq = Number((baseRoot * (phaseTwo && step % 4 === 2 ? 1.122 : 1)).toFixed(2));
+  const padFreq = Number((baseRoot * 2 * ratio * (state.selectedEnding === 'continuity' ? 1.25 : 1)).toFixed(2));
+  const shouldShimmer =
+    state.bossCoreExposed ||
+    state.selectedEnding === 'witness' ||
+    (adrTier >= 2 && step % 2 === 1) ||
+    step % 4 === 0;
+  const shimmerFreq = shouldShimmer
+    ? Number((baseRoot * 4 * ratio * octaveBoost).toFixed(2))
+    : null;
+
+  return {
+    intervalSec,
+    durationSec: Number(Math.min(0.95, intervalSec * 1.12).toFixed(3)),
+    bassFreq,
+    padFreq,
+    shimmerFreq,
+    bassGain: phaseTwo ? 0.052 : highTension ? 0.044 : 0.032,
+    padGain: state.selectedEnding === 'witness' ? 0.032 : highTension ? 0.026 : 0.02,
+    shimmerGain: state.bossCoreExposed ? 0.024 : 0.014,
+    waveform: phaseTwo ? 'triangle' : 'sine',
+  };
+}
 
 export class SoundEngine {
   private ctx: AudioContext | null = null;
@@ -12,6 +105,8 @@ export class SoundEngine {
   private masterVolume = 0.85;
   private musicVolume = 0.7;
   private sfxVolume = 0.9;
+  private ambientPulseTimer = 0.25;
+  private ambientStepIndex = 0;
 
   constructor() {
     try {
@@ -419,6 +514,18 @@ export class SoundEngine {
         case 'boost_pad_triggered':
           this.playBoostPadSurge();
           break;
+        case 'rig_module_purchased':
+          this.playWeaponUpgradeChime(true);
+          break;
+        case 'rig_module_equipped':
+          this.playWeaponUpgradeChime(false);
+          break;
+        case 'flux_pool_spawned':
+          this.playFluxPoolSpawned();
+          break;
+        case 'temporal_thread_triggered':
+          this.playTemporalThreadTriggered();
+          break;
       }
     }
   }
@@ -470,6 +577,45 @@ export class SoundEngine {
     shimmer.start(now + 0.02);
     osc.stop(now + 0.23);
     shimmer.stop(now + 0.23);
+  }
+
+  private playFluxPoolSpawned(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(540, now + 0.26);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.14, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc.stop(now + 0.29);
+  }
+
+  private playTemporalThreadTriggered(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [587.33, 880, 1174.66];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = now + idx * 0.04;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(0.11, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
+      osc.connect(gain);
+      gain.connect(this.getOutputNode(ctx));
+      osc.start(start);
+      osc.stop(start + 0.15);
+    });
   }
 
   private playActiveVentSuccess(): void {
@@ -1782,6 +1928,65 @@ export class SoundEngine {
     chimeGain.connect(this.getOutputNode(ctx));
     chime.start(now + 0.02);
     chime.stop(now + 0.3);
+  }
+
+  public updateAmbientPulse(dt: number, state: AmbientMixState): void {
+    if (this.disposed || this.muted || state.appState !== 'playing') {
+      return;
+    }
+    if (this.getEffectiveBusScale('music') <= 0.001) {
+      return;
+    }
+    if (!this.ctx || this.ctx.state !== 'running') {
+      return;
+    }
+
+    const safeDt = Number.isFinite(dt) ? Math.max(0, Math.min(0.1, dt)) : 0;
+    this.ambientPulseTimer -= safeDt;
+    if (this.ambientPulseTimer > 0) {
+      return;
+    }
+
+    const voice = computeAmbientPulseVoice(state, this.ambientStepIndex);
+    this.ambientStepIndex += 1;
+    if (!voice) {
+      this.ambientPulseTimer = 0.5;
+      return;
+    }
+    this.ambientPulseTimer = voice.intervalSec;
+
+    try {
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const out = this.getOutputNode(ctx, 'music');
+
+      const triggerVoice = (
+        freq: number,
+        peakGain: number,
+        dur: number,
+        type: OscillatorType
+      ) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.0005, now);
+        gain.gain.linearRampToValueAtTime(peakGain, now + Math.min(0.08, dur * 0.22));
+        gain.gain.exponentialRampToValueAtTime(0.0005, now + dur);
+        osc.connect(gain);
+        gain.connect(out);
+        osc.start(now);
+        osc.stop(now + dur + 0.02);
+      };
+
+      triggerVoice(voice.bassFreq, voice.bassGain, voice.durationSec, voice.waveform);
+      triggerVoice(voice.padFreq, voice.padGain, voice.durationSec * 0.92, 'sine');
+      if (voice.shimmerFreq !== null) {
+        triggerVoice(voice.shimmerFreq, voice.shimmerGain, voice.durationSec * 0.65, 'sine');
+      }
+    } catch {
+      // Never block gameplay if Web Audio scheduling fails
+    }
   }
 
   public dispose(): void {

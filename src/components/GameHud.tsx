@@ -1272,6 +1272,21 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                   />
                 ))}
 
+                {/* Charged Flux Pools (Shattered Capacitor Fields) */}
+                {(hud.radar.fluxPools ?? []).map((pool) => (
+                  <circle
+                    key={pool.id}
+                    data-testid={`radar-flux-pool-${pool.id}`}
+                    cx={pool.x}
+                    cy={pool.z}
+                    r={pool.radius}
+                    fill="rgba(34, 211, 238, 0.2)"
+                    stroke="#22d3ee"
+                    strokeWidth="0.4"
+                    strokeDasharray="1.4 0.8"
+                  />
+                ))}
+
                 {/* Tactical Arena Boost Pads (West/East Flanks) */}
                 {(hud.radar.boostPads ?? []).map((pad) => (
                   <g key={pad.id} data-testid={`radar-boost-${pad.id}`}>
@@ -1451,6 +1466,35 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                     </g>
                   )}
 
+                {/* Tactical Waypoint Vector & Beacon Diamond */}
+                {hud.radar.waypoint && (
+                  <g data-testid="radar-waypoint-marker">
+                    <line
+                      x1={hud.radar.playerX}
+                      y1={hud.radar.playerZ}
+                      x2={hud.radar.waypoint.x}
+                      y2={hud.radar.waypoint.z}
+                      stroke="#fbbf24"
+                      strokeWidth="0.45"
+                      strokeDasharray="1.3 1.0"
+                    />
+                    <circle
+                      cx={hud.radar.waypoint.x}
+                      cy={hud.radar.waypoint.z}
+                      r="2.15"
+                      fill="none"
+                      stroke="#fbbf24"
+                      strokeWidth="0.45"
+                    />
+                    <polygon
+                      points={`${hud.radar.waypoint.x},${hud.radar.waypoint.z - 1.4} ${hud.radar.waypoint.x + 1.4},${hud.radar.waypoint.z} ${hud.radar.waypoint.x},${hud.radar.waypoint.z + 1.4} ${hud.radar.waypoint.x - 1.4},${hud.radar.waypoint.z}`}
+                      fill="#fbbf24"
+                      stroke="#22d3ee"
+                      strokeWidth="0.35"
+                    />
+                  </g>
+                )}
+
                 {/* Sera Live Position & Heading Vector */}
                 <g transform={`translate(${hud.radar.playerX}, ${hud.radar.playerZ})`}>
                   <line
@@ -1472,6 +1516,22 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
                 </g>
               </svg>
             </button>
+          )}
+          {hud.radar?.waypoint && (
+            <div
+              data-testid="hud-waypoint-readout"
+              className="pointer-events-none px-1.5 py-0.5 bg-[#05080e]/90 border border-amber-400/70 text-[9px] font-mono-tabular uppercase tracking-wider text-amber-200 whitespace-nowrap max-w-[184px] flex items-center gap-1"
+            >
+              <span className="truncate">WP · {hud.radar.waypoint.label}</span>
+              <span className="text-amber-300 font-bold shrink-0">
+                ·{' '}
+                {Math.hypot(
+                  hud.radar.waypoint.x - hud.radar.playerX,
+                  hud.radar.waypoint.z - hud.radar.playerZ
+                ).toFixed(0)}
+                M
+              </span>
+            </div>
           )}
         </div>
       </div>

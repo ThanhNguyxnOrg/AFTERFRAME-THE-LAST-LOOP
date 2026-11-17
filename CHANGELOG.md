@@ -5,6 +5,23 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [`1.9.0`] — Chrono Rig Chassis, Dynamic Arena Synergies & Tactical Polish
+
+### ⚙️ Chrono Rig Chassis Modules & Salvage Economy
+- **3-Slot Rig Customization (`src/game/rig-progression.ts`)**: Added **6** trade-off-balanced **Chrono Rig Chassis Modules** across **Chrono Core** (*Chrono Spool Mk.II*, *Resonance Focus Prism*), **Chassis & Recovery** (*Reactive Aegis Plating*, *Kinetic Flux Dynamo*), and **Tactical Harness** (*Capacitor Salvage Harness*, *Surge Overclock Coil*), accessible from both the **Title Armory Drawer** and the **Pause Upgrade Bench**, and persisted in **Save Schema V2** with `125 HP` checkpoint integrity preservation.
+- **Late-Game Override Salvage**: Optional override conduits in **Chapter IV** (*Quarantine Override*) and **Chapter V** (*Temporal Anchor*) now yield `+1` bonus **Memory Fragment** each (`+2` total) while keeping the core `18`-Fragment campaign progression intact.
+
+### 🗺️ Dynamic Arena Hazards, Flux Pools & Interactive Sector Map
+- **Charged Flux Pools**: Shattering a **Chrono-Capacitor** now leaves behind a `3.4m` **Charged Flux Pool** for `7.0s` (`+9 Flux/s`, plus `+3.5 Integrity/s` repair with *Kinetic Flux Dynamo*), rendered in 3D and on the tactical radar.
+- **Temporal Thread Hazard Mastery**: Dodging or Phase-Relaying cleanly through an active/warning **Timed Energy Passage** triggers **Temporal Thread** (`+14 Flux`, `1.4s Mobility Surge`, `+0.35 Adrenaline`, plus `+8 Integrity` with *Field Salvager*).
+- **Interactive Sector Schematic & 3D Waypoints**: Click regions, routes, hazards, boost pads, capacitors, or conduits in the **Sector Map `[N]`** to open the **Tactical Node Inspector** and project a live **3D Ground Beacon** & corner radar vector that auto-clears upon arrival (`< 2.3m`).
+
+### 🎯 3D Target Readability, Adaptive Soundscape & UI Craft
+- **Diegetic 3D Lock-On Ground Ring (`computeLockOnGroundVisuals`)**: Added a zero-allocation floor-space targeting ring + counter-rotating diamond reticle directly beneath the locked hostile, dynamically scaling to enemy/boss radius and shifting cyan (Locked) → cyan-bright (Resonance Marked) → crimson (Telegraphing) → gold (Staggered / Core Exposed).
+- **Resonance Convergence Tether Surge (`computeEchoTetherVisuals`)**: Sera's active Echo tether now thickens (`2.25×`) and surges gold (`#fde047`) whenever a Resonance Mark is primed and convergence-ready.
+- **Procedural Combat Pulse (`computeAmbientPulseVoice`, `SoundEngine.updateAmbientPulse`)**: Added chapter-tuned harmonic bass/pad/shimmer pulses routed cleanly through the independent `musicGain` bus, accelerating tempo during active boss battles, Phase II transitions, Core Exposed windows, and high Adrenaline Sync tiers while honoring Mute, Pause, Silence ending, and `dispose()`.
+- **StatusModal Tactical Icons & Rank Breakdown**: Replaced unicode emojis in `StatusModal` section tabs with crisp custom inline `<svg>` instruments and added score + hitless telemetry to the Combat Rank card.
+
 ## [`1.8.0`] — Overdrive Aura, Boss Phase Lighting & Title Framing
 
 ### ⚡ Combat Readability & Reactive Arena Lighting

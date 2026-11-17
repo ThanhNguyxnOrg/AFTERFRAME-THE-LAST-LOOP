@@ -701,3 +701,166 @@ test('Phase 24: reducedMotion disables hitstopTimer and fovKick side effects whi
   assert.equal(renderer.camera.fov, 52, 'reducedMotion must keep camera FOV at base 52 deg');
   assert.equal(projUpdates, 1, 'camera projection should normalize back to base FOV once');
 });
+
+test('v1.9.0: computeAmbientPulseVoice and SoundEngine.updateAmbientPulse modulate chapter tempo cleanly through musicGain', async (t) => {
+  const { SoundEngine, computeAmbientPulseVoice } = await import('./audio.ts');
+
+  assert.equal(
+    computeAmbientPulseVoice(
+      {
+        appState: 'title',
+        chapter: 'prologue',
+        bossActive: false,
+        bossPhase: 1,
+        bossCoreExposed: false,
+        adrenalineTier: 0,
+        selectedEnding: null,
+      },
+      0
+    ),
+    null
+  );
+
+  assert.equal(
+    computeAmbientPulseVoice(
+      {
+        appState: 'playing',
+        chapter: 'chapter_5_loom',
+        bossActive: false,
+        bossPhase: 1,
+        bossCoreExposed: false,
+        adrenalineTier: 0,
+        selectedEnding: 'silence',
+      },
+      0
+    ),
+    null
+  );
+
+  const calm = computeAmbientPulseVoice(
+    {
+      appState: 'playing',
+      chapter: 'prologue',
+      bossActive: false,
+      bossPhase: 1,
+      bossCoreExposed: false,
+      adrenalineTier: 0,
+      selectedEnding: null,
+    },
+    0
+  );
+  const bossP2 = computeAmbientPulseVoice(
+    {
+      appState: 'playing',
+      chapter: 'chapter_1_helix',
+      bossActive: true,
+      bossPhase: 2,
+      bossCoreExposed: true,
+      adrenalineTier: 4,
+      selectedEnding: null,
+    },
+    1
+  );
+  assert.ok(calm && bossP2);
+  assert.ok(bossP2.intervalSec < calm.intervalSec, 'Boss Phase 2 should accelerate orbital pulse tempo');
+  assert.equal(bossP2.waveform, 'triangle');
+  assert.ok(bossP2.shimmerFreq !== null && bossP2.shimmerFreq > bossP2.padFreq);
+
+  let oscCount = 0;
+  const gainTargets: unknown[] = [];
+  class MockAudioContext {
+    state = 'running';
+    currentTime = 2.0;
+    destination = { id: 'destination' };
+    resume() {
+      return Promise.resolve();
+    }
+    close() {
+      this.state = 'closed';
+      return Promise.resolve();
+    }
+    createGain() {
+      const node = {
+        gain: { value: 1, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} },
+        connect(target: unknown) {
+          gainTargets.push(target);
+        },
+        disconnect() {},
+      };
+      return node;
+    }
+    createOscillator() {
+      oscCount += 1;
+      return {
+        type: 'sine',
+        frequency: { value: 440, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} },
+        connect() {},
+        start() {},
+        stop() {},
+      };
+    }
+  }
+
+  stubGlobal(t, 'window', { AudioContext: MockAudioContext });
+  const sound = new SoundEngine();
+  sound.setVolumeSettings({ masterVolume: 0.9, musicVolume: 0.5, sfxVolume: 0.8 });
+  // Trigger initial context via an event (like [ENTER] starting campaign)
+  sound.playEvents([{ type: 'lock_on_engaged', x: 0, z: 0 }]);
+  const oscAfterEvent = oscCount;
+
+  // Should not fire when musicVolume is 0 or appState is paused
+  sound.updateAmbientPulse(0.4, {
+    appState: 'paused',
+    chapter: 'prologue',
+    bossActive: false,
+    bossPhase: 1,
+    bossCoreExposed: false,
+    adrenalineTier: 0,
+    selectedEnding: null,
+  });
+  assert.equal(oscCount, oscAfterEvent);
+
+  // Advance enough dt while playing to trigger 1 ambient chord pulse
+  sound.updateAmbientPulse(0.1, {
+    appState: 'playing',
+    chapter: 'chapter_2_choir',
+    bossActive: true,
+    bossPhase: 2,
+    bossCoreExposed: true,
+    adrenalineTier: 3,
+    selectedEnding: null,
+  });
+  sound.updateAmbientPulse(0.1, {
+    appState: 'playing',
+    chapter: 'chapter_2_choir',
+    bossActive: true,
+    bossPhase: 2,
+    bossCoreExposed: true,
+    adrenalineTier: 3,
+    selectedEnding: null,
+  });
+  sound.updateAmbientPulse(0.1, {
+    appState: 'playing',
+    chapter: 'chapter_2_choir',
+    bossActive: true,
+    bossPhase: 2,
+    bossCoreExposed: true,
+    adrenalineTier: 3,
+    selectedEnding: null,
+  });
+  assert.ok(oscCount > oscAfterEvent, 'Playing ambient pulse should schedule oscillators cleanly');
+
+  sound.dispose();
+  const oscBeforeDispose = oscCount;
+  sound.updateAmbientPulse(1.0, {
+    appState: 'playing',
+    chapter: 'chapter_2_choir',
+    bossActive: true,
+    bossPhase: 2,
+    bossCoreExposed: true,
+    adrenalineTier: 3,
+    selectedEnding: null,
+  });
+  assert.equal(oscCount, oscBeforeDispose, 'updateAmbientPulse after dispose() must be a no-op');
+});
+

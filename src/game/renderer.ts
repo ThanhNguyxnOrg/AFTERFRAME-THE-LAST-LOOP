@@ -40,7 +40,9 @@ import { resolveActiveLockOnTarget } from './lock-on.ts';
 import {
   computeBossTelegraphVisuals,
   computeChronoAuraVisuals,
+  computeEchoTetherVisuals,
   computeEnemyDeRezState,
+  computeLockOnGroundVisuals,
 } from './combat-vfx.ts';
 import {
   CHAPTER_VISUAL_LOOKS,
@@ -474,6 +476,11 @@ export class ArenaSceneRenderer {
   private dashGhostSpawnCooldown = 0;
   private staggerBeaconSlots: StaggerBeaconSlot[] = [];
   private lockOnEl: HTMLDivElement | null = null;
+  private lockOnGroundGroup?: THREE.Group;
+  private lockOnOuterRingMesh?: THREE.Mesh;
+  private lockOnOuterRingMat?: THREE.MeshBasicMaterial;
+  private lockOnInnerDiscMesh?: THREE.Mesh;
+  private lockOnInnerDiscMat?: THREE.MeshBasicMaterial;
 
   // Phase 14 Pooled Pulsecaster Projectile Meshes
   private projectilesGroup: THREE.Group;
@@ -586,6 +593,24 @@ export class ArenaSceneRenderer {
     ringMesh: THREE.Mesh;
     ringMat: THREE.MeshBasicMaterial;
   }> = [];
+  private fluxPoolsGroup?: THREE.Group;
+  private fluxPoolRigs: Array<{
+    group: THREE.Group;
+    outerRing: THREE.Mesh;
+    innerDisc: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+    discMat: THREE.MeshBasicMaterial;
+  }> = [];
+  private waypointBeaconGroup?: THREE.Group;
+  private waypointBeaconRig?: {
+    group: THREE.Group;
+    ringMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+    columnMesh: THREE.Mesh;
+    columnMat: THREE.MeshBasicMaterial;
+    diamondMesh: THREE.Mesh;
+    diamondMat: THREE.MeshBasicMaterial;
+  };
   private disposed = false;
 
   private viewportWidth = 1280;
@@ -1400,6 +1425,99 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.secretsGroup);
 
+    // v1.9.0: Pooled Charged Flux Pools (spawned by shattered Chrono-Capacitors)
+    this.fluxPoolsGroup = new THREE.Group();
+    this.fluxPoolsGroup.name = 'ChargedFluxPoolsGroup';
+    const fluxRingGeo = new THREE.RingGeometry(0.84, 1.0, 32);
+    fluxRingGeo.rotateX(-Math.PI * 0.5);
+    const fluxDiscGeo = new THREE.CircleGeometry(0.84, 28);
+    fluxDiscGeo.rotateX(-Math.PI * 0.5);
+    for (let i = 0; i < 4; i++) {
+      const fGroup = new THREE.Group();
+      fGroup.visible = false;
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        transparent: true,
+        opacity: 0.72,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const outerRing = new THREE.Mesh(fluxRingGeo, ringMat);
+      outerRing.position.y = 0.045;
+      fGroup.add(outerRing);
+
+      const discMat = new THREE.MeshBasicMaterial({
+        color: 0x06b6d4,
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const innerDisc = new THREE.Mesh(fluxDiscGeo, discMat);
+      innerDisc.position.y = 0.036;
+      fGroup.add(innerDisc);
+
+      this.fluxPoolRigs.push({
+        group: fGroup,
+        outerRing,
+        innerDisc,
+        ringMat,
+        discMat,
+      });
+      this.fluxPoolsGroup.add(fGroup);
+    }
+    this.scene.add(this.fluxPoolsGroup);
+
+    // v1.9.0: Tactical Sector Waypoint 3D Ground Beacon
+    this.waypointBeaconGroup = new THREE.Group();
+    this.waypointBeaconGroup.name = 'TacticalWaypointBeaconGroup';
+    this.waypointBeaconGroup.visible = false;
+    const wpRingGeo = new THREE.RingGeometry(0.88, 1.08, 28);
+    wpRingGeo.rotateX(-Math.PI * 0.5);
+    const wpRingMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const wpRingMesh = new THREE.Mesh(wpRingGeo, wpRingMat);
+    wpRingMesh.position.y = 0.06;
+    this.waypointBeaconGroup.add(wpRingMesh);
+
+    const wpColGeo = new THREE.CylinderGeometry(0.14, 0.28, 4.6, 14, 1, true);
+    const wpColMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0.24,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const wpColMesh = new THREE.Mesh(wpColGeo, wpColMat);
+    wpColMesh.position.y = 2.32;
+    this.waypointBeaconGroup.add(wpColMesh);
+
+    const wpDiamondGeo = new THREE.OctahedronGeometry(0.28, 0);
+    const wpDiamondMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.94,
+    });
+    const wpDiamondMesh = new THREE.Mesh(wpDiamondGeo, wpDiamondMat);
+    wpDiamondMesh.position.y = 1.65;
+    this.waypointBeaconGroup.add(wpDiamondMesh);
+
+    this.waypointBeaconRig = {
+      group: this.waypointBeaconGroup,
+      ringMesh: wpRingMesh,
+      ringMat: wpRingMat,
+      columnMesh: wpColMesh,
+      columnMat: wpColMat,
+      diamondMesh: wpDiamondMesh,
+      diamondMat: wpDiamondMat,
+    };
+    this.scene.add(this.waypointBeaconGroup);
+
     // Player Rig
     this.playerRig = createSeraPlayerRig(this.shadowTex, !this.isHeadless);
     this.scene.add(this.playerRig.root);
@@ -1801,6 +1919,37 @@ export class ArenaSceneRenderer {
     this.echoTetherMesh = new THREE.Mesh(tetherGeo, this.echoTetherMat);
     this.echoTetherMesh.visible = false;
     this.scene.add(this.echoTetherMesh);
+
+    // v1.9.0: Pre-allocated 3D Diegetic Target Lock-On Ground Ring (tracks locked hostile in floor space)
+    this.lockOnGroundGroup = new THREE.Group();
+    this.lockOnGroundGroup.visible = false;
+    this.lockOnGroundGroup.position.y = 0.058;
+
+    const lockOuterGeo = new THREE.RingGeometry(0.84, 1.0, 8, 1);
+    lockOuterGeo.rotateX(-Math.PI * 0.5);
+    this.lockOnOuterRingMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.lockOnOuterRingMesh = new THREE.Mesh(lockOuterGeo, this.lockOnOuterRingMat);
+    this.lockOnGroundGroup.add(this.lockOnOuterRingMesh);
+
+    const lockInnerGeo = new THREE.RingGeometry(0.54, 0.64, 4, 1);
+    lockInnerGeo.rotateX(-Math.PI * 0.5);
+    this.lockOnInnerDiscMat = new THREE.MeshBasicMaterial({
+      color: 0xbae6fd,
+      transparent: true,
+      opacity: 0.25,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.lockOnInnerDiscMesh = new THREE.Mesh(lockInnerGeo, this.lockOnInnerDiscMat);
+    this.lockOnGroundGroup.add(this.lockOnInnerDiscMesh);
+
+    this.scene.add(this.lockOnGroundGroup);
 
     // Chapter II Harmonic Nodes (3 linked acoustic resonator pylons + 3D harmonic tether beams to THE CHOIR)
     this.choirNodesGroup = new THREE.Group();
@@ -2814,6 +2963,15 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 0.45, ev.z, 18, 0x38bdf8, 6.8);
           this.triggerImpactRing(ev.x, 0.14, ev.z, 0x22d3ee, 0.34);
           break;
+        case 'flux_pool_spawned':
+          this.spawnBurst(ev.x, 0.45, ev.z, 22, 0x22d3ee, 7.6);
+          this.triggerImpactRing(ev.x, 0.12, ev.z, 0x06b6d4, 0.46);
+          break;
+        case 'temporal_thread_triggered':
+          this.spawnBurst(ev.x, 1.15, ev.z, 20, 0x22d3ee, 8.2);
+          this.spawnBurst(ev.x, 1.25, ev.z, 12, 0xfbbf24, 6.4);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xfbbf24, 0.38);
+          break;
         case 'weapon_switched':
           this.spawnBurst(
             ev.x,
@@ -3199,16 +3357,51 @@ export class ArenaSceneRenderer {
     );
   }
 
-  private updateLockOnReticle(world: WorldState): void {
+  private updateLockOnReticle(world: WorldState, dt = 0.016): void {
+    const target =
+      world.appState === 'playing'
+        ? resolveActiveLockOnTarget(world, world.player.lockOnTargetId)
+        : null;
+    const lockedEnemy = target ? world.enemies?.find?.((e) => e.id === target.id) ?? null : null;
+    const lockVis = computeLockOnGroundVisuals({
+      active: Boolean(target),
+      isBoss: Boolean(target?.isBoss),
+      targetRadius: lockedEnemy?.radius ?? (target?.isBoss ? 1.45 : 0.7),
+      isStaggered: Boolean(target?.isStaggered),
+      isTelegraphing: lockedEnemy?.aiState === 'telegraph',
+      isResonanceMarked: Boolean(
+        target &&
+          world.resonance?.activeMark?.enemyId === target.id &&
+          world.resonance.activeMark.remainingTime > 0
+      ),
+      coreExposed: Boolean(target?.isBoss && world.boss?.coreExposed),
+      reducedMotion: this.reducedMotion,
+      timeSec: world.elapsedTime,
+    });
+
+    if (this.lockOnGroundGroup) {
+      if (lockVis.visible && target) {
+        this.lockOnGroundGroup.visible = true;
+        this.lockOnGroundGroup.position.set(target.x, 0.058, target.z);
+        this.lockOnGroundGroup.scale.setScalar(lockVis.outerRadius * lockVis.pulseScale);
+        if (this.lockOnOuterRingMesh && this.lockOnOuterRingMat) {
+          this.lockOnOuterRingMesh.rotation.y += lockVis.outerSpinRate * dt;
+          this.lockOnOuterRingMat.color.setHex(lockVis.outerHex);
+          this.lockOnOuterRingMat.opacity = lockVis.outerOpacity;
+        }
+        if (this.lockOnInnerDiscMesh && this.lockOnInnerDiscMat) {
+          this.lockOnInnerDiscMesh.rotation.y += lockVis.innerSpinRate * dt;
+          this.lockOnInnerDiscMat.color.setHex(lockVis.innerHex);
+          this.lockOnInnerDiscMat.opacity = lockVis.innerOpacity;
+        }
+      } else {
+        this.lockOnGroundGroup.visible = false;
+      }
+    }
+
     const el = this.lockOnEl;
     if (!el) return;
-    if (world.appState !== 'playing') {
-      el.dataset.active = 'false';
-      el.style.opacity = '0';
-      return;
-    }
-    const target = resolveActiveLockOnTarget(world, world.player.lockOnTargetId);
-    if (!target) {
+    if (world.appState !== 'playing' || !target) {
       el.dataset.active = 'false';
       el.style.opacity = '0';
       return;
@@ -3910,6 +4103,47 @@ export class ArenaSceneRenderer {
         sRig.ringMat.opacity = s.discovered
           ? 0.35
           : 0.72 + Math.sin(ambientTime * 4.0) * 0.15 * ambientScale;
+      }
+    }
+
+    // v1.9.0: Update Pooled Charged Flux Pools
+    if (this.fluxPoolsGroup && this.fluxPoolRigs) {
+      const pools = world.fluxPools ?? [];
+      for (let i = 0; i < this.fluxPoolRigs.length; i++) {
+        const fRig = this.fluxPoolRigs[i];
+        const pool = pools[i];
+        if (!pool || pool.remainingTime <= 0) {
+          fRig.group.visible = false;
+          continue;
+        }
+        fRig.group.visible = true;
+        fRig.group.position.set(pool.x, 0, pool.z);
+        const fade = Math.min(1, pool.remainingTime / 1.25);
+        const pulse = 1 + Math.sin(ambientTime * 5.2 + i * 1.3) * 0.045 * ambientScale;
+        fRig.group.scale.setScalar(pool.radius * pulse);
+        fRig.outerRing.rotation.z -= ambientDt * 1.8;
+        fRig.ringMat.opacity = (0.68 + Math.sin(ambientTime * 6.0 + i) * 0.14 * ambientScale) * fade;
+        fRig.discMat.opacity = (0.2 + Math.sin(ambientTime * 4.2 + i) * 0.06 * ambientScale) * fade;
+      }
+    }
+
+    // v1.9.0: Update Tactical Waypoint 3D Ground Beacon
+    if (this.waypointBeaconRig) {
+      const wp = world.exploration?.tacticalWaypoint ?? null;
+      if (!wp) {
+        this.waypointBeaconRig.group.visible = false;
+      } else {
+        this.waypointBeaconRig.group.visible = true;
+        this.waypointBeaconRig.group.position.set(wp.x, 0, wp.z);
+        const pulse = 1 + Math.sin(ambientTime * 4.5) * 0.1 * ambientScale;
+        this.waypointBeaconRig.ringMesh.scale.setScalar(pulse);
+        this.waypointBeaconRig.ringMat.opacity =
+          0.72 + Math.sin(ambientTime * 5.0) * 0.18 * ambientScale;
+        this.waypointBeaconRig.columnMat.opacity =
+          0.2 + Math.sin(ambientTime * 3.8) * 0.07 * ambientScale;
+        this.waypointBeaconRig.diamondMesh.rotation.y += ambientDt * 2.6;
+        this.waypointBeaconRig.diamondMesh.position.y =
+          1.65 + Math.sin(ambientTime * 3.2) * 0.14 * ambientScale;
       }
     }
   }
@@ -5063,16 +5297,33 @@ export class ArenaSceneRenderer {
         const dx = actor.x - p.x;
         const dz = actor.z - p.z;
         const dist = Math.hypot(dx, dz);
+        const resonancePrimed = Boolean(
+          world.resonance?.status === 'primed' &&
+            world.resonance.activeMark &&
+            world.resonance.activeMark.remainingTime > 0
+        );
+        const tetherVis = computeEchoTetherVisuals({
+          distance: dist,
+          resonancePrimed,
+          relayReady: Boolean(world.relay?.preview?.canRelay),
+          reducedMotion: this.reducedMotion,
+          timeSec: world.elapsedTime,
+        });
         if (
-          dist > 0.35 &&
+          tetherVis.visible &&
           this.screenEffectsEnabled !== false &&
           this.particleQuality !== 'low'
         ) {
           this.echoTetherMesh.visible = true;
           this.echoTetherMesh.position.set((p.x + actor.x) * 0.5, 1.05, (p.z + actor.z) * 0.5);
           this.echoTetherMesh.lookAt(actor.x, 1.05, actor.z);
-          this.echoTetherMesh.scale.set(1, 1, dist);
-          this.echoTetherMat.opacity = 0.15 + Math.sin(world.elapsedTime * 10) * 0.045;
+          this.echoTetherMesh.scale.set(
+            tetherVis.thicknessScale,
+            tetherVis.thicknessScale,
+            dist
+          );
+          this.echoTetherMat.color.setHex(tetherVis.hex);
+          this.echoTetherMat.opacity = tetherVis.opacity;
         } else {
           this.echoTetherMesh.visible = false;
         }
@@ -6434,7 +6685,7 @@ export class ArenaSceneRenderer {
       }
     }
     this.updateCallouts(dt, world.appState);
-    this.updateLockOnReticle(world);
+    this.updateLockOnReticle(world, dt);
   }
 
   private updateCameraPresentation(

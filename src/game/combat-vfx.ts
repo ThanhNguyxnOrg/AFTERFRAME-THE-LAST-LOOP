@@ -274,3 +274,155 @@ export function computeChronoAuraVisuals(
   };
 }
 
+export interface LockOnGroundVisualInput {
+  active: boolean;
+  isBoss: boolean;
+  targetRadius: number;
+  isStaggered: boolean;
+  isTelegraphing: boolean;
+  isResonanceMarked: boolean;
+  coreExposed: boolean;
+  reducedMotion: boolean;
+  timeSec: number;
+}
+
+export interface LockOnGroundVisualState {
+  visible: boolean;
+  outerRadius: number;
+  outerHex: number;
+  innerHex: number;
+  outerOpacity: number;
+  innerOpacity: number;
+  outerSpinRate: number;
+  innerSpinRate: number;
+  pulseScale: number;
+}
+
+export function computeLockOnGroundVisuals(
+  input: LockOnGroundVisualInput
+): LockOnGroundVisualState {
+  if (!input.active) {
+    return {
+      visible: false,
+      outerRadius: 1,
+      outerHex: 0x38bdf8,
+      innerHex: 0xbae6fd,
+      outerOpacity: 0,
+      innerOpacity: 0,
+      outerSpinRate: 0,
+      innerSpinRate: 0,
+      pulseScale: 1,
+    };
+  }
+
+  const radius = Number.isFinite(input.targetRadius) ? Math.max(0.45, input.targetRadius) : 0.7;
+  const outerRadius = Math.max(0.78, Number((radius * (input.isBoss ? 1.32 : 1.48)).toFixed(3)));
+
+  let outerHex = 0x38bdf8;
+  let innerHex = 0xbae6fd;
+  let outerOpacity = 0.72;
+  let innerOpacity = 0.22;
+  let outerSpinRate = 1.45;
+  let innerSpinRate = -1.8;
+
+  if (input.isStaggered || input.coreExposed) {
+    outerHex = 0xfbbf24;
+    innerHex = 0xfef08a;
+    outerOpacity = 0.92;
+    innerOpacity = 0.42;
+    outerSpinRate = 2.8;
+    innerSpinRate = -3.6;
+  } else if (input.isTelegraphing) {
+    outerHex = 0xef4444;
+    innerHex = 0xf59e0b;
+    outerOpacity = 0.88;
+    innerOpacity = 0.34;
+    outerSpinRate = 3.1;
+    innerSpinRate = -2.4;
+  } else if (input.isResonanceMarked) {
+    outerHex = 0x22d3ee;
+    innerHex = 0xe0f2fe;
+    outerOpacity = 0.86;
+    innerOpacity = 0.36;
+    outerSpinRate = 2.3;
+    innerSpinRate = -2.8;
+  }
+
+  const pulseFreq = input.isStaggered || input.isTelegraphing ? 7.5 : 4.0;
+  const pulseScale = input.reducedMotion
+    ? 1
+    : Number((1 + Math.sin(input.timeSec * pulseFreq) * 0.055).toFixed(3));
+
+  return {
+    visible: true,
+    outerRadius,
+    outerHex,
+    innerHex,
+    outerOpacity,
+    innerOpacity,
+    outerSpinRate: input.reducedMotion ? 0 : outerSpinRate,
+    innerSpinRate: input.reducedMotion ? 0 : innerSpinRate,
+    pulseScale,
+  };
+}
+
+export interface EchoTetherVisualInput {
+  distance: number;
+  resonancePrimed: boolean;
+  relayReady: boolean;
+  reducedMotion: boolean;
+  timeSec: number;
+}
+
+export interface EchoTetherVisualState {
+  visible: boolean;
+  hex: number;
+  thicknessScale: number;
+  opacity: number;
+}
+
+export function computeEchoTetherVisuals(
+  input: EchoTetherVisualInput
+): EchoTetherVisualState {
+  if (!Number.isFinite(input.distance) || input.distance <= 0.35) {
+    return {
+      visible: false,
+      hex: 0x38bdf8,
+      thicknessScale: 1,
+      opacity: 0,
+    };
+  }
+
+  if (input.resonancePrimed) {
+    return {
+      visible: true,
+      hex: 0xfde047,
+      thicknessScale: 2.25,
+      opacity: input.reducedMotion
+        ? 0.56
+        : Number((0.52 + Math.sin(input.timeSec * 14) * 0.14).toFixed(3)),
+    };
+  }
+
+  if (input.relayReady) {
+    return {
+      visible: true,
+      hex: 0x22d3ee,
+      thicknessScale: 1.35,
+      opacity: input.reducedMotion
+        ? 0.28
+        : Number((0.24 + Math.sin(input.timeSec * 10) * 0.06).toFixed(3)),
+    };
+  }
+
+  return {
+    visible: true,
+    hex: 0x38bdf8,
+    thicknessScale: 0.95,
+    opacity: input.reducedMotion
+      ? 0.16
+      : Number((0.14 + Math.sin(input.timeSec * 8) * 0.04).toFixed(3)),
+  };
+}
+
+

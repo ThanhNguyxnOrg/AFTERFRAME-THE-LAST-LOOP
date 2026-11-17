@@ -5,6 +5,11 @@ import {
   RENDER_SCALE_OPTIONS,
   resolveGraphicsSettings,
 } from '../game/performance.ts';
+import {
+  RIG_MODULES,
+  RIG_SLOT_LABELS,
+  VALID_RIG_MODULE_SLOTS,
+} from '../game/rig-progression.ts';
 import type {
   BossCheckpointState,
   BossEncounterId,
@@ -13,6 +18,8 @@ import type {
   ChronicleLoomEndingId,
   EncounterCompositionId,
   HudWeaponProgressionSnapshot,
+  RigModuleId,
+  RigModuleSlot,
   WeaponId,
   WeaponProgressionState,
   WeaponUpgradeId,
@@ -47,6 +54,8 @@ interface TitleScreenProps {
   onSelectWeapon?: (weaponId: WeaponId) => void;
   onPurchaseUpgrade?: (upgradeId: WeaponUpgradeId) => void;
   onEquipUpgrade?: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => void;
+  onPurchaseRigModule?: (moduleId: RigModuleId) => void;
+  onEquipRigModule?: (slot: RigModuleSlot, moduleId: RigModuleId | null) => void;
 }
 
 const CHAPTER_METADATA: Array<{
@@ -242,6 +251,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onSelectWeapon,
   onPurchaseUpgrade,
   onEquipUpgrade,
+  onPurchaseRigModule,
+  onEquipRigModule,
 }) => {
   const [activeDrawer, setActiveDrawer] = useState<ActiveTitleDrawer>('none');
   const [bundleDownloadStatus, setBundleDownloadStatus] = useState<'idle' | 'saved'>('idle');
@@ -578,7 +589,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   FIRST-TIME OPERATOR BRIEFING
                 </span>
                 <span className="text-[11px] font-mono-tabular text-slate-400">
-                  SECTOR 04 · v1.8.0
+                  SECTOR 04 · v1.9.0
                 </span>
               </div>
 
@@ -832,7 +843,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           {activeDrawer === 'archive' && (
             <div
               data-testid="title-archive-panel"
-              className="w-full max-w-xl bg-[#090e17]/95 border border-violet-500/50 p-3.5 text-xs font-mono-tabular text-slate-300 shadow-[0_16px_48px_rgba(0,0,0,0.85)]"
+              className="w-full max-w-2xl max-h-[82vh] overflow-y-auto bg-[#090e17]/95 border border-violet-500/50 p-3.5 text-xs font-mono-tabular text-slate-300 shadow-[0_16px_48px_rgba(0,0,0,0.85)]"
             >
               <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
                 <div>
@@ -989,6 +1000,80 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Chrono Rig Chassis Modules (3-Slot Rig Customization) */}
+              <div
+                data-testid="title-rig-modules-section"
+                className="mb-2.5 pt-2 border-t border-slate-800 space-y-1.5"
+              >
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-amber-300 font-bold">
+                  <span>CHRONO RIG CHASSIS MODULES (3 SLOTS)</span>
+                  <span className="text-slate-400">1 ACTIVE PER SLOT</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  {VALID_RIG_MODULE_SLOTS.map((slot) => {
+                    const slotModules = Object.values(RIG_MODULES).filter(
+                      (m) => m.slot === slot
+                    );
+                    const equippedInSlot =
+                      progression?.equippedRigModules?.[slot] ?? null;
+                    return (
+                      <div
+                        key={slot}
+                        data-testid={`title-rig-slot-${slot}`}
+                        className="p-2 bg-[#0b111c] border border-slate-800/90 space-y-1"
+                      >
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-cyan-300 border-b border-slate-800/80 pb-0.5">
+                          {RIG_SLOT_LABELS[slot]}
+                        </div>
+                        {slotModules.map((mod) => {
+                          const isOwned =
+                            progression?.purchasedRigModules?.includes(mod.id) ??
+                            false;
+                          const isEquipped = equippedInSlot === mod.id;
+                          const canAfford =
+                            (progression?.memoryFragments ?? 0) >= mod.cost;
+                          return (
+                            <button
+                              key={mod.id}
+                              type="button"
+                              data-testid={`title-rig-action-${mod.id}`}
+                              title={`${mod.benefitText} | Trade-off: ${mod.tradeoffText}`}
+                              onClick={() => {
+                                if (isEquipped) {
+                                  onEquipRigModule?.(mod.slot, null);
+                                } else if (isOwned) {
+                                  onEquipRigModule?.(mod.slot, mod.id);
+                                } else {
+                                  onPurchaseRigModule?.(mod.id);
+                                }
+                              }}
+                              className={`w-full px-2 py-1 text-[9px] font-mono-tabular uppercase tracking-wider border text-left transition-colors cursor-pointer ${
+                                isEquipped
+                                  ? 'bg-amber-500/20 border-amber-400 text-amber-100 font-bold'
+                                  : isOwned
+                                    ? 'bg-[#0b1524] hover:bg-[#13233b] border-slate-700 text-slate-200'
+                                    : canAfford
+                                      ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-400/60 text-amber-200'
+                                      : 'bg-[#080d16] border-slate-800 text-slate-500'
+                              }`}
+                            >
+                              <div className="truncate font-semibold">{mod.shortLabel}</div>
+                              <div className="text-[8px] opacity-80">
+                                {isEquipped
+                                  ? 'EQUIPPED · UNEQUIP'
+                                  : isOwned
+                                    ? 'OWNED · EQUIP'
+                                    : `UNLOCK (${mod.cost} FRAG)`}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="border-t border-slate-800 pt-2.5 flex items-center justify-between text-[11px] text-slate-400">
@@ -1602,8 +1687,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <div className="flex items-center gap-3">
           <a
             data-testid="title-download-bundle"
-            href="./AFTERFRAME-v1.8.0-chronicle-complete.bundle"
-            download="AFTERFRAME-v1.8.0-chronicle-complete.bundle"
+            href="./AFTERFRAME-v1.9.0-chronicle-complete.bundle"
+            download="AFTERFRAME-v1.9.0-chronicle-complete.bundle"
             onClick={(e) => {
               e.currentTarget.blur();
               handleMarkBundleDownloaded();
@@ -1612,7 +1697,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           >
             {bundleDownloadStatus === 'saved'
               ? 'SAVED .BUNDLE ✓'
-              : 'DOWNLOAD v1.8.0 .BUNDLE'}
+              : 'DOWNLOAD v1.9.0 .BUNDLE'}
           </a>
           <span className="hidden md:inline text-slate-300">
             RECORD [T] · ECHO [Y] · RELAY [V] · PIN [G] · COLLAPSE [X]

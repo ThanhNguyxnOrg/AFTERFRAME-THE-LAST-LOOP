@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   computeBossTelegraphVisuals,
   computeChronoAuraVisuals,
+  computeEchoTetherVisuals,
   computeEnemyDeRezState,
+  computeLockOnGroundVisuals,
   computeScreenFlashTint,
 } from './combat-vfx';
 
@@ -161,5 +163,101 @@ test('computeChronoAuraVisuals scales dorsal ring intensity, ground aura, and ov
   assert.equal(reduced.ringHex, 0xfef08a);
   assert.equal(reduced.echoShimmerOpacity, 0.48);
 });
+
+test('computeLockOnGroundVisuals adapts radius, priority colors, and reducedMotion cleanly', () => {
+  const inactive = computeLockOnGroundVisuals({
+    active: false,
+    isBoss: false,
+    targetRadius: 0.7,
+    isStaggered: false,
+    isTelegraphing: false,
+    isResonanceMarked: false,
+    coreExposed: false,
+    reducedMotion: false,
+    timeSec: 1.0,
+  });
+  assert.equal(inactive.visible, false);
+
+  const normal = computeLockOnGroundVisuals({
+    active: true,
+    isBoss: false,
+    targetRadius: 0.65,
+    isStaggered: false,
+    isTelegraphing: false,
+    isResonanceMarked: false,
+    coreExposed: false,
+    reducedMotion: false,
+    timeSec: 1.0,
+  });
+  assert.equal(normal.visible, true);
+  assert.equal(normal.outerHex, 0x38bdf8);
+  assert.ok(normal.outerRadius >= 0.9);
+  assert.ok(normal.outerSpinRate > 0);
+
+  const bossTelegraph = computeLockOnGroundVisuals({
+    active: true,
+    isBoss: true,
+    targetRadius: 1.4,
+    isStaggered: false,
+    isTelegraphing: true,
+    isResonanceMarked: true,
+    coreExposed: false,
+    reducedMotion: false,
+    timeSec: 1.0,
+  });
+  assert.equal(bossTelegraph.outerHex, 0xef4444);
+  assert.ok(bossTelegraph.outerRadius > normal.outerRadius);
+
+  const staggeredGold = computeLockOnGroundVisuals({
+    active: true,
+    isBoss: true,
+    targetRadius: 1.4,
+    isStaggered: true,
+    isTelegraphing: true,
+    isResonanceMarked: true,
+    coreExposed: true,
+    reducedMotion: true,
+    timeSec: 2.5,
+  });
+  assert.equal(staggeredGold.outerHex, 0xfbbf24);
+  assert.equal(staggeredGold.outerSpinRate, 0);
+  assert.equal(staggeredGold.innerSpinRate, 0);
+  assert.equal(staggeredGold.pulseScale, 1);
+});
+
+test('computeEchoTetherVisuals boosts beam thickness and shifts to gold when Resonance Convergence is primed', () => {
+  const tooClose = computeEchoTetherVisuals({
+    distance: 0.2,
+    resonancePrimed: false,
+    relayReady: false,
+    reducedMotion: false,
+    timeSec: 0.5,
+  });
+  assert.equal(tooClose.visible, false);
+
+  const relay = computeEchoTetherVisuals({
+    distance: 4.5,
+    resonancePrimed: false,
+    relayReady: true,
+    reducedMotion: false,
+    timeSec: 0.5,
+  });
+  assert.equal(relay.visible, true);
+  assert.equal(relay.hex, 0x22d3ee);
+  assert.ok(relay.thicknessScale > 1);
+
+  const primed = computeEchoTetherVisuals({
+    distance: 4.5,
+    resonancePrimed: true,
+    relayReady: true,
+    reducedMotion: true,
+    timeSec: 0.5,
+  });
+  assert.equal(primed.visible, true);
+  assert.equal(primed.hex, 0xfde047);
+  assert.ok(primed.thicknessScale > relay.thicknessScale);
+  assert.ok(primed.opacity > relay.opacity);
+});
+
 
 

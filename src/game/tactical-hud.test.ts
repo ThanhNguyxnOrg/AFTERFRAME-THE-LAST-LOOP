@@ -93,9 +93,11 @@ test('formatCombatCallouts converts combat events cleanly and projectNdcToViewpo
     { type: 'player_hit_enemy', x: 2, z: -1, amount: 42, isCriticalOrVulnerable: true, flowKind: 'riposte' },
     { type: 'player_hit_enemy', x: 2, z: -1, amount: 9, isGuarded: true },
     { type: 'player_damaged', x: 0, z: 0, amount: 15 },
+    { type: 'flux_pool_spawned', x: 5, z: 0 },
+    { type: 'temporal_thread_triggered', x: 4, z: 4, amount: 14 },
   ]);
 
-  assert.equal(callouts.length, 6);
+  assert.equal(callouts.length, 8);
   assert.equal(callouts[0].text, 'PARRY! +35F');
   assert.equal(callouts[0].tone, 'parry');
   assert.equal(callouts[1].text, 'CHRONO SLIP +18F');
@@ -108,6 +110,10 @@ test('formatCombatCallouts converts combat events cleanly and projectNdcToViewpo
   assert.equal(callouts[4].tone, 'blocked');
   assert.equal(callouts[5].text, '-15');
   assert.equal(callouts[5].tone, 'hurt');
+  assert.equal(callouts[6].text, 'FLUX POOL 7s');
+  assert.equal(callouts[6].tone, 'converge');
+  assert.equal(callouts[7].text, 'THREAD! +14F · SURGE');
+  assert.equal(callouts[7].tone, 'slip');
 
   const center = projectNdcToViewport(0, 0, 0.2, 1440, 900);
   assert.deepEqual(center, { visible: true, x: 720, y: 450 });
@@ -146,7 +152,24 @@ test('computeTacticalRadarSnapshot excludes KOs, clamps coords, preserves Echo &
     [
       { id: 'boost_pad_west', x: -14, z: 0, cooldown: 0 },
       { id: 'boost_pad_east', x: 14, z: 0, cooldown: 3.2 },
-    ]
+    ],
+    [
+      {
+        id: 'flux-pool-1',
+        x: 6,
+        z: 2,
+        radius: 3.4,
+        remainingTime: 3.5,
+        maxDuration: 7.0,
+      },
+    ],
+    {
+      id: 'boost_pad_west',
+      kind: 'boost_pad',
+      label: 'WEST FLANK BOOST PAD',
+      x: -14,
+      z: 0,
+    }
   );
 
   assert.equal(radar.arenaRadius, 22);
@@ -169,6 +192,9 @@ test('computeTacticalRadarSnapshot excludes KOs, clamps coords, preserves Echo &
   assert.equal(radar.boostPads?.length, 2);
   assert.equal(radar.boostPads?.[0].ready, true);
   assert.equal(radar.boostPads?.[1].ready, false);
+  assert.equal(radar.fluxPools?.length, 1);
+  assert.equal(radar.fluxPools?.[0].remainingRatio, 0.5);
+  assert.equal(radar.waypoint?.id, 'boost_pad_west');
 });
 
 test('buildObstaclesForChapter and startBossEncounter deploy distinct chapter cover and destructible capacitors', () => {

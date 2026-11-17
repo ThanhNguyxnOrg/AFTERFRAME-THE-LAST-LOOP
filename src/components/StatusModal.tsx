@@ -6,6 +6,11 @@ import {
   RENDER_SCALE_OPTIONS,
   resolveGraphicsSettings,
 } from '../game/performance.ts';
+import {
+  RIG_MODULES,
+  RIG_SLOT_LABELS,
+  VALID_RIG_MODULE_SLOTS,
+} from '../game/rig-progression.ts';
 import { getAllWeaponUpgradeDefinitions } from '../game/simulation.ts';
 import { computeCommsCodecProfile } from '../game/tactical-hud.ts';
 import type {
@@ -19,8 +24,11 @@ import type {
   GameOutcome,
   HudRadarSnapshot,
   HudWeaponProgressionSnapshot,
+  RigModuleId,
+  RigModuleSlot,
   RunMode,
   RunSummary,
+  TacticalWaypointState,
   WeaponId,
   WeaponUpgradeId,
   WorldExplorationState,
@@ -51,6 +59,9 @@ interface StatusModalProps {
   onSelectWeapon?: (weaponId: WeaponId) => void;
   onPurchaseUpgrade?: (upgradeId: WeaponUpgradeId) => void;
   onEquipUpgrade?: (weaponId: WeaponId, upgradeId: WeaponUpgradeId | null) => void;
+  onPurchaseRigModule?: (moduleId: RigModuleId) => void;
+  onEquipRigModule?: (slot: RigModuleSlot, moduleId: RigModuleId | null) => void;
+  onSetTacticalWaypoint?: (waypoint: TacticalWaypointState | null) => void;
   cameraSettings: CameraSettings;
   onUpdateCameraSettings: (next: Partial<CameraSettings>) => void;
   isMuted?: boolean;
@@ -104,6 +115,9 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
   onSelectWeapon,
   onPurchaseUpgrade,
   onEquipUpgrade,
+  onPurchaseRigModule,
+  onEquipRigModule,
+  onSetTacticalWaypoint,
   cameraSettings,
   onUpdateCameraSettings,
   isMuted = false,
@@ -124,6 +138,15 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
     'missions' | 'map' | 'codex'
   >(initialExplorationTab);
   const [selectedCodexId, setSelectedCodexId] = React.useState<CodexEntryId>('CODEX-01');
+  const [selectedMapNode, setSelectedMapNode] = React.useState<{
+    id: string;
+    kind: TacticalWaypointState['kind'];
+    label: string;
+    x: number;
+    z: number;
+    statusLabel: string;
+    details: string;
+  } | null>(null);
   const [playingCodexAudioId, setPlayingCodexAudioId] = React.useState<CodexEntryId | null>(null);
   const [codexAudioPhase, setCodexAudioPhase] = React.useState<number>(1.8);
   const codexAudioTimerRef = React.useRef<number | null>(null);
@@ -348,14 +371,19 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                   data-testid="modal-section-arsenal"
                   aria-pressed={activeModalSection === 'arsenal'}
                   onClick={() => setActiveModalSection('arsenal')}
-                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer whitespace-nowrap ${
                     activeModalSection === 'arsenal'
                       ? 'bg-cyan-400 text-slate-950 border-cyan-300'
                       : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-cyan-200'
                   }`}
                 >
-                  ⚔ ARSENAL & UPGRADES [U] (
-                  {(progression?.unlockedWeaponIds ?? ['chrono_edge', 'pulsecaster']).length}/4)
+                  <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M13 2L7.5 7.5M10.5 2H13v2.5M4.5 10.5L2 13m2.5-2.5l2 2M6 8l2 2" />
+                  </svg>
+                  <span>
+                    ARSENAL & UPGRADES [U] (
+                    {(progression?.unlockedWeaponIds ?? ['chrono_edge', 'pulsecaster']).length}/4)
+                  </span>
                 </button>
               )}
 
@@ -365,14 +393,21 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                   data-testid="modal-section-exploration"
                   aria-pressed={activeModalSection === 'exploration'}
                   onClick={() => setActiveModalSection('exploration')}
-                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer whitespace-nowrap ${
                     activeModalSection === 'exploration'
                       ? 'bg-emerald-400/20 border-emerald-400 text-emerald-200'
                       : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-slate-300'
                   }`}
                 >
-                  🗺 JOURNAL, MAP & CODEX [N] ({exploration.discoveredCodexIds.length}/
-                  {exploration.codexEntries.length})
+                  <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <polygon points="2,3.5 6,2 10,3.5 14,2 14,12.5 10,14 6,12.5 2,14" />
+                    <line x1="6" y1="2" x2="6" y2="12.5" />
+                    <line x1="10" y1="3.5" x2="10" y2="14" />
+                  </svg>
+                  <span>
+                    JOURNAL, MAP & CODEX [N] ({exploration.discoveredCodexIds.length}/
+                    {exploration.codexEntries.length})
+                  </span>
                 </button>
               )}
 
@@ -381,13 +416,18 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                 data-testid="modal-section-telemetry"
                 aria-pressed={activeModalSection === 'telemetry'}
                 onClick={() => setActiveModalSection('telemetry')}
-                className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer whitespace-nowrap ${
                   activeModalSection === 'telemetry'
                     ? 'bg-amber-400/20 border-amber-400 text-amber-200'
                     : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-slate-300'
                 }`}
               >
-                📊 LOGS & TELEMETRY
+                <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                  <rect x="2" y="8" width="2.5" height="6" />
+                  <rect x="6.75" y="5" width="2.5" height="9" />
+                  <rect x="11.5" y="2" width="2.5" height="12" />
+                </svg>
+                <span>LOGS & TELEMETRY</span>
               </button>
 
               {isPaused && (
@@ -396,13 +436,17 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                   data-testid="modal-section-settings"
                   aria-pressed={activeModalSection === 'settings'}
                   onClick={() => setActiveModalSection('settings')}
-                  className={`px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors cursor-pointer whitespace-nowrap ${
                     activeModalSection === 'settings'
                       ? 'bg-cyan-400/20 border-cyan-400 text-cyan-200'
                       : 'bg-[#0b1018] hover:bg-[#131f31] border-slate-700 text-slate-300'
                   }`}
                 >
-                  ⚙ SYSTEM SETTINGS
+                  <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                    <circle cx="8" cy="8" r="2.2" />
+                    <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3" />
+                  </svg>
+                  <span>SYSTEM SETTINGS</span>
                 </button>
               )}
             </div>
@@ -625,8 +669,14 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                   </div>
                 </div>
                 <div className="bg-[#070a0f] border border-slate-800/80 p-2">
-                  <div className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-                    COMBAT RANK
+                  <div className="flex items-center justify-between gap-1 text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+                    <span>COMBAT RANK</span>
+                    {rankEval && (
+                      <span className="text-[9px] text-slate-400 font-semibold">
+                        {rankEval.hitless ? 'HITLESS · ' : ''}
+                        {rankEval.score} PTS
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm sm:text-base font-mono-tabular font-bold text-white flex items-baseline gap-1.5">
                     <span
@@ -862,6 +912,136 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Chrono Rig Chassis Modules (3-Slot Rig Customization) */}
+              <div
+                data-testid="rig-modules-section"
+                className="pt-2 mt-2 border-t border-slate-800/90 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-mono-tabular uppercase tracking-widest text-amber-300 font-bold">
+                      CHRONO RIG CHASSIS MODULES
+                    </div>
+                    <div className="text-[10px] font-mono-tabular text-slate-400">
+                      Equip 1 Module per Rig Slot · Trade-off balanced survival, Flux &amp; map synergies
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  {VALID_RIG_MODULE_SLOTS.map((slot) => {
+                    const slotModules = Object.values(RIG_MODULES).filter(
+                      (m) => m.slot === slot
+                    );
+                    const equippedInSlot =
+                      progression.equippedRigModules?.[slot] ?? null;
+                    return (
+                      <div
+                        key={slot}
+                        data-testid={`rig-slot-${slot}`}
+                        className="bg-[#0a1019] border border-slate-800/90 p-2 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-1 pb-1 border-b border-slate-800/80">
+                          <span className="text-[10px] font-mono-tabular font-bold uppercase tracking-wider text-cyan-300">
+                            {RIG_SLOT_LABELS[slot]}
+                          </span>
+                          <span className="text-[8px] font-mono-tabular uppercase text-slate-400">
+                            {equippedInSlot
+                              ? RIG_MODULES[equippedInSlot].shortLabel
+                              : 'EMPTY'}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {slotModules.map((mod) => {
+                            const isOwned =
+                              progression.purchasedRigModules?.includes(mod.id) ??
+                              false;
+                            const isEquipped = equippedInSlot === mod.id;
+                            const canAfford =
+                              progression.memoryFragments >= mod.cost;
+                            return (
+                              <div
+                                key={mod.id}
+                                data-testid={`rig-module-card-${mod.id}`}
+                                data-owned={isOwned ? 'true' : 'false'}
+                                data-equipped={isEquipped ? 'true' : 'false'}
+                                className={`p-2 border flex flex-col justify-between gap-1 transition-colors ${
+                                  isEquipped
+                                    ? 'bg-[#0e1b2c] border-amber-400/90'
+                                    : isOwned
+                                      ? 'bg-[#0b131e] border-slate-700'
+                                      : 'bg-[#080d14] border-slate-800/90'
+                                }`}
+                              >
+                                <div>
+                                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                                    <span className="text-[10px] font-display font-bold uppercase tracking-wide text-slate-100 truncate">
+                                      {mod.name}
+                                    </span>
+                                    <span
+                                      className={`text-[8px] font-mono-tabular font-bold uppercase px-1 py-0.5 border whitespace-nowrap shrink-0 ${
+                                        isEquipped
+                                          ? 'bg-amber-400/20 border-amber-400 text-amber-200'
+                                          : isOwned
+                                            ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                                            : canAfford
+                                              ? 'bg-amber-500/15 border-amber-400/60 text-amber-300'
+                                              : 'bg-slate-900 border-slate-700 text-slate-400'
+                                      }`}
+                                    >
+                                      {isEquipped
+                                        ? 'EQUIPPED'
+                                        : isOwned
+                                          ? 'OWNED'
+                                          : `${mod.cost} FRAG`}
+                                    </span>
+                                  </div>
+                                  <div className="text-[9px] text-emerald-300 leading-tight mb-0.5">
+                                    <span className="font-mono-tabular font-bold">+ </span>
+                                    {mod.benefitText}
+                                  </div>
+                                  <div className="text-[9px] text-amber-300/90 leading-tight mb-1">
+                                    <span className="font-mono-tabular font-bold">- </span>
+                                    {mod.tradeoffText}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  data-testid={`rig-module-action-${mod.id}`}
+                                  onClick={() => {
+                                    if (isEquipped) {
+                                      onEquipRigModule?.(mod.slot, null);
+                                    } else if (isOwned) {
+                                      onEquipRigModule?.(mod.slot, mod.id);
+                                    } else {
+                                      onPurchaseRigModule?.(mod.id);
+                                    }
+                                  }}
+                                  className={`w-full px-2 py-1 text-[9px] font-mono-tabular font-bold uppercase tracking-wider border transition-colors whitespace-nowrap text-center cursor-pointer ${
+                                    isEquipped
+                                      ? 'bg-amber-400/20 hover:bg-amber-400/30 border-amber-300 text-white'
+                                      : isOwned
+                                        ? 'bg-[#122236] hover:bg-[#19304b] border-cyan-500/60 text-cyan-200'
+                                        : canAfford
+                                          ? 'bg-amber-400 hover:bg-amber-300 border-amber-300 text-slate-950'
+                                          : 'bg-[#0d121a] hover:bg-[#141c28] border-slate-700 text-slate-400'
+                                  }`}
+                                >
+                                  {isEquipped
+                                    ? 'EQUIPPED · UNEQUIP'
+                                    : isOwned
+                                      ? 'EQUIP MODULE'
+                                      : `UNLOCK (${mod.cost} FRAG)`}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -1159,12 +1339,50 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                     {/* Sector Regions (with Fog-of-Discovery for undiscovered secret alcoves) */}
                     {exploration.localMap.regions.map((reg) => {
                       const isCurrent = reg.id === exploration.localMap.currentRegionId;
+                      const isSelected = selectedMapNode?.id === reg.id;
+                      const canInspect = !reg.hiddenByFog || reg.discovered;
                       return (
                         <g
                           key={reg.id}
                           data-testid={`map-region-${reg.id}`}
                           data-hidden-by-fog={reg.hiddenByFog ? 'true' : 'false'}
                           data-discovered={reg.discovered ? 'true' : 'false'}
+                          role={canInspect ? 'button' : undefined}
+                          tabIndex={canInspect ? 0 : undefined}
+                          aria-label={canInspect ? `Inspect ${reg.label}` : undefined}
+                          className={canInspect ? 'cursor-pointer' : undefined}
+                          onClick={() => {
+                            if (!canInspect) return;
+                            setSelectedMapNode({
+                              id: reg.id,
+                              kind: reg.kind === 'secret_alcove' ? 'secret' : 'region',
+                              label: reg.label,
+                              x: reg.x,
+                              z: reg.z,
+                              statusLabel: isCurrent ? 'CURRENT SECTOR' : reg.discovered ? 'SURVEYED' : 'UNEXPLORED',
+                              details:
+                                reg.kind === 'secret_alcove'
+                                  ? 'Perimeter alcove housing hidden archive cache & tactical salvage.'
+                                  : 'Named combat zone inside Nadir-9 containment ring.',
+                            });
+                          }}
+                          onKeyDown={(e) => {
+                            if (canInspect && (e.key === 'Enter' || e.key === ' ')) {
+                              e.preventDefault();
+                              setSelectedMapNode({
+                                id: reg.id,
+                                kind: reg.kind === 'secret_alcove' ? 'secret' : 'region',
+                                label: reg.label,
+                                x: reg.x,
+                                z: reg.z,
+                                statusLabel: isCurrent ? 'CURRENT SECTOR' : reg.discovered ? 'SURVEYED' : 'UNEXPLORED',
+                                details:
+                                  reg.kind === 'secret_alcove'
+                                    ? 'Perimeter alcove housing hidden archive cache & tactical salvage.'
+                                    : 'Named combat zone inside Nadir-9 containment ring.',
+                              });
+                            }
+                          }}
                         >
                           <circle
                             cx={reg.x}
@@ -1180,15 +1398,17 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                                     : 'rgba(14, 116, 144, 0.06)'
                             }
                             stroke={
-                              reg.hiddenByFog
-                                ? '#475569'
-                                : reg.kind === 'secret_alcove'
-                                  ? '#34d399'
-                                  : isCurrent
-                                    ? '#22d3ee'
-                                    : '#1e3a5f'
+                              isSelected
+                                ? '#fbbf24'
+                                : reg.hiddenByFog
+                                  ? '#475569'
+                                  : reg.kind === 'secret_alcove'
+                                    ? '#34d399'
+                                    : isCurrent
+                                      ? '#22d3ee'
+                                      : '#1e3a5f'
                             }
-                            strokeWidth={isCurrent ? '0.55' : '0.38'}
+                            strokeWidth={isSelected ? '0.75' : isCurrent ? '0.55' : '0.38'}
                             strokeDasharray={reg.hiddenByFog ? '1.1 0.9' : undefined}
                           />
                         </g>
@@ -1196,29 +1416,64 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                     })}
 
                     {/* Traversal Routes & Gateways */}
-                    {exploration.localMap.routes.map((rt) => (
-                      <g
-                        key={rt.id}
-                        data-testid={`map-route-${rt.id}`}
-                        data-route-status={rt.status}
-                      >
-                        <line
-                          x1={rt.fromX}
-                          y1={rt.fromZ}
-                          x2={rt.toX}
-                          y2={rt.toZ}
-                          stroke={
-                            rt.status === 'open'
-                              ? '#34d399'
-                              : rt.status === 'powered'
-                                ? '#f59e0b'
-                                : '#f43f5e'
+                    {exploration.localMap.routes.map((rt) => {
+                      const midX = (rt.fromX + rt.toX) * 0.5;
+                      const midZ = (rt.fromZ + rt.toZ) * 0.5;
+                      return (
+                        <g
+                          key={rt.id}
+                          data-testid={`map-route-${rt.id}`}
+                          data-route-status={rt.status}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Inspect route ${rt.label}`}
+                          className="cursor-pointer"
+                          onClick={() =>
+                            setSelectedMapNode({
+                              id: rt.id,
+                              kind: 'route',
+                              label: rt.label,
+                              x: midX,
+                              z: midZ,
+                              statusLabel: rt.status.toUpperCase(),
+                              details: rt.statusMessage,
+                            })
                           }
-                          strokeWidth="0.7"
-                          strokeDasharray={rt.status === 'open' ? undefined : '1.0 0.8'}
-                        />
-                      </g>
-                    ))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedMapNode({
+                                id: rt.id,
+                                kind: 'route',
+                                label: rt.label,
+                                x: midX,
+                                z: midZ,
+                                statusLabel: rt.status.toUpperCase(),
+                                details: rt.statusMessage,
+                              });
+                            }
+                          }}
+                        >
+                          <line
+                            x1={rt.fromX}
+                            y1={rt.fromZ}
+                            x2={rt.toX}
+                            y2={rt.toZ}
+                            stroke={
+                              selectedMapNode?.id === rt.id
+                                ? '#fbbf24'
+                                : rt.status === 'open'
+                                  ? '#34d399'
+                                  : rt.status === 'powered'
+                                    ? '#f59e0b'
+                                    : '#f43f5e'
+                            }
+                            strokeWidth={selectedMapNode?.id === rt.id ? '1.05' : '0.7'}
+                            strokeDasharray={rt.status === 'open' ? undefined : '1.0 0.8'}
+                          />
+                        </g>
+                      );
+                    })}
 
                     {/* Timed Energy Passages */}
                     {exploration.localMap.hazards.map((hz) => (
@@ -1226,6 +1481,35 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                         key={hz.id}
                         data-testid={`map-hazard-${hz.id}`}
                         data-hazard-phase={hz.phase}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Inspect hazard ${hz.label}`}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setSelectedMapNode({
+                            id: hz.id,
+                            kind: 'hazard',
+                            label: hz.label,
+                            x: hz.x,
+                            z: hz.z,
+                            statusLabel: hz.phase.toUpperCase(),
+                            details: `Cycle: ${hz.safeDuration.toFixed(1)}s Safe / ${hz.warningDuration.toFixed(1)}s Warn / ${hz.activeDuration.toFixed(1)}s Arc (${hz.damage} DMG). Dodge or Relay during active arc for Temporal Thread (+14 Flux & 1.4s Surge).`,
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedMapNode({
+                              id: hz.id,
+                              kind: 'hazard',
+                              label: hz.label,
+                              x: hz.x,
+                              z: hz.z,
+                              statusLabel: hz.phase.toUpperCase(),
+                              details: `Cycle: ${hz.safeDuration.toFixed(1)}s Safe / ${hz.warningDuration.toFixed(1)}s Warn / ${hz.activeDuration.toFixed(1)}s Arc (${hz.damage} DMG). Dodge or Relay during active arc for Temporal Thread (+14 Flux & 1.4s Surge).`,
+                            });
+                          }
+                        }}
                         cx={hz.x}
                         cy={hz.z}
                         r={hz.radius}
@@ -1237,30 +1521,84 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                               : 'rgba(34, 211, 238, 0.14)'
                         }
                         stroke={
-                          hz.phase === 'active'
-                            ? '#ef4444'
-                            : hz.phase === 'warning'
-                              ? '#f59e0b'
-                              : '#22d3ee'
+                          selectedMapNode?.id === hz.id
+                            ? '#ffffff'
+                            : hz.phase === 'active'
+                              ? '#ef4444'
+                              : hz.phase === 'warning'
+                                ? '#f59e0b'
+                                : '#22d3ee'
                         }
+                        strokeWidth={selectedMapNode?.id === hz.id ? '0.7' : '0.45'}
+                      />
+                    ))}
+
+                    {/* Charged Flux Pools (Shattered Capacitor Fields) */}
+                    {(exploration.localMap.fluxPools ?? radar?.fluxPools ?? []).map((pool) => (
+                      <circle
+                        key={pool.id}
+                        data-testid={`map-flux-pool-${pool.id}`}
+                        cx={pool.x}
+                        cy={pool.z}
+                        r={pool.radius}
+                        fill="rgba(34, 211, 238, 0.2)"
+                        stroke="#22d3ee"
                         strokeWidth="0.45"
+                        strokeDasharray="1.2 0.7"
                       />
                     ))}
 
                     {/* Kinetic Vector Boost Pads */}
-                    {(radar?.boostPads ?? []).map((pad) => (
+                    {(radar?.boostPads ?? []).map((pad, idx) => (
                       <g
                         key={pad.id}
                         data-testid={`map-boost-pad-${pad.id}`}
                         data-pad-ready={pad.ready ? 'true' : 'false'}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Inspect Boost Pad ${idx + 1}`}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setSelectedMapNode({
+                            id: pad.id,
+                            kind: 'boost_pad',
+                            label: pad.x < 0 ? 'WEST FLANK BOOST PAD' : 'EAST FLANK BOOST PAD',
+                            x: pad.x,
+                            z: pad.z,
+                            statusLabel: pad.ready ? 'READY' : 'RECHARGING',
+                            details:
+                              'Grants +10 Flux and 2.5s Mobility Surge (+28% speed, +15% dodge distance). Kinetic Flux Dynamo also repairs +8 Integrity.',
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedMapNode({
+                              id: pad.id,
+                              kind: 'boost_pad',
+                              label: pad.x < 0 ? 'WEST FLANK BOOST PAD' : 'EAST FLANK BOOST PAD',
+                              x: pad.x,
+                              z: pad.z,
+                              statusLabel: pad.ready ? 'READY' : 'RECHARGING',
+                              details:
+                                'Grants +10 Flux and 2.5s Mobility Surge (+28% speed, +15% dodge distance). Kinetic Flux Dynamo also repairs +8 Integrity.',
+                            });
+                          }
+                        }}
                       >
                         <circle
                           cx={pad.x}
                           cy={pad.z}
                           r="1.35"
                           fill={pad.ready ? 'rgba(34, 211, 238, 0.22)' : 'rgba(51, 65, 85, 0.22)'}
-                          stroke={pad.ready ? '#22d3ee' : '#475569'}
-                          strokeWidth="0.4"
+                          stroke={
+                            selectedMapNode?.id === pad.id
+                              ? '#fbbf24'
+                              : pad.ready
+                                ? '#22d3ee'
+                                : '#475569'
+                          }
+                          strokeWidth={selectedMapNode?.id === pad.id ? '0.75' : '0.4'}
                         />
                         <polygon
                           points={`${pad.x},${pad.z - 0.8} ${pad.x + 0.65},${pad.z + 0.45} ${pad.x},${pad.z + 0.1} ${pad.x - 0.65},${pad.z + 0.45}`}
@@ -1271,16 +1609,49 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
 
                     {/* Chapter Cover Barricades, Pillars & Destructible Capacitors */}
                     {(radar?.obstacles ?? []).map((obs) => {
+                      const selectObstacle = () =>
+                        setSelectedMapNode({
+                          id: obs.id,
+                          kind: 'obstacle',
+                          label:
+                            obs.kind === 'destructible_crate'
+                              ? 'CHRONO-CAPACITOR CELL'
+                              : obs.kind === 'cover_wall'
+                                ? 'BLAST COVER BARRICADE'
+                                : 'STRUCTURAL PILLAR',
+                          x: obs.x,
+                          z: obs.z,
+                          statusLabel:
+                            obs.kind === 'destructible_crate'
+                              ? `${Math.round(obs.hpRatio * 100)}% INTEGRITY`
+                              : 'SOLID COVER',
+                          details:
+                            obs.kind === 'destructible_crate'
+                              ? 'Shatter to trigger an AoE Flux Overload (35 DMG + Stagger) and leave a 3.4m Charged Flux Pool (+9 Flux/s for 7.0s).'
+                              : 'Provides line-of-sight cover against ranged locks and boss projectile volleys.',
+                        });
+
                       if (obs.kind === 'destructible_crate') {
                         return (
                           <polygon
                             key={obs.id}
                             data-testid={`map-obstacle-${obs.id}`}
                             data-obstacle-kind={obs.kind}
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Inspect Chrono-Capacitor"
+                            className="cursor-pointer"
+                            onClick={selectObstacle}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                selectObstacle();
+                              }
+                            }}
                             points={`${obs.x},${obs.z - 0.95} ${obs.x + 0.95},${obs.z} ${obs.x},${obs.z + 0.95} ${obs.x - 0.95},${obs.z}`}
                             fill={obs.hpRatio < 0.6 ? '#f97316' : '#f59e0b'}
-                            stroke="#020617"
-                            strokeWidth="0.25"
+                            stroke={selectedMapNode?.id === obs.id ? '#ffffff' : '#020617'}
+                            strokeWidth={selectedMapNode?.id === obs.id ? '0.5' : '0.25'}
                           />
                         );
                       }
@@ -1290,14 +1661,25 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                             key={obs.id}
                             data-testid={`map-obstacle-${obs.id}`}
                             data-obstacle-kind={obs.kind}
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Inspect Blast Cover Barricade"
+                            className="cursor-pointer"
+                            onClick={selectObstacle}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                selectObstacle();
+                              }
+                            }}
                             x={obs.x - 1.05}
                             y={obs.z - 0.55}
                             width="2.1"
                             height="1.1"
                             rx="0.2"
                             fill="#334155"
-                            stroke="#94a3b8"
-                            strokeWidth="0.3"
+                            stroke={selectedMapNode?.id === obs.id ? '#fbbf24' : '#94a3b8'}
+                            strokeWidth={selectedMapNode?.id === obs.id ? '0.55' : '0.3'}
                           />
                         );
                       }
@@ -1306,12 +1688,23 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                           key={obs.id}
                           data-testid={`map-obstacle-${obs.id}`}
                           data-obstacle-kind={obs.kind}
+                          role="button"
+                          tabIndex={0}
+                          aria-label="Inspect Structural Pillar"
+                          className="cursor-pointer"
+                          onClick={selectObstacle}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              selectObstacle();
+                            }
+                          }}
                           cx={obs.x}
                           cy={obs.z}
                           r={Math.max(0.85, obs.radius * 0.85)}
                           fill="#1e293b"
-                          stroke="#475569"
-                          strokeWidth="0.35"
+                          stroke={selectedMapNode?.id === obs.id ? '#fbbf24' : '#475569'}
+                          strokeWidth={selectedMapNode?.id === obs.id ? '0.55' : '0.35'}
                         />
                       );
                     })}
@@ -1320,6 +1713,44 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                     {exploration.interactables.map((node) => (
                       <rect
                         key={node.id}
+                        data-testid={`map-interactable-${node.id}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Inspect ${node.label}`}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setSelectedMapNode({
+                            id: node.id,
+                            kind: 'interactable',
+                            label: node.label,
+                            x: node.x,
+                            z: node.z,
+                            statusLabel: node.status.toUpperCase(),
+                            details:
+                              node.id === 'int_ch4_quarantine_override_node' ||
+                              node.id === 'int_ch5_temporal_anchor_conduit'
+                                ? `${node.statusMessage} Bonus: Salvage +1 Memory Fragment on activation.`
+                                : node.statusMessage,
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedMapNode({
+                              id: node.id,
+                              kind: 'interactable',
+                              label: node.label,
+                              x: node.x,
+                              z: node.z,
+                              statusLabel: node.status.toUpperCase(),
+                              details:
+                                node.id === 'int_ch4_quarantine_override_node' ||
+                                node.id === 'int_ch5_temporal_anchor_conduit'
+                                  ? `${node.statusMessage} Bonus: Salvage +1 Memory Fragment on activation.`
+                                  : node.statusMessage,
+                            });
+                          }
+                        }}
                         x={node.x - 0.65}
                         y={node.z - 0.65}
                         width="1.3"
@@ -1331,8 +1762,8 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                               ? '#f59e0b'
                               : '#38bdf8'
                         }
-                        stroke="#020617"
-                        strokeWidth="0.25"
+                        stroke={selectedMapNode?.id === node.id ? '#fbbf24' : '#020617'}
+                        strokeWidth={selectedMapNode?.id === node.id ? '0.5' : '0.25'}
                       />
                     ))}
 
@@ -1390,6 +1821,40 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                       </g>
                     )}
 
+                    {/* Active Tactical Waypoint Beacon */}
+                    {(exploration.localMap.waypoint ?? radar?.waypoint) && (
+                      (() => {
+                        const wp = (exploration.localMap.waypoint ?? radar?.waypoint)!;
+                        return (
+                          <g data-testid="map-waypoint-marker">
+                            <line
+                              x1={exploration.localMap.playerX}
+                              y1={exploration.localMap.playerZ}
+                              x2={wp.x}
+                              y2={wp.z}
+                              stroke="#fbbf24"
+                              strokeWidth="0.45"
+                              strokeDasharray="1.1 0.8"
+                            />
+                            <circle
+                              cx={wp.x}
+                              cy={wp.z}
+                              r="1.9"
+                              fill="none"
+                              stroke="#fbbf24"
+                              strokeWidth="0.45"
+                            />
+                            <polygon
+                              points={`${wp.x},${wp.z - 1.25} ${wp.x + 1.25},${wp.z} ${wp.x},${wp.z + 1.25} ${wp.x - 1.25},${wp.z}`}
+                              fill="#fbbf24"
+                              stroke="#22d3ee"
+                              strokeWidth="0.32"
+                            />
+                          </g>
+                        );
+                      })()
+                    )}
+
                     {/* Sera Venn Live Position, Camera Cone & Facing Marker */}
                     <g
                       data-testid="map-player-marker"
@@ -1445,8 +1910,115 @@ export const StatusModal: React.FC<StatusModalProps> = React.memo(({
                   </div>
                 </div>
 
-                {/* Right Column: Traversal Routes, Timed Hazards & Secret Discovery Telemetry */}
+                {/* Right Column: Tactical Node Inspector, Traversal Routes, Timed Hazards & Secrets */}
                 <div className="sm:col-span-7 space-y-2">
+                  {/* Tactical Node Inspector & Waypoint Beacon Controls */}
+                  {(() => {
+                    const activeWp = exploration.localMap.waypoint ?? radar?.waypoint ?? null;
+                    const distMeters = selectedMapNode
+                      ? Math.hypot(
+                          selectedMapNode.x - exploration.localMap.playerX,
+                          selectedMapNode.z - exploration.localMap.playerZ
+                        )
+                      : activeWp
+                        ? Math.hypot(
+                            activeWp.x - exploration.localMap.playerX,
+                            activeWp.z - exploration.localMap.playerZ
+                          )
+                        : null;
+                    return (
+                      <div
+                        data-testid="map-node-inspector"
+                        className="bg-[#09121e] border border-cyan-500/45 p-2.5 space-y-1.5"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 font-bold">
+                            TACTICAL NODE INSPECTOR
+                          </span>
+                          {selectedMapNode ? (
+                            <span className="text-[8px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border border-amber-400/60 text-amber-300">
+                              {selectedMapNode.kind.replace('_', ' ')} · {selectedMapNode.statusLabel}
+                            </span>
+                          ) : activeWp ? (
+                            <span className="text-[8px] font-mono-tabular font-bold uppercase px-1.5 py-0.5 border border-amber-400/70 bg-amber-500/15 text-amber-200">
+                              ACTIVE WP · {distMeters?.toFixed(1)}M
+                            </span>
+                          ) : (
+                            <span className="text-[8px] font-mono-tabular uppercase text-slate-400">
+                              CLICK SCHEMATIC NODE
+                            </span>
+                          )}
+                        </div>
+
+                        {selectedMapNode ? (
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono-tabular">
+                              <span className="font-bold text-slate-100">{selectedMapNode.label}</span>
+                              <span className="text-cyan-300">
+                                ({selectedMapNode.x.toFixed(1)}, {selectedMapNode.z.toFixed(1)}) ·{' '}
+                                {distMeters?.toFixed(1)}M AWAY
+                              </span>
+                            </div>
+                            <p className="text-[9px] font-mono-tabular text-slate-300 leading-snug">
+                              {selectedMapNode.details}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                              <button
+                                type="button"
+                                data-testid="map-set-waypoint-btn"
+                                onClick={() =>
+                                  onSetTacticalWaypoint?.({
+                                    id: selectedMapNode.id,
+                                    kind: selectedMapNode.kind,
+                                    label: selectedMapNode.label,
+                                    x: selectedMapNode.x,
+                                    z: selectedMapNode.z,
+                                  })
+                                }
+                                className="px-2.5 py-1 text-[9px] font-mono-tabular font-bold uppercase tracking-wider bg-amber-400 hover:bg-amber-300 border border-amber-300 text-slate-950 cursor-pointer transition-colors"
+                              >
+                                {activeWp?.id === selectedMapNode.id
+                                  ? 'WAYPOINT LOCKED'
+                                  : 'SET TACTICAL WAYPOINT'}
+                              </button>
+                              {activeWp && (
+                                <button
+                                  type="button"
+                                  data-testid="map-clear-waypoint-btn"
+                                  onClick={() => onSetTacticalWaypoint?.(null)}
+                                  className="px-2 py-1 text-[9px] font-mono-tabular font-bold uppercase tracking-wider bg-[#101927] hover:bg-[#19273c] border border-slate-600 text-slate-200 cursor-pointer transition-colors"
+                                >
+                                  CLEAR WAYPOINT
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-mono-tabular text-slate-300 leading-snug">
+                              Select any Boost Pad, Chrono-Capacitor, Route, Hazard, Conduit, or Alcove on the schematic to inspect telemetry and project a 3D Tactical Waypoint beacon.
+                            </p>
+                            {activeWp && (
+                              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-[9px] font-mono-tabular">
+                                <span className="text-amber-200 font-bold truncate">
+                                  LOCKED: {activeWp.label} ({distMeters?.toFixed(1)}M)
+                                </span>
+                                <button
+                                  type="button"
+                                  data-testid="map-clear-waypoint-btn"
+                                  onClick={() => onSetTacticalWaypoint?.(null)}
+                                  className="px-2 py-0.5 text-[9px] font-mono-tabular font-bold uppercase bg-[#101927] hover:bg-[#19273c] border border-slate-600 text-slate-200 cursor-pointer shrink-0"
+                                >
+                                  CLEAR WAYPOINT
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Traversal Routes */}
                   <div className="bg-[#0a1019] border border-slate-800/90 p-2.5 space-y-1.5">
                     <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-cyan-300 font-bold">

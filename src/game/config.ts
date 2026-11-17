@@ -951,6 +951,20 @@ export const GAME_CONFIG = {
           fragments: 3,
           description: 'Defeat MATRON-V, The Surgeon in Surgical Quarantine.',
         },
+        conduit_ch4_quarantine_override_frag: {
+          id: 'conduit_ch4_quarantine_override_frag' as const,
+          label: 'SECTOR IV OVERRIDE SALVAGE',
+          chapter: 'chapter_4_matron' as const,
+          fragments: 1,
+          description: 'Bypass Quarantine Dampeners in Surgical Quarantine for reserve fragment telemetry.',
+        },
+        conduit_ch5_temporal_anchor_frag: {
+          id: 'conduit_ch5_temporal_anchor_frag' as const,
+          label: 'SECTOR V LOOM ANCHOR SALVAGE',
+          chapter: 'chapter_5_loom' as const,
+          fragments: 1,
+          description: 'Resonate the Loom Temporal Anchor Conduit for reserve fragment telemetry.',
+        },
       },
     },
   },
@@ -3018,9 +3032,9 @@ export const GAME_CONFIG = {
         linkedCodexId: 'CODEX-01' as const,
         fluxRestoreAmount: 25,
         integrityRestoreAmount: 20,
-        rewardSummary: '+20 INTEGRITY · +25 FLUX · CODEX-01 ARCHIVED',
+        rewardSummary: '+20 INTEGRITY · +25 FLUX · CODEX-01',
         discoveryMessage:
-          'SECRET DISCOVERED: East Calibration Overlook · Emergency Chrono-Rig capacitor cache tapped (+20 INTEGRITY, +25 FLUX).',
+          'SECRET DISCOVERED: East Calibration Overlook · Emergency Chrono-Rig cache tapped (+20 INTEGRITY, +25 FLUX).',
       },
       secret_ch1_marshal_armory_cache: {
         id: 'secret_ch1_marshal_armory_cache' as const,
@@ -3035,7 +3049,7 @@ export const GAME_CONFIG = {
         linkedCodexId: 'CODEX-03' as const,
         fluxRestoreAmount: 30,
         integrityRestoreAmount: 25,
-        rewardSummary: '+25 INTEGRITY · +30 FLUX · CODEX-03 ARCHIVED',
+        rewardSummary: '+25 INTEGRITY · +30 FLUX · CODEX-03',
         discoveryMessage:
           'SECRET DISCOVERED: Containment Marshal Sub-Vault · Reserve Aegis cell siphoned (+25 INTEGRITY, +30 FLUX).',
       },
@@ -3052,7 +3066,7 @@ export const GAME_CONFIG = {
         linkedCodexId: 'CODEX-04' as const,
         fluxRestoreAmount: 35,
         integrityRestoreAmount: 25,
-        rewardSummary: '+25 INTEGRITY · +35 FLUX · CODEX-04 ARCHIVED',
+        rewardSummary: '+25 INTEGRITY · +35 FLUX · CODEX-04',
         discoveryMessage:
           'SECRET DISCOVERED: Harmonic Resonator Sanctum · Acoustic phase well tapped (+25 INTEGRITY, +35 FLUX).',
       },
@@ -3069,7 +3083,7 @@ export const GAME_CONFIG = {
         linkedCodexId: 'CODEX-05' as const,
         fluxRestoreAmount: 35,
         integrityRestoreAmount: 30,
-        rewardSummary: '+30 INTEGRITY · +35 FLUX · CODEX-05 ARCHIVED',
+        rewardSummary: '+30 INTEGRITY · +35 FLUX · CODEX-05',
         discoveryMessage:
           'SECRET DISCOVERED: Lysa Venn Unindexed Memory Alcove · Preserved sister trace stabilized (+30 INTEGRITY, +35 FLUX).',
       },

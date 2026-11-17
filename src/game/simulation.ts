@@ -32,8 +32,33 @@ import {
   selectBestLockOnTarget,
   type ExecutionCandidate,
 } from './lock-on.ts';
+import {
+  RIG_MODULES,
+  VALID_RIG_MODULE_IDS,
+  VALID_RIG_MODULE_SLOTS,
+  computeEffectiveRigModifiers,
+  createEmptyEquippedRigModules,
+  getAllRigModuleDefinitions,
+  getRigModuleDefinition,
+  isValidRigModuleId,
+  isValidRigModuleSlot,
+  normalizeRigProgressionFields,
+} from './rig-progression.ts';
+export {
+  RIG_MODULES,
+  VALID_RIG_MODULE_IDS,
+  VALID_RIG_MODULE_SLOTS,
+  computeEffectiveRigModifiers,
+  createEmptyEquippedRigModules,
+  getAllRigModuleDefinitions,
+  getRigModuleDefinition,
+  isValidRigModuleId,
+  isValidRigModuleSlot,
+  normalizeRigProgressionFields,
+};
 import type {
   ArenaBoostPad,
+  ArenaFluxPool,
   BossAiState,
   BossAttackType,
   BossCheckpointState,
@@ -104,9 +129,14 @@ import type {
   ResonanceMarkState,
   ResonanceOutcome,
   ResonanceSystemState,
+  RigEffectiveModifiers,
+  RigModuleDefinition,
+  RigModuleId,
+  RigModuleSlot,
   RunMode,
   RunSummary,
   SavedCampaignProgressSnapshot,
+  TacticalWaypointState,
   TutorialState,
   TutorialStep,
   UpgradeEquipOutcome,
@@ -1348,7 +1378,9 @@ export function buildLocalMapSnapshot(
   hazards: readonly TimedEnergyHazardState[],
   secrets: readonly SecretAreaState[],
   discoveredRegionIds: readonly SectorRegionId[],
-  discoveredSecretIds: readonly SecretAreaId[]
+  discoveredSecretIds: readonly SecretAreaId[],
+  fluxPools: readonly ArenaFluxPool[] = [],
+  waypoint: TacticalWaypointState | null = null
 ): LocalMapSnapshot {
   const regionDefs = getAllSectorRegionDefinitionsForChapter(chapter);
   const primaryRegionId = getPrimaryRegionIdForChapter(chapter);
@@ -1429,6 +1461,16 @@ export function buildLocalMapSnapshot(
     totalSecretsInChapter,
     totalDiscoveredSecretsCampaign: discoveredSecretIds.length,
     totalSecretsCampaign: VALID_SECRET_AREA_IDS.length,
+    waypoint: waypoint ? { ...waypoint } : null,
+    fluxPools: fluxPools
+      .filter((fp) => fp.remainingTime > 0)
+      .map((fp) => ({
+        id: fp.id,
+        x: Number(fp.x.toFixed(2)),
+        z: Number(fp.z.toFixed(2)),
+        radius: fp.radius,
+        remainingRatio: Math.max(0, Math.min(1, Number((fp.remainingTime / Math.max(0.1, fp.maxDuration)).toFixed(2)))),
+      })),
   };
 }
 
@@ -1573,6 +1615,7 @@ export function createInitialExplorationState(
     newlyDiscoveredCodexId: null,
     statusBannerText:
       'SECTOR TELEMETRY ONLINE · EXPLORE TERMINALS [I], REROUTE POWER & SURVEY MAP [N]',
+    tacticalWaypoint: null,
   };
 }
 
@@ -1766,6 +1809,8 @@ export function cloneWorldExplorationState(
         routes: exp.localMap.routes.map((r) => ({ ...r })),
         hazards: exp.localMap.hazards.map((h) => ({ ...h })),
         secrets: exp.localMap.secrets.map((s) => ({ ...s })),
+        waypoint: exp.localMap.waypoint ? { ...exp.localMap.waypoint } : null,
+        fluxPools: exp.localMap.fluxPools ? exp.localMap.fluxPools.map((fp) => ({ ...fp })) : [],
       }
     : buildLocalMapSnapshot(
         chapter,
@@ -1779,7 +1824,9 @@ export function cloneWorldExplorationState(
         hazards,
         secrets,
         discoveredRegionIds,
-        discoveredSecretIds
+        discoveredSecretIds,
+        [],
+        exp.tacticalWaypoint ?? null
       );
 
   return {
@@ -1807,7 +1854,55 @@ export function cloneWorldExplorationState(
     codexEntries: getHudCodexEntries(exp.discoveredCodexIds),
     newlyDiscoveredCodexId: exp.newlyDiscoveredCodexId,
     statusBannerText: exp.statusBannerText,
+    tacticalWaypoint: exp.tacticalWaypoint ? { ...exp.tacticalWaypoint } : null,
   };
+}
+
+export function setTacticalWaypoint(
+  world: WorldState,
+  waypoint: TacticalWaypointState | null
+): TacticalWaypointState | null {
+  if (!world) return null;
+  const chapter = world.run?.chapter ?? 'prologue';
+  if (!world.exploration) {
+    world.exploration = createInitialExplorationState(chapter, null);
+  }
+  const next = waypoint
+    ? {
+        id: waypoint.id,
+        kind: waypoint.kind,
+        label: waypoint.label,
+        x: Number(waypoint.x.toFixed(2)),
+        z: Number(waypoint.z.toFixed(2)),
+      }
+    : null;
+  world.exploration.tacticalWaypoint = next;
+  world.exploration.localMap = buildLocalMapSnapshot(
+    chapter,
+    {
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      rotationY: world.player?.rotationY ?? Math.PI,
+    },
+    world.exploration.mission,
+    world.exploration.routes,
+    world.exploration.hazards,
+    world.exploration.secrets,
+    world.exploration.discoveredRegionIds,
+    world.exploration.discoveredSecretIds,
+    world.fluxPools ?? [],
+    next
+  );
+  if (next) {
+    world.exploration.statusBannerText = `WAYPOINT SET · ${next.label.toUpperCase()}`;
+  } else {
+    world.exploration.statusBannerText = 'TACTICAL WAYPOINT CLEARED';
+  }
+  return next;
+}
+
+export function clearTacticalWaypoint(world: WorldState): void {
+  setTacticalWaypoint(world, null);
 }
 
 export function syncUnlockedRoutesToObstacles(world: WorldState): void {
@@ -2210,6 +2305,12 @@ function executeInteractableActivation(
     completeMissionObjective(world, def.completesObjectiveId);
   }
 
+  if (def.id === 'int_ch4_quarantine_override_node') {
+    grantProgressionReward(world, 'conduit_ch4_quarantine_override_frag');
+  } else if (def.id === 'int_ch5_temporal_anchor_conduit') {
+    grantProgressionReward(world, 'conduit_ch5_temporal_anchor_frag');
+  }
+
   world.exploration.statusBannerText = def.activationMessage;
   world.run.checkpointNotice = def.activationMessage;
   world.run.checkpointNoticeTimer = 4.2;
@@ -2251,7 +2352,9 @@ function executeInteractableActivation(
     world.exploration.hazards,
     world.exploration.secrets,
     world.exploration.discoveredRegionIds,
-    world.exploration.discoveredSecretIds
+    world.exploration.discoveredSecretIds,
+    world.fluxPools ?? [],
+    world.exploration.tacticalWaypoint ?? null
   );
 
   const chapterEventDefs = getAllNarrativeEventDefinitionsForChapter(chapter);
@@ -2481,7 +2584,9 @@ export function discoverSecretArea(
     exp.hazards,
     exp.secrets,
     exp.discoveredRegionIds,
-    exp.discoveredSecretIds
+    exp.discoveredSecretIds,
+    world.fluxPools ?? [],
+    exp.tacticalWaypoint ?? null
   );
 
   world.events.push({
@@ -2600,12 +2705,49 @@ export function advanceTimedEnergyHazards(
       }
     }
 
+    const currentCycleIndex = h.cycleIndex ?? 0;
+    const relayPhaseShiftActive = (world.relay?.successFlashTimer ?? 0) > 0;
+    if ((h.phase === 'warning' || h.phase === 'active') && p && p.actionState !== 'dead') {
+      const threadDist = Math.hypot(p.x - h.x, p.z - h.z);
+      const isPhaseThreading = p.actionState === 'dodging' || relayPhaseShiftActive;
+      if (
+        isPhaseThreading &&
+        threadDist <= h.radius + 1.0 &&
+        h.lastThreadCycleIndex !== currentCycleIndex
+      ) {
+        h.lastThreadCycleIndex = currentCycleIndex;
+        const rigMods = getPlayerRigModifiers(world);
+        const threadFlux = 14;
+        p.flux = Math.min(p.maxFlux, p.flux + threadFlux);
+        if (rigMods.threadIntegrityBonus > 0) {
+          p.integrity = Math.min(p.maxIntegrity, p.integrity + rigMods.threadIntegrityBonus);
+          p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+        }
+        p.surgeTimer = Math.max(p.surgeTimer ?? 0, 1.4);
+        const threadAdr = applyAdrenalineDelta(p, 0.35);
+        if (threadAdr.tierDelta !== 0) {
+          world.events.push({
+            type: 'adrenaline_tier_changed',
+            x: p.x,
+            z: p.z,
+            amount: threadAdr.nextTier,
+            postureBonus: threadAdr.tierDelta,
+          });
+        }
+        world.events.push({
+          type: 'temporal_thread_triggered',
+          x: p.x,
+          z: p.z,
+          amount: threadFlux,
+          hazardId: h.id,
+        });
+      }
+    }
+
     if (h.active && p && p.actionState !== 'dead') {
       const dist = Math.hypot(p.x - h.x, p.z - h.z);
       const hitThreshold = h.radius + GAME_CONFIG.player.radius * 0.65;
-      const currentCycleIndex = h.cycleIndex ?? 0;
       const lastHitCycle = h.lastHitCycleIndex ?? -1;
-      const relayPhaseShiftActive = (world.relay?.successFlashTimer ?? 0) > 0;
       if (
         dist <= hitThreshold &&
         p.actionState !== 'dodging' &&
@@ -3137,6 +3279,14 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
     prologueBarrierOpen,
   });
 
+  if (world.player && world.player.actionState !== 'dead' && exp.tacticalWaypoint) {
+    const wp = exp.tacticalWaypoint;
+    if (Math.hypot(world.player.x - wp.x, world.player.z - wp.z) <= 2.3) {
+      exp.tacticalWaypoint = null;
+      exp.statusBannerText = `WAYPOINT REACHED · ${wp.label.toUpperCase()}`;
+    }
+  }
+
   exp.secrets = buildSecretsForChapter(
     chapter,
     exp.discoveredSecretIds,
@@ -3155,7 +3305,9 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
     exp.hazards,
     exp.secrets,
     exp.discoveredRegionIds,
-    exp.discoveredSecretIds
+    exp.discoveredSecretIds,
+    world.fluxPools ?? [],
+    exp.tacticalWaypoint ?? null
   );
 
   exp.prompt = evaluateNearestInteractablePrompt(world);
@@ -3229,6 +3381,8 @@ export const VALID_PROGRESSION_REWARD_IDS: readonly WeaponProgressionRewardId[] 
   'chapter_2_choir_defeated',
   'chapter_3_curator_defeated',
   'chapter_4_matron_defeated',
+  'conduit_ch4_quarantine_override_frag',
+  'conduit_ch5_temporal_anchor_frag',
 ];
 
 export function isValidWeaponUpgradeId(value: unknown): value is WeaponUpgradeId {
@@ -3289,6 +3443,8 @@ export function createInitialWeaponProgressionState(): WeaponProgressionState {
       phase_rail: null,
       grav_breaker: null,
     },
+    purchasedRigModules: [],
+    equippedRigModules: createEmptyEquippedRigModules(),
     lastPurchaseOutcome: null,
     lastEquipOutcome: null,
     lastActionMessage: 'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
@@ -3297,7 +3453,11 @@ export function createInitialWeaponProgressionState(): WeaponProgressionState {
 
 export function clonePersistedWeaponProgressionState(
   prog: PersistedWeaponProgressionState | undefined | null
-): PersistedWeaponProgressionState & { unlockedWeaponIds: WeaponId[] } {
+): PersistedWeaponProgressionState & {
+  unlockedWeaponIds: WeaponId[];
+  purchasedRigModules: RigModuleId[];
+  equippedRigModules: Record<RigModuleSlot, RigModuleId | null>;
+} {
   if (!prog) {
     return {
       memoryFragments: 0,
@@ -3310,8 +3470,14 @@ export function clonePersistedWeaponProgressionState(
         phase_rail: null,
         grav_breaker: null,
       },
+      purchasedRigModules: [],
+      equippedRigModules: createEmptyEquippedRigModules(),
     };
   }
+  const rigNormalized = normalizeRigProgressionFields(
+    prog.purchasedRigModules,
+    prog.equippedRigModules
+  );
   return {
     memoryFragments: prog.memoryFragments,
     claimedRewardIds: [...prog.claimedRewardIds],
@@ -3323,6 +3489,8 @@ export function clonePersistedWeaponProgressionState(
       phase_rail: prog.equippedUpgrades?.phase_rail ?? null,
       grav_breaker: prog.equippedUpgrades?.grav_breaker ?? null,
     },
+    purchasedRigModules: rigNormalized.purchasedRigModules,
+    equippedRigModules: rigNormalized.equippedRigModules,
   };
 }
 
@@ -3336,6 +3504,8 @@ export function cloneWeaponProgressionState(
   return {
     ...cloned,
     unlockedWeaponIds: normalizeUnlockedWeaponIds(cloned.unlockedWeaponIds),
+    purchasedRigModules: [...cloned.purchasedRigModules],
+    equippedRigModules: { ...cloned.equippedRigModules },
     lastPurchaseOutcome: prog.lastPurchaseOutcome ?? null,
     lastEquipOutcome: prog.lastEquipOutcome ?? null,
     lastActionMessage:
@@ -3426,12 +3596,19 @@ export function sanitizePersistedWeaponProgressionState(
     }
   }
 
+  const rigNormalized = normalizeRigProgressionFields(
+    obj.purchasedRigModules,
+    obj.equippedRigModules
+  );
+
   return {
     memoryFragments,
     claimedRewardIds,
     unlockedWeaponIds: normalizeUnlockedWeaponIds(unlockedWeaponIds),
     purchasedUpgrades,
     equippedUpgrades,
+    purchasedRigModules: rigNormalized.purchasedRigModules,
+    equippedRigModules: rigNormalized.equippedRigModules,
   };
 }
 
@@ -3483,15 +3660,31 @@ export function getEquippedWeaponUpgrade(
   return null;
 }
 
+export function getEquippedRigModules(
+  world: WorldState
+): Record<RigModuleSlot, RigModuleId | null> {
+  const prog = world.progression;
+  if (!prog) return createEmptyEquippedRigModules();
+  return normalizeRigProgressionFields(
+    prog.purchasedRigModules,
+    prog.equippedRigModules
+  ).equippedRigModules;
+}
+
+export function getPlayerRigModifiers(world: WorldState): RigEffectiveModifiers {
+  const equipped = getEquippedRigModules(world);
+  const isSurging = (world.player?.surgeTimer ?? 0) > 0;
+  return computeEffectiveRigModifiers(equipped, isSurging);
+}
+
 export function getEffectiveConvergenceFluxCost(world: WorldState): number {
   const baseCost = GAME_CONFIG.resonance.fluxCost;
-  if (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor') {
-    return Math.max(
-      0,
-      baseCost + GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.convergenceFluxCostDelta
-    );
-  }
-  return baseCost;
+  const weaponDelta =
+    getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor'
+      ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.convergenceFluxCostDelta
+      : 0;
+  const rigDelta = getPlayerRigModifiers(world).convergenceFluxCostDelta;
+  return Math.max(0, baseCost + weaponDelta + rigDelta);
 }
 
 export function getEffectiveConvergencePostureBonus(world: WorldState): number {
@@ -3515,6 +3708,35 @@ export function syncResonanceUpgradeParameters(world: WorldState): void {
         ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.syncWindowBonus
         : 0);
   }
+}
+
+export function syncPlayerRigStats(world: WorldState): void {
+  if (!world) return;
+  const rigMods = getPlayerRigModifiers(world);
+  if (world.player) {
+    const prevMax = world.player.maxIntegrity || GAME_CONFIG.player.maxIntegrity;
+    const nextMax = GAME_CONFIG.player.maxIntegrity + rigMods.maxIntegrityBonus;
+    world.player.maxIntegrity = nextMax;
+    if (nextMax > prevMax && world.player.actionState !== 'dead' && world.player.integrity > 0) {
+      const gained = nextMax - prevMax;
+      world.player.integrity = Math.min(nextMax, world.player.integrity + gained);
+      world.player.ghostIntegrity = Math.max(world.player.ghostIntegrity, world.player.integrity);
+    } else if (world.player.integrity > nextMax) {
+      world.player.integrity = nextMax;
+      world.player.ghostIntegrity = Math.min(world.player.ghostIntegrity, nextMax);
+    }
+  }
+  if (world.echo) {
+    world.echo.maxDuration = GAME_CONFIG.echo.maxDuration + rigMods.echoMaxDurationBonus;
+  }
+  if (world.relay) {
+    world.relay.fluxCost = Math.max(0, GAME_CONFIG.relay.fluxCost + rigMods.relayFluxCostDelta);
+    world.relay.maxCooldown = Math.max(
+      0.2,
+      Number((GAME_CONFIG.relay.cooldown + rigMods.relayCooldownDelta).toFixed(3))
+    );
+  }
+  syncResonanceUpgradeParameters(world);
 }
 
 export function canModifyWeaponUpgrades(world: WorldState): boolean {
@@ -3770,6 +3992,145 @@ export function equipWeaponUpgrade(
     z: world.player?.z ?? 0,
     weaponId,
     upgradeId,
+  });
+
+  return { success: true, outcome: 'equipped' };
+}
+
+export function purchaseRigModule(
+  world: WorldState,
+  moduleId: unknown,
+  autoEquip = true
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!prog.purchasedRigModules) prog.purchasedRigModules = [];
+  if (!prog.equippedRigModules) prog.equippedRigModules = createEmptyEquippedRigModules();
+
+  if (!isValidRigModuleId(moduleId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID RIG MODULE ID';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT MODIFY RIG CHASSIS DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  const def = getRigModuleDefinition(moduleId);
+
+  if (prog.purchasedRigModules.includes(moduleId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${def.name} IS ALREADY INSTALLED`;
+    return { success: false, outcome: 'already_owned' };
+  }
+
+  if (prog.memoryFragments < def.cost) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${def.cost} REQUIRED)`;
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+
+  prog.memoryFragments -= def.cost;
+  prog.purchasedRigModules.push(moduleId);
+  prog.lastPurchaseOutcome = 'purchased';
+
+  if (autoEquip) {
+    prog.equippedRigModules[def.slot] = moduleId;
+    prog.lastEquipOutcome = 'equipped';
+    prog.lastActionMessage = `INSTALLED & EQUIPPED ${def.name} (${def.slotLabel})`;
+  } else {
+    prog.lastActionMessage = `INSTALLED ${def.name} (-${def.cost} MEMORY FRAGMENTS)`;
+  }
+
+  syncPlayerRigStats(world);
+
+  world.events.push({
+    type: 'rig_module_purchased',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: def.cost,
+  });
+  if (autoEquip) {
+    world.events.push({
+      type: 'rig_module_equipped',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+    });
+  }
+
+  return { success: true, outcome: 'purchased' };
+}
+
+export function equipRigModule(
+  world: WorldState,
+  slot: unknown,
+  moduleId: unknown
+): { success: boolean; outcome: UpgradeEquipOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!prog.purchasedRigModules) prog.purchasedRigModules = [];
+  if (!prog.equippedRigModules) prog.equippedRigModules = createEmptyEquippedRigModules();
+
+  if (!isValidRigModuleSlot(slot)) {
+    prog.lastEquipOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID CHASSIS SUBSYSTEM SLOT';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastEquipOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT MODIFY RIG CHASSIS DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  if (moduleId === null || moduleId === undefined) {
+    prog.equippedRigModules[slot] = null;
+    prog.lastEquipOutcome = 'unequipped';
+    prog.lastActionMessage = `${slot.replace('_', ' ').toUpperCase()} RESTORED TO STOCK SPEC`;
+    syncPlayerRigStats(world);
+    world.events.push({
+      type: 'rig_module_equipped',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+    });
+    return { success: true, outcome: 'unequipped' };
+  }
+
+  if (!isValidRigModuleId(moduleId)) {
+    prog.lastEquipOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID RIG MODULE SELECTION';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  const def = getRigModuleDefinition(moduleId);
+  if (def.slot !== slot) {
+    prog.lastEquipOutcome = 'incompatible_weapon';
+    prog.lastActionMessage = `${def.name} FITS ONLY ${def.slotLabel}`;
+    return { success: false, outcome: 'incompatible_weapon' };
+  }
+
+  if (!prog.purchasedRigModules.includes(moduleId)) {
+    prog.lastEquipOutcome = 'not_owned';
+    prog.lastActionMessage = `UNLOCK ${def.name} (${def.cost} FRAGMENTS) BEFORE EQUIPPING`;
+    return { success: false, outcome: 'not_owned' };
+  }
+
+  prog.equippedRigModules[slot] = moduleId;
+  prog.lastEquipOutcome = 'equipped';
+  prog.lastActionMessage = `EQUIPPED ${def.name} IN ${def.slotLabel}`;
+  syncPlayerRigStats(world);
+
+  world.events.push({
+    type: 'rig_module_equipped',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
   });
 
   return { success: true, outcome: 'equipped' };
@@ -4078,7 +4439,8 @@ function isRelaySegmentBlocked(
 
 export function evaluateRelayTarget(world: WorldState): RelayTargetEvaluation {
   const maxRange = GAME_CONFIG.relay.maxRange;
-  const fluxCost = GAME_CONFIG.relay.fluxCost;
+  const rigMods = getPlayerRigModifiers(world);
+  const fluxCost = Math.max(0, GAME_CONFIG.relay.fluxCost + rigMods.relayFluxCostDelta);
   const echo = world.echo;
   const p = world.player;
 
@@ -4281,10 +4643,21 @@ export function attemptEchoRelay(world: WorldState): boolean {
   const p = world.player;
   const originX = p.x;
   const originZ = p.z;
+  const rigMods = getPlayerRigModifiers(world);
+  const effectiveRelayCost = Math.max(
+    0,
+    GAME_CONFIG.relay.fluxCost + rigMods.relayFluxCostDelta
+  );
+  const effectiveRelayCooldown = Math.max(
+    0.2,
+    GAME_CONFIG.relay.cooldown + rigMods.relayCooldownDelta
+  );
 
   // Deduct Flux once and start cooldown
-  p.flux = Math.max(0, p.flux - GAME_CONFIG.relay.fluxCost);
-  world.relay.cooldownTimer = GAME_CONFIG.relay.cooldown;
+  p.flux = Math.max(0, p.flux - effectiveRelayCost);
+  world.relay.fluxCost = effectiveRelayCost;
+  world.relay.maxCooldown = effectiveRelayCooldown;
+  world.relay.cooldownTimer = effectiveRelayCooldown;
 
   // Move live Sera to the validated safe landing coordinate & clear stale horizontal velocity
   p.x = evaluation.landingX;
@@ -5017,6 +5390,7 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
     boss: null,
     obstacles,
     boostPads,
+    fluxPools: [],
     echo: createInitialEchoState(),
     relay: createInitialRelayState(),
     resonance: createInitialResonanceState(),
@@ -5414,6 +5788,7 @@ export function startBossEncounter(
   world.boss = boss;
   world.obstacles = buildObstaclesForChapter(chapter, true);
   world.boostPads = createInitialBoostPads();
+  world.fluxPools = [];
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -5430,6 +5805,7 @@ export function startBossEncounter(
   world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
   world.exploration = createInitialExplorationState(chapter, null);
   syncResonanceUpgradeParameters(world);
+  syncPlayerRigStats(world);
   world.events = [
     {
       type: 'boss_activated',
@@ -5518,6 +5894,7 @@ export function startCampaignRun(
   world.boss = null;
   world.obstacles = fresh.obstacles;
   world.boostPads = fresh.boostPads;
+  world.fluxPools = [];
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -5535,6 +5912,7 @@ export function startCampaignRun(
   world.exploration = createInitialExplorationState('prologue', preservedExploration);
   syncUnlockedRoutesToObstacles(world);
   syncResonanceUpgradeParameters(world);
+  syncPlayerRigStats(world);
   world.events = [];
   triggerNarrativeTransmission(world, 'prologue_wake', true);
   advanceMissionAndExplorationSystem(world);
@@ -5595,6 +5973,7 @@ export function startAuthoredEncounter(
   world.nextProjectileId = 1;
   world.obstacles = buildObstaclesForChapter(def.chapterContext, false);
   world.boostPads = createInitialBoostPads();
+  world.fluxPools = [];
   world.enemies = spawnWaveUnitsForEncounter(
     def.id,
     1,
@@ -5624,6 +6003,7 @@ export function startAuthoredEncounter(
   world.exploration = createInitialExplorationState(def.chapterContext, null);
   syncUnlockedRoutesToObstacles(world);
   syncResonanceUpgradeParameters(world);
+  syncPlayerRigStats(world);
   world.events = [];
   triggerNarrativeTransmission(world, 'prologue_wake', true);
   advanceMissionAndExplorationSystem(world);
@@ -5946,6 +6326,7 @@ export function transitionCampaignToBoss(
     preservedExploration
   );
   syncUnlockedRoutesToObstacles(world);
+  syncPlayerRigStats(world);
 
   world.run = {
     mode: 'campaign',
@@ -5978,8 +6359,8 @@ export function transitionCampaignToBoss(
   );
 
   // Restore exact checkpoint Integrity, Flux, equipped weapon, and pre-boss campaign telemetry
-  world.player.integrity = checkpoint.integrity;
-  world.player.ghostIntegrity = checkpoint.integrity;
+  world.player.integrity = Math.min(world.player.maxIntegrity, checkpoint.integrity);
+  world.player.ghostIntegrity = world.player.integrity;
   world.player.flux = checkpoint.flux;
   const unlockedInBossChapter = getUnlockedWeaponIds(world);
   const validBossWeapon: WeaponId =
@@ -6058,6 +6439,7 @@ export function enterChronicleLoomChapter(
   world.boss = null;
   world.obstacles = buildObstaclesForChapter('chapter_5_loom', false);
   world.boostPads = createInitialBoostPads();
+  world.fluxPools = [];
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -6082,6 +6464,9 @@ export function enterChronicleLoomChapter(
   );
   syncUnlockedRoutesToObstacles(world);
   syncResonanceUpgradeParameters(world);
+  syncPlayerRigStats(world);
+  world.player.integrity = Math.min(world.player.maxIntegrity, checkpoint.integrity);
+  world.player.ghostIntegrity = world.player.integrity;
   world.frozenSummary = null;
 
   world.run = {
@@ -6162,6 +6547,7 @@ export function engageWardenPrimeInLoom(
   );
   syncUnlockedRoutesToObstacles(world);
   syncResonanceUpgradeParameters(world);
+  syncPlayerRigStats(world);
 
   world.run = {
     mode: 'campaign',
@@ -6192,8 +6578,8 @@ export function engageWardenPrimeInLoom(
     preserveTutorialEnabled,
     'matron_echo_collapse'
   );
-  world.player.integrity = checkpoint.integrity;
-  world.player.ghostIntegrity = checkpoint.integrity;
+  world.player.integrity = Math.min(world.player.maxIntegrity, checkpoint.integrity);
+  world.player.ghostIntegrity = world.player.integrity;
   world.player.flux = checkpoint.flux;
   const unlockedForWarden = getUnlockedWeaponIds(world);
   const validWardenWeapon: WeaponId =
@@ -6438,19 +6824,20 @@ function sanitizeBossCheckpoint(
     return null;
   }
 
+  const maxRigIntegrityCap = GAME_CONFIG.player.maxIntegrity + 25;
   const maxIntegrity =
     obj.maxIntegrity !== undefined
-      ? sanitizePositiveInt(obj.maxIntegrity, GAME_CONFIG.player.maxIntegrity)
+      ? sanitizePositiveInt(obj.maxIntegrity, maxRigIntegrityCap)
       : GAME_CONFIG.player.maxIntegrity;
   const maxFlux =
     obj.maxFlux !== undefined
       ? sanitizePositiveInt(obj.maxFlux, GAME_CONFIG.player.maxFlux)
       : GAME_CONFIG.player.maxFlux;
-  const integrity = sanitizePositiveInt(obj.integrity, GAME_CONFIG.player.maxIntegrity);
+  const integrity = sanitizePositiveInt(obj.integrity, maxRigIntegrityCap);
   const flux = sanitizeNonNegativeInt(obj.flux, GAME_CONFIG.player.maxFlux);
   const replenishedIntegrity = sanitizeNonNegativeInt(
     obj.replenishedIntegrity,
-    GAME_CONFIG.player.maxIntegrity
+    maxRigIntegrityCap
   );
   const elapsedTimeAtCheckpoint = sanitizeNonNegativeNumber(obj.elapsedTimeAtCheckpoint);
 
@@ -6758,6 +7145,7 @@ export function parseAndApplyCampaignProgress(
         'CAMPAIGN PROGRESSION RESTORED · UPGRADE BENCH SYNCHRONIZED',
     };
     syncResonanceUpgradeParameters(world);
+    syncPlayerRigStats(world);
   } else {
     inferLegacyWeaponUnlocksFromChapters();
   }
@@ -6814,6 +7202,7 @@ export function parseAndApplyCampaignProgress(
               'CAMPAIGN PROGRESSION RESTORED · UPGRADE BENCH SYNCHRONIZED',
           };
           syncResonanceUpgradeParameters(world);
+          syncPlayerRigStats(world);
         }
         const effectiveExploration =
           sanitizedActive.exploration ??
@@ -7141,7 +7530,11 @@ export function startCampaignChapterSelect(
           statsAtCheckpoint: { ...candidateSnap.bossCheckpoint.statsAtCheckpoint },
         }
       : null;
-  world.player.integrity = GAME_CONFIG.player.maxIntegrity;
+  const rigMaxIntegrity =
+    GAME_CONFIG.player.maxIntegrity + getPlayerRigModifiers(world).maxIntegrityBonus;
+  world.player.maxIntegrity = rigMaxIntegrity;
+  world.player.integrity = rigMaxIntegrity;
+  world.player.ghostIntegrity = rigMaxIntegrity;
   world.player.flux = GAME_CONFIG.player.initialFlux;
   transitionCampaignToBoss(world, skipIntro, chapter);
   return true;
@@ -7208,6 +7601,7 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
       'CAMPAIGN PROGRESSION RESTORED · UPGRADE BENCH SYNCHRONIZED',
   };
   syncResonanceUpgradeParameters(world);
+  syncPlayerRigStats(world);
 
   world.run.mode = 'campaign';
   world.run.chapter = targetChapter;
@@ -7248,8 +7642,8 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
   }
 
   if (savedCheckpoint) {
-    world.player.integrity = savedCheckpoint.integrity;
-    world.player.ghostIntegrity = savedCheckpoint.integrity;
+    world.player.integrity = Math.min(world.player.maxIntegrity, savedCheckpoint.integrity);
+    world.player.ghostIntegrity = world.player.integrity;
     world.player.flux = savedCheckpoint.flux;
     world.elapsedTime = savedCheckpoint.elapsedTimeAtCheckpoint;
     world.stats = {
@@ -9247,8 +9641,9 @@ function startDodge(
   p.actionState = 'dodging';
   p.stateTimer = cfg.duration;
   p.invulnTimer = Math.max(p.invulnTimer, cfg.invulnDuration);
+  const rigMods = getPlayerRigModifiers(world);
   p.dodgeCounterTriggered = false;
-  p.dodgeCooldownTimer = cfg.cooldown;
+  p.dodgeCooldownTimer = Math.max(0.15, cfg.cooldown + rigMods.dodgeCooldownDelta);
   p.chargeTime = 0;
   p.squashX = 1.22;
   p.squashY = 0.8;
@@ -9652,8 +10047,13 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     cooldown = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.heavyCooldown;
   }
 
+  const rigMods = getPlayerRigModifiers(world);
+
   // Apply heat cost & check overheat threshold
-  p.weaponHeat = Math.min(p.maxWeaponHeat, p.weaponHeat + heatCost);
+  p.weaponHeat = Math.min(
+    p.maxWeaponHeat,
+    p.weaponHeat + heatCost + rigMods.surgeRangedHeatPenalty
+  );
   p.weaponShotCooldownTimer = cooldown;
   p.lastWeaponShotOutcome = 'fired';
 
@@ -9712,6 +10112,9 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     damage = Math.round(damage * ACTIVE_VENT_CONFIG.empoweredDamageMult);
     staggerDamage = Math.round(staggerDamage * ACTIVE_VENT_CONFIG.empoweredStaggerMult);
     p.activeVentEmpoweredShots = Math.max(0, (p.activeVentEmpoweredShots ?? 1) - 1);
+  }
+  if (rigMods.surgeDamageMultiplier !== 1) {
+    damage = Math.max(1, Math.round(damage * rigMods.surgeDamageMultiplier));
   }
 
   world.projectiles.push({
@@ -10333,8 +10736,12 @@ function advanceChoirSystem(world: WorldState, dt: number): void {
 
 function advanceCuratorSystem(world: WorldState, dt: number): void {
   const gp = world.gravityPin;
+  const rigMods = getPlayerRigModifiers(world);
   if (gp.cooldownTimer > 0) {
-    gp.cooldownTimer = Math.max(0, gp.cooldownTimer - dt);
+    gp.cooldownTimer = Math.max(
+      0,
+      gp.cooldownTimer - dt * rigMods.surgeCooldownTickMultiplier
+    );
   }
   if (gp.activeDurationTimer > 0) {
     gp.activeDurationTimer = Math.max(0, gp.activeDurationTimer - dt);
@@ -10412,8 +10819,12 @@ function advanceCuratorSystem(world: WorldState, dt: number): void {
 
 function advanceMatronSystem(world: WorldState, dt: number): void {
   const ec = world.echoCollapse;
+  const rigMods = getPlayerRigModifiers(world);
   if (ec.cooldownTimer > 0) {
-    ec.cooldownTimer = Math.max(0, ec.cooldownTimer - dt);
+    ec.cooldownTimer = Math.max(
+      0,
+      ec.cooldownTimer - dt * rigMods.surgeCooldownTickMultiplier
+    );
   }
   if (ec.blastTimer > 0) {
     ec.blastTimer = Math.max(0, ec.blastTimer - dt);
@@ -10788,13 +11199,41 @@ export function applyDamageToDestructibleObstacle(
   }
 
   obs.disabled = true;
+  const rigMods = getPlayerRigModifiers(world);
   if (rewardFluxToPlayer) {
-    world.player.flux = Math.min(world.player.maxFlux, world.player.flux + 12);
+    world.player.flux = Math.min(
+      world.player.maxFlux,
+      world.player.flux + rigMods.crateFluxReward
+    );
+    if (rigMods.crateSurgeDuration > 0) {
+      world.player.surgeTimer = Math.max(
+        world.player.surgeTimer ?? 0,
+        rigMods.crateSurgeDuration
+      );
+    }
   }
+  if (!world.fluxPools) {
+    world.fluxPools = [];
+  }
+  world.fluxPools.push({
+    id: `flux-pool-${obs.id}-${Math.round(world.elapsedTime * 100)}`,
+    x: obs.x,
+    z: obs.z,
+    radius: 3.4,
+    remainingTime: 7.0,
+    maxDuration: 7.0,
+    sourceObstacleId: obs.id,
+  });
   world.hitstopTimer = Math.max(world.hitstopTimer, 0.045);
   world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.32);
   world.events.push({
     type: 'obstacle_destroyed',
+    x: obs.x,
+    z: obs.z,
+    obstacleId: obs.id,
+  });
+  world.events.push({
+    type: 'flux_pool_spawned',
     x: obs.x,
     z: obs.z,
     obstacleId: obs.id,
@@ -10861,6 +11300,7 @@ export function advanceArenaBoostPads(world: WorldState, dt: number): void {
   ) {
     return;
   }
+  const rigMods = getPlayerRigModifiers(world);
   for (let i = 0; i < world.boostPads.length; i++) {
     const pad = world.boostPads[i];
     pad.cooldown = Math.max(0, pad.cooldown - dt);
@@ -10870,9 +11310,16 @@ export function advanceArenaBoostPads(world: WorldState, dt: number): void {
       Math.hypot(p.x - pad.x, p.z - pad.z) <= pad.radius
     ) {
       pad.cooldown = pad.maxCooldown;
-      p.surgeTimer = 1.6;
+      p.surgeTimer = Math.max(p.surgeTimer ?? 0, 1.6);
       p.dodgeCooldownTimer = Math.max(0, p.dodgeCooldownTimer - 0.5);
       p.flux = Math.min(p.maxFlux, p.flux + 8);
+      if (rigMods.boostPadIntegrityBonus > 0) {
+        p.integrity = Math.min(
+          p.maxIntegrity,
+          p.integrity + rigMods.boostPadIntegrityBonus
+        );
+        p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+      }
       world.events.push({
         type: 'boost_pad_triggered',
         x: pad.x,
@@ -10881,6 +11328,42 @@ export function advanceArenaBoostPads(world: WorldState, dt: number): void {
       });
     }
   }
+}
+
+export function advanceArenaFluxPools(world: WorldState, dt: number): void {
+  if (!world.fluxPools || world.fluxPools.length === 0 || dt <= 0) {
+    return;
+  }
+  const p = world.player;
+  const canHarvest =
+    world.appState === 'playing' &&
+    world.outcome === 'none' &&
+    p &&
+    p.actionState !== 'dead';
+  const rigMods = getPlayerRigModifiers(world);
+  const fluxDampenMult =
+    p && (p.fluxDampenedTimer ?? 0) > 0
+      ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
+      : 1.0;
+
+  let writeIdx = 0;
+  for (let i = 0; i < world.fluxPools.length; i++) {
+    const pool = world.fluxPools[i];
+    pool.remainingTime = Math.max(0, pool.remainingTime - dt);
+    if (pool.remainingTime <= 0) continue;
+    if (canHarvest && Math.hypot(p.x - pool.x, p.z - pool.z) <= pool.radius) {
+      p.flux = Math.min(p.maxFlux, p.flux + 9 * fluxDampenMult * dt);
+      if (rigMods.fluxPoolIntegrityPerSec > 0) {
+        p.integrity = Math.min(
+          p.maxIntegrity,
+          p.integrity + rigMods.fluxPoolIntegrityPerSec * dt
+        );
+        p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+      }
+    }
+    world.fluxPools[writeIdx++] = pool;
+  }
+  world.fluxPools.length = writeIdx;
 }
 
 function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
@@ -10960,8 +11443,15 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
 
   const flowDmgMult = p.activeStrikeFlowDamageMult ?? 1;
   const flowStagMult = p.activeStrikeFlowStaggerMult ?? 1;
+  const meleeRigMods = getPlayerRigModifiers(world);
   if (flowDmgMult !== 1) {
     baseDamage = Math.max(1, Math.round(baseDamage * flowDmgMult));
+  }
+  if (meleeRigMods.surgeDamageMultiplier !== 1) {
+    baseDamage = Math.max(
+      1,
+      Math.round(baseDamage * meleeRigMods.surgeDamageMultiplier)
+    );
   }
   if (flowStagMult !== 1) {
     staggerAmount = Math.round(staggerAmount * flowStagMult);
@@ -11172,9 +11662,13 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
 
     const meleeAdrMods = getAdrenalineModifiers(p.adrenalineScore);
+    const convergenceBonusDmg = triggeredConvergence
+      ? meleeRigMods.convergenceBonusDamage
+      : 0;
     const finalDamage = Math.max(
       1,
-      Math.round(baseDamage * vulnMult * guardDmgMult * meleeAdrMods.damageMult)
+      Math.round(baseDamage * vulnMult * guardDmgMult * meleeAdrMods.damageMult) +
+        convergenceBonusDmg
     );
     const effectiveStagger =
       Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult * meleeAdrMods.staggerMult) +
@@ -11291,7 +11785,9 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
 
       if (enemy.stagger >= enemy.maxStagger) {
         enemy.aiState = 'staggered';
-        enemy.stateDuration = GAME_CONFIG.enemies[enemy.archetype].staggeredDuration;
+        enemy.stateDuration =
+          GAME_CONFIG.enemies[enemy.archetype].staggeredDuration +
+          meleeRigMods.staggerDurationBonus;
         enemy.stateTimer = enemy.stateDuration;
         enemy.telegraphLocked = false;
         enemy.stagger = 0;
@@ -11299,7 +11795,8 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
         enemy.vz = 0;
         if (bossState) {
           bossState.aiState = 'staggered';
-          bossState.stateDuration = GAME_CONFIG.boss.staggeredDuration;
+          bossState.stateDuration =
+            GAME_CONFIG.boss.staggeredDuration + meleeRigMods.staggerDurationBonus;
           bossState.stateTimer = bossState.stateDuration;
           bossState.stagger = 0;
           bossState.vx = 0;
@@ -11308,7 +11805,7 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
           bossState.shockwaveActive = false;
           bossState.coreExposed = true;
           bossState.staggerCooldownTimer =
-            GAME_CONFIG.boss.staggeredDuration + GAME_CONFIG.boss.staggerCooldown;
+            bossState.stateDuration + GAME_CONFIG.boss.staggerCooldown;
           bossState.statusLabel = 'POSTURE BROKEN · CHRONO CORE EXPOSED (1.5x)';
           world.events.push({
             type: 'boss_staggered',
@@ -11655,9 +12152,15 @@ function applyPlayerProjectileHitToEnemy(
   const projFlowDamageMult = proj.flowDamageMult ?? 1;
   const projFlowStaggerMult = proj.flowStaggerMult ?? 1;
   const projAdrMods = getAdrenalineModifiers(p.adrenalineScore);
+  const projRigMods = getPlayerRigModifiers(world);
+  const projConvBonusDmg = triggeredConvergence
+    ? projRigMods.convergenceBonusDamage
+    : 0;
   const finalDamage = Math.max(
     1,
-    Math.round(baseDamage * vulnMult * guardDmgMult * projFlowDamageMult * projAdrMods.damageMult)
+    Math.round(
+      baseDamage * vulnMult * guardDmgMult * projFlowDamageMult * projAdrMods.damageMult
+    ) + projConvBonusDmg
   );
   const effectiveStagger =
     Math.round(
@@ -11756,7 +12259,9 @@ function applyPlayerProjectileHitToEnemy(
 
     if (enemy.stagger >= enemy.maxStagger) {
       enemy.aiState = 'staggered';
-      enemy.stateDuration = GAME_CONFIG.enemies[enemy.archetype].staggeredDuration;
+      enemy.stateDuration =
+        GAME_CONFIG.enemies[enemy.archetype].staggeredDuration +
+        projRigMods.staggerDurationBonus;
       enemy.stateTimer = enemy.stateDuration;
       enemy.telegraphLocked = false;
       enemy.stagger = 0;
@@ -11764,7 +12269,8 @@ function applyPlayerProjectileHitToEnemy(
       enemy.vz = 0;
       if (bossState) {
         bossState.aiState = 'staggered';
-        bossState.stateDuration = GAME_CONFIG.boss.staggeredDuration;
+        bossState.stateDuration =
+          GAME_CONFIG.boss.staggeredDuration + projRigMods.staggerDurationBonus;
         bossState.stateTimer = bossState.stateDuration;
         bossState.stagger = 0;
         bossState.vx = 0;
@@ -11773,7 +12279,7 @@ function applyPlayerProjectileHitToEnemy(
         bossState.shockwaveActive = false;
         bossState.coreExposed = true;
         bossState.staggerCooldownTimer =
-          GAME_CONFIG.boss.staggeredDuration + GAME_CONFIG.boss.staggerCooldown;
+          bossState.stateDuration + GAME_CONFIG.boss.staggerCooldown;
         bossState.statusLabel = 'POSTURE BROKEN · CHRONO CORE EXPOSED (1.5x)';
         world.events.push({
           type: 'boss_staggered',
@@ -12128,6 +12634,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
     });
   }
 
+  const playerRigMods = getPlayerRigModifiers(world);
   if (p.weaponOverheated) {
     p.weaponOverheatTimer = Math.max(0, p.weaponOverheatTimer - dt);
     const lockDuration = Math.max(0.1, activeThermalCfg.overheatLockoutDuration);
@@ -12156,7 +12663,9 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
           : 1.0
         : getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_thermal_sink'
           ? GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.coolRateMultiplier
-          : 1.0) * adrMods.coolRateMult;
+          : 1.0) *
+      adrMods.coolRateMult *
+      playerRigMods.heatCoolMultiplier;
     p.weaponHeat = Math.max(
       0,
       p.weaponHeat - activeThermalCfg.heatCoolRatePerSec * coolRateMult * dt
@@ -12167,7 +12676,9 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   const fluxRegenMult =
     ((p.fluxDampenedTimer ?? 0) > 0
       ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
-      : 1.0) * adrMods.fluxRegenMult;
+      : 1.0) *
+    adrMods.fluxRegenMult *
+    playerRigMods.passiveFluxRegenMultiplier;
   p.flux = Math.min(
     p.maxFlux,
     p.flux + GAME_CONFIG.player.fluxRegenPerSec * fluxRegenMult * dt
@@ -12477,6 +12988,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
           GAME_CONFIG.player.moveSpeed *
           getCombatFlowMovementSpeedMultiplier(p) *
           surgeMult *
+          playerRigMods.moveSpeedMultiplier *
           moveVec.length;
         p.vx = moveVec.dirX * speed;
         p.vz = moveVec.dirZ * speed;
@@ -12811,7 +13323,11 @@ export function applyDamageToPlayer(
 
   // Check timed Parry deflection
   if (p.actionState === 'parry_active') {
-    p.flux = Math.min(p.maxFlux, p.flux + GAME_CONFIG.player.fluxGainOnParry);
+    const rigMods = getPlayerRigModifiers(world);
+    p.flux = Math.min(
+      p.maxFlux,
+      p.flux + GAME_CONFIG.player.fluxGainOnParry + rigMods.parrySlipBonusFlux
+    );
     p.invulnTimer = Math.max(p.invulnTimer, 0.35);
     p.actionState = 'idle';
     p.stateTimer = 0;
@@ -12925,7 +13441,9 @@ export function applyDamageToPlayer(
         p.invulnTimer,
         COMBAT_FLOW_CONFIG.chronoSlipInvulnExtension
       );
-      const rawGain = COMBAT_FLOW_CONFIG.chronoSlipFluxGain;
+      const rigMods = getPlayerRigModifiers(world);
+      const rawGain =
+        COMBAT_FLOW_CONFIG.chronoSlipFluxGain + rigMods.parrySlipBonusFlux;
       const fluxGain =
         (p.fluxDampenedTimer ?? 0) > 0 ? Math.round(rawGain * 0.65) : rawGain;
       p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
@@ -14917,7 +15435,11 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
   world.elapsedTime += dt;
 
   // Tick Relay cooldown & visual flash timers
-  world.relay.cooldownTimer = Math.max(0, world.relay.cooldownTimer - dt);
+  const stepRigMods = getPlayerRigModifiers(world);
+  world.relay.cooldownTimer = Math.max(
+    0,
+    world.relay.cooldownTimer - dt * stepRigMods.surgeCooldownTickMultiplier
+  );
   world.relay.successFlashTimer = Math.max(0, world.relay.successFlashTimer - dt);
 
   // Tick Temporal Resonance window & Convergence cooldown timers
@@ -14997,8 +15519,9 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     world.relay.statusMessage = world.relay.preview.message;
   }
 
-  // Update timed energy hazards, arena kinetic boost pads, contextual tutorial state machine, exploration objectives & live narrative comms
+  // Update timed energy hazards, arena kinetic boost pads, charged flux pools, contextual tutorial state machine, exploration objectives & live narrative comms
   advanceArenaBoostPads(world, dt);
+  advanceArenaFluxPools(world, dt);
   advanceTimedEnergyHazards(world, dt);
   advanceMissionAndExplorationSystem(world);
   updateTutorialSystem(world, input, dt);
@@ -15684,6 +16207,14 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
         phase_rail: getEquippedWeaponUpgrade(world, 'phase_rail'),
         grav_breaker: getEquippedWeaponUpgrade(world, 'grav_breaker'),
       },
+      purchasedRigModules: [...(world.progression?.purchasedRigModules ?? [])],
+      equippedRigModules: {
+        temporal_core: world.progression?.equippedRigModules?.temporal_core ?? null,
+        defensive_chassis:
+          world.progression?.equippedRigModules?.defensive_chassis ?? null,
+        tactical_harness:
+          world.progression?.equippedRigModules?.tactical_harness ?? null,
+      },
       canModifyLoadout: canModifyWeaponUpgrades(world),
       lastActionMessage:
         world.progression?.lastActionMessage ??
@@ -15881,7 +16412,9 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
       explorationSnapshot.interactables,
       16,
       world.obstacles,
-      world.boostPads ?? []
+      world.boostPads ?? [],
+      world.fluxPools ?? [],
+      explorationSnapshot.tacticalWaypoint ?? null
     ),
     lockOn: (() => {
       const activeLockTarget = resolveActiveLockOnTarget(world, p.lockOnTargetId);

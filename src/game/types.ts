@@ -38,6 +38,55 @@ export type WeaponUpgradeId =
   | 'breaker_seismic_core'
   | 'breaker_singularity_coil';
 
+export type RigModuleSlot =
+  | 'temporal_core'
+  | 'defensive_chassis'
+  | 'tactical_harness';
+
+export type RigModuleId =
+  | 'rig_chrono_spool'
+  | 'rig_resonance_prism'
+  | 'rig_reactive_plating'
+  | 'rig_kinetic_dynamo'
+  | 'rig_flux_salvager'
+  | 'rig_adrenaline_overclock';
+
+export interface RigModuleDefinition {
+  id: RigModuleId;
+  slot: RigModuleSlot;
+  slotLabel: string;
+  name: string;
+  shortLabel: string;
+  roleLabel: string;
+  cost: number;
+  summary: string;
+  benefitText: string;
+  tradeoffText: string;
+}
+
+export interface RigEffectiveModifiers {
+  echoMaxDurationBonus: number;
+  relayFluxCostDelta: number;
+  relayCooldownDelta: number;
+  convergenceBonusDamage: number;
+  convergenceFluxCostDelta: number;
+  staggerDurationBonus: number;
+  maxIntegrityBonus: number;
+  parrySlipBonusFlux: number;
+  moveSpeedMultiplier: number;
+  passiveFluxRegenMultiplier: number;
+  boostPadIntegrityBonus: number;
+  fluxPoolIntegrityPerSec: number;
+  heatCoolMultiplier: number;
+  crateFluxReward: number;
+  crateSurgeDuration: number;
+  threadIntegrityBonus: number;
+  dodgeCooldownDelta: number;
+  surgeDamageMultiplier: number;
+  surgeCooldownTickMultiplier: number;
+  surgeRangedHeatPenalty: number;
+}
+
 export type WeaponProgressionRewardId =
   | 'prologue_calibration_teach'
   | 'prologue_calibration_test'
@@ -46,7 +95,9 @@ export type WeaponProgressionRewardId =
   | 'chapter_1_helix_defeated'
   | 'chapter_2_choir_defeated'
   | 'chapter_3_curator_defeated'
-  | 'chapter_4_matron_defeated';
+  | 'chapter_4_matron_defeated'
+  | 'conduit_ch4_quarantine_override_frag'
+  | 'conduit_ch5_temporal_anchor_frag';
 
 export type UpgradePurchaseOutcome =
   | 'purchased'
@@ -89,10 +140,14 @@ export interface PersistedWeaponProgressionState {
   purchasedUpgrades: WeaponUpgradeId[];
   equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
   unlockedWeaponIds?: WeaponId[];
+  purchasedRigModules?: RigModuleId[];
+  equippedRigModules?: Partial<Record<RigModuleSlot, RigModuleId | null>>;
 }
 
 export interface WeaponProgressionState extends PersistedWeaponProgressionState {
   unlockedWeaponIds: WeaponId[];
+  purchasedRigModules: RigModuleId[];
+  equippedRigModules: Record<RigModuleSlot, RigModuleId | null>;
   lastPurchaseOutcome: UpgradePurchaseOutcome | null;
   lastEquipOutcome: UpgradeEquipOutcome | null;
   lastActionMessage: string;
@@ -104,6 +159,8 @@ export interface HudWeaponProgressionSnapshot {
   purchasedUpgrades: WeaponUpgradeId[];
   equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
   unlockedWeaponIds: WeaponId[];
+  purchasedRigModules: RigModuleId[];
+  equippedRigModules: Record<RigModuleSlot, RigModuleId | null>;
   canModifyLoadout: boolean;
   lastActionMessage: string;
 }
@@ -825,6 +882,24 @@ export interface ArenaBoostPad {
   maxCooldown: number;
 }
 
+export interface ArenaFluxPool {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  remainingTime: number;
+  maxDuration: number;
+  sourceObstacleId: string;
+}
+
+export interface TacticalWaypointState {
+  id: string;
+  kind: 'region' | 'route' | 'hazard' | 'boost_pad' | 'obstacle' | 'interactable' | 'secret';
+  label: string;
+  x: number;
+  z: number;
+}
+
 export type GraphicsPreset = 'performance' | 'balanced' | 'quality' | 'custom';
 export type ShadowQuality = 'off' | 'medium' | 'high';
 export type ParticleQuality = 'low' | 'medium' | 'high';
@@ -1115,7 +1190,11 @@ export interface CombatEvent {
     | 'lock_on_engaged'
     | 'obstacle_damaged'
     | 'obstacle_destroyed'
-    | 'boost_pad_triggered';
+    | 'boost_pad_triggered'
+    | 'rig_module_purchased'
+    | 'rig_module_equipped'
+    | 'flux_pool_spawned'
+    | 'temporal_thread_triggered';
   x: number;
   z: number;
   originX?: number;
@@ -1587,6 +1666,7 @@ export interface TimedEnergyHazardState {
   lastPlayerHitTime: number;
   cycleIndex: number;
   lastHitCycleIndex: number;
+  lastThreadCycleIndex?: number;
   routeId: TraversalRouteId;
   active: boolean;
   warning: boolean;
@@ -1677,6 +1757,14 @@ export interface LocalMapSnapshot {
   totalSecretsInChapter: number;
   totalDiscoveredSecretsCampaign: number;
   totalSecretsCampaign: number;
+  waypoint?: TacticalWaypointState | null;
+  fluxPools?: Array<{
+    id: string;
+    x: number;
+    z: number;
+    radius: number;
+    remainingRatio: number;
+  }>;
 }
 
 // ============================================================================
@@ -1829,6 +1917,7 @@ export interface WorldExplorationState {
   codexEntries: HudCodexEntryView[];
   newlyDiscoveredCodexId: CodexEntryId | null;
   statusBannerText: string;
+  tacticalWaypoint?: TacticalWaypointState | null;
 }
 
 export interface WorldState {
@@ -1848,6 +1937,7 @@ export interface WorldState {
   boss: BossState | null;
   obstacles: ObstacleCollider[];
   boostPads?: ArenaBoostPad[];
+  fluxPools?: ArenaFluxPool[];
   echo: EchoSystemState;
   relay: RelaySystemState;
   resonance: ResonanceSystemState;
@@ -2123,4 +2213,12 @@ export interface HudRadarSnapshot {
   blips: HudRadarBlip[];
   obstacles?: HudRadarObstacle[];
   boostPads?: HudRadarBoostPad[];
+  fluxPools?: Array<{
+    id: string;
+    x: number;
+    z: number;
+    radius: number;
+    remainingRatio: number;
+  }>;
+  waypoint?: TacticalWaypointState | null;
 }

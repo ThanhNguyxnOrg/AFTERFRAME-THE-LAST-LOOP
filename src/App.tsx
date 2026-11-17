@@ -25,6 +25,7 @@ import { ArenaSceneRenderer } from './game/renderer.ts';
 import {
   advanceCampaignChapter,
   attemptEnvironmentalInteraction,
+  clearTacticalWaypoint,
   completeMissionObjective,
   createBossWorld,
   createInitialWorld,
@@ -33,6 +34,7 @@ import {
   dismissActiveTransmission,
   engageWardenPrimeInLoom,
   equipBenchWeapon,
+  equipRigModule,
   equipWeaponUpgrade,
   evaluateInteractionTarget,
   extractHudSnapshot,
@@ -40,6 +42,7 @@ import {
   getWeaponUpgradeDefinition,
   grantProgressionReward,
   loadCampaignProgressFromStorage,
+  purchaseRigModule,
   purchaseWeaponUpgrade,
   resetWorldForPlaying,
   resetWorldForStandardPlaying,
@@ -47,6 +50,7 @@ import {
   retryBossFromCheckpoint,
   saveCampaignProgressToStorage,
   selectChronicleLoomEnding,
+  setTacticalWaypoint,
   shouldExposeTestHooks,
   skipBossIntroBanner,
   skipCampaignIntro,
@@ -77,7 +81,10 @@ import type {
   InteractionTargetEvaluation,
   MissionObjectiveId,
   NarrativeEventId,
+  RigModuleId,
+  RigModuleSlot,
   SecretAreaId,
+  TacticalWaypointState,
   UpgradeEquipOutcome,
   UpgradePurchaseOutcome,
   WeaponId,
@@ -765,6 +772,74 @@ export default function App() {
     [syncDomAndReactHud]
   );
 
+  const handlePurchaseRigModule = useCallback(
+    (moduleId: RigModuleId) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      purchaseRigModule(w, moduleId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleEquipRigModule = useCallback(
+    (slot: RigModuleSlot, moduleId: RigModuleId | null) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      equipRigModule(w, slot, moduleId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleSetTacticalWaypoint = useCallback(
+    (waypoint: TacticalWaypointState | null) => {
+      const w = worldRef.current;
+      if (!w) return;
+      if (waypoint === null) {
+        clearTacticalWaypoint(w);
+      } else {
+        setTacticalWaypoint(w, waypoint);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
   const handleTouchMoveHold = useCallback(
     (dx: number, dz: number, pointerId?: number | null) => {
       inputRef.current?.setTouchMoveHold(dx, dz, pointerId);
@@ -975,6 +1050,16 @@ export default function App() {
         sceneRenderer.handleCombatEvents(world.events);
         emitSensoryCombatFeedback(world.events);
       }
+
+      soundRef.current?.updateAmbientPulse(dt, {
+        appState: world.appState,
+        chapter: world.run.chapter,
+        bossActive: Boolean(world.boss && world.boss.hp > 0 && world.boss.aiState !== 'defeated'),
+        bossPhase: world.boss?.phase ?? 1,
+        bossCoreExposed: Boolean(world.boss?.coreExposed),
+        adrenalineTier: Math.min(5, Math.max(0, Math.floor(world.player.adrenalineScore ?? 0))),
+        selectedEnding: world.run.selectedEnding ?? world.loom?.selectedEnding ?? null,
+      });
 
       const activeLockTarget =
         world.appState === 'playing' && world.player.lockOnTargetId
@@ -1344,6 +1429,20 @@ export default function App() {
           outcome: UpgradeEquipOutcome;
           progression: WeaponProgressionState;
         };
+        purchaseRigModule: (moduleId: RigModuleId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        equipRigModule: (
+          slot: RigModuleSlot,
+          moduleId: RigModuleId | null
+        ) => {
+          outcome: UpgradeEquipOutcome;
+          progression: WeaponProgressionState;
+        };
+        setTacticalWaypoint: (
+          waypoint: TacticalWaypointState | null
+        ) => TacticalWaypointState | null;
         setCameraSettings: (s: Partial<CameraSettings>) => CameraSettings;
         togglePerfOverlay: () => boolean;
         interact: (targetId?: InteractableId) => InteractionTargetEvaluation;
@@ -1642,6 +1741,34 @@ export default function App() {
           progression: world.progression,
         };
       },
+      purchaseRigModule: (moduleId: RigModuleId) => {
+        const res = purchaseRigModule(world, moduleId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      equipRigModule: (slot: RigModuleSlot, moduleId: RigModuleId | null) => {
+        const res = equipRigModule(world, slot, moduleId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      setTacticalWaypoint: (waypoint: TacticalWaypointState | null) => {
+        if (waypoint === null) {
+          clearTacticalWaypoint(world);
+        } else {
+          setTacticalWaypoint(world, waypoint);
+        }
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return world.exploration.tacticalWaypoint ?? null;
+      },
       setCameraSettings: (s: Partial<CameraSettings>) => {
         const updated = input.setCameraSettings(s);
         soundRef.current?.setVolumeSettings(updated);
@@ -1863,6 +1990,8 @@ export default function App() {
           onSelectWeapon={handleSelectWeapon}
           onPurchaseUpgrade={handlePurchaseUpgrade}
           onEquipUpgrade={handleEquipUpgrade}
+          onPurchaseRigModule={handlePurchaseRigModule}
+          onEquipRigModule={handleEquipRigModule}
         />
       )}
 
@@ -1944,6 +2073,9 @@ export default function App() {
           onSelectWeapon={handleSelectWeapon}
           onPurchaseUpgrade={handlePurchaseUpgrade}
           onEquipUpgrade={handleEquipUpgrade}
+          onPurchaseRigModule={handlePurchaseRigModule}
+          onEquipRigModule={handleEquipRigModule}
+          onSetTacticalWaypoint={handleSetTacticalWaypoint}
           cameraSettings={cameraSettings}
           onUpdateCameraSettings={handleUpdateCameraSettings}
           isMuted={isMuted}

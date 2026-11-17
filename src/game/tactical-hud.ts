@@ -1,5 +1,6 @@
 import type {
   ArenaBoostPad,
+  ArenaFluxPool,
   BossState,
   CombatEvent,
   EnemyState,
@@ -10,6 +11,7 @@ import type {
   ObstacleCollider,
   PlayerState,
   RadarBlipKind,
+  TacticalWaypointState,
 } from './types.ts';
 
 export type ThreatSeverity = 'urgent' | 'telegraph' | 'hostile';
@@ -354,6 +356,30 @@ export function formatCombatCallouts(
           duration: 0.72,
         });
         break;
+      case 'temporal_thread_triggered': {
+        const gain = typeof ev.amount === 'number' && ev.amount > 0 ? Math.round(ev.amount) : 14;
+        out.push({
+          text: `THREAD! +${gain}F · SURGE`,
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 2.05,
+          worldZ: ev.z,
+          scale: 1.2,
+          duration: 0.82,
+        });
+        break;
+      }
+      case 'flux_pool_spawned':
+        out.push({
+          text: 'FLUX POOL 7s',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.15,
+          worldZ: ev.z,
+          scale: 1.05,
+          duration: 0.75,
+        });
+        break;
     }
   }
   return out;
@@ -424,7 +450,9 @@ export function computeTacticalRadarSnapshot(
     ObstacleCollider,
     'id' | 'x' | 'z' | 'radius' | 'disabled' | 'kind' | 'destructible' | 'hp' | 'maxHp'
   >[] = [],
-  boostPads: readonly Pick<ArenaBoostPad, 'id' | 'x' | 'z' | 'cooldown'>[] = []
+  boostPads: readonly Pick<ArenaBoostPad, 'id' | 'x' | 'z' | 'cooldown'>[] = [],
+  fluxPools: readonly Pick<ArenaFluxPool, 'id' | 'x' | 'z' | 'radius' | 'remainingTime' | 'maxDuration'>[] = [],
+  waypoint: TacticalWaypointState | null = null
 ): HudRadarSnapshot {
   const safeRadius = Number.isFinite(arenaRadius) && arenaRadius > 1 ? arenaRadius : 22;
   const blips: HudRadarBlip[] = [];
@@ -514,6 +542,18 @@ export function computeTacticalRadarSnapshot(
     });
   }
 
+  const radarFluxPools = fluxPools
+    .filter((fp) => fp.remainingTime > 0)
+    .map((fp) => ({
+      id: fp.id,
+      x: clampToArena(fp.x, safeRadius),
+      z: clampToArena(fp.z, safeRadius),
+      radius: Number(Math.max(0.5, fp.radius).toFixed(2)),
+      remainingRatio: Number(
+        Math.max(0, Math.min(1, fp.remainingTime / Math.max(0.1, fp.maxDuration))).toFixed(2)
+      ),
+    }));
+
   const echoActive = Boolean(echo && echo.state === 'playback' && echo.activeActor);
   return {
     arenaRadius: safeRadius,
@@ -529,6 +569,8 @@ export function computeTacticalRadarSnapshot(
     blips,
     obstacles: radarObstacles,
     boostPads: radarBoostPads,
+    fluxPools: radarFluxPools,
+    waypoint: waypoint ? { ...waypoint } : null,
   };
 }
 
