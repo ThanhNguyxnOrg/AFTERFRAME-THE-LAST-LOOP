@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InputController } from './input.ts';
+import { createEmptyInput, createInitialWorld, stepWorld } from './simulation.ts';
 import {
   GRAPHICS_PRESET_CONFIGS,
   clampRenderScale,
   computeEffectivePixelRatio,
+  computeFrameSimulationDt,
   detectMatchingGraphicsPreset,
   getDefaultGraphicsSettings,
   getParticleScaleFactor,
@@ -18,6 +20,28 @@ import {
   shouldSkipRedundantStaticRender,
   shouldStepPacedFrame,
 } from './performance.ts';
+
+test('frame elapsed time reaches simulation without losing slow-frame time', () => {
+  for (const elapsedMs of [16.7, 33.3, 64, 100]) {
+    const world = createInitialWorld('playing');
+    world.enemies = [];
+    for (let i = 0; i < 100; i++) {
+      stepWorld(world, createEmptyInput(), computeFrameSimulationDt(elapsedMs));
+    }
+    assert.ok(Math.abs(world.elapsedTime - elapsedMs / 10) < 1e-9);
+  }
+});
+
+test('simulation caps long stalls and ignores tab-resume zero or invalid intervals', () => {
+  const world = createInitialWorld('playing');
+  world.enemies = [];
+  stepWorld(world, createEmptyInput(), computeFrameSimulationDt(5000));
+  assert.ok(Math.abs(world.elapsedTime - 0.25) < 1e-9);
+  for (const elapsedMs of [0, -1, NaN, Infinity]) {
+    stepWorld(world, createEmptyInput(), computeFrameSimulationDt(elapsedMs));
+  }
+  assert.ok(Math.abs(world.elapsedTime - 0.25) < 1e-9);
+});
 
 test('getDefaultGraphicsSettings returns balanced preset defaults', () => {
   const defaults = getDefaultGraphicsSettings();
@@ -187,5 +211,28 @@ test('InputController persists and restores graphics & performance settings', ()
     } else {
       (globalThis as { window?: unknown }).window = originalWindow;
     }
+  }
+});
+
+test('touch move pulse covers its full duration on slow frames', () => {
+  const prevDoc = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = {
+    body: { dataset: { state: 'playing', runMode: 'campaign' } },
+    hidden: false,
+    pointerLockElement: null,
+  };
+  try {
+    for (const frameSec of [1 / 60, 0.05, 0.1]) {
+      const input = new InputController();
+      input.triggerTouchMovePulse(1, 0, 0.25);
+      let movedSec = 0;
+      for (let i = 0; i < 20; i++) {
+        if (input.consumeFrameInput(frameSec).moveX !== 0) movedSec += frameSec;
+      }
+      assert.ok(movedSec >= 0.25 - 1e-9, `pulse moved ${movedSec}s at ${frameSec}s frames`);
+      assert.ok(movedSec <= 0.25 + frameSec + 1e-9, `pulse overran: ${movedSec}s at ${frameSec}s frames`);
+    }
+  } finally {
+    (globalThis as { document?: unknown }).document = prevDoc;
   }
 });

@@ -70,6 +70,17 @@ const _lookAtTarget = new THREE.Vector3();
 const _dummyObj = new THREE.Object3D();
 const _color = new THREE.Color();
 const _projVec = new THREE.Vector3();
+const _auraInput = {
+  adrenalineScore: 0, riposteActive: false, chronoSlipActive: false,
+  kineticSurgeActive: false, isRecording: false, reducedMotion: false, timeSec: 0,
+};
+const _auraVisuals = computeChronoAuraVisuals(_auraInput);
+const _lockInput = {
+  active: false, isBoss: false, targetRadius: 0.7, isStaggered: false,
+  isTelegraphing: false, isResonanceMarked: false, coreExposed: false,
+  reducedMotion: false, timeSec: 0,
+};
+const _lockVisuals = computeLockOnGroundVisuals(_lockInput);
 
 interface FloatingCalloutSlot {
   active: boolean;
@@ -108,7 +119,7 @@ const MATERIAL_TEXTURE_SLOTS = [
   'lightMap',
 ] as const;
 
-function disposeMeshResources(root: THREE.Object3D): void {
+function disposeMeshResources(root: THREE.Object3D, borrowedTexture?: THREE.Texture): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
@@ -121,7 +132,7 @@ function disposeMeshResources(root: THREE.Object3D): void {
       const matRecord = material as unknown as Record<string, unknown>;
       for (let i = 0; i < MATERIAL_TEXTURE_SLOTS.length; i++) {
         const tex = matRecord[MATERIAL_TEXTURE_SLOTS[i]];
-        if (tex instanceof THREE.Texture) {
+        if (tex instanceof THREE.Texture && tex !== borrowedTexture) {
           textures.add(tex);
         }
       }
@@ -852,6 +863,7 @@ export class ArenaSceneRenderer {
     if (this.renderer && !this.isHeadless && !this.isSoftwareGl) {
       try {
         const composer = new EffectComposer(this.renderer);
+        this.composer = composer;
         composer.setPixelRatio(this.appliedPixelRatio);
         composer.setSize(width, height);
         composer.addPass(new RenderPass(this.scene, this.camera));
@@ -863,11 +875,9 @@ export class ArenaSceneRenderer {
         );
         composer.addPass(bloomPass);
         composer.addPass(new OutputPass());
-        this.composer = composer;
         this.bloomPass = bloomPass;
       } catch {
-        this.composer = null;
-        this.bloomPass = null;
+        this.disposePostprocessing();
       }
     }
     this.syncBloomState();
@@ -2408,7 +2418,7 @@ export class ArenaSceneRenderer {
       let rig = this.enemyRigs.get(enemy.id);
       if (rig && rig.archetype !== enemy.archetype) {
         this.scene.remove(rig.root);
-        disposeMeshResources(rig.root);
+        disposeMeshResources(rig.root, this.shadowTex);
         this.enemyRigs.delete(enemy.id);
         rig = undefined;
       }
@@ -2428,7 +2438,7 @@ export class ArenaSceneRenderer {
     for (const [id, rig] of this.enemyRigs.entries()) {
       if (!activeIds.has(id)) {
         this.scene.remove(rig.root);
-        disposeMeshResources(rig.root);
+        disposeMeshResources(rig.root, this.shadowTex);
         this.enemyRigs.delete(id);
         this.enemyGuardRecoilTimers?.delete(id);
       }
@@ -3363,21 +3373,20 @@ export class ArenaSceneRenderer {
         ? resolveActiveLockOnTarget(world, world.player.lockOnTargetId)
         : null;
     const lockedEnemy = target ? world.enemies?.find?.((e) => e.id === target.id) ?? null : null;
-    const lockVis = computeLockOnGroundVisuals({
-      active: Boolean(target),
-      isBoss: Boolean(target?.isBoss),
-      targetRadius: lockedEnemy?.radius ?? (target?.isBoss ? 1.45 : 0.7),
-      isStaggered: Boolean(target?.isStaggered),
-      isTelegraphing: lockedEnemy?.aiState === 'telegraph',
-      isResonanceMarked: Boolean(
+    _lockInput.active = Boolean(target);
+    _lockInput.isBoss = Boolean(target?.isBoss);
+    _lockInput.targetRadius = lockedEnemy?.radius ?? (target?.isBoss ? 1.45 : 0.7);
+    _lockInput.isStaggered = Boolean(target?.isStaggered);
+    _lockInput.isTelegraphing = lockedEnemy?.aiState === 'telegraph';
+    _lockInput.isResonanceMarked = Boolean(
         target &&
           world.resonance?.activeMark?.enemyId === target.id &&
           world.resonance.activeMark.remainingTime > 0
-      ),
-      coreExposed: Boolean(target?.isBoss && world.boss?.coreExposed),
-      reducedMotion: this.reducedMotion,
-      timeSec: world.elapsedTime,
-    });
+      );
+    _lockInput.coreExposed = Boolean(target?.isBoss && world.boss?.coreExposed);
+    _lockInput.reducedMotion = this.reducedMotion;
+    _lockInput.timeSec = world.elapsedTime;
+    const lockVis = computeLockOnGroundVisuals(_lockInput, _lockVisuals);
 
     if (this.lockOnGroundGroup) {
       if (lockVis.visible && target) {
@@ -4229,15 +4238,14 @@ export class ArenaSceneRenderer {
     this.smoothedSideAccel += (rawSideAccel - this.smoothedSideAccel) * Math.min(1, dt * 10);
 
     // Rotate Dorsal Chrono Rig harmonic rings & drive Adrenaline Overdrive ground halo
-    const auraSpec = computeChronoAuraVisuals({
-      adrenalineScore: p.adrenalineScore ?? 0,
-      riposteActive: (p.riposteTimer ?? 0) > 0,
-      chronoSlipActive: (p.chronoSlipTimer ?? 0) > 0,
-      kineticSurgeActive: (p.surgeTimer ?? 0) > 0,
-      isRecording: world.echo?.state === 'recording',
-      reducedMotion: this.reducedMotion,
-      timeSec: world.elapsedTime ?? 0,
-    });
+    _auraInput.adrenalineScore = p.adrenalineScore ?? 0;
+    _auraInput.riposteActive = (p.riposteTimer ?? 0) > 0;
+    _auraInput.chronoSlipActive = (p.chronoSlipTimer ?? 0) > 0;
+    _auraInput.kineticSurgeActive = (p.surgeTimer ?? 0) > 0;
+    _auraInput.isRecording = world.echo?.state === 'recording';
+    _auraInput.reducedMotion = this.reducedMotion;
+    _auraInput.timeSec = world.elapsedTime ?? 0;
+    const auraSpec = computeChronoAuraVisuals(_auraInput, _auraVisuals);
     this.playerRig.chronoRingMesh.rotation.z += dt * 0.92 * auraSpec.spinMultiplier;
     this.playerRig.chronoInnerRingMesh.rotation.z -= dt * 1.55 * auraSpec.spinMultiplier;
     if (this.playerRig.chronoAccentMaterial) {
@@ -6832,6 +6840,15 @@ export class ArenaSceneRenderer {
     this.bloomPass?.resolution.set(width, height);
   }
 
+  private disposePostprocessing(): void {
+    if (this.composer) {
+      for (const pass of this.composer.passes) pass.dispose();
+      this.composer.dispose();
+      this.composer = null;
+    }
+    this.bloomPass = null;
+  }
+
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -6849,7 +6866,7 @@ export class ArenaSceneRenderer {
       this.fallbackEl.remove?.();
       this.fallbackEl = null;
     }
-    disposeMeshResources(this.scene);
+    disposeMeshResources(this.scene, this.shadowTex);
     this.enemyRigs?.clear();
     this.enemyGuardRecoilTimers?.clear();
     this.shadowTex?.dispose?.();
@@ -6858,9 +6875,7 @@ export class ArenaSceneRenderer {
     this.dustMoteTex?.dispose?.();
     this.pmremEnvTarget?.dispose();
     this.pmremEnvTarget = null;
-    this.composer?.dispose();
-    this.composer = null;
-    this.bloomPass = null;
+    this.disposePostprocessing();
     this.renderer?.dispose();
   }
 }

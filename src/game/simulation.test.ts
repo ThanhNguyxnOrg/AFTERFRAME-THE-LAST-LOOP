@@ -2418,7 +2418,9 @@ test('Phase 4 Camera Orbit, WASD Movement, Touch Button Parity & Cleanup on Clea
 
   stepWorld(world, frameInput, 0.064);
   assert.equal(world.relay.activationCount, 1, 'Substepped frame must trigger Relay at most once');
-  assert.equal(world.player.flux, 80 - RELAY_FLUX_COST + Number((GAME_CONFIG.player.fluxRegenPerSec * 0.064).toFixed(6)) > 55 ? world.player.flux : 55);
+  const expectedFlux = 80 - RELAY_FLUX_COST + GAME_CONFIG.player.fluxRegenPerSec * 0.064;
+  assert.ok(Math.abs(world.player.flux - expectedFlux) < 1e-6,
+    `Relay Flux must equal ${expectedFlux}, got ${world.player.flux}`);
   assert.equal(world.player.vx, 0, 'Relay must clear stale horizontal velocity vx');
   assert.equal(world.player.vz, 0, 'Relay must clear stale horizontal velocity vz');
   assert.equal(input.aimYaw, customYaw, 'Relay must preserve camera aimYaw without snapping');

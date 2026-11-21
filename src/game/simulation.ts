@@ -7351,14 +7351,14 @@ export function loadCampaignProgressFromStorage(
   world: WorldState,
   storage?: Pick<Storage, 'getItem'> | null
 ): boolean {
-  const targetStorage =
-    storage !== undefined
-      ? storage
-      : typeof window !== 'undefined'
-        ? window.localStorage
-        : null;
-  if (!targetStorage) return false;
   try {
+    const targetStorage =
+      storage !== undefined
+        ? storage
+        : typeof window !== 'undefined'
+          ? window.localStorage
+          : null;
+    if (!targetStorage) return false;
     const raw = targetStorage.getItem(CAMPAIGN_STORAGE_KEY);
     return parseAndApplyCampaignProgress(world, raw);
   } catch {
@@ -7375,16 +7375,16 @@ export function saveCampaignProgressToStorage(
   if (serialized === previousJson) {
     return { written: false, json: serialized };
   }
-  const targetStorage =
-    storage !== undefined
-      ? storage
-      : typeof window !== 'undefined'
-        ? window.localStorage
-        : null;
-  if (!targetStorage) {
-    return { written: false, json: serialized };
-  }
   try {
+    const targetStorage =
+      storage !== undefined
+        ? storage
+        : typeof window !== 'undefined'
+          ? window.localStorage
+          : null;
+    if (!targetStorage) {
+      return { written: false, json: serialized };
+    }
     targetStorage.setItem(CAMPAIGN_STORAGE_KEY, serialized);
     return { written: true, json: serialized };
   } catch {
@@ -16433,5 +16433,3 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
     summary: world.frozenSummary,
   };
 }
-
-

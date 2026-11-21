@@ -450,6 +450,24 @@ test('9. Checkpoint retry after reload restores exact checkpoint Integrity, Flux
   assert.equal(reloaded.boss.hp, reloaded.boss.maxHp);
 });
 
+test('storage getter denial is handled without changing campaign progress', () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { get localStorage() { throw new Error('SecurityError'); } },
+  });
+  try {
+    const world = createInitialWorld('title');
+    const before = serializeCampaignProgress(world);
+    assert.equal(loadCampaignProgressFromStorage(world), false);
+    assert.deepEqual(saveCampaignProgressToStorage(world), { written: false, json: before });
+    assert.equal(serializeCampaignProgress(world), before);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'window', previous);
+    else delete (globalThis as { window?: unknown }).window;
+  }
+});
+
 test('10. Storage unavailable or throwing: loadCampaignProgressFromStorage and saveCampaignProgressToStorage never throw', () => {
   const world = createInitialWorld('title');
   const throwingStorage = {
@@ -1842,5 +1860,4 @@ test('Weapon Selection Regression: buffered weapon switch during dodge/attack/co
   assert.equal(equipBenchWeapon(world, 'chrono_edge'), true);
   assert.equal(world.player.equippedWeaponId, 'chrono_edge');
 });
-
 

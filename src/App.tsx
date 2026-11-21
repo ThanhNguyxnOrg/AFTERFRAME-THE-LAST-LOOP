@@ -18,6 +18,7 @@ import {
 } from './game/lock-on.ts';
 import {
   getDefaultGraphicsSettings,
+  computeFrameSimulationDt,
   shouldSkipRedundantStaticRender,
   shouldStepPacedFrame,
 } from './game/performance.ts';
@@ -1016,14 +1017,15 @@ export default function App() {
       const rawMs = now - lastTime;
       lastTime = now;
 
-      const dt = Math.min(Math.max(rawMs / 1000, 0.001), 0.05);
+      const simulationDt = Math.min(computeFrameSimulationDt(rawMs), 0.25);
+      const dt = Math.min(simulationDt, 0.05);
 
       const beforeEncounterMode = world.encounterMode;
       const beforeBossId = world.boss?.id ?? null;
       const beforeEncounterId = world.encounter.encounterId;
       const beforeWaveIndex = world.encounter.currentWaveIndex;
-      const frameInput = input.consumeFrameInput(dt);
-      stepWorld(world, frameInput, dt);
+      const frameInput = input.consumeFrameInput(simulationDt);
+      stepWorld(world, frameInput, simulationDt);
 
       // If the simulation transitioned between Calibration Bay ('standard') and a boss encounter,
       // synchronize the 3D enemy rigs and snap camera behind Sera facing the boss
