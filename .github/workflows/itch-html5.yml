@@ -48,7 +48,7 @@ jobs:
           fi
 
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -161,7 +161,7 @@ jobs:
         run: node scripts/itch-browser-smoke.mjs
 
       - name: Upload itch.io package
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: AFTERFRAME-THE-LAST-LOOP-itch-html5
           path: AFTERFRAME-THE-LAST-LOOP-itch-html5.zip
