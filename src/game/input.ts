@@ -1003,7 +1003,10 @@ export class InputController {
       moveX = 1;
     }
 
-    if (this.touchPulseTimer > 0) {
+    const pulseActive = this.touchPulseTimer > 0;
+    const pulseX = this.touchPulseX;
+    const pulseZ = this.touchPulseZ;
+    if (pulseActive) {
       this.touchPulseTimer = Math.max(0, this.touchPulseTimer - dt);
       if (this.touchPulseTimer <= 0) {
         this.touchPulseX = 0;
@@ -1014,9 +1017,9 @@ export class InputController {
     if (this.touchHoldX !== 0 || this.touchHoldZ !== 0) {
       moveX += this.touchHoldX;
       moveZ += this.touchHoldZ;
-    } else if (this.touchPulseTimer > 0) {
-      moveX += this.touchPulseX;
-      moveZ += this.touchPulseZ;
+    } else if (pulseActive) {
+      moveX += pulseX;
+      moveZ += pulseZ;
     }
 
     if (gpPlaying) {

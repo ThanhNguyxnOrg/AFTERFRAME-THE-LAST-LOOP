@@ -213,3 +213,26 @@ test('InputController persists and restores graphics & performance settings', ()
     }
   }
 });
+
+test('touch move pulse covers its full duration on slow frames', () => {
+  const prevDoc = (globalThis as { document?: unknown }).document;
+  (globalThis as { document?: unknown }).document = {
+    body: { dataset: { state: 'playing', runMode: 'campaign' } },
+    hidden: false,
+    pointerLockElement: null,
+  };
+  try {
+    for (const frameSec of [1 / 60, 0.05, 0.1]) {
+      const input = new InputController();
+      input.triggerTouchMovePulse(1, 0, 0.25);
+      let movedSec = 0;
+      for (let i = 0; i < 20; i++) {
+        if (input.consumeFrameInput(frameSec).moveX !== 0) movedSec += frameSec;
+      }
+      assert.ok(movedSec >= 0.25 - 1e-9, `pulse moved ${movedSec}s at ${frameSec}s frames`);
+      assert.ok(movedSec <= 0.25 + frameSec + 1e-9, `pulse overran: ${movedSec}s at ${frameSec}s frames`);
+    }
+  } finally {
+    (globalThis as { document?: unknown }).document = prevDoc;
+  }
+});
