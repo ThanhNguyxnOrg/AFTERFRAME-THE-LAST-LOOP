@@ -108,7 +108,7 @@ const MATERIAL_TEXTURE_SLOTS = [
   'lightMap',
 ] as const;
 
-function disposeMeshResources(root: THREE.Object3D): void {
+function disposeMeshResources(root: THREE.Object3D, borrowedTexture?: THREE.Texture): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
@@ -121,7 +121,7 @@ function disposeMeshResources(root: THREE.Object3D): void {
       const matRecord = material as unknown as Record<string, unknown>;
       for (let i = 0; i < MATERIAL_TEXTURE_SLOTS.length; i++) {
         const tex = matRecord[MATERIAL_TEXTURE_SLOTS[i]];
-        if (tex instanceof THREE.Texture) {
+        if (tex instanceof THREE.Texture && tex !== borrowedTexture) {
           textures.add(tex);
         }
       }
@@ -2407,7 +2407,7 @@ export class ArenaSceneRenderer {
       let rig = this.enemyRigs.get(enemy.id);
       if (rig && rig.archetype !== enemy.archetype) {
         this.scene.remove(rig.root);
-        disposeMeshResources(rig.root);
+        disposeMeshResources(rig.root, this.shadowTex);
         this.enemyRigs.delete(enemy.id);
         rig = undefined;
       }
@@ -2427,7 +2427,7 @@ export class ArenaSceneRenderer {
     for (const [id, rig] of this.enemyRigs.entries()) {
       if (!activeIds.has(id)) {
         this.scene.remove(rig.root);
-        disposeMeshResources(rig.root);
+        disposeMeshResources(rig.root, this.shadowTex);
         this.enemyRigs.delete(id);
         this.enemyGuardRecoilTimers?.delete(id);
       }
@@ -6857,7 +6857,7 @@ export class ArenaSceneRenderer {
       this.fallbackEl.remove?.();
       this.fallbackEl = null;
     }
-    disposeMeshResources(this.scene);
+    disposeMeshResources(this.scene, this.shadowTex);
     this.enemyRigs?.clear();
     this.enemyGuardRecoilTimers?.clear();
     this.shadowTex?.dispose?.();

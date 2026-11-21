@@ -73,6 +73,29 @@ test('partial postprocessing cleanup is safe before renderer teardown', (t) => {
   assert.equal(disposeComposer.mock.callCount(), 1);
 });
 
+test('enemy removal releases owned resources but preserves borrowed shadow until teardown', (t) => {
+  const { renderer } = rendererFixture(t);
+  const shadow = new THREE.Texture();
+  const owned = new THREE.Texture();
+  const geometry = new THREE.BoxGeometry();
+  const material = new THREE.MeshStandardMaterial({ map: shadow, bumpMap: owned });
+  const root = new THREE.Group();
+  root.add(new THREE.Mesh(geometry, material), new THREE.Mesh(geometry, material));
+  renderer.scene.add(root);
+  const disposals = [shadow, owned, geometry, material].map((resource) => t.mock.method(resource, 'dispose'));
+  Object.assign(renderer, { shadowTex: shadow, enemyRigs: new Map([['stale', { root }]]) });
+  const world = createInitialWorld();
+  world.enemies = [];
+  const reconciler = renderer as unknown as { reconcileEnemyRigs(world: WorldState): void };
+  reconciler.reconcileEnemyRigs(world);
+  reconciler.reconcileEnemyRigs(world);
+  assert.deepEqual(disposals.map((dispose) => dispose.mock.callCount()), [0, 1, 1, 1]);
+  renderer.scene.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial({ map: shadow })));
+  renderer.dispose();
+  renderer.dispose();
+  assert.deepEqual(disposals.map((dispose) => dispose.mock.callCount()), [1, 1, 1, 1]);
+});
+
 function sharedAsset(t: TestContext) {
   const scene = new THREE.Group();
   const nested = new THREE.Group();
