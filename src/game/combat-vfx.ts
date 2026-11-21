@@ -216,7 +216,8 @@ export interface ChronoAuraVisualState {
 }
 
 export function computeChronoAuraVisuals(
-  input: ChronoAuraVisualInput
+  input: ChronoAuraVisualInput,
+  out = {} as ChronoAuraVisualState
 ): ChronoAuraVisualState {
   const score = Number.isFinite(input.adrenalineScore)
     ? Math.max(0, Math.min(5.95, input.adrenalineScore))
@@ -244,34 +245,27 @@ export function computeChronoAuraVisuals(
         ? 0.35
         : 0;
 
-  const emissiveIntensity = Number(
-    (1.25 + tier * 0.24 + boost + wave * 0.12).toFixed(3)
-  );
-  const spinMultiplier = Number(
-    (1 + tier * 0.26 + (input.riposteActive || input.chronoSlipActive ? 1.45 : input.kineticSurgeActive ? 0.65 : 0)).toFixed(3)
-  );
+  const emissiveIntensity = Math.round((1.25 + tier * 0.24 + boost + wave * 0.12) * 1000) / 1000;
+  const spinMultiplier = Math.round((1 + tier * 0.26 + (input.riposteActive || input.chronoSlipActive ? 1.45 : input.kineticSurgeActive ? 0.65 : 0)) * 1000) / 1000;
 
   const baseAuraOpacity =
     tier > 0 || input.riposteActive || input.chronoSlipActive || input.kineticSurgeActive || input.isRecording
       ? Math.min(0.56, 0.12 + tier * 0.068 + boost * 0.2 + wave * 0.03)
       : 0;
-  const groundAuraOpacity = Math.max(0, Number(baseAuraOpacity.toFixed(3)));
-  const groundAuraScale = Number(
-    (0.84 + tier * 0.068 + boost * 0.12 + wave * 0.025).toFixed(3)
-  );
+  const groundAuraOpacity = Math.max(0, Math.round(baseAuraOpacity * 1000) / 1000);
+  const groundAuraScale = Math.round((0.84 + tier * 0.068 + boost * 0.12 + wave * 0.025) * 1000) / 1000;
   const echoShimmerOpacity = input.reducedMotion
     ? 0.48
-    : Number((0.46 + Math.sin(input.timeSec * 6.4) * 0.12).toFixed(3));
+    : Math.round((0.46 + Math.sin(input.timeSec * 6.4) * 0.12) * 1000) / 1000;
 
-  return {
-    tier,
-    ringHex,
-    emissiveIntensity,
-    spinMultiplier,
-    groundAuraOpacity,
-    groundAuraScale,
-    echoShimmerOpacity,
-  };
+  out.tier = tier;
+  out.ringHex = ringHex;
+  out.emissiveIntensity = emissiveIntensity;
+  out.spinMultiplier = spinMultiplier;
+  out.groundAuraOpacity = groundAuraOpacity;
+  out.groundAuraScale = groundAuraScale;
+  out.echoShimmerOpacity = echoShimmerOpacity;
+  return out;
 }
 
 export interface LockOnGroundVisualInput {
@@ -299,24 +293,24 @@ export interface LockOnGroundVisualState {
 }
 
 export function computeLockOnGroundVisuals(
-  input: LockOnGroundVisualInput
+  input: LockOnGroundVisualInput,
+  out = {} as LockOnGroundVisualState
 ): LockOnGroundVisualState {
   if (!input.active) {
-    return {
-      visible: false,
-      outerRadius: 1,
-      outerHex: 0x38bdf8,
-      innerHex: 0xbae6fd,
-      outerOpacity: 0,
-      innerOpacity: 0,
-      outerSpinRate: 0,
-      innerSpinRate: 0,
-      pulseScale: 1,
-    };
+    out.visible = false;
+    out.outerRadius = 1;
+    out.outerHex = 0x38bdf8;
+    out.innerHex = 0xbae6fd;
+    out.outerOpacity = 0;
+    out.innerOpacity = 0;
+    out.outerSpinRate = 0;
+    out.innerSpinRate = 0;
+    out.pulseScale = 1;
+    return out;
   }
 
   const radius = Number.isFinite(input.targetRadius) ? Math.max(0.45, input.targetRadius) : 0.7;
-  const outerRadius = Math.max(0.78, Number((radius * (input.isBoss ? 1.32 : 1.48)).toFixed(3)));
+  const outerRadius = Math.max(0.78, Math.round(radius * (input.isBoss ? 1.32 : 1.48) * 1000) / 1000);
 
   let outerHex = 0x38bdf8;
   let innerHex = 0xbae6fd;
@@ -351,19 +345,18 @@ export function computeLockOnGroundVisuals(
   const pulseFreq = input.isStaggered || input.isTelegraphing ? 7.5 : 4.0;
   const pulseScale = input.reducedMotion
     ? 1
-    : Number((1 + Math.sin(input.timeSec * pulseFreq) * 0.055).toFixed(3));
+    : Math.round((1 + Math.sin(input.timeSec * pulseFreq) * 0.055) * 1000) / 1000;
 
-  return {
-    visible: true,
-    outerRadius,
-    outerHex,
-    innerHex,
-    outerOpacity,
-    innerOpacity,
-    outerSpinRate: input.reducedMotion ? 0 : outerSpinRate,
-    innerSpinRate: input.reducedMotion ? 0 : innerSpinRate,
-    pulseScale,
-  };
+  out.visible = true;
+  out.outerRadius = outerRadius;
+  out.outerHex = outerHex;
+  out.innerHex = innerHex;
+  out.outerOpacity = outerOpacity;
+  out.innerOpacity = innerOpacity;
+  out.outerSpinRate = input.reducedMotion ? 0 : outerSpinRate;
+  out.innerSpinRate = input.reducedMotion ? 0 : innerSpinRate;
+  out.pulseScale = pulseScale;
+  return out;
 }
 
 export interface EchoTetherVisualInput {
@@ -424,5 +417,4 @@ export function computeEchoTetherVisuals(
       : Number((0.14 + Math.sin(input.timeSec * 8) * 0.04).toFixed(3)),
   };
 }
-
 

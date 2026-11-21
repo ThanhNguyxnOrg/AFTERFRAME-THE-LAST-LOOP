@@ -70,6 +70,17 @@ const _lookAtTarget = new THREE.Vector3();
 const _dummyObj = new THREE.Object3D();
 const _color = new THREE.Color();
 const _projVec = new THREE.Vector3();
+const _auraInput = {
+  adrenalineScore: 0, riposteActive: false, chronoSlipActive: false,
+  kineticSurgeActive: false, isRecording: false, reducedMotion: false, timeSec: 0,
+};
+const _auraVisuals = computeChronoAuraVisuals(_auraInput);
+const _lockInput = {
+  active: false, isBoss: false, targetRadius: 0.7, isStaggered: false,
+  isTelegraphing: false, isResonanceMarked: false, coreExposed: false,
+  reducedMotion: false, timeSec: 0,
+};
+const _lockVisuals = computeLockOnGroundVisuals(_lockInput);
 
 interface FloatingCalloutSlot {
   active: boolean;
@@ -3362,21 +3373,20 @@ export class ArenaSceneRenderer {
         ? resolveActiveLockOnTarget(world, world.player.lockOnTargetId)
         : null;
     const lockedEnemy = target ? world.enemies?.find?.((e) => e.id === target.id) ?? null : null;
-    const lockVis = computeLockOnGroundVisuals({
-      active: Boolean(target),
-      isBoss: Boolean(target?.isBoss),
-      targetRadius: lockedEnemy?.radius ?? (target?.isBoss ? 1.45 : 0.7),
-      isStaggered: Boolean(target?.isStaggered),
-      isTelegraphing: lockedEnemy?.aiState === 'telegraph',
-      isResonanceMarked: Boolean(
+    _lockInput.active = Boolean(target);
+    _lockInput.isBoss = Boolean(target?.isBoss);
+    _lockInput.targetRadius = lockedEnemy?.radius ?? (target?.isBoss ? 1.45 : 0.7);
+    _lockInput.isStaggered = Boolean(target?.isStaggered);
+    _lockInput.isTelegraphing = lockedEnemy?.aiState === 'telegraph';
+    _lockInput.isResonanceMarked = Boolean(
         target &&
           world.resonance?.activeMark?.enemyId === target.id &&
           world.resonance.activeMark.remainingTime > 0
-      ),
-      coreExposed: Boolean(target?.isBoss && world.boss?.coreExposed),
-      reducedMotion: this.reducedMotion,
-      timeSec: world.elapsedTime,
-    });
+      );
+    _lockInput.coreExposed = Boolean(target?.isBoss && world.boss?.coreExposed);
+    _lockInput.reducedMotion = this.reducedMotion;
+    _lockInput.timeSec = world.elapsedTime;
+    const lockVis = computeLockOnGroundVisuals(_lockInput, _lockVisuals);
 
     if (this.lockOnGroundGroup) {
       if (lockVis.visible && target) {
@@ -4228,15 +4238,14 @@ export class ArenaSceneRenderer {
     this.smoothedSideAccel += (rawSideAccel - this.smoothedSideAccel) * Math.min(1, dt * 10);
 
     // Rotate Dorsal Chrono Rig harmonic rings & drive Adrenaline Overdrive ground halo
-    const auraSpec = computeChronoAuraVisuals({
-      adrenalineScore: p.adrenalineScore ?? 0,
-      riposteActive: (p.riposteTimer ?? 0) > 0,
-      chronoSlipActive: (p.chronoSlipTimer ?? 0) > 0,
-      kineticSurgeActive: (p.surgeTimer ?? 0) > 0,
-      isRecording: world.echo?.state === 'recording',
-      reducedMotion: this.reducedMotion,
-      timeSec: world.elapsedTime ?? 0,
-    });
+    _auraInput.adrenalineScore = p.adrenalineScore ?? 0;
+    _auraInput.riposteActive = (p.riposteTimer ?? 0) > 0;
+    _auraInput.chronoSlipActive = (p.chronoSlipTimer ?? 0) > 0;
+    _auraInput.kineticSurgeActive = (p.surgeTimer ?? 0) > 0;
+    _auraInput.isRecording = world.echo?.state === 'recording';
+    _auraInput.reducedMotion = this.reducedMotion;
+    _auraInput.timeSec = world.elapsedTime ?? 0;
+    const auraSpec = computeChronoAuraVisuals(_auraInput, _auraVisuals);
     this.playerRig.chronoRingMesh.rotation.z += dt * 0.92 * auraSpec.spinMultiplier;
     this.playerRig.chronoInnerRingMesh.rotation.z -= dt * 1.55 * auraSpec.spinMultiplier;
     if (this.playerRig.chronoAccentMaterial) {
