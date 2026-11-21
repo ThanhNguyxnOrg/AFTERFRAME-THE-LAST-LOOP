@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InputController } from './input.ts';
+import { createEmptyInput, createInitialWorld, stepWorld } from './simulation.ts';
 import {
   GRAPHICS_PRESET_CONFIGS,
   clampRenderScale,
   computeEffectivePixelRatio,
+  computeFrameSimulationDt,
   detectMatchingGraphicsPreset,
   getDefaultGraphicsSettings,
   getParticleScaleFactor,
@@ -18,6 +20,28 @@ import {
   shouldSkipRedundantStaticRender,
   shouldStepPacedFrame,
 } from './performance.ts';
+
+test('frame elapsed time reaches simulation without losing slow-frame time', () => {
+  for (const elapsedMs of [16.7, 33.3, 64, 100]) {
+    const world = createInitialWorld('playing');
+    world.enemies = [];
+    for (let i = 0; i < 100; i++) {
+      stepWorld(world, createEmptyInput(), computeFrameSimulationDt(elapsedMs));
+    }
+    assert.ok(Math.abs(world.elapsedTime - elapsedMs / 10) < 1e-9);
+  }
+});
+
+test('simulation caps long stalls and ignores tab-resume zero or invalid intervals', () => {
+  const world = createInitialWorld('playing');
+  world.enemies = [];
+  stepWorld(world, createEmptyInput(), computeFrameSimulationDt(5000));
+  assert.ok(Math.abs(world.elapsedTime - 0.25) < 1e-9);
+  for (const elapsedMs of [0, -1, NaN, Infinity]) {
+    stepWorld(world, createEmptyInput(), computeFrameSimulationDt(elapsedMs));
+  }
+  assert.ok(Math.abs(world.elapsedTime - 0.25) < 1e-9);
+});
 
 test('getDefaultGraphicsSettings returns balanced preset defaults', () => {
   const defaults = getDefaultGraphicsSettings();

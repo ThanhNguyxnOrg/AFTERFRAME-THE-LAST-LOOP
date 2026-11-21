@@ -8,6 +8,10 @@ import type {
   ShadowQuality,
 } from './types.ts';
 
+export function computeFrameSimulationDt(elapsedMs: number): number {
+  return Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs / 1000) : 0;
+}
+
 export interface GraphicsProfileConfig {
   renderScale: number;
   shadowQuality: ShadowQuality;
