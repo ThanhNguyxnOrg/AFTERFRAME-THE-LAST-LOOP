@@ -1017,7 +1017,7 @@ export default function App() {
       const rawMs = now - lastTime;
       lastTime = now;
 
-      const simulationDt = computeFrameSimulationDt(rawMs);
+      const simulationDt = Math.min(computeFrameSimulationDt(rawMs), 0.25);
       const dt = Math.min(simulationDt, 0.05);
 
       const beforeEncounterMode = world.encounterMode;
