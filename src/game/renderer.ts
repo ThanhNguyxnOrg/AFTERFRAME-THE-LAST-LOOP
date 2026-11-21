@@ -852,6 +852,7 @@ export class ArenaSceneRenderer {
     if (this.renderer && !this.isHeadless && !this.isSoftwareGl) {
       try {
         const composer = new EffectComposer(this.renderer);
+        this.composer = composer;
         composer.setPixelRatio(this.appliedPixelRatio);
         composer.setSize(width, height);
         composer.addPass(new RenderPass(this.scene, this.camera));
@@ -863,11 +864,9 @@ export class ArenaSceneRenderer {
         );
         composer.addPass(bloomPass);
         composer.addPass(new OutputPass());
-        this.composer = composer;
         this.bloomPass = bloomPass;
       } catch {
-        this.composer = null;
-        this.bloomPass = null;
+        this.disposePostprocessing();
       }
     }
     this.syncBloomState();
@@ -6832,6 +6831,15 @@ export class ArenaSceneRenderer {
     this.bloomPass?.resolution.set(width, height);
   }
 
+  private disposePostprocessing(): void {
+    if (this.composer) {
+      for (const pass of this.composer.passes) pass.dispose();
+      this.composer.dispose();
+      this.composer = null;
+    }
+    this.bloomPass = null;
+  }
+
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -6858,9 +6866,7 @@ export class ArenaSceneRenderer {
     this.dustMoteTex?.dispose?.();
     this.pmremEnvTarget?.dispose();
     this.pmremEnvTarget = null;
-    this.composer?.dispose();
-    this.composer = null;
-    this.bloomPass = null;
+    this.disposePostprocessing();
     this.renderer?.dispose();
   }
 }

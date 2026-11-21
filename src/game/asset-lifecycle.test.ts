@@ -47,6 +47,32 @@ function rendererFixture(t: TestContext) {
   return { renderer, requests };
 }
 
+test('postprocessing cleanup disposes every added pass exactly once', (t) => {
+  const { renderer } = rendererFixture(t);
+  const passes = [t.mock.fn(), t.mock.fn(), t.mock.fn()];
+  const composerDispose = t.mock.fn();
+  Object.assign(renderer, {
+    composer: { passes: passes.map((dispose) => ({ dispose })), dispose: composerDispose },
+  });
+  renderer.dispose();
+  renderer.dispose();
+  assert.deepEqual(passes.map((dispose) => dispose.mock.callCount()), [1, 1, 1]);
+  assert.equal(composerDispose.mock.callCount(), 1);
+});
+
+test('partial postprocessing cleanup is safe before renderer teardown', (t) => {
+  const { renderer } = rendererFixture(t);
+  const disposePass = t.mock.fn();
+  const disposeComposer = t.mock.fn();
+  Object.assign(renderer, {
+    composer: { passes: [{ dispose: disposePass }], dispose: disposeComposer },
+  });
+  (renderer as unknown as { disposePostprocessing(): void }).disposePostprocessing();
+  renderer.dispose();
+  assert.equal(disposePass.mock.callCount(), 1);
+  assert.equal(disposeComposer.mock.callCount(), 1);
+});
+
 function sharedAsset(t: TestContext) {
   const scene = new THREE.Group();
   const nested = new THREE.Group();
