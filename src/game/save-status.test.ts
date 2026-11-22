@@ -150,3 +150,23 @@ test('a launch that read storage normally does not block later saves', () => {
   assert.equal(tracker.save(world), 'ok');
   assert.equal(writes.length, 1);
 });
+
+test('if storage rejects the chosen overwrite, Retry completes it without asking again', () => {
+  const { storage, writes } = createToggleableStorage();
+  storage.stored = '{"earlier":true}';
+  storage.readBlocked = true;
+  const tracker = new CampaignSaveTracker(storage);
+  const world = createInitialWorld('playing');
+  tracker.load(world);
+  startCampaignRun(world, true);
+  storage.readBlocked = false;
+  assert.equal(tracker.save(world), 'unread-save');
+
+  storage.blocked = true;
+  assert.equal(tracker.overwrite(world), 'failed');
+  assert.equal(tracker.retry(world), 'failed');
+  storage.blocked = false;
+  assert.equal(tracker.retry(world), 'ok');
+  assert.equal(writes.length, 1);
+  assert.notEqual(storage.stored, '{"earlier":true}');
+});

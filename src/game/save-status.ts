@@ -56,16 +56,20 @@ export class CampaignSaveTracker {
   }
 
   save(world: WorldState): CampaignSaveStatus {
-    return this.write(world, this.lastPersistedJson, false);
+    return this.write(world, this.lastPersistedJson);
   }
 
   retry(world: WorldState): CampaignSaveStatus {
-    return this.write(world, null, false);
+    return this.write(world, null);
   }
 
-  /** Writes this session over a save it never loaded; only on the player's explicit choice. */
+  /**
+   * The player chose to replace a save this session never loaded. The choice stands for the
+   * rest of the session, so if storage rejects this write, Retry and autosave finish it.
+   */
   overwrite(world: WorldState): CampaignSaveStatus {
-    return this.write(world, null, true);
+    this.storageUnreadAtLoad = false;
+    return this.write(world, null);
   }
 
   getLastPersistedJson(): string | null {
@@ -83,12 +87,8 @@ export class CampaignSaveTracker {
     };
   }
 
-  private write(
-    world: WorldState,
-    previousJson: string | null,
-    overwriteUnread: boolean
-  ): CampaignSaveStatus {
-    if (this.storageUnreadAtLoad && !overwriteUnread) {
+  private write(world: WorldState, previousJson: string | null): CampaignSaveStatus {
+    if (this.storageUnreadAtLoad) {
       let existing: string | null;
       try {
         existing = this.resolveStorage()?.getItem(CAMPAIGN_STORAGE_KEY) ?? null;
