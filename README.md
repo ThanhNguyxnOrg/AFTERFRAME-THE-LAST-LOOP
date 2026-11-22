@@ -333,6 +333,7 @@ Start with the [**Documentation Index (`docs/README.md`)**](docs/README.md) or j
 
 - **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, strict TDD workflow (`RED -> GREEN -> REFACTOR`), and pre-submission quality gates.
 - **Security Policy**: See [`SECURITY.md`](SECURITY.md) for our client-side security posture, Save V2 deserialization bounds (`MAX_SAVE_JSON_BYTES = 262,144`), and vulnerability reporting instructions.
+- **License**: The project's original source code is licensed under the [MIT License](LICENSE). Original game assets and creative content (including art, audio, and story) are excluded, even when embedded in source files. All rights to that content are reserved. Third-party materials retain their own licenses.
 - **Changelog**: See [`CHANGELOG.md`](CHANGELOG.md) for the milestone history from initial vertical slice through final release.
 
 ---
