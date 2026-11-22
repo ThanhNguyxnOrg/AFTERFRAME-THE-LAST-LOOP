@@ -1912,6 +1912,10 @@ export default function App() {
     cameraSettings,
   ]);
 
+  const saveWarningBanner = saveFailed ? (
+    <SaveWarningBanner retryFailed={saveRetryFailed} onRetry={handleRetrySave} />
+  ) : null;
+
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#07090d]">
       {/* Isolated WebGL Canvas Mount Container */}
@@ -1967,13 +1971,10 @@ export default function App() {
         FPS: -- · FRAME: --ms
       </div>
 
-      {saveFailed && (
-        <SaveWarningBanner retryFailed={saveRetryFailed} onRetry={handleRetrySave} />
-      )}
-
       {/* Title Screen Overlay */}
       {hud.appState === 'title' && (
         <TitleScreen
+          saveWarning={saveWarningBanner}
           onStartCampaign={handleStartCampaignFromTitle}
           onStartPracticeStandard={handleStartPracticeStandard}
           onStartBoss={handleStartBoss}
@@ -2018,6 +2019,7 @@ export default function App() {
       {hud.appState !== 'title' && (
         <GameHud
           hud={hud}
+          saveWarning={saveWarningBanner}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onTogglePause={handleTogglePause}

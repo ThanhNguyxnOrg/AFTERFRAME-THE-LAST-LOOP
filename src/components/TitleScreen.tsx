@@ -30,6 +30,7 @@ type ActiveTitleDrawer = 'none' | 'chapters' | 'practice' | 'archive' | 'control
 
 interface TitleScreenProps {
   onStartCampaign: () => void;
+  saveWarning?: React.ReactNode;
   onStartPracticeStandard?: (encounterId?: EncounterCompositionId) => void;
   onStartBoss?: (bossId?: BossEncounterId) => void;
   unlockedChapters?: CampaignChapterId[];
@@ -253,6 +254,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onEquipUpgrade,
   onPurchaseRigModule,
   onEquipRigModule,
+  saveWarning,
 }) => {
   const [activeDrawer, setActiveDrawer] = useState<ActiveTitleDrawer>('none');
   const [bundleDownloadStatus, setBundleDownloadStatus] = useState<'idle' | 'saved'>('idle');
@@ -329,6 +331,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           <span>{isMuted ? 'AUDIO MUTED [M]' : 'AUDIO ACTIVE [M]'}</span>
         </button>
       </header>
+      {saveWarning && <div className="self-end mt-2 shrink-0">{saveWarning}</div>}
 
       {/* Main Two-Column Composition */}
       <div className="my-auto py-4 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center w-full max-w-7xl mx-auto">

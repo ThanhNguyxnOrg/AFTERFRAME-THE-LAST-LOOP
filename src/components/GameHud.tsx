@@ -12,6 +12,7 @@ import type {
 
 interface GameHudProps {
   hud: HudSnapshot;
+  saveWarning?: React.ReactNode;
   isMuted: boolean;
   onToggleMute: () => void;
   onTogglePause: () => void;
@@ -175,6 +176,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
   onSelectLoomEnding,
   onRestoreCampaign,
   cameraSettings,
+  saveWarning,
   onTouchMoveHold,
   onTouchMovePulse,
   onTouchCameraStart,
@@ -1533,6 +1535,7 @@ export const GameHud: React.FC<GameHudProps> = React.memo(({
               </span>
             </div>
           )}
+          {saveWarning}
         </div>
       </div>
 
