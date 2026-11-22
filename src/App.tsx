@@ -24,7 +24,7 @@ import {
   shouldStepPacedFrame,
 } from './game/performance.ts';
 import { ArenaSceneRenderer } from './game/renderer.ts';
-import { CampaignSaveTracker } from './game/save-status.ts';
+import { CampaignSaveTracker, type CampaignSaveStatus } from './game/save-status.ts';
 import {
   advanceCampaignChapter,
   attemptEnvironmentalInteraction,
@@ -44,7 +44,6 @@ import {
   forceBossAttack,
   getWeaponUpgradeDefinition,
   grantProgressionReward,
-  loadCampaignProgressFromStorage,
   purchaseRigModule,
   purchaseWeaponUpgrade,
   resetWorldForPlaying,
@@ -116,11 +115,11 @@ function getInitialLaunchConfig(): {
   return { appState: 'title', bossMode: false, practiceMode: false };
 }
 
-function loadPersistedCampaignProgress(world: WorldState): void {
-  loadCampaignProgressFromStorage(world);
-}
-
 const campaignSaveTracker = new CampaignSaveTracker();
+
+function loadPersistedCampaignProgress(world: WorldState): void {
+  campaignSaveTracker.load(world);
+}
 
 function savePersistedCampaignProgress(world: WorldState): void {
   campaignSaveTracker.save(world);
@@ -170,16 +169,16 @@ export default function App() {
   const [hud, setHud] = useState<HudSnapshot>(() =>
     extractHudSnapshot(worldRef.current!)
   );
-  const [saveFailed, setSaveFailed] = useState<boolean>(
-    () => campaignSaveTracker.getStatus() === 'failed'
+  const [saveStatus, setSaveStatus] = useState<CampaignSaveStatus>(() =>
+    campaignSaveTracker.getStatus()
   );
   const [saveRetryFailed, setSaveRetryFailed] = useState<boolean>(false);
 
   useEffect(() => {
-    setSaveFailed(campaignSaveTracker.getStatus() === 'failed');
+    setSaveStatus(campaignSaveTracker.getStatus());
     return campaignSaveTracker.subscribe((status) => {
-      setSaveFailed(status === 'failed');
-      if (status === 'ok') setSaveRetryFailed(false);
+      setSaveStatus(status);
+      if (status !== 'failed') setSaveRetryFailed(false);
     });
   }, []);
 
@@ -187,6 +186,16 @@ export default function App() {
     const w = worldRef.current;
     if (!w) return;
     setSaveRetryFailed(campaignSaveTracker.retry(w) === 'failed');
+  }, []);
+
+  const handleOverwriteUnreadSave = useCallback(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    setSaveRetryFailed(campaignSaveTracker.overwrite(w) === 'failed');
+  }, []);
+
+  const handleReloadForUnreadSave = useCallback(() => {
+    window.location.reload();
   }, []);
 
   const [isMuted, setIsMuted] = useState<boolean>(() =>
@@ -1912,9 +1921,16 @@ export default function App() {
     cameraSettings,
   ]);
 
-  const saveWarningBanner = saveFailed ? (
-    <SaveWarningBanner retryFailed={saveRetryFailed} onRetry={handleRetrySave} />
-  ) : null;
+  const saveWarningBanner =
+    saveStatus !== 'ok' ? (
+      <SaveWarningBanner
+        status={saveStatus}
+        retryFailed={saveRetryFailed}
+        onRetry={handleRetrySave}
+        onOverwrite={handleOverwriteUnreadSave}
+        onReload={handleReloadForUnreadSave}
+      />
+    ) : null;
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#07090d]">

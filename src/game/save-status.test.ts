@@ -7,12 +7,22 @@ function createToggleableStorage() {
   const writes: string[] = [];
   const storage = {
     blocked: false,
+    readBlocked: false,
+    stored: null as string | null,
+    getItem(key: string): string | null {
+      if (storage.readBlocked) {
+        throw new DOMException('Access is denied for this document.', 'SecurityError');
+      }
+      assert.equal(key, CAMPAIGN_STORAGE_KEY);
+      return storage.stored;
+    },
     setItem(key: string, value: string): void {
       if (storage.blocked) {
         throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
       }
       assert.equal(key, CAMPAIGN_STORAGE_KEY);
       writes.push(value);
+      storage.stored = value;
     },
   };
   return { storage, writes };
@@ -75,4 +85,68 @@ test('a later failure after successful saves is still reported', () => {
   storage.blocked = true;
   world.progression.memoryFragments += 5;
   assert.equal(tracker.save(world), 'failed');
+});
+
+test('a save the game could not read at launch is never overwritten without the player choosing to', () => {
+  const { storage, writes } = createToggleableStorage();
+  const earlier = createInitialWorld('playing');
+  startCampaignRun(earlier, true);
+  earlier.progression.memoryFragments = 42;
+  new CampaignSaveTracker(storage).save(earlier);
+  const earlierSave = storage.stored;
+  writes.length = 0;
+
+  storage.readBlocked = true;
+  storage.blocked = true;
+  const tracker = new CampaignSaveTracker(storage);
+  const seen: string[] = [];
+  tracker.subscribe((status) => seen.push(status));
+  const world = createInitialWorld('playing');
+  assert.equal(tracker.load(world), false);
+  startCampaignRun(world, true);
+  assert.equal(tracker.save(world), 'failed');
+
+  // Storage becomes usable mid-session: neither autosave nor Retry may replace the unread save.
+  storage.readBlocked = false;
+  storage.blocked = false;
+  world.progression.memoryFragments += 1;
+  assert.equal(tracker.save(world), 'unread-save');
+  assert.equal(tracker.retry(world), 'unread-save');
+  assert.equal(writes.length, 0);
+  assert.equal(storage.stored, earlierSave);
+
+  // Only an explicit overwrite replaces it; later autosaves then proceed normally.
+  assert.equal(tracker.overwrite(world), 'ok');
+  assert.equal(writes.length, 1);
+  assert.notEqual(storage.stored, earlierSave);
+  world.progression.memoryFragments += 1;
+  assert.equal(tracker.save(world), 'ok');
+  assert.equal(writes.length, 2);
+  assert.deepEqual(seen, ['failed', 'unread-save', 'ok']);
+});
+
+test('after an unreadable launch, saving resumes once storage turns out to hold no earlier save', () => {
+  const { storage, writes } = createToggleableStorage();
+  storage.readBlocked = true;
+  storage.blocked = true;
+  const tracker = new CampaignSaveTracker(storage);
+  const world = createInitialWorld('playing');
+  tracker.load(world);
+  startCampaignRun(world, true);
+  assert.equal(tracker.save(world), 'failed');
+
+  storage.readBlocked = false;
+  storage.blocked = false;
+  assert.equal(tracker.retry(world), 'ok');
+  assert.equal(writes.length, 1);
+});
+
+test('a launch that read storage normally does not block later saves', () => {
+  const { storage, writes } = createToggleableStorage();
+  const tracker = new CampaignSaveTracker(storage);
+  const world = createInitialWorld('playing');
+  tracker.load(world);
+  startCampaignRun(world, true);
+  assert.equal(tracker.save(world), 'ok');
+  assert.equal(writes.length, 1);
 });
