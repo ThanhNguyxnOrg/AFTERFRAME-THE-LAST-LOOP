@@ -28,7 +28,6 @@ export function SaveWarningBanner({ retryFailed, onRetry }: SaveWarningBannerPro
       )}
       <button
         type="button"
-        tabIndex={-1}
         data-testid="save-warning-retry"
         onClick={(e) => {
           e.currentTarget.blur();
