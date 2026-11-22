@@ -460,7 +460,11 @@ test('storage getter denial is handled without changing campaign progress', () =
     const world = createInitialWorld('title');
     const before = serializeCampaignProgress(world);
     assert.equal(loadCampaignProgressFromStorage(world), false);
-    assert.deepEqual(saveCampaignProgressToStorage(world), { written: false, json: before });
+    assert.deepEqual(saveCampaignProgressToStorage(world), {
+      written: false,
+      failed: true,
+      json: before,
+    });
     assert.equal(serializeCampaignProgress(world), before);
   } finally {
     if (previous) Object.defineProperty(globalThis, 'window', previous);
@@ -487,11 +491,13 @@ test('10. Storage unavailable or throwing: loadCampaignProgressFromStorage and s
   assert.doesNotThrow(() => {
     const res = saveCampaignProgressToStorage(world, throwingStorage, null);
     assert.equal(res.written, false);
+    assert.equal(res.failed, true);
     assert.ok(res.json.length > 0);
   });
 
   assert.equal(loadCampaignProgressFromStorage(world, null), false);
   assert.equal(saveCampaignProgressToStorage(world, null, null).written, false);
+  assert.equal(saveCampaignProgressToStorage(world, null, null).failed, false);
 });
 
 test('11. No redundant writes when save state is unchanged across frames', () => {

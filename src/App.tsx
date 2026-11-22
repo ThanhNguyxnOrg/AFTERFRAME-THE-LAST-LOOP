@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameHud } from './components/GameHud.tsx';
+import { SaveWarningBanner } from './components/SaveWarningBanner.tsx';
 import { StatusModal } from './components/StatusModal.tsx';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { SoundEngine } from './game/audio.ts';
@@ -23,6 +24,7 @@ import {
   shouldStepPacedFrame,
 } from './game/performance.ts';
 import { ArenaSceneRenderer } from './game/renderer.ts';
+import { CampaignSaveTracker } from './game/save-status.ts';
 import {
   advanceCampaignChapter,
   attemptEnvironmentalInteraction,
@@ -49,7 +51,6 @@ import {
   resetWorldForStandardPlaying,
   restoreSavedCampaignProgress,
   retryBossFromCheckpoint,
-  saveCampaignProgressToStorage,
   selectChronicleLoomEnding,
   setTacticalWaypoint,
   shouldExposeTestHooks,
@@ -119,17 +120,10 @@ function loadPersistedCampaignProgress(world: WorldState): void {
   loadCampaignProgressFromStorage(world);
 }
 
-let lastPersistedCampaignJson: string | null = null;
+const campaignSaveTracker = new CampaignSaveTracker();
 
 function savePersistedCampaignProgress(world: WorldState): void {
-  const res = saveCampaignProgressToStorage(
-    world,
-    undefined,
-    lastPersistedCampaignJson
-  );
-  if (res.written) {
-    lastPersistedCampaignJson = res.json;
-  }
+  campaignSaveTracker.save(world);
 }
 
 export default function App() {
@@ -176,6 +170,25 @@ export default function App() {
   const [hud, setHud] = useState<HudSnapshot>(() =>
     extractHudSnapshot(worldRef.current!)
   );
+  const [saveFailed, setSaveFailed] = useState<boolean>(
+    () => campaignSaveTracker.getStatus() === 'failed'
+  );
+  const [saveRetryFailed, setSaveRetryFailed] = useState<boolean>(false);
+
+  useEffect(() => {
+    setSaveFailed(campaignSaveTracker.getStatus() === 'failed');
+    return campaignSaveTracker.subscribe((status) => {
+      setSaveFailed(status === 'failed');
+      if (status === 'ok') setSaveRetryFailed(false);
+    });
+  }, []);
+
+  const handleRetrySave = useCallback(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    setSaveRetryFailed(campaignSaveTracker.retry(w) === 'failed');
+  }, []);
+
   const [isMuted, setIsMuted] = useState<boolean>(() =>
     soundRef.current ? soundRef.current.isMuted() : false
   );
@@ -1696,7 +1709,7 @@ export default function App() {
       },
       saveCampaignProgress: () => {
         savePersistedCampaignProgress(world);
-        return lastPersistedCampaignJson;
+        return campaignSaveTracker.getLastPersistedJson();
       },
       loadCampaignProgress: () => {
         loadPersistedCampaignProgress(world);
@@ -1953,6 +1966,10 @@ export default function App() {
       >
         FPS: -- · FRAME: --ms
       </div>
+
+      {saveFailed && (
+        <SaveWarningBanner retryFailed={saveRetryFailed} onRetry={handleRetrySave} />
+      )}
 
       {/* Title Screen Overlay */}
       {hud.appState === 'title' && (

@@ -7366,14 +7366,21 @@ export function loadCampaignProgressFromStorage(
   }
 }
 
+export interface CampaignSaveResult {
+  written: boolean;
+  /** True when storage exists but rejected the write (quota exceeded, access blocked). */
+  failed: boolean;
+  json: string;
+}
+
 export function saveCampaignProgressToStorage(
   world: WorldState,
   storage?: Pick<Storage, 'setItem'> | null,
   previousJson: string | null = null
-): { written: boolean; json: string } {
+): CampaignSaveResult {
   const serialized = serializeCampaignProgress(world);
   if (serialized === previousJson) {
-    return { written: false, json: serialized };
+    return { written: false, failed: false, json: serialized };
   }
   try {
     const targetStorage =
@@ -7383,12 +7390,12 @@ export function saveCampaignProgressToStorage(
           ? window.localStorage
           : null;
     if (!targetStorage) {
-      return { written: false, json: serialized };
+      return { written: false, failed: false, json: serialized };
     }
     targetStorage.setItem(CAMPAIGN_STORAGE_KEY, serialized);
-    return { written: true, json: serialized };
+    return { written: true, failed: false, json: serialized };
   } catch {
-    return { written: false, json: serialized };
+    return { written: false, failed: true, json: serialized };
   }
 }
 
