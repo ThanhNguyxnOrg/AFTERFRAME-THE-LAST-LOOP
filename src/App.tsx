@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameHud } from './components/GameHud.tsx';
+import { SaveWarningBanner } from './components/SaveWarningBanner.tsx';
 import { StatusModal } from './components/StatusModal.tsx';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { SoundEngine } from './game/audio.ts';
@@ -23,6 +24,7 @@ import {
   shouldStepPacedFrame,
 } from './game/performance.ts';
 import { ArenaSceneRenderer } from './game/renderer.ts';
+import { CampaignSaveTracker, type CampaignSaveStatus } from './game/save-status.ts';
 import {
   advanceCampaignChapter,
   attemptEnvironmentalInteraction,
@@ -42,14 +44,12 @@ import {
   forceBossAttack,
   getWeaponUpgradeDefinition,
   grantProgressionReward,
-  loadCampaignProgressFromStorage,
   purchaseRigModule,
   purchaseWeaponUpgrade,
   resetWorldForPlaying,
   resetWorldForStandardPlaying,
   restoreSavedCampaignProgress,
   retryBossFromCheckpoint,
-  saveCampaignProgressToStorage,
   selectChronicleLoomEnding,
   setTacticalWaypoint,
   shouldExposeTestHooks,
@@ -115,21 +115,14 @@ function getInitialLaunchConfig(): {
   return { appState: 'title', bossMode: false, practiceMode: false };
 }
 
+const campaignSaveTracker = new CampaignSaveTracker();
+
 function loadPersistedCampaignProgress(world: WorldState): void {
-  loadCampaignProgressFromStorage(world);
+  campaignSaveTracker.load(world);
 }
 
-let lastPersistedCampaignJson: string | null = null;
-
 function savePersistedCampaignProgress(world: WorldState): void {
-  const res = saveCampaignProgressToStorage(
-    world,
-    undefined,
-    lastPersistedCampaignJson
-  );
-  if (res.written) {
-    lastPersistedCampaignJson = res.json;
-  }
+  campaignSaveTracker.save(world);
 }
 
 export default function App() {
@@ -176,6 +169,35 @@ export default function App() {
   const [hud, setHud] = useState<HudSnapshot>(() =>
     extractHudSnapshot(worldRef.current!)
   );
+  const [saveStatus, setSaveStatus] = useState<CampaignSaveStatus>(() =>
+    campaignSaveTracker.getStatus()
+  );
+  const [saveRetryFailed, setSaveRetryFailed] = useState<boolean>(false);
+
+  useEffect(() => {
+    setSaveStatus(campaignSaveTracker.getStatus());
+    return campaignSaveTracker.subscribe((status) => {
+      setSaveStatus(status);
+      if (status !== 'failed') setSaveRetryFailed(false);
+    });
+  }, []);
+
+  const handleRetrySave = useCallback(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    setSaveRetryFailed(campaignSaveTracker.retry(w) === 'failed');
+  }, []);
+
+  const handleOverwriteUnreadSave = useCallback(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    setSaveRetryFailed(campaignSaveTracker.overwrite(w) === 'failed');
+  }, []);
+
+  const handleReloadForUnreadSave = useCallback(() => {
+    window.location.reload();
+  }, []);
+
   const [isMuted, setIsMuted] = useState<boolean>(() =>
     soundRef.current ? soundRef.current.isMuted() : false
   );
@@ -1696,7 +1718,7 @@ export default function App() {
       },
       saveCampaignProgress: () => {
         savePersistedCampaignProgress(world);
-        return lastPersistedCampaignJson;
+        return campaignSaveTracker.getLastPersistedJson();
       },
       loadCampaignProgress: () => {
         loadPersistedCampaignProgress(world);
@@ -1899,6 +1921,17 @@ export default function App() {
     cameraSettings,
   ]);
 
+  const saveWarningBanner =
+    saveStatus !== 'ok' ? (
+      <SaveWarningBanner
+        status={saveStatus}
+        retryFailed={saveRetryFailed}
+        onRetry={handleRetrySave}
+        onOverwrite={handleOverwriteUnreadSave}
+        onReload={handleReloadForUnreadSave}
+      />
+    ) : null;
+
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#07090d]">
       {/* Isolated WebGL Canvas Mount Container */}
@@ -1957,6 +1990,7 @@ export default function App() {
       {/* Title Screen Overlay */}
       {hud.appState === 'title' && (
         <TitleScreen
+          saveWarning={saveWarningBanner}
           onStartCampaign={handleStartCampaignFromTitle}
           onStartPracticeStandard={handleStartPracticeStandard}
           onStartBoss={handleStartBoss}
@@ -2001,6 +2035,7 @@ export default function App() {
       {hud.appState !== 'title' && (
         <GameHud
           hud={hud}
+          saveWarning={saveWarningBanner}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onTogglePause={handleTogglePause}
