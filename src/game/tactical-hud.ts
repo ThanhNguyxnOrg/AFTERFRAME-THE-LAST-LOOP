@@ -1,9 +1,13 @@
 import type {
+  AppLocale,
   ArenaBoostPad,
   ArenaFluxPool,
+  ArenaFragmentCacheState,
+  ArenaTemporalRift,
   BossState,
   CombatEvent,
   EnemyState,
+  HoloMemoryId,
   HudRadarBlip,
   HudRadarBoostPad,
   HudRadarObstacle,
@@ -11,6 +15,7 @@ import type {
   ObstacleCollider,
   PlayerState,
   RadarBlipKind,
+  SectorTacticalBeaconState,
   TacticalWaypointState,
 } from './types.ts';
 
@@ -183,15 +188,17 @@ export function computePeripheralThreats(
 }
 
 export function formatCombatCallouts(
-  events: readonly CombatEvent[]
+  events: readonly CombatEvent[],
+  locale: AppLocale = 'en'
 ): CombatCalloutSpec[] {
+  const isVi = locale === 'vi';
   const out: CombatCalloutSpec[] = [];
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
     switch (ev.type) {
       case 'player_parry_success':
         out.push({
-          text: 'PARRY! +35F',
+          text: isVi ? 'ĐỠ ĐÒN! +35F' : 'PARRY! +35F',
           tone: 'parry',
           worldX: ev.x,
           worldY: 2.05,
@@ -203,7 +210,7 @@ export function formatCombatCallouts(
       case 'player_perfect_dodge': {
         const gain = typeof ev.amount === 'number' && ev.amount > 0 ? Math.round(ev.amount) : 18;
         out.push({
-          text: `CHRONO SLIP +${gain}F`,
+          text: isVi ? `LƯỚT PHA +${gain}F` : `CHRONO SLIP +${gain}F`,
           tone: 'slip',
           worldX: ev.x,
           worldY: 2.0,
@@ -216,7 +223,7 @@ export function formatCombatCallouts(
       case 'resonance_convergence': {
         const dmg = typeof ev.amount === 'number' && ev.amount > 0 ? ` ${Math.round(ev.amount)}` : '';
         out.push({
-          text: `CONVERGE!${dmg}`,
+          text: isVi ? `HỘI TỤ!${dmg}` : `CONVERGE!${dmg}`,
           tone: 'converge',
           worldX: ev.x,
           worldY: 2.25,
@@ -229,7 +236,7 @@ export function formatCombatCallouts(
       case 'enemy_staggered':
       case 'boss_staggered':
         out.push({
-          text: 'STAGGER!',
+          text: isVi ? 'PHÁ TƯ THẾ!' : 'STAGGER!',
           tone: 'stagger',
           worldX: ev.x,
           worldY: 2.2,
@@ -242,7 +249,13 @@ export function formatCombatCallouts(
         const dmg = typeof ev.amount === 'number' ? Math.round(ev.amount) : 0;
         if (ev.isGuarded) {
           out.push({
-            text: dmg > 0 ? `GUARD ${dmg}` : 'GUARDED',
+            text: isVi
+              ? dmg > 0
+                ? `ĐỠ KHIÊN ${dmg}`
+                : 'ĐỠ KHIÊN'
+              : dmg > 0
+                ? `GUARD ${dmg}`
+                : 'GUARDED',
             tone: 'blocked',
             worldX: ev.x,
             worldY: 1.85,
@@ -251,11 +264,16 @@ export function formatCombatCallouts(
             duration: 0.62,
           });
         } else if (dmg > 0) {
-          const prefix = ev.flowKind === 'riposte'
-            ? 'RIPOSTE '
-            : ev.flowKind === 'chrono_slip'
-              ? 'SLIP '
-              : '';
+          const prefix =
+            ev.flowKind === 'riposte'
+              ? isVi
+                ? 'PHẢN KÍCH '
+                : 'RIPOSTE '
+              : ev.flowKind === 'chrono_slip'
+                ? isVi
+                  ? 'LƯỚT '
+                  : 'SLIP '
+                : '';
           out.push({
             text: ev.isCriticalOrVulnerable ? `${prefix}${dmg}!` : `${prefix}${dmg}`,
             tone: ev.isCriticalOrVulnerable ? 'crit' : 'normal',
@@ -285,7 +303,7 @@ export function formatCombatCallouts(
       }
       case 'active_vent_success':
         out.push({
-          text: 'ACTIVE VENT! OVERCHARGED',
+          text: isVi ? 'XẢ NHIỆT CHUẨN! QUÁ TẢI' : 'ACTIVE VENT! OVERCHARGED',
           tone: 'parry',
           worldX: ev.x,
           worldY: 2.15,
@@ -296,7 +314,7 @@ export function formatCombatCallouts(
         break;
       case 'active_vent_missed':
         out.push({
-          text: 'VENT JAMMED',
+          text: isVi ? 'KẸT VAN NHIỆT' : 'VENT JAMMED',
           tone: 'hurt',
           worldX: ev.x,
           worldY: 2.0,
@@ -310,7 +328,14 @@ export function formatCombatCallouts(
         const delta = typeof ev.postureBonus === 'number' ? ev.postureBonus : 0;
         if (delta > 0 && tier >= 1) {
           out.push({
-            text: tier >= 5 ? 'OVERDRIVE LV 5!' : `SYNC LV ${tier}`,
+            text:
+              tier >= 5
+                ? isVi
+                  ? 'QUÁ TẢI CẤP 5!'
+                  : 'OVERDRIVE LV 5!'
+                : isVi
+                  ? `ĐỒNG BỘ CẤP ${tier}`
+                  : `SYNC LV ${tier}`,
             tone: tier >= 5 ? 'crit' : 'slip',
             worldX: ev.x,
             worldY: 2.25,
@@ -324,19 +349,70 @@ export function formatCombatCallouts(
       case 'chrono_execution_finisher': {
         const dmg = typeof ev.amount === 'number' && ev.amount > 0 ? ` ${Math.round(ev.amount)}` : '';
         out.push({
-          text: `CHRONO BREAK!${dmg}`,
+          text: isVi ? `KẾT LIỄU!${dmg}` : `CHRONO BREAK!${dmg}`,
           tone: 'crit',
           worldX: ev.x,
           worldY: 2.35,
           worldZ: ev.z,
           scale: 1.38,
-          duration: 0.95,
+          duration: 0.96,
         });
         break;
       }
+      case 'phase_stalker_blink':
+        out.push({
+          text: isVi ? 'DỊCH CHUYỂN PHA!' : 'PHASE BLINK!',
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 2.15,
+          worldZ: ev.z,
+          scale: 1.06,
+          duration: 0.72,
+        });
+        break;
+      case 'chrono_mortar_barrage_fired':
+        out.push({
+          text: isVi ? 'PHÁO CỐI ĐỊA CHẤN!' : 'MORTAR BARRAGE!',
+          tone: 'hurt',
+          worldX: ev.originX ?? ev.x,
+          worldY: 2.45,
+          worldZ: ev.originZ ?? ev.z,
+          scale: 1.12,
+          duration: 0.84,
+        });
+        break;
+      case 'conductor_tether_severed': {
+        const stag =
+          typeof ev.amount === 'number' && ev.amount > 0
+            ? isVi
+              ? ` +${Math.round(ev.amount)} CHOÁNG`
+              : ` +${Math.round(ev.amount)} STAG`
+            : '';
+        out.push({
+          text: isVi ? `ĐỨT DÂY CỘNG HƯỞNG!${stag}` : `TETHER SEVERED!${stag}`,
+          tone: 'stagger',
+          worldX: ev.x,
+          worldY: 2.3,
+          worldZ: ev.z,
+          scale: 1.22,
+          duration: 0.9,
+        });
+        break;
+      }
+      case 'volatile_core_detonated':
+        out.push({
+          text: isVi ? 'NỔ LÕI BẤT ỔN!' : 'VOLATILE BLAST!',
+          tone: 'hurt',
+          worldX: ev.x,
+          worldY: 2.25,
+          worldZ: ev.z,
+          scale: 1.24,
+          duration: 0.85,
+        });
+        break;
       case 'obstacle_destroyed':
         out.push({
-          text: 'OVERLOAD! +12F',
+          text: isVi ? 'QUÁ TẢI TỤ! +12F' : 'OVERLOAD! +12F',
           tone: 'crit',
           worldX: ev.x,
           worldY: 1.85,
@@ -347,7 +423,7 @@ export function formatCombatCallouts(
         break;
       case 'boost_pad_triggered':
         out.push({
-          text: 'SURGE +24% SPD · +8F',
+          text: isVi ? 'TĂNG TỐC +24% · +8F' : 'SURGE +24% SPD · +8F',
           tone: 'slip',
           worldX: ev.x,
           worldY: 1.9,
@@ -359,7 +435,7 @@ export function formatCombatCallouts(
       case 'temporal_thread_triggered': {
         const gain = typeof ev.amount === 'number' && ev.amount > 0 ? Math.round(ev.amount) : 14;
         out.push({
-          text: `THREAD! +${gain}F · SURGE`,
+          text: isVi ? `MẠCH THỜI GIAN! +${gain}F` : `THREAD! +${gain}F · SURGE`,
           tone: 'slip',
           worldX: ev.x,
           worldY: 2.05,
@@ -371,13 +447,326 @@ export function formatCombatCallouts(
       }
       case 'flux_pool_spawned':
         out.push({
-          text: 'FLUX POOL 7s',
+          text: isVi ? 'HỒ FLUX 7s' : 'FLUX POOL 7s',
           tone: 'converge',
           worldX: ev.x,
           worldY: 2.15,
           worldZ: ev.z,
           scale: 1.05,
           duration: 0.75,
+        });
+        break;
+      case 'fragment_cache_claimed':
+        out.push({
+          text: isVi ? '+1 MẢNH KÝ ỨC' : '+1 MEMORY FRAGMENT',
+          tone: 'parry',
+          worldX: ev.x,
+          worldY: 2.25,
+          worldZ: ev.z,
+          scale: 1.24,
+          duration: 0.92,
+        });
+        break;
+      case 'sector_beacon_activated':
+        out.push({
+          text: isVi ? 'KÍCH HOẠT TRỤ KHU VỰC!' : 'SECTOR BEACON SURGE!',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.3,
+          worldZ: ev.z,
+          scale: 1.26,
+          duration: 0.9,
+        });
+        break;
+      case 'weapon_upgrade_overclocked':
+        out.push({
+          text: isVi ? 'ÉP XUNG MK.II!' : 'MK.II OVERCLOCKED!',
+          tone: 'crit',
+          worldX: ev.x,
+          worldY: 2.25,
+          worldZ: ev.z,
+          scale: 1.25,
+          duration: 0.88,
+        });
+        break;
+      case 'weapon_mythic_awakened':
+        out.push({
+          text: isVi ? 'THỨC TỈNH MK.III THẦN THOẠI!' : 'MK.III MYTHIC AWAKENED!',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.35,
+          worldZ: ev.z,
+          scale: 1.34,
+          duration: 1.05,
+        });
+        break;
+      case 'rig_module_overclocked':
+        out.push({
+          text: isVi ? 'ÉP XUNG KHUNG GIÁP MK.II!' : 'RIG MK.II OVERCLOCKED!',
+          tone: 'crit',
+          worldX: ev.x,
+          worldY: 2.28,
+          worldZ: ev.z,
+          scale: 1.26,
+          duration: 0.9,
+        });
+        break;
+      case 'sentinel_mode_switched':
+        out.push({
+          text: isVi
+            ? ev.amount && ev.amount > 0
+              ? `LYS-04 BẬT · +${ev.amount} GIÁP`
+              : 'LYS-04 CHỜ'
+            : ev.amount && ev.amount > 0
+              ? `LYS-04 ACTIVE · +${ev.amount} WARD`
+              : 'LYS-04 STANDBY',
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 2.22,
+          worldZ: ev.z,
+          scale: 1.18,
+          duration: 0.78,
+        });
+        break;
+      case 'echo_doctrine_switched': {
+        const docIdx = typeof ev.amount === 'number' ? Math.round(ev.amount) : 0;
+        const label =
+          docIdx === 1
+            ? isVi
+              ? 'VỌNG ẢNH · TIÊN PHONG'
+              : 'DOCTRINE · VANGUARD'
+            : docIdx === 2
+              ? isVi
+                ? 'VỌNG ẢNH · PHÁO ĐÀI'
+                : 'DOCTRINE · BASTION'
+              : docIdx === 3
+                ? isVi
+                  ? 'VỌNG ẢNH · TÂN TINH'
+                  : 'DOCTRINE · NOVA'
+                : isVi
+                  ? 'VỌNG ẢNH · CHUẨN'
+                  : 'DOCTRINE · STANDARD';
+        out.push({
+          text: label,
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 2.24,
+          worldZ: ev.z,
+          scale: 1.18,
+          duration: 0.8,
+        });
+        break;
+      }
+      case 'echo_doctrine_nova_pulse': {
+        const dmg = typeof ev.amount === 'number' && ev.amount > 0 ? ` ${Math.round(ev.amount)}` : '';
+        out.push({
+          text: isVi ? `XUNG TÂN TINH!${dmg}` : `NOVA RIFT!${dmg}`,
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.28,
+          worldZ: ev.z,
+          scale: 1.24,
+          duration: 0.84,
+        });
+        break;
+      }
+      case 'sovereign_astral_pulse': {
+        const dmg = typeof ev.amount === 'number' && ev.amount > 0 ? ` ${Math.round(ev.amount)}` : '';
+        out.push({
+          text: isVi ? `XUNG TINH TÚ!${dmg}` : `ASTRAL PULSE!${dmg}`,
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.42,
+          worldZ: ev.z,
+          scale: 1.24,
+          duration: 0.86,
+        });
+        break;
+      }
+      case 'chrono_ward_absorbed':
+        out.push({
+          text: isVi ? `GIÁP -${ev.amount ?? 0}` : `WARD -${ev.amount ?? 0}`,
+          tone: 'parry',
+          worldX: ev.x,
+          worldY: 2.15,
+          worldZ: ev.z,
+          scale: 1.12,
+          duration: 0.65,
+        });
+        break;
+      case 'chrono_ward_shatter':
+        out.push({
+          text: isVi ? 'NỔ VỠ GIÁP CHRONO!' : 'WARD SHATTER PULSE!',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.3,
+          worldZ: ev.z,
+          scale: 1.3,
+          duration: 0.92,
+        });
+        break;
+      case 'phantom_afterimage_strike':
+        out.push({
+          text: isVi ? `DƯ ẢNH +${ev.amount ?? 0}` : `AFTERIMAGE +${ev.amount ?? 0}`,
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.25,
+          worldZ: ev.z,
+          scale: 1.16,
+          duration: 0.72,
+        });
+        break;
+      case 'boss_core_unlocked':
+        out.push({
+          text: isVi ? 'THU HỒI LÕI THỐNG LĨNH!' : 'BOSS CORE HARVESTED!',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.35,
+          worldZ: ev.z,
+          scale: 1.32,
+          duration: 1.0,
+        });
+        break;
+      case 'boss_core_equipped':
+        out.push({
+          text: isVi
+            ? ev.amount && ev.amount > 0
+              ? `LÕI THỐNG LĨNH · +${ev.amount} GIÁP`
+              : 'ĐÃ CẬP NHẬT LÕI BOSS'
+            : ev.amount && ev.amount > 0
+              ? `BOSS CORE · +${ev.amount} WARD`
+              : 'BOSS CORE UPDATED',
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 2.24,
+          worldZ: ev.z,
+          scale: 1.2,
+          duration: 0.85,
+        });
+        break;
+      case 'boss_core_pulse': {
+        const pulseAmt = typeof ev.amount === 'number' && ev.amount > 0 ? ` ${Math.round(ev.amount)}` : '';
+        out.push({
+          text: isVi ? `XUNG LÕI BOSS!${pulseAmt}` : `CORE RESONANCE!${pulseAmt}`,
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.28,
+          worldZ: ev.z,
+          scale: 1.24,
+          duration: 0.82,
+        });
+        break;
+      }
+      case 'boss_core_omega_awakened':
+        out.push({
+          text: isVi ? 'THỨC TỈNH LÕI OMEGA Ω!' : 'OMEGA CORE AWAKENED Ω!',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.38,
+          worldZ: ev.z,
+          scale: 1.32,
+          duration: 1.05,
+        });
+        break;
+      case 'confluence_burst_triggered': {
+        const burstAmt = typeof ev.amount === 'number' && ev.amount > 0 ? ` ${Math.round(ev.amount)}` : '';
+        out.push({
+          text: isVi ? `TUYỆT KỸ HỢP LƯU!${burstAmt}` : `CONFLUENCE BURST!${burstAmt}`,
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.42,
+          worldZ: ev.z,
+          scale: 1.34,
+          duration: 0.96,
+        });
+        break;
+      }
+      case 'neural_protocol_purchased':
+        out.push({
+          text: isVi ? 'ĐÃ CÀI GIAO THỨC' : 'PROTOCOL INSTALLED',
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 2.2,
+          worldZ: ev.z,
+          scale: 1.2,
+          duration: 0.85,
+        });
+        break;
+      case 'story_choice_resolved':
+        out.push({
+          text: isVi ? 'KHÓA LẬP TRƯỜNG · +1 MẢNH' : 'CHRONICLE STANCE LOCKED · +1 FRAG',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.35,
+          worldZ: ev.z,
+          scale: 1.22,
+          duration: 0.95,
+        });
+        break;
+      case 'holo_memory_projected':
+        out.push({
+          text: isVi ? 'KÝ ỨC LYSA ĐỒNG BỘ!' : 'LYSA HOLO-MEMORY SYNCED!',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.4,
+          worldZ: ev.z,
+          scale: 1.28,
+          duration: 1.0,
+        });
+        break;
+      case 'temporal_rift_spawned':
+        out.push({
+          text: isVi ? 'PHÁT HIỆN KHE NỨT!' : 'TEMPORAL RIFT DETECTED!',
+          tone: 'converge',
+          worldX: ev.x,
+          worldY: 2.35,
+          worldZ: ev.z,
+          scale: 1.26,
+          duration: 0.95,
+        });
+        break;
+      case 'temporal_rift_sealed':
+        out.push({
+          text: isVi ? 'PHONG ẤN KHE NỨT! +28F' : 'RIFT SEALED! +28F · SURGE',
+          tone: 'parry',
+          worldX: ev.x,
+          worldY: 2.3,
+          worldZ: ev.z,
+          scale: 1.28,
+          duration: 0.92,
+        });
+        break;
+      case 'temporal_rift_ruptured':
+        out.push({
+          text: isVi ? 'KHE NỨT PHÁT NỔ!' : 'RIFT RUPTURED!',
+          tone: 'hurt',
+          worldX: ev.x,
+          worldY: 2.25,
+          worldZ: ev.z,
+          scale: 1.22,
+          duration: 0.9,
+        });
+        break;
+      case 'recursion_loop_cleared':
+        out.push({
+          text: isVi ? 'VƯỢT VÒNG LẶP · CHỌN DI VẬT' : 'LOOP CLEARED · SELECT RELIC',
+          tone: 'slip',
+          worldX: ev.x,
+          worldY: 2.4,
+          worldZ: ev.z,
+          scale: 1.32,
+          duration: 1.0,
+        });
+        break;
+      case 'recursion_relic_picked':
+        out.push({
+          text: isVi ? 'ĐÃ LẮP DI VẬT CHRONO' : 'CHRONO RELIC INSTALLED',
+          tone: 'crit',
+          worldX: ev.x,
+          worldY: 2.25,
+          worldZ: ev.z,
+          scale: 1.22,
+          duration: 0.88,
         });
         break;
     }
@@ -452,7 +841,17 @@ export function computeTacticalRadarSnapshot(
   >[] = [],
   boostPads: readonly Pick<ArenaBoostPad, 'id' | 'x' | 'z' | 'cooldown'>[] = [],
   fluxPools: readonly Pick<ArenaFluxPool, 'id' | 'x' | 'z' | 'radius' | 'remainingTime' | 'maxDuration'>[] = [],
-  waypoint: TacticalWaypointState | null = null
+  waypoint: TacticalWaypointState | null = null,
+  fragmentCaches: readonly Pick<ArenaFragmentCacheState, 'id' | 'label' | 'x' | 'z' | 'claimed'>[] = [],
+  sectorBeacons: readonly Pick<SectorTacticalBeaconState, 'id' | 'label' | 'x' | 'z' | 'cooldown'>[] = [],
+  temporalRift: ArenaTemporalRift | null = null,
+  holoProjector: {
+    id: HoloMemoryId;
+    label: string;
+    x: number;
+    z: number;
+    discovered: boolean;
+  } | null = null
 ): HudRadarSnapshot {
   const safeRadius = Number.isFinite(arenaRadius) && arenaRadius > 1 ? arenaRadius : 22;
   const blips: HudRadarBlip[] = [];
@@ -554,6 +953,22 @@ export function computeTacticalRadarSnapshot(
       ),
     }));
 
+  const radarFragmentCaches = fragmentCaches.map((fc) => ({
+    id: fc.id,
+    label: fc.label,
+    x: clampToArena(fc.x, safeRadius),
+    z: clampToArena(fc.z, safeRadius),
+    claimed: Boolean(fc.claimed),
+  }));
+
+  const radarSectorBeacons = sectorBeacons.map((sb) => ({
+    id: sb.id,
+    label: sb.label,
+    x: clampToArena(sb.x, safeRadius),
+    z: clampToArena(sb.z, safeRadius),
+    ready: sb.cooldown <= 0,
+  }));
+
   const echoActive = Boolean(echo && echo.state === 'playback' && echo.activeActor);
   return {
     arenaRadius: safeRadius,
@@ -570,7 +985,26 @@ export function computeTacticalRadarSnapshot(
     obstacles: radarObstacles,
     boostPads: radarBoostPads,
     fluxPools: radarFluxPools,
+    fragmentCaches: radarFragmentCaches,
+    sectorBeacons: radarSectorBeacons,
     waypoint: waypoint ? { ...waypoint } : null,
+    temporalRift:
+      temporalRift
+        ? {
+            ...temporalRift,
+            x: clampToArena(temporalRift.x, safeRadius),
+            z: clampToArena(temporalRift.z, safeRadius),
+          }
+        : null,
+    holoProjector: holoProjector
+      ? {
+          id: holoProjector.id,
+          label: holoProjector.label,
+          x: clampToArena(holoProjector.x, safeRadius),
+          z: clampToArena(holoProjector.z, safeRadius),
+          discovered: Boolean(holoProjector.discovered),
+        }
+      : null,
   };
 }
 

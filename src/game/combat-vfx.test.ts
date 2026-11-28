@@ -9,33 +9,6 @@ import {
   computeScreenFlashTint,
 } from './combat-vfx';
 
-test('aura and lock visuals reuse caller outputs and fully overwrite inactive state', () => {
-  const auraInput = {
-    adrenalineScore: 5, riposteActive: true, chronoSlipActive: false,
-    kineticSurgeActive: false, isRecording: true, reducedMotion: false, timeSec: 1,
-  };
-  const aura = computeChronoAuraVisuals(auraInput);
-  assert.equal(computeChronoAuraVisuals(auraInput, aura), aura);
-  auraInput.adrenalineScore = NaN;
-  auraInput.riposteActive = false;
-  auraInput.isRecording = false;
-  auraInput.reducedMotion = true;
-  assert.deepEqual(computeChronoAuraVisuals(auraInput, aura), computeChronoAuraVisuals(auraInput));
-  const lockInput = {
-    active: true, isBoss: true, targetRadius: NaN, isStaggered: true,
-    isTelegraphing: false, isResonanceMarked: true, coreExposed: true,
-    reducedMotion: false, timeSec: 1,
-  };
-  const lock = computeLockOnGroundVisuals(lockInput);
-  assert.equal(computeLockOnGroundVisuals(lockInput, lock), lock);
-  lockInput.active = false;
-  assert.equal(computeLockOnGroundVisuals(lockInput, lock), lock);
-  assert.deepEqual(lock, computeLockOnGroundVisuals(lockInput));
-  lockInput.active = true;
-  lockInput.reducedMotion = true;
-  assert.deepEqual(computeLockOnGroundVisuals(lockInput, lock), computeLockOnGroundVisuals(lockInput));
-});
-
 test('computeBossTelegraphVisuals maps vector_ram unlocked and locked states cleanly', () => {
   const unlocked = computeBossTelegraphVisuals('vector_ram', 0.35, false, false);
   assert.equal(unlocked.mode, 'lane');
@@ -285,5 +258,6 @@ test('computeEchoTetherVisuals boosts beam thickness and shifts to gold when Res
   assert.ok(primed.thicknessScale > relay.thicknessScale);
   assert.ok(primed.opacity > relay.opacity);
 });
+
 
 

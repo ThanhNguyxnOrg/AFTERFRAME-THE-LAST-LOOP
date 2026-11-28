@@ -4,6 +4,7 @@ import type {
   ChronicleLoomEndingId,
   CombatEvent,
   GameAppState,
+  StyleRankTier,
 } from './types.ts';
 
 const MUTE_STORAGE_KEY = 'afterframe_audio_muted_v1';
@@ -16,6 +17,7 @@ export interface AmbientMixState {
   bossCoreExposed: boolean;
   adrenalineTier: number;
   selectedEnding: ChronicleLoomEndingId | null;
+  styleRankTier?: StyleRankTier;
 }
 
 export interface AmbientPulseVoice {
@@ -52,8 +54,10 @@ export function computeAmbientPulseVoice(
 
   const baseRoot = CHAPTER_BASE_ROOTS[state.chapter] ?? 73.42;
   const adrTier = Math.max(0, Math.min(5, Math.floor(state.adrenalineTier || 0)));
-  const highTension = state.bossActive || adrTier >= 3;
-  const phaseTwo = state.bossActive && state.bossPhase >= 2;
+  const isStyleHigh = state.styleRankTier === 'S' || state.styleRankTier === 'SSS';
+  const isStylePeak = state.styleRankTier === 'SSS';
+  const highTension = state.bossActive || adrTier >= 3 || isStyleHigh;
+  const phaseTwo = (state.bossActive && state.bossPhase >= 2) || isStylePeak;
   const step = Math.abs(Math.floor(stepIndex));
 
   const intervalSec =
@@ -69,13 +73,14 @@ export function computeAmbientPulseVoice(
 
   const ratios = highTension ? COMBAT_RATIOS : CALM_RATIOS;
   const ratio = ratios[step % ratios.length];
-  const octaveBoost = state.selectedEnding === 'witness' ? 2 : state.bossCoreExposed ? 1.5 : 1;
+  const octaveBoost = state.selectedEnding === 'witness' ? 2 : state.bossCoreExposed || isStylePeak ? 1.5 : 1;
 
   const bassFreq = Number((baseRoot * (phaseTwo && step % 4 === 2 ? 1.122 : 1)).toFixed(2));
   const padFreq = Number((baseRoot * 2 * ratio * (state.selectedEnding === 'continuity' ? 1.25 : 1)).toFixed(2));
   const shouldShimmer =
     state.bossCoreExposed ||
     state.selectedEnding === 'witness' ||
+    isStyleHigh ||
     (adrTier >= 2 && step % 2 === 1) ||
     step % 4 === 0;
   const shimmerFreq = shouldShimmer
@@ -90,7 +95,7 @@ export function computeAmbientPulseVoice(
     shimmerFreq,
     bassGain: phaseTwo ? 0.052 : highTension ? 0.044 : 0.032,
     padGain: state.selectedEnding === 'witness' ? 0.032 : highTension ? 0.026 : 0.02,
-    shimmerGain: state.bossCoreExposed ? 0.024 : 0.014,
+    shimmerGain: state.bossCoreExposed || isStylePeak ? 0.024 : 0.014,
     waveform: phaseTwo ? 'triangle' : 'sine',
   };
 }
@@ -210,6 +215,57 @@ export class SoundEngine {
       enemyId === 'matron-v' ||
       enemyId === 'warden-prime'
     );
+  }
+
+  public isDisposed(): boolean {
+    return this.disposed;
+  }
+
+  public resurrect(): void {
+    this.disposed = false;
+  }
+
+  public unlock(): boolean {
+    if (this.disposed) {
+      this.disposed = false;
+    }
+    if (this.muted || typeof window === 'undefined') return false;
+    try {
+      if (!this.ctx) {
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          this.ctx = new AudioCtx();
+        }
+      }
+      if (!this.ctx) return false;
+      this.getOutputNode(this.ctx, 'sfx');
+      if (this.ctx.state === 'suspended') {
+        void this.ctx.resume().catch(() => {});
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public getDiagnostics(): {
+    disposed: boolean;
+    muted: boolean;
+    contextState: string;
+    masterVolume: number;
+    musicVolume: number;
+    sfxVolume: number;
+  } {
+    return {
+      disposed: this.disposed,
+      muted: this.muted,
+      contextState: this.ctx ? this.ctx.state : 'uninitialized',
+      masterVolume: this.masterVolume,
+      musicVolume: this.musicVolume,
+      sfxVolume: this.sfxVolume,
+    };
   }
 
   private ensureContext(bus: 'sfx' | 'music' = 'sfx'): AudioContext | null {
@@ -526,8 +582,764 @@ export class SoundEngine {
         case 'temporal_thread_triggered':
           this.playTemporalThreadTriggered();
           break;
+        case 'fragment_cache_claimed':
+          this.playProgressionReward();
+          break;
+        case 'sector_beacon_activated':
+          this.playSectorBeaconActivated();
+          break;
+        case 'weapon_upgrade_overclocked':
+          this.playWeaponUpgradeChime(true);
+          break;
+        case 'weapon_mythic_awakened':
+          this.playWeaponUpgradeChime(true);
+          this.playStoryChoiceResolved();
+          break;
+        case 'rig_module_overclocked':
+          this.playWeaponUpgradeChime(true);
+          break;
+        case 'sentinel_mode_switched':
+          this.playTemporalThreadTriggered();
+          break;
+        case 'chrono_ward_absorbed':
+          this.playParryDeflect();
+          break;
+        case 'chrono_ward_shatter':
+          this.playTemporalRiftSealed();
+          break;
+        case 'phantom_afterimage_strike':
+          this.playEchoSwing(true);
+          break;
+        case 'boss_core_unlocked':
+          this.playWeaponUpgradeChime(true);
+          this.playTemporalRiftSealed();
+          break;
+        case 'boss_core_equipped':
+          this.playWeaponUpgradeChime(false);
+          this.playTemporalThreadTriggered();
+          break;
+        case 'boss_core_pulse':
+          this.playTemporalThreadTriggered();
+          this.playEchoSwing(true);
+          break;
+        case 'boss_core_omega_awakened':
+          this.playBossCoreOmegaAwakened();
+          break;
+        case 'confluence_burst_triggered':
+          this.playConfluenceBurstTriggered();
+          break;
+        case 'neural_protocol_purchased':
+          this.playTemporalThreadTriggered();
+          break;
+        case 'story_choice_resolved':
+          this.playStoryChoiceResolved();
+          break;
+        case 'holo_memory_projected':
+          this.playHoloMemoryProjected();
+          break;
+        case 'temporal_rift_spawned':
+          this.playTemporalRiftSpawned();
+          break;
+        case 'temporal_rift_sealed':
+          this.playTemporalRiftSealed();
+          break;
+        case 'temporal_rift_ruptured':
+          this.playTemporalRiftRuptured();
+          break;
+        case 'recursion_loop_cleared':
+          this.playRecursionLoopCleared();
+          break;
+        case 'recursion_relic_picked':
+          this.playRecursionRelicPicked();
+          break;
+        case 'phase_stalker_blink':
+          this.playPhaseStalkerBlink();
+          break;
+        case 'chrono_mortar_barrage_fired':
+          this.playChronoMortarFired();
+          break;
+        case 'chrono_mortar_detonated':
+          this.playChronoMortarDetonated();
+          break;
+        case 'conductor_tether_severed':
+          this.playConductorTetherSevered();
+          break;
+        case 'volatile_core_detonated':
+          this.playVolatileCoreDetonated();
+          break;
+        case 'chrono_overdrive_activated':
+          this.playChronoOverdriveActivated();
+          break;
+        case 'chrono_overdrive_ended':
+          this.playChronoOverdriveEnded();
+          break;
+        case 'gauntlet_stage_cleared':
+          this.playGauntletStageCleared();
+          break;
+        case 'gauntlet_victory':
+          this.playGauntletVictory();
+          break;
+        case 'expedition_breach_triggered':
+          this.playExpeditionBreach();
+          break;
+        case 'expedition_airlock_unlocked':
+          this.playExpeditionAirlockOpen();
+          break;
+        case 'expedition_sector_transit':
+          this.playExpeditionTransit();
+          break;
+        case 'safe_room_entered':
+          this.playExpeditionTransit();
+          break;
+        case 'safe_room_med_used':
+          this.playActiveVentSuccess();
+          break;
+        case 'safe_room_lysa_briefing':
+          this.playProgressionReward();
+          break;
+        case 'secret_vault_unlocked':
+          this.playExpeditionAirlockOpen();
+          break;
+        case 'secret_vault_looted':
+          this.playProgressionReward();
+          break;
+        case 'ng_plus_started':
+          this.playGauntletVictory();
+          break;
+        case 'nanite_injector_used':
+          this.playActiveVentSuccess();
+          break;
+        case 'aegis_shield_absorbed':
+          this.playParryDeflect();
+          break;
+        case 'combat_drone_fired':
+          this.playPulsecasterShot(false);
+          break;
+        case 'combat_drone_shield_triggered':
+          this.playSectorBeaconActivated();
+          break;
+        case 'fabricator_purchased':
+        case 'skin_equipped':
+          this.playWeaponUpgradeChime(true);
+          break;
+        case 'boss_killcam_triggered':
+          this.playChronoOverdriveActivated();
+          break;
+        case 'paradox_rift_entered':
+          this.playTemporalRiftSpawned();
+          break;
+        case 'echo_zero_defeated':
+          this.playGauntletVictory();
+          break;
+        case 'achievement_unlocked':
+          this.playProgressionReward();
+          break;
+        case 'player_scythe_swing':
+          this.playLightSwing();
+          break;
+        case 'scythe_vortex_pull':
+          this.playTemporalRiftSpawned();
+          break;
+        case 'mod_volt_arc_chain':
+          this.playPulsecasterShot(false);
+          break;
+        case 'mod_siphon_leech_heal':
+          this.playActiveVentSuccess();
+          break;
+        case 'mod_chrono_nova_burst':
+          this.playExpeditionBreach();
+          break;
+        case 'style_rank_up':
+          this.playWeaponUpgradeChime(true);
+          break;
+        case 'chrono_finisher_triggered':
+          this.playChronoOverdriveActivated();
+          this.playExpeditionBreach();
+          break;
+        case 'daily_trial_started':
+          this.playSectorBeaconActivated();
+          break;
+        case 'daily_trial_completed':
+          this.playGauntletVictory();
+          break;
+        case 'flash_swap_triggered':
+          this.playWeaponUpgradeChime(true);
+          this.playActiveVentSuccess();
+          break;
+        case 'chrono_chain_milestone':
+          this.playProgressionReward();
+          break;
+        case 'weapon_overcharge_ready':
+          this.playChronoOverdriveActivated();
+          this.playWeaponUpgradeChime(true);
+          break;
+        case 'twin_sync_tier_up':
+          this.playProgressionReward();
+          break;
+        case 'twin_sync_pincer':
+          this.playActiveVentSuccess();
+          break;
+        case 'weakpoint_break_triggered':
+          this.playActiveVentSuccess();
+          this.playWeaponUpgradeChime(true);
+          break;
+        case 'chrono_momentum_tier_up':
+          this.playProgressionReward();
+          break;
+        case 'chrono_nexus_linked':
+          this.playChronoOverdriveActivated();
+          this.playProgressionReward();
+          break;
+        case 'chrono_nexus_pulse':
+          this.playActiveVentSuccess();
+          break;
+        case 'weapon_swap_resonance':
+          this.playWeaponUpgradeChime(true);
+          this.playActiveVentSuccess();
+          break;
+        case 'echo_doctrine_switched':
+          this.playTemporalThreadTriggered();
+          break;
+        case 'echo_doctrine_nova_pulse':
+          this.playTemporalRiftSealed();
+          this.playEchoSwing(true);
+          break;
+        case 'temporal_slip_triggered':
+          this.playTemporalSlipTriggered();
+          break;
+        case 'sovereign_astral_pulse':
+          this.playSovereignAstralPulse();
+          break;
+        case 'mastery_bounty_claimed':
+          this.playMasteryBountyClaimed();
+          break;
       }
     }
+  }
+
+  public playSovereignAstralPulse(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const harmonicChord = [523.25, 783.99, 1174.66];
+    for (let i = 0; i < harmonicChord.length; i += 1) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = i === 0 ? 'triangle' : 'sine';
+      const startAt = now + i * 0.022;
+      osc.frequency.setValueAtTime(harmonicChord[i], startAt);
+      osc.frequency.exponentialRampToValueAtTime(harmonicChord[i] * 1.12, startAt + 0.32);
+      gain.gain.setValueAtTime(0.001, startAt);
+      gain.gain.linearRampToValueAtTime(0.11 - i * 0.02, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.36);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(startAt);
+      osc.stop(startAt + 0.38);
+    }
+  }
+
+  public playTemporalSlipTriggered(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+
+    // Sub-sine time-dilation pitch drop (180Hz -> 54Hz)
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(180, now);
+    subOsc.frequency.exponentialRampToValueAtTime(54, now + 0.34);
+    subGain.gain.setValueAtTime(0.001, now);
+    subGain.gain.linearRampToValueAtTime(0.24, now + 0.018);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    subOsc.connect(subGain);
+    subGain.connect(this.sfxGain);
+    subOsc.start(now);
+    subOsc.stop(now + 0.4);
+
+    // Crystalline horological shimmer fifths (987.77Hz B5 -> 1479.98Hz F#6)
+    const chimeNotes = [987.77, 1479.98];
+    for (let i = 0; i < chimeNotes.length; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const startAt = now + i * 0.045;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(chimeNotes[i], startAt);
+      gain.gain.setValueAtTime(0.001, startAt);
+      gain.gain.linearRampToValueAtTime(0.11, startAt + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.28);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(startAt);
+      osc.stop(startAt + 0.3);
+    }
+  }
+
+  public playMasteryBountyClaimed(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const triad = [587.33, 739.99, 880, 1174.66]; // D5 - F#5 - A5 - D6 sovereign triad
+    for (let i = 0; i < triad.length; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t0 = now + i * 0.055;
+      osc.type = i === triad.length - 1 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(triad[i], t0);
+      gain.gain.setValueAtTime(0.001, t0);
+      gain.gain.linearRampToValueAtTime(0.14, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.34);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(t0);
+      osc.stop(t0 + 0.36);
+    }
+  }
+
+  public playCameraShutter(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1600, now);
+    osc.frequency.exponentialRampToValueAtTime(420, now + 0.06);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.14, now + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(g);
+    g.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.09);
+  }
+
+  private playExpeditionBreach(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const sub = ctx.createOscillator();
+    const g = ctx.createGain();
+    sub.type = 'sawtooth';
+    sub.frequency.setValueAtTime(190, now);
+    sub.frequency.exponentialRampToValueAtTime(48, now + 0.38);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.22, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+    sub.connect(g);
+    g.connect(this.sfxGain);
+    sub.start(now);
+    sub.stop(now + 0.44);
+
+    const chime = ctx.createOscillator();
+    const cg = ctx.createGain();
+    chime.type = 'triangle';
+    chime.frequency.setValueAtTime(523.25, now + 0.03);
+    chime.frequency.exponentialRampToValueAtTime(783.99, now + 0.22);
+    cg.gain.setValueAtTime(0.001, now + 0.03);
+    cg.gain.linearRampToValueAtTime(0.11, now + 0.05);
+    cg.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    chime.connect(cg);
+    cg.connect(this.sfxGain);
+    chime.start(now + 0.03);
+    chime.stop(now + 0.3);
+  }
+
+  private playExpeditionAirlockOpen(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const chord = [392.0, 523.25, 659.25, 783.99, 1046.5];
+    for (let i = 0; i < chord.length; i++) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      const t0 = now + i * 0.055;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(chord[i], t0);
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.11, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.42);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t0);
+      osc.stop(t0 + 0.44);
+    }
+  }
+
+  private playExpeditionTransit(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const sweep = ctx.createOscillator();
+    const g = ctx.createGain();
+    sweep.type = 'sine';
+    sweep.frequency.setValueAtTime(210, now);
+    sweep.frequency.exponentialRampToValueAtTime(920, now + 0.34);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.15, now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    sweep.connect(g);
+    g.connect(this.sfxGain);
+    sweep.start(now);
+    sweep.stop(now + 0.42);
+  }
+
+  private playChronoOverdriveActivated(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    // Deep sub-bass time-dilation warp drop
+    const bass = ctx.createOscillator();
+    const bassGain = ctx.createGain();
+    bass.type = 'sawtooth';
+    bass.frequency.setValueAtTime(155, now);
+    bass.frequency.exponentialRampToValueAtTime(38, now + 0.48);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.setValueAtTime(420, now);
+    lpf.frequency.exponentialRampToValueAtTime(95, now + 0.48);
+    bassGain.gain.setValueAtTime(0.001, now);
+    bassGain.gain.linearRampToValueAtTime(0.24, now + 0.03);
+    bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.56);
+    bass.connect(lpf);
+    lpf.connect(bassGain);
+    bassGain.connect(this.sfxGain);
+    bass.start(now);
+    bass.stop(now + 0.58);
+
+    // Crystalline astrolabe shimmer chord (D5, A5, E6)
+    const freqs = [587.33, 880, 1318.51];
+    for (let i = 0; i < freqs.length; i++) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t0 = now + i * 0.045;
+      osc.frequency.setValueAtTime(freqs[i], t0);
+      osc.frequency.exponentialRampToValueAtTime(freqs[i] * 0.96, t0 + 0.45);
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.09, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t0);
+      osc.stop(t0 + 0.52);
+    }
+  }
+
+  private playChronoOverdriveEnded(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(70, now);
+    osc.frequency.exponentialRampToValueAtTime(240, now + 0.24);
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.14, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(g);
+    g.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  private playGauntletStageCleared(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const notes = [392.0, 493.88, 587.33, 783.99];
+    for (let i = 0; i < notes.length; i++) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      const t0 = now + i * 0.075;
+      osc.frequency.setValueAtTime(notes[i], t0);
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.11, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t0);
+      osc.stop(t0 + 0.38);
+    }
+  }
+
+  private playGauntletVictory(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxGain) return;
+    const now = ctx.currentTime;
+    const notes = [293.66, 440.0, 587.33, 739.99, 880.0];
+    for (let i = 0; i < notes.length; i++) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = i % 2 === 0 ? 'triangle' : 'sine';
+      const t0 = now + i * 0.095;
+      osc.frequency.setValueAtTime(notes[i], t0);
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.13, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.62);
+      osc.connect(g);
+      g.connect(this.sfxGain);
+      osc.start(t0);
+      osc.stop(t0 + 0.65);
+    }
+  }
+
+  private playPhaseStalkerBlink(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(this.pitchJitter(880), now);
+    osc.frequency.exponentialRampToValueAtTime(220, now + 0.14);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.13, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    osc.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+
+  private playChronoMortarFired(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(this.pitchJitter(160), now);
+    osc.frequency.exponentialRampToValueAtTime(62, now + 0.24);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+    osc.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc.stop(now + 0.28);
+  }
+
+  private playChronoMortarDetonated(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(this.pitchJitter(130), now);
+    osc.frequency.exponentialRampToValueAtTime(34, now + 0.34);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.24, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+    osc.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc.stop(now + 0.38);
+  }
+
+  private playConductorTetherSevered(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [680, 960];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = now + idx * 0.04;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, start);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.35, start + 0.14);
+      gain.gain.setValueAtTime(0.12, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.16);
+      osc.connect(gain);
+      gain.connect(this.getOutputNode(ctx));
+      osc.start(start);
+      osc.stop(start + 0.17);
+    });
+  }
+
+  private playVolatileCoreDetonated(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const hi = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    hi.type = 'square';
+    osc.frequency.setValueAtTime(190, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.4);
+    hi.frequency.setValueAtTime(620, now);
+    hi.frequency.exponentialRampToValueAtTime(120, now + 0.25);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.24, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+    osc.connect(gain);
+    hi.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    hi.start(now);
+    osc.stop(now + 0.44);
+    hi.stop(now + 0.27);
+  }
+
+  private playTemporalRiftSpawned(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const sub = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    sub.type = 'sine';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(760, now + 0.24);
+    sub.frequency.setValueAtTime(110, now);
+    sub.frequency.exponentialRampToValueAtTime(64, now + 0.28);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+    osc.connect(gain);
+    sub.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    sub.start(now);
+    osc.stop(now + 0.34);
+    sub.stop(now + 0.34);
+  }
+
+  private playTemporalRiftSealed(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 1046.5];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = now + idx * 0.04;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(0.14, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
+      osc.connect(gain);
+      gain.connect(this.getOutputNode(ctx));
+      osc.start(start);
+      osc.stop(start + 0.26);
+    });
+  }
+
+  private playTemporalRiftRuptured(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(48, now + 0.38);
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    osc.stop(now + 0.42);
+  }
+
+  private playRecursionLoopCleared(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const chord = [392.0, 493.88, 587.33, 783.99];
+    chord.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = now + idx * 0.05;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(0.13, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.34);
+      osc.connect(gain);
+      gain.connect(this.getOutputNode(ctx));
+      osc.start(start);
+      osc.stop(start + 0.36);
+    });
+  }
+
+  private playRecursionRelicPicked(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const harm = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    harm.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, now);
+    osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.18);
+    harm.frequency.setValueAtTime(880, now + 0.03);
+    harm.frequency.exponentialRampToValueAtTime(1760, now + 0.22);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.connect(gain);
+    harm.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    osc.start(now);
+    harm.start(now + 0.03);
+    osc.stop(now + 0.26);
+    harm.stop(now + 0.26);
+  }
+
+  private playSectorBeaconActivated(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const base = ctx.createOscillator();
+    const harmonic = ctx.createOscillator();
+    const gain = ctx.createGain();
+    base.type = 'sawtooth';
+    harmonic.type = 'sine';
+    base.frequency.setValueAtTime(190, now);
+    base.frequency.exponentialRampToValueAtTime(620, now + 0.28);
+    harmonic.frequency.setValueAtTime(520, now + 0.03);
+    harmonic.frequency.exponentialRampToValueAtTime(1240, now + 0.34);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    base.connect(gain);
+    harmonic.connect(gain);
+    gain.connect(this.getOutputNode(ctx));
+    base.start(now);
+    harmonic.start(now + 0.03);
+    base.stop(now + 0.4);
+    harmonic.stop(now + 0.4);
+  }
+
+  private playStoryChoiceResolved(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const chord = [440, 554.37, 659.25, 880];
+    chord.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = now + idx * 0.045;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(0.12, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
+      osc.connect(gain);
+      gain.connect(this.getOutputNode(ctx));
+      osc.start(start);
+      osc.stop(start + 0.3);
+    });
   }
 
   private playCapacitorOverloadExplosion(): void {
@@ -1986,6 +2798,122 @@ export class SoundEngine {
       }
     } catch {
       // Never block gameplay if Web Audio scheduling fails
+    }
+  }
+
+  private playBossCoreOmegaAwakened(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || this.muted || !this.sfxGain) return;
+    try {
+      const now = ctx.currentTime;
+      const notes = [330, 495, 660, 990];
+      for (let i = 0; i < notes.length; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = i === notes.length - 1 ? 'sine' : 'triangle';
+        const start = now + i * 0.045;
+        osc.frequency.setValueAtTime(notes[i], start);
+        osc.frequency.exponentialRampToValueAtTime(notes[i] * 1.03, start + 0.45);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.14 - i * 0.02, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.52);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.onended = () => {
+          osc.disconnect();
+          gain.disconnect();
+        };
+        osc.start(start);
+        osc.stop(start + 0.54);
+      }
+    } catch {
+      // Ignore Web Audio errors
+    }
+  }
+
+  private playConfluenceBurstTriggered(): void {
+    const ctx = this.ensureContext();
+    if (!ctx || this.muted || !this.sfxGain) return;
+    try {
+      const now = ctx.currentTime;
+      // Sub-bass shockwave drop
+      const subOsc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      subOsc.type = 'sawtooth';
+      subOsc.frequency.setValueAtTime(150, now);
+      subOsc.frequency.exponentialRampToValueAtTime(46, now + 0.36);
+      subGain.gain.setValueAtTime(0.0001, now);
+      subGain.gain.linearRampToValueAtTime(0.18, now + 0.012);
+      subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+      subOsc.connect(subGain);
+      subGain.connect(this.sfxGain);
+      subOsc.onended = () => {
+        subOsc.disconnect();
+        subGain.disconnect();
+      };
+      subOsc.start(now);
+      subOsc.stop(now + 0.44);
+
+      // Crystalline harmonic triad
+      const chord = [528, 792, 1056];
+      for (let i = 0; i < chord.length; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = i === 0 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(chord[i], now);
+        osc.frequency.exponentialRampToValueAtTime(chord[i] * 1.06, now + 0.42);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(0.11, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.onended = () => {
+          osc.disconnect();
+          gain.disconnect();
+        };
+        osc.start(now);
+        osc.stop(now + 0.5);
+      }
+    } catch {
+      // Ignore Web Audio errors
+    }
+  }
+
+  private playHoloMemoryProjected(): void {
+    const ctx = this.ctx;
+    const dest = this.sfxGain;
+    if (!ctx || !dest || this.muted || this.disposed) return;
+    try {
+      const now = ctx.currentTime;
+      // Crystalline choral harmonic arpeggio (C#5 - F5 - G#5 - C#6)
+      const notes = [554.37, 698.46, 830.61, 1108.73];
+      for (let i = 0; i < notes.length; i++) {
+        const start = now + i * 0.065;
+        const osc = ctx.createOscillator();
+        const shimmer = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        shimmer.type = 'triangle';
+        osc.frequency.setValueAtTime(notes[i], start);
+        shimmer.frequency.setValueAtTime(notes[i] * 2.0, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.085, start + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.0008, start + 0.52);
+        osc.connect(gain);
+        shimmer.connect(gain);
+        gain.connect(dest);
+        osc.onended = () => {
+          osc.disconnect();
+          shimmer.disconnect();
+          gain.disconnect();
+        };
+        osc.start(start);
+        shimmer.start(start);
+        osc.stop(start + 0.54);
+        shimmer.stop(start + 0.54);
+      }
+    } catch {
+      // Ignore Web Audio errors
     }
   }
 

@@ -4,8 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GameHud } from './components/GameHud.tsx';
-import { SaveWarningBanner } from './components/SaveWarningBanner.tsx';
+import { GameHud, type ProjectedDamagePopup } from './components/GameHud.tsx';
 import { StatusModal } from './components/StatusModal.tsx';
 import { TitleScreen } from './components/TitleScreen.tsx';
 import { SoundEngine } from './game/audio.ts';
@@ -18,39 +17,90 @@ import {
   resolveActiveLockOnTarget,
 } from './game/lock-on.ts';
 import {
+  createAdaptiveFrameGovernor,
   getDefaultGraphicsSettings,
-  computeFrameSimulationDt,
   shouldSkipRedundantStaticRender,
   shouldStepPacedFrame,
+  stepAdaptiveFrameGovernor,
 } from './game/performance.ts';
 import { ArenaSceneRenderer } from './game/renderer.ts';
-import { CampaignSaveTracker, type CampaignSaveStatus } from './game/save-status.ts';
+import { meshyAssetRegistry } from './game/meshy-assets.ts';
 import {
+  createInitialPhotoModeState,
+  computeStyleRankTier,
+  generateDailyTrialConfig,
+  getDailyTrialRecord,
+  getPhotoFilterCss,
+} from './game/ascension-expansion.ts';
+import {
+  MASTERY_TARGETS,
+  computeMasterySealModifiers,
+  recordCombatMasteryVictory,
+  tryTriggerTemporalSlip,
+} from './game/combat-mastery.ts';
+import {
+  createHudSyncTracker,
+  evaluateHudSyncTick,
+} from './game/hud-sync.ts';
+import { loadSavedLocale, saveLocale } from './game/i18n.ts';
+import {
+  activateSectorBeacon,
   advanceCampaignChapter,
+  applySovereignAstralPulse,
+  attemptActivateChronoOverdrive,
   attemptEnvironmentalInteraction,
+  awakenWeaponUpgrade,
+  claimAllMasteryBountiesInWorld,
+  claimFragmentCache,
+  claimMasteryBountyInWorld,
+  claimSafeRoomLysaBriefing,
+  claimSecretEchoVault,
   clearTacticalWaypoint,
   completeMissionObjective,
   createBossWorld,
   createInitialWorld,
+  cycleEchoDoctrine,
+  cycleSentinelProtocol,
   discoverCodexEntry,
   discoverSecretArea,
+  dismissActiveHoloMemory,
   dismissActiveTransmission,
   engageWardenPrimeInLoom,
+  ensureAscensionState,
   equipBenchWeapon,
   equipRigModule,
+  equipSeraRigSkin,
   equipWeaponUpgrade,
   evaluateInteractionTarget,
   extractHudSnapshot,
+  enterExpeditionTransitAirlock,
   forceBossAttack,
   getWeaponUpgradeDefinition,
+  grantOverdriveCharge,
   grantProgressionReward,
+  loadCampaignProgressFromStorage,
+  overclockRigModule,
+  overclockWeaponUpgrade,
+  purchaseAndEquipWeaponModChip,
+  purchaseFabricatorItem,
+  purchaseNeuralProtocol,
   purchaseRigModule,
   purchaseWeaponUpgrade,
+  projectChapterHoloMemory,
+  pushDamagePopup,
   resetWorldForPlaying,
   resetWorldForStandardPlaying,
+  resolveStoryArcChoice,
   restoreSavedCampaignProgress,
   retryBossFromCheckpoint,
+  saveCampaignProgressToStorage,
+  sealTemporalRift,
   selectChronicleLoomEnding,
+  selectRecursionRelic,
+  setDifficultyTier,
+  setEchoDoctrine,
+  setOverdriveDifficulty,
+  setSentinelProtocol,
   setTacticalWaypoint,
   shouldExposeTestHooks,
   skipBossIntroBanner,
@@ -58,37 +108,77 @@ import {
   skipContainmentTransition,
   startAuthoredEncounter,
   startBossEncounter,
+  startBossGauntletRun,
   startCampaignChapterSelect,
   startCampaignRun,
+  startDailyChronoTrialRun,
+  startEchoZeroParadoxEncounter,
+  startExpeditionJourneyRun,
+  startNewGamePlusRun,
   startPracticeStandardRun,
+  startRecursionProtocol,
   stepWorld,
   switchPlayerWeapon,
+  toggleChronoMutator,
+  toggleSpeedrunHud,
   toggleTutorialHints,
   transitionCampaignToBoss,
+  triggerChronoFinisher,
+  triggerExpeditionBreach,
   triggerNarrativeEvent,
+  unlockBossEchoCore,
+  equipBossEchoCore,
+  transcendBossEchoCore,
+  saveLoadoutPreset,
+  applyLoadoutPreset,
+  grantConfluenceCharge,
+  triggerConfluenceBurst,
+  unlockChronoAchievement,
+  unlockChronoScythe,
+  useMedNaniteInjector,
+  useSafeRoomMedBay,
 } from './game/simulation.ts';
 import type {
+  AppLocale,
   BossAttackType,
+  BossEchoCoreId,
   BossEncounterId,
   CameraSettings,
   CampaignChapterId,
   ChronicleLoomEndingId,
+  ChronoAchievementId,
+  ChronoMutatorState,
+  ChronoRelicId,
   CodexEntryId,
+  DamageNumberKind,
+  EchoDoctrineId,
   EncounterCompositionId,
+  FabricatorItemId,
   FpsLimitOption,
+  FragmentCacheId,
   GameAppState,
+  SeraRigSkinId,
   HudSnapshot,
   InteractableId,
   InteractionTargetEvaluation,
+  MasteryBountyKind,
+  MasteryTargetId,
   MissionObjectiveId,
   NarrativeEventId,
+  NeuralProtocolId,
+  PhotoModeState,
   RigModuleId,
   RigModuleSlot,
   SecretAreaId,
+  SectorBeaconId,
+  SentinelProtocolMode,
+  StoryArcId,
+  TacticalLoadoutPresetSlot,
   TacticalWaypointState,
   UpgradeEquipOutcome,
   UpgradePurchaseOutcome,
   WeaponId,
+  WeaponModChipId,
   WeaponProgressionRewardId,
   WeaponProgressionState,
   WeaponUpgradeId,
@@ -115,14 +205,21 @@ function getInitialLaunchConfig(): {
   return { appState: 'title', bossMode: false, practiceMode: false };
 }
 
-const campaignSaveTracker = new CampaignSaveTracker();
-
 function loadPersistedCampaignProgress(world: WorldState): void {
-  campaignSaveTracker.load(world);
+  loadCampaignProgressFromStorage(world);
 }
 
+let lastPersistedCampaignJson: string | null = null;
+
 function savePersistedCampaignProgress(world: WorldState): void {
-  campaignSaveTracker.save(world);
+  const res = saveCampaignProgressToStorage(
+    world,
+    undefined,
+    lastPersistedCampaignJson
+  );
+  if (res.written) {
+    lastPersistedCampaignJson = res.json;
+  }
 }
 
 export default function App() {
@@ -169,35 +266,8 @@ export default function App() {
   const [hud, setHud] = useState<HudSnapshot>(() =>
     extractHudSnapshot(worldRef.current!)
   );
-  const [saveStatus, setSaveStatus] = useState<CampaignSaveStatus>(() =>
-    campaignSaveTracker.getStatus()
-  );
-  const [saveRetryFailed, setSaveRetryFailed] = useState<boolean>(false);
-
-  useEffect(() => {
-    setSaveStatus(campaignSaveTracker.getStatus());
-    return campaignSaveTracker.subscribe((status) => {
-      setSaveStatus(status);
-      if (status !== 'failed') setSaveRetryFailed(false);
-    });
-  }, []);
-
-  const handleRetrySave = useCallback(() => {
-    const w = worldRef.current;
-    if (!w) return;
-    setSaveRetryFailed(campaignSaveTracker.retry(w) === 'failed');
-  }, []);
-
-  const handleOverwriteUnreadSave = useCallback(() => {
-    const w = worldRef.current;
-    if (!w) return;
-    setSaveRetryFailed(campaignSaveTracker.overwrite(w) === 'failed');
-  }, []);
-
-  const handleReloadForUnreadSave = useCallback(() => {
-    window.location.reload();
-  }, []);
-
+  const [projectedDamagePopups, setProjectedDamagePopups] = useState<ProjectedDamagePopup[]>([]);
+  const lastPopupCountRef = useRef<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(() =>
     soundRef.current ? soundRef.current.isMuted() : false
   );
@@ -218,10 +288,46 @@ export default function App() {
         }
   );
   const fpsLimitRef = useRef<FpsLimitOption>(cameraSettings.fpsLimit ?? 60);
+  const renderScaleRef = useRef<number>(cameraSettings.renderScale ?? 0.85);
+  const adaptiveResolutionRef = useRef<boolean>(cameraSettings.adaptiveResolution ?? true);
+  const adaptiveGovernorRef = useRef(createAdaptiveFrameGovernor());
   const cameraShakeRef = useRef<boolean>(cameraSettings.cameraShake ?? true);
   const screenEffectsRef = useRef<boolean>(cameraSettings.screenEffects ?? true);
   const reducedMotionRef = useRef<boolean>(cameraSettings.reducedMotion);
   const forcePausedRerenderRef = useRef<boolean>(false);
+
+  // v2.4.0: Bilingual Locale (EN / VI) & 3D Free-Camera Photo Mode state
+  const [locale, setLocale] = useState<AppLocale>(() => loadSavedLocale());
+  const localeRef = useRef<AppLocale>(locale);
+  localeRef.current = locale;
+  useEffect(() => {
+    rendererRef.current?.setLocale(locale);
+  }, [locale]);
+  const [photoMode, setPhotoMode] = useState<PhotoModeState>(() =>
+    createInitialPhotoModeState()
+  );
+  const photoModeRef = useRef<PhotoModeState>(photoMode);
+  photoModeRef.current = photoMode;
+  const [focusMode, setFocusMode] = useState<boolean>(false);
+  const focusModeRef = useRef<boolean>(false);
+  focusModeRef.current = focusMode;
+  const photoDragRef = useRef<{ active: boolean; lastX: number; lastY: number }>({
+    active: false,
+    lastX: 0,
+    lastY: 0,
+  });
+  const dailyTrialConfig = generateDailyTrialConfig();
+  const dailyTrialRecord = hud.ascension?.lastDailyRecord ?? getDailyTrialRecord();
+
+  const handleToggleFocusMode = useCallback((force?: boolean): boolean => {
+    const next = typeof force === 'boolean' ? force : !focusModeRef.current;
+    focusModeRef.current = next;
+    setFocusMode(next);
+    if (typeof document !== 'undefined') {
+      document.body.dataset.focusMode = next ? 'true' : 'false';
+    }
+    return next;
+  }, []);
 
   const emitSensoryCombatFeedback = useCallback((events: WorldState['events']) => {
     if (!events || events.length === 0) return;
@@ -254,8 +360,30 @@ export default function App() {
     }
   }, []);
   const [initialExplorationTab, setInitialExplorationTab] = useState<
-    'missions' | 'map' | 'codex'
+    'missions' | 'map' | 'codex' | 'holo' | 'mastery'
   >('missions');
+
+  const computeProjectedPopups = useCallback(
+    (w: WorldState, renderer: ArenaSceneRenderer | null): ProjectedDamagePopup[] => {
+      const popups = w.paradox?.damagePopups ?? [];
+      if (popups.length === 0 || !renderer) return [];
+      const out: ProjectedDamagePopup[] = [];
+      for (const p of popups) {
+        const proj = renderer.projectWorldToViewport(p.x, p.y, p.z);
+        if (!proj.visible) continue;
+        out.push({
+          id: p.id,
+          amount: p.amount,
+          x: proj.x,
+          y: proj.y,
+          kind: p.kind,
+          progress: Math.max(0, Math.min(1, p.age / Math.max(0.01, p.lifetime))),
+        });
+      }
+      return out;
+    },
+    []
+  );
 
   const syncDomAndReactHud = useCallback(() => {
     const w = worldRef.current;
@@ -265,7 +393,12 @@ export default function App() {
     document.body.dataset.runMode = w.run.mode;
     savePersistedCampaignProgress(w);
     setHud(extractHudSnapshot(w, inputRef.current?.aimYaw));
-  }, []);
+    const projected = computeProjectedPopups(w, rendererRef.current);
+    if (projected.length > 0 || lastPopupCountRef.current > 0) {
+      lastPopupCountRef.current = projected.length;
+      setProjectedDamagePopups(projected);
+    }
+  }, [computeProjectedPopups]);
 
   const syncRendererAndCamera = useCallback(() => {
     const w = worldRef.current;
@@ -296,6 +429,7 @@ export default function App() {
   }, []);
 
   const handleStartCampaignFromTitle = useCallback(() => {
+    soundRef.current?.unlock();
     const w = worldRef.current;
     const renderer = rendererRef.current;
     if (!w) return;
@@ -315,6 +449,7 @@ export default function App() {
 
   const handleStartPracticeStandard = useCallback(
     (encounterId?: EncounterCompositionId) => {
+      soundRef.current?.unlock();
       const w = worldRef.current;
       const renderer = rendererRef.current;
       if (!w) return;
@@ -330,7 +465,567 @@ export default function App() {
     [syncDomAndReactHud, syncRendererAndCamera]
   );
 
+  const handleStartRecursionProtocol = useCallback(
+    (startLoop = 1) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
+
+      startRecursionProtocol(w, startLoop);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud, syncRendererAndCamera]
+  );
+
+  const handleStartBossGauntlet = useCallback(
+    (skipIntro = false) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
+
+      startBossGauntletRun(w, skipIntro);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud, syncRendererAndCamera]
+  );
+
+  const handleStartExpeditionJourney = useCallback(
+    (startChapter: CampaignChapterId = 'prologue') => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
+
+      startExpeditionJourneyRun(w, startChapter, false);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud, syncRendererAndCamera]
+  );
+
+  const handleTriggerExpeditionBreach = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (triggerExpeditionBreach(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleEnterExpeditionAirlock = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (enterExpeditionTransitAirlock(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud, syncRendererAndCamera]);
+
+  const handleStartNewGamePlus = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w) return;
+    startNewGamePlusRun(w);
+    if (w.events.length > 0) {
+      soundRef.current?.playEvents(w.events);
+      renderer?.handleCombatEvents(w.events);
+    }
+    syncRendererAndCamera();
+    syncDomAndReactHud();
+  }, [syncDomAndReactHud, syncRendererAndCamera]);
+
+  const handleSafeRoomMedBay = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (useSafeRoomMedBay(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleSafeRoomLysaBriefing = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (claimSafeRoomLysaBriefing(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleClaimSecretVault = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (claimSecretEchoVault(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleUseNanite = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (useMedNaniteInjector(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handlePurchaseFabricator = useCallback(
+    (itemId: FabricatorItemId) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
+      if (purchaseFabricatorItem(w, itemId)) {
+        if (w.events.length > 0) {
+          soundRef.current?.playEvents(w.events);
+          renderer?.handleCombatEvents(w.events);
+        }
+        forcePausedRerenderRef.current = true;
+        syncDomAndReactHud();
+      }
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleEquipSkin = useCallback(
+    (skinId: SeraRigSkinId) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
+      if (equipSeraRigSkin(w, skinId)) {
+        if (w.events.length > 0) {
+          soundRef.current?.playEvents(w.events);
+          renderer?.handleCombatEvents(w.events);
+        }
+        forcePausedRerenderRef.current = true;
+        renderer?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? 0,
+          inputRef.current?.aimPitch ?? 0,
+          0.016
+        );
+        syncDomAndReactHud();
+      }
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleToggleMutator = useCallback(
+    (key: keyof ChronoMutatorState) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      toggleChronoMutator(w, key);
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleToggleSpeedrunHud = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    if (!w) return;
+    toggleSpeedrunHud(w);
+    syncDomAndReactHud();
+  }, [syncDomAndReactHud]);
+
+  const handleEnterParadoxRift = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w) return;
+    startEchoZeroParadoxEncounter(w, true);
+    if (w.events.length > 0) {
+      soundRef.current?.playEvents(w.events);
+      renderer?.handleCombatEvents(w.events);
+    }
+    syncRendererAndCamera();
+    syncDomAndReactHud();
+  }, [syncDomAndReactHud, syncRendererAndCamera]);
+
+  const handleToggleLocale = useCallback(() => {
+    setLocale((prev) => {
+      const next: AppLocale = prev === 'en' ? 'vi' : 'en';
+      saveLocale(next);
+      return next;
+    });
+  }, []);
+
+  const handleStartDailyTrial = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w) return;
+    startDailyChronoTrialRun(w, true);
+    if (w.events.length > 0) {
+      soundRef.current?.playEvents(w.events);
+      renderer?.handleCombatEvents(w.events);
+    }
+    syncRendererAndCamera();
+    syncDomAndReactHud();
+  }, [syncDomAndReactHud, syncRendererAndCamera]);
+
+  const handleUnlockChronoScythe = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w) return;
+    if (unlockChronoScythe(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      forcePausedRerenderRef.current = true;
+      renderer?.updateAndRender(
+        w,
+        inputRef.current?.aimYaw ?? 0,
+        inputRef.current?.aimPitch ?? 0,
+        0.016
+      );
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleEquipModChip = useCallback(
+    (chipId: WeaponModChipId | null) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
+      if (purchaseAndEquipWeaponModChip(w, chipId)) {
+        if (w.events.length > 0) {
+          soundRef.current?.playEvents(w.events);
+          renderer?.handleCombatEvents(w.events);
+        }
+        forcePausedRerenderRef.current = true;
+        renderer?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? 0,
+          inputRef.current?.aimPitch ?? 0,
+          0.016
+        );
+        syncDomAndReactHud();
+      }
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleTriggerChronoFinisher = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    const renderer = rendererRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (triggerChronoFinisher(w)) {
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+        emitSensoryCombatFeedback(w.events);
+      }
+      syncDomAndReactHud();
+    }
+  }, [emitSensoryCombatFeedback, syncDomAndReactHud]);
+
+  const handleTogglePhotoMode = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    if (!w || w.appState === 'title') return;
+    setPhotoMode((prev) => {
+      const nextActive = !prev.active;
+      const next: PhotoModeState = nextActive
+        ? { ...createInitialPhotoModeState(), active: true }
+        : { ...prev, active: false, hideUi: false };
+      photoModeRef.current = next;
+      if (nextActive) {
+        inputRef.current?.exitPointerLock();
+      }
+      rendererRef.current?.setPhotoModeCamera({
+        active: next.active,
+        yawOffset: next.yawOffset,
+        pitchOffset: next.pitchOffset,
+        distance: next.distance,
+        fov: next.fov,
+        showDrone: next.showDrone,
+      });
+      forcePausedRerenderRef.current = true;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (hud.appState !== 'playing' && photoModeRef.current.active) {
+      const next: PhotoModeState = { ...photoModeRef.current, active: false, hideUi: false };
+      photoModeRef.current = next;
+      setPhotoMode(next);
+      rendererRef.current?.setPhotoModeCamera({
+        active: false,
+        yawOffset: 0,
+        pitchOffset: 0.14,
+        distance: 5.4,
+        fov: 48,
+        showDrone: true,
+      });
+    }
+  }, [hud.appState]);
+
+  const handleUpdatePhotoMode = useCallback((patch: Partial<PhotoModeState>) => {
+    setPhotoMode((prev) => {
+      const next: PhotoModeState = {
+        ...prev,
+        ...patch,
+        pitchOffset: Math.max(-0.32, Math.min(1.12, patch.pitchOffset ?? prev.pitchOffset)),
+        distance: Math.max(2.6, Math.min(14.5, patch.distance ?? prev.distance)),
+        fov: Math.max(28, Math.min(82, patch.fov ?? prev.fov)),
+      };
+      photoModeRef.current = next;
+      rendererRef.current?.setPhotoModeCamera({
+        active: next.active,
+        yawOffset: next.yawOffset,
+        pitchOffset: next.pitchOffset,
+        distance: next.distance,
+        fov: next.fov,
+        showDrone: next.showDrone,
+      });
+      forcePausedRerenderRef.current = true;
+      return next;
+    });
+  }, []);
+
+  const handleCapturePhoto = useCallback(() => {
+    const renderer = rendererRef.current;
+    const w = worldRef.current;
+    if (!renderer || !w) return;
+    const pm = photoModeRef.current;
+    renderer.setPhotoModeCamera({
+      active: pm.active,
+      yawOffset: pm.yawOffset,
+      pitchOffset: pm.pitchOffset,
+      distance: pm.distance,
+      fov: pm.fov,
+      showDrone: pm.showDrone,
+    });
+    renderer.updateAndRender(
+      w,
+      inputRef.current?.aimYaw ?? 0,
+      inputRef.current?.aimPitch ?? 0,
+      0.016
+    );
+    const dataUrl = renderer.capturePhotoDataUrl(getPhotoFilterCss(pm.filter));
+    soundRef.current?.playCameraShutter();
+    if (dataUrl && typeof document !== 'undefined') {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `afterframe-photo-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  }, []);
+
+  // Global v2.4.0 keyboard shortcuts: [F9] Photo Mode, [7] Chrono Finisher, & Photo Mode WASD/Q-E orbit
+  useEffect(() => {
+    const onAscensionKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+      if (e.code === 'F8') {
+        e.preventDefault();
+        handleToggleFocusMode();
+        return;
+      }
+      if (e.code === 'F9') {
+        e.preventDefault();
+        handleTogglePhotoMode();
+        return;
+      }
+      if (photoModeRef.current.active) {
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          handleTogglePhotoMode();
+          return;
+        }
+        const stepYaw = 0.14;
+        const stepPitch = 0.08;
+        const stepDist = 0.6;
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
+          handleUpdatePhotoMode({ yawOffset: photoModeRef.current.yawOffset - stepYaw });
+        } else if (e.code === 'KeyD' || e.code === 'ArrowRight') {
+          handleUpdatePhotoMode({ yawOffset: photoModeRef.current.yawOffset + stepYaw });
+        } else if (e.code === 'KeyW' || e.code === 'ArrowUp') {
+          handleUpdatePhotoMode({ pitchOffset: photoModeRef.current.pitchOffset + stepPitch });
+        } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+          handleUpdatePhotoMode({ pitchOffset: photoModeRef.current.pitchOffset - stepPitch });
+        } else if (e.code === 'KeyQ') {
+          handleUpdatePhotoMode({ distance: photoModeRef.current.distance - stepDist });
+        } else if (e.code === 'KeyE') {
+          handleUpdatePhotoMode({ distance: photoModeRef.current.distance + stepDist });
+        }
+        return;
+      }
+      if (e.code === 'Digit7') {
+        handleTriggerChronoFinisher();
+      } else if (e.code === 'Digit8') {
+        const w = worldRef.current;
+        if (w && w.appState === 'playing') {
+          soundRef.current?.unlock();
+          w.events.length = 0;
+          cycleSentinelProtocol(w);
+          if (w.events.length > 0) {
+            soundRef.current?.playEvents(w.events);
+            rendererRef.current?.handleCombatEvents(w.events);
+          }
+          syncDomAndReactHud();
+        }
+      } else if (e.code === 'Digit0') {
+        const w = worldRef.current;
+        if (w && w.appState === 'playing') {
+          soundRef.current?.unlock();
+          w.events.length = 0;
+          cycleEchoDoctrine(w);
+          if (w.events.length > 0) {
+            soundRef.current?.playEvents(w.events);
+            rendererRef.current?.handleCombatEvents(w.events);
+          }
+          syncDomAndReactHud();
+        }
+      }
+    };
+    window.addEventListener('keydown', onAscensionKeyDown);
+    return () => window.removeEventListener('keydown', onAscensionKeyDown);
+  }, [
+    handleToggleFocusMode,
+    handleTogglePhotoMode,
+    handleTriggerChronoFinisher,
+    handleUpdatePhotoMode,
+    syncDomAndReactHud,
+  ]);
+
+  const handleJumpToExpeditionSector = useCallback(
+    (targetChapter: CampaignChapterId) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return;
+      startExpeditionJourneyRun(w, targetChapter, true);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud, syncRendererAndCamera]
+  );
+
+  const handleTriggerChronoOverdrive = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (inputRef.current) {
+      inputRef.current.triggerChronoOverdrive();
+    } else {
+      attemptActivateChronoOverdrive(w);
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleSelectRecursionRelic = useCallback(
+    (relicId: ChronoRelicId): boolean => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      const renderer = rendererRef.current;
+      if (!w) return false;
+
+      const ok = selectRecursionRelic(w, relicId);
+      if (!ok) return false;
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        renderer?.handleCombatEvents(w.events);
+      }
+      syncRendererAndCamera();
+      syncDomAndReactHud();
+      return true;
+    },
+    [syncDomAndReactHud, syncRendererAndCamera]
+  );
+
+  const handleToggleOverdriveDifficulty = useCallback(
+    (enabled?: boolean) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+
+      const next = enabled ?? !(w.progression.overdriveDifficulty ?? false);
+      setOverdriveDifficulty(w, next);
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleSelectDifficultyTier = useCallback(
+    (tier: 'standard' | 'veteran' | 'singularity') => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+
+      setDifficultyTier(w, tier);
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
   const handleStartOrRestart = useCallback(() => {
+    soundRef.current?.unlock();
     const w = worldRef.current;
     const renderer = rendererRef.current;
     if (!w) return;
@@ -347,6 +1042,7 @@ export default function App() {
   }, [syncDomAndReactHud, syncRendererAndCamera]);
 
   const handleRetryBossCheckpoint = useCallback(() => {
+    soundRef.current?.unlock();
     const w = worldRef.current;
     const renderer = rendererRef.current;
     if (!w) return;
@@ -363,6 +1059,7 @@ export default function App() {
   }, [syncDomAndReactHud, syncRendererAndCamera]);
 
   const handleRestartFullRun = useCallback(() => {
+    soundRef.current?.unlock();
     const w = worldRef.current;
     const renderer = rendererRef.current;
     if (!w) return;
@@ -378,6 +1075,7 @@ export default function App() {
 
   const handleStartBoss = useCallback(
     (bossId: BossEncounterId = 'helix-04') => {
+      soundRef.current?.unlock();
       const w = worldRef.current;
       const renderer = rendererRef.current;
       if (!w) return;
@@ -405,6 +1103,7 @@ export default function App() {
   );
 
   const handleAdvanceNextChapter = useCallback((): boolean => {
+    soundRef.current?.unlock();
     const w = worldRef.current;
     const renderer = rendererRef.current;
     if (!w) return false;
@@ -423,6 +1122,7 @@ export default function App() {
 
   const handleSelectCampaignChapter = useCallback(
     (chapter: CampaignChapterId) => {
+      soundRef.current?.unlock();
       const w = worldRef.current;
       const renderer = rendererRef.current;
       if (!w) return;
@@ -440,6 +1140,7 @@ export default function App() {
   );
 
   const handleRestoreSavedCampaign = useCallback(() => {
+    soundRef.current?.unlock();
     const w = worldRef.current;
     const renderer = rendererRef.current;
     if (!w) return;
@@ -460,7 +1161,27 @@ export default function App() {
       const renderer = rendererRef.current;
       if (!w) return false;
 
+      if (
+        w.appState === 'playing' &&
+        w.recursion?.awaitingRelicDraft &&
+        w.recursion.draftOptions.length > 0
+      ) {
+        const idx = endingId === 'silence' ? 0 : endingId === 'witness' ? 1 : 2;
+        const opt = w.recursion.draftOptions[idx];
+        if (opt && selectRecursionRelic(w, opt.id)) {
+          soundRef.current?.unlock();
+          if (w.events.length > 0) {
+            soundRef.current?.playEvents(w.events);
+            renderer?.handleCombatEvents(w.events);
+          }
+          syncRendererAndCamera();
+          syncDomAndReactHud();
+          return true;
+        }
+      }
+
       if (selectChronicleLoomEnding(w, endingId)) {
+        soundRef.current?.unlock();
         if (w.events.length > 0) {
           soundRef.current?.playEvents(w.events);
           renderer?.handleCombatEvents(w.events);
@@ -471,7 +1192,7 @@ export default function App() {
       }
       return false;
     },
-    [syncDomAndReactHud]
+    [syncDomAndReactHud, syncRendererAndCamera]
   );
 
   const handleEngageWardenPrime = useCallback((): boolean => {
@@ -583,6 +1304,30 @@ export default function App() {
     }
   }, [syncDomAndReactHud]);
 
+  const handleOpenArmory = useCallback(() => {
+    const w = worldRef.current;
+    const input = inputRef.current;
+    if (!w) return;
+
+    if (w.appState === 'playing') {
+      setInitialExplorationTab('missions');
+      w.appState = 'paused';
+      document.body.dataset.state = 'paused';
+      input?.clearAllInputs();
+      input?.exitPointerLock();
+      syncDomAndReactHud();
+    } else if (w.appState === 'paused') {
+      w.appState = 'playing';
+      document.body.dataset.state = 'playing';
+      input?.clearAllInputs();
+      input?.requestPointerLock();
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
   const handleOpenMap = useCallback(() => {
     const w = worldRef.current;
     const input = inputRef.current;
@@ -627,16 +1372,19 @@ export default function App() {
 
   const handleToggleMute = useCallback(() => {
     if (!soundRef.current) return;
+    soundRef.current.unlock();
     const nextMuted = soundRef.current.toggleMute();
     setIsMuted(nextMuted);
   }, []);
 
   const handlePlayCodexAudio = useCallback((speaker?: string, classification?: string) => {
+    soundRef.current?.unlock();
     soundRef.current?.playArchiveLogSample(speaker, classification);
   }, []);
 
   const handleUpdateCameraSettings = useCallback((next: Partial<CameraSettings>) => {
     if (!inputRef.current) return;
+    soundRef.current?.unlock();
     const updated = inputRef.current.setCameraSettings(next);
     soundRef.current?.setVolumeSettings(updated);
     setCameraSettings(updated);
@@ -740,6 +1488,14 @@ export default function App() {
     inputRef.current?.triggerInteract();
   }, []);
 
+  const handleDismissHoloMemory = useCallback(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    if (dismissActiveHoloMemory(w)) {
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
   const handlePurchaseUpgrade = useCallback(
     (upgradeId: WeaponUpgradeId) => {
       const w = worldRef.current;
@@ -841,6 +1597,392 @@ export default function App() {
     [syncDomAndReactHud]
   );
 
+  const handleOverclockRigModule = useCallback(
+    (moduleId: RigModuleId) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      overclockRigModule(w, moduleId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleSetSentinelProtocol = useCallback(
+    (mode: SentinelProtocolMode) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      setSentinelProtocol(w, mode);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleCycleSentinelProtocol = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    if (!w) return;
+    w.events.length = 0;
+    cycleSentinelProtocol(w);
+    if (w.events.length > 0) {
+      soundRef.current?.playEvents(w.events);
+      rendererRef.current?.handleCombatEvents(w.events);
+    }
+    if (w.appState !== 'playing') {
+      rendererRef.current?.updateAndRender(
+        w,
+        inputRef.current?.aimYaw ?? w.player.rotationY,
+        inputRef.current?.aimPitch ?? 0.38,
+        0.016
+      );
+    }
+    syncDomAndReactHud();
+  }, [syncDomAndReactHud]);
+
+  const handleSetEchoDoctrine = useCallback(
+    (doctrineId: EchoDoctrineId) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      setEchoDoctrine(w, doctrineId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleCycleEchoDoctrine = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    if (!w) return;
+    w.events.length = 0;
+    cycleEchoDoctrine(w);
+    if (w.events.length > 0) {
+      soundRef.current?.playEvents(w.events);
+      rendererRef.current?.handleCombatEvents(w.events);
+    }
+    if (w.appState !== 'playing') {
+      rendererRef.current?.updateAndRender(
+        w,
+        inputRef.current?.aimYaw ?? w.player.rotationY,
+        inputRef.current?.aimPitch ?? 0.38,
+        0.016
+      );
+    }
+    syncDomAndReactHud();
+  }, [syncDomAndReactHud]);
+
+  const handleUnlockBossCore = useCallback(
+    (coreId: BossEchoCoreId) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      unlockBossEchoCore(w, coreId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleEquipBossCore = useCallback(
+    (coreId: BossEchoCoreId | null) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      equipBossEchoCore(w, coreId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleTranscendBossCore = useCallback(
+    (coreId: BossEchoCoreId) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      transcendBossEchoCore(w, coreId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleSaveLoadoutPreset = useCallback(
+    (slotIndex: TacticalLoadoutPresetSlot) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      saveLoadoutPreset(w, slotIndex);
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleApplyLoadoutPreset = useCallback(
+    (slotIndex: TacticalLoadoutPresetSlot) => {
+      soundRef.current?.unlock();
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      applyLoadoutPreset(w, slotIndex);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      forcePausedRerenderRef.current = true;
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleTriggerConfluenceBurst = useCallback(() => {
+    soundRef.current?.unlock();
+    const w = worldRef.current;
+    if (!w || w.appState !== 'playing') return;
+    if (inputRef.current) {
+      inputRef.current.triggerConfluenceBurst();
+    } else {
+      w.events.length = 0;
+      triggerConfluenceBurst(w);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      syncDomAndReactHud();
+    }
+  }, [syncDomAndReactHud]);
+
+  const handleOverclockUpgrade = useCallback(
+    (upgradeId: WeaponUpgradeId) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      overclockWeaponUpgrade(w, upgradeId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleAwakenUpgrade = useCallback(
+    (upgradeId: WeaponUpgradeId) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      awakenWeaponUpgrade(w, upgradeId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handlePurchaseNeuralProtocol = useCallback(
+    (protocolId: NeuralProtocolId) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      purchaseNeuralProtocol(w, protocolId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleResolveStoryChoice = useCallback(
+    (arcId: StoryArcId, optionId: string) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      resolveStoryArcChoice(w, arcId, optionId);
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleClaimMasteryBounty = useCallback(
+    (targetId: MasteryTargetId, kind: MasteryBountyKind) => {
+      const w = worldRef.current;
+      if (!w) return;
+      w.events.length = 0;
+      const claimed = claimMasteryBountyInWorld(w, targetId, kind);
+      if (!claimed) return;
+      if (w.events.length > 0) {
+        soundRef.current?.playEvents(w.events);
+        rendererRef.current?.handleCombatEvents(w.events);
+      }
+      savePersistedCampaignProgress(w);
+      if (w.appState !== 'playing') {
+        rendererRef.current?.updateAndRender(
+          w,
+          inputRef.current?.aimYaw ?? w.player.rotationY,
+          inputRef.current?.aimPitch ?? 0.38,
+          0.016
+        );
+      }
+      syncDomAndReactHud();
+    },
+    [syncDomAndReactHud]
+  );
+
+  const handleClaimAllMasteryBounties = useCallback(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    w.events.length = 0;
+    const count = claimAllMasteryBountiesInWorld(w);
+    if (count <= 0) return;
+    if (w.events.length > 0) {
+      soundRef.current?.playEvents(w.events);
+      rendererRef.current?.handleCombatEvents(w.events);
+    }
+    savePersistedCampaignProgress(w);
+    if (w.appState !== 'playing') {
+      rendererRef.current?.updateAndRender(
+        w,
+        inputRef.current?.aimYaw ?? w.player.rotationY,
+        inputRef.current?.aimPitch ?? 0.38,
+        0.016
+      );
+    }
+    syncDomAndReactHud();
+  }, [syncDomAndReactHud]);
+
   const handleSetTacticalWaypoint = useCallback(
     (waypoint: TacticalWaypointState | null) => {
       const w = worldRef.current;
@@ -911,11 +2053,23 @@ export default function App() {
     const input = inputRef.current;
     if (!mountEl || !world || !input) return;
 
+    if (!soundRef.current || soundRef.current.isDisposed()) {
+      soundRef.current = new SoundEngine();
+    } else {
+      soundRef.current.resurrect();
+    }
+    const unlockAudio = () => {
+      soundRef.current?.unlock();
+    };
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio, { passive: true });
+
     document.body.dataset.state = world.appState;
     document.body.dataset.encounter = world.encounterMode;
     document.body.dataset.runMode = world.run.mode;
 
     const sceneRenderer = new ArenaSceneRenderer(mountEl, world);
+    sceneRenderer.setLocale(localeRef.current);
     sceneRenderer.attachCalloutLayer(calloutMountRef.current);
     sceneRenderer.attachLockOnElement(lockOnReticleRef.current);
     const initialCamSettings = input.getCameraSettings();
@@ -924,6 +2078,9 @@ export default function App() {
     sceneRenderer.setScreenEffects(initialCamSettings.screenEffects ?? true);
     sceneRenderer.applyPerformanceSettings(initialCamSettings);
     fpsLimitRef.current = initialCamSettings.fpsLimit ?? 60;
+    renderScaleRef.current = initialCamSettings.renderScale ?? 0.85;
+    adaptiveResolutionRef.current = initialCamSettings.adaptiveResolution ?? true;
+    adaptiveGovernorRef.current = createAdaptiveFrameGovernor();
     cameraShakeRef.current = initialCamSettings.cameraShake ?? true;
     reducedMotionRef.current = initialCamSettings.reducedMotion;
     perfVisibleRef.current = Boolean(initialCamSettings.showPerfHud);
@@ -932,6 +2089,10 @@ export default function App() {
     }
     soundRef.current?.setVolumeSettings(initialCamSettings);
     rendererRef.current = sceneRenderer;
+    const unsubscribeMeshy = meshyAssetRegistry.subscribe(() => {
+      rendererRef.current?.syncCustomMeshyModels(worldRef.current);
+      forcePausedRerenderRef.current = true;
+    });
 
     input.attach(mountEl, {
       onPauseToggle: handleTogglePause,
@@ -963,67 +2124,16 @@ export default function App() {
     let rafId = 0;
     let lastTime = performance.now();
     let lastPacedTime = lastTime;
-    let lastHudSyncTime = 0;
     let lastPerfUpdateTime = 0;
     let lastAutosaveTime = lastTime;
     let pausedFrameRendered = false;
     let frameCount = 0;
     let accumFrameMs = 0;
     let accumExecMs = 0;
-    let prevIntegrity = world.player.integrity;
-    let prevAppState = world.appState;
-    let prevEncounterMode = world.encounterMode;
-    let prevRunStage = world.run.stage;
-    let prevRunChapter = world.run.chapter;
-    let prevPendingNextChapter = world.run.pendingNextChapter;
-    let prevTutorialStep = world.tutorial.step;
-    let prevTutorialEnabled = world.tutorial.enabled;
-    let prevTutorialStuck = world.tutorial.stuckHintActive;
-    let prevOutcome = world.outcome;
-    let prevEchoState = world.echo.state;
-    let prevPlateActive = world.pressurePlate.active;
-    let prevPuzzleStage = world.puzzle.stage;
-    let prevReceiverCharged = world.puzzle.heavyReceiver.charged;
-    let prevCombinePlateActive = world.puzzle.combinePlate.active;
-    let prevFinalBarrierOpen = world.puzzle.finalBarrier.open;
-    let prevCanRelay = world.relay.preview.canRelay;
-    let prevRelayStatus = world.relay.preview.status;
-    let prevRelayCount = world.relay.activationCount;
-    let prevResonanceStatus = world.resonance.status;
-    let prevResonanceMarkId = world.resonance.activeMark?.markId ?? null;
-    let prevConvergenceCount = world.resonance.convergenceCount;
-    let prevBossPhase = world.boss?.phase ?? null;
-    let prevBossState = world.boss?.aiState ?? null;
-    let prevBossAttack = world.boss?.activeAttack ?? null;
-    let prevBossCoreExposed = world.boss?.coreExposed ?? false;
-    let prevBossHp = world.boss?.hp ?? 0;
-    let prevCommsId = world.comms.active?.id ?? null;
-    let prevEquippedWeapon = world.player.equippedWeaponId;
-    let prevWeaponOverheated = world.player.weaponOverheated;
-    let prevMemoryFragments = world.progression.memoryFragments;
-    let prevPurchasedCount = world.progression.purchasedUpgrades.length;
-    let prevUnlockedWeaponsCount = (world.progression.unlockedWeaponIds ?? []).length;
-    let prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
-    let prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
-    let prevEquippedRailUpgrade = world.progression.equippedUpgrades.phase_rail ?? null;
-    let prevEquippedBreakerUpgrade = world.progression.equippedUpgrades.grav_breaker ?? null;
-    let prevEncounterId = world.encounter.encounterId;
-    let prevWaveIndex = world.encounter.currentWaveIndex;
-    let prevWaveClearedCount = world.encounter.waveClearedCount;
-    let prevEncounterCompleted = world.encounter.completed;
-    let prevActivatedNodesCount = world.exploration.activatedNodeIds.length;
-    let prevCompletedObjectivesCount = world.exploration.completedObjectiveIds.length;
-    let prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
-    let prevDiscoveredSecretsCount = world.exploration.discoveredSecretIds.length;
-    let prevUnlockedRoutesCount = world.exploration.unlockedRouteIds.length;
-    let prevCompletedNarrativeCount = world.exploration.completedNarrativeEventIds.length;
-    let prevLastNarrativeId = world.exploration.lastTriggeredNarrativeEventId;
-    let prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
-    let prevPromptId = world.exploration.prompt.interactableId;
-    let prevPromptStatus = world.exploration.prompt.status;
-    let prevLockOnTargetId: string | null = world.player.lockOnTargetId ?? null;
-    let prevLockOnStaggered = false;
-    let prevCanExecute = false;
+    const hudSyncTracker = createHudSyncTracker(world);
+    let prevLoomChoiceOverlay = Boolean(
+      world.loom?.active && world.run.stage === 'chronicle_loom'
+    );
 
     const handleVisibilityResume = () => {
       if (!document.hidden) {
@@ -1039,19 +2149,39 @@ export default function App() {
       const rawMs = now - lastTime;
       lastTime = now;
 
-      const simulationDt = Math.min(computeFrameSimulationDt(rawMs), 0.25);
-      const dt = Math.min(simulationDt, 0.05);
+      const dt = Math.min(Math.max(rawMs / 1000, 0.001), 0.05);
 
       const beforeEncounterMode = world.encounterMode;
+      const beforeChapter = world.run.chapter;
       const beforeBossId = world.boss?.id ?? null;
       const beforeEncounterId = world.encounter.encounterId;
       const beforeWaveIndex = world.encounter.currentWaveIndex;
-      const frameInput = input.consumeFrameInput(simulationDt);
-      stepWorld(world, frameInput, simulationDt);
+      const beforeLoopIndex = world.recursion?.loopIndex ?? 0;
+      const pm = photoModeRef.current;
+      if (pm.active) {
+        sceneRenderer.setPhotoModeCamera({
+          active: true,
+          yawOffset: pm.yawOffset,
+          pitchOffset: pm.pitchOffset,
+          distance: pm.distance,
+          fov: pm.fov,
+          showDrone: pm.showDrone,
+        });
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, dt);
+        return;
+      }
 
-      // If the simulation transitioned between Calibration Bay ('standard') and a boss encounter,
-      // synchronize the 3D enemy rigs and snap camera behind Sera facing the boss
-      if (world.encounterMode !== beforeEncounterMode || (world.boss?.id ?? null) !== beforeBossId) {
+      const frameInput = input.consumeFrameInput(dt);
+      stepWorld(world, frameInput, dt);
+
+      // If the simulation transitioned between sectors/chapters or boss encounters,
+      // synchronize the 3D enemy rigs and snap camera behind Sera facing north
+      if (
+        world.encounterMode !== beforeEncounterMode ||
+        world.run.chapter !== beforeChapter ||
+        (world.boss?.id ?? null) !== beforeBossId ||
+        (world.recursion?.loopIndex ?? 0) !== beforeLoopIndex
+      ) {
         sceneRenderer.syncEnemyRigs(world);
         input.resetCameraAngles();
         sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
@@ -1065,9 +2195,19 @@ export default function App() {
       }
 
       // Release pointer lock automatically when transitioning into gameover modal
-      if (world.appState === 'gameover' && prevAppState !== 'gameover') {
+      // or full-screen post-match selection overlays (Recursion Relic Draft / Chronicle Loom Ending)
+      const nowRecursionDraft = Boolean(world.recursion?.awaitingRelicDraft);
+      const nowLoomChoiceOverlay = Boolean(
+        world.loom?.active && world.run.stage === 'chronicle_loom'
+      );
+      if (
+        (world.appState === 'gameover' && hudSyncTracker.prevAppState !== 'gameover') ||
+        (nowRecursionDraft && !hudSyncTracker.prevRecursionDraft) ||
+        (nowLoomChoiceOverlay && !prevLoomChoiceOverlay)
+      ) {
         input.exitPointerLock();
       }
+      prevLoomChoiceOverlay = nowLoomChoiceOverlay;
 
       if (world.events.length > 0) {
         soundRef.current?.playEvents(world.events);
@@ -1083,6 +2223,7 @@ export default function App() {
         bossCoreExposed: Boolean(world.boss?.coreExposed),
         adrenalineTier: Math.min(5, Math.max(0, Math.floor(world.player.adrenalineScore ?? 0))),
         selectedEnding: world.run.selectedEnding ?? world.loom?.selectedEnding ?? null,
+        styleRankTier: world.ascension?.style.tier ?? 'D',
       });
 
       const activeLockTarget =
@@ -1122,9 +2263,19 @@ export default function App() {
         }
       }
 
-      // Track rolling frame interval & synchronous execution time for F3 dev overlay
+      // Track rolling frame interval, Adaptive 60 FPS Governor & synchronous execution time
       const execEnd = performance.now();
       const execMs = execEnd - execStart;
+      if (!skipStaticRender && world.appState === 'playing') {
+        const dynFactor = stepAdaptiveFrameGovernor(
+          adaptiveGovernorRef.current,
+          rawMs,
+          renderScaleRef.current,
+          adaptiveResolutionRef.current,
+          isSoftwareWebGL
+        );
+        sceneRenderer.setDynamicRenderScaleFactor(dynFactor);
+      }
       frameCount += 1;
       accumFrameMs += Math.min(Math.max(rawMs, 1), 100);
       accumExecMs += execMs;
@@ -1133,196 +2284,47 @@ export default function App() {
         const avgExecMs = accumExecMs / Math.max(1, frameCount);
         const approxFps = 1000 / Math.max(0.1, avgMs);
         const diag = sceneRenderer.getDiagnostics();
+        const effScalePct = Math.round(
+          (diag.graphics?.renderScale ?? renderScaleRef.current) *
+            (diag.graphics?.dynamicScaleFactor ?? 1) *
+            100
+        );
         const lockLabel = input.isPointerLockActive() ? 'LOCK' : 'FREE';
-        perfOverlayRef.current.textContent = `FPS ${approxFps.toFixed(0)} (${avgMs.toFixed(1)}ms · CPU ${avgExecMs.toFixed(1)}ms) · CALLS ${diag.render.calls} · TRIS ${diag.render.triangles} · DPR ${diag.appliedPixelRatio.toFixed(2)} · PTR ${lockLabel}`;
+        perfOverlayRef.current.textContent = `FPS ${approxFps.toFixed(0)} (${avgMs.toFixed(1)}ms · CPU ${avgExecMs.toFixed(1)}ms) · SCALE ${effScalePct}% · DPR ${diag.appliedPixelRatio.toFixed(2)} · CALLS ${diag.render.calls} · TRIS ${diag.render.triangles} · PTR ${lockLabel}`;
         lastPerfUpdateTime = now;
         frameCount = 0;
         accumFrameMs = 0;
         accumExecMs = 0;
       }
 
-      const currMarkId = world.resonance.activeMark?.markId ?? null;
-      const currBossPhase = world.boss?.phase ?? null;
-      const currBossState = world.boss?.aiState ?? null;
-      const currBossAttack = world.boss?.activeAttack ?? null;
-      const currBossCoreExposed = world.boss?.coreExposed ?? false;
-      const currBossHp = Math.ceil(world.boss?.hp ?? 0);
-      const currCommsId = world.comms.active?.id ?? null;
-
-      const persistenceChanged =
-        world.appState !== prevAppState ||
-        world.encounterMode !== prevEncounterMode ||
-        world.run.stage !== prevRunStage ||
-        world.run.chapter !== prevRunChapter ||
-        world.run.pendingNextChapter !== prevPendingNextChapter ||
-        world.outcome !== prevOutcome ||
-        world.progression.memoryFragments !== prevMemoryFragments ||
-        world.progression.purchasedUpgrades.length !== prevPurchasedCount ||
-        (world.progression.unlockedWeaponIds ?? []).length !== prevUnlockedWeaponsCount ||
-        world.progression.equippedUpgrades.chrono_edge !== prevEquippedEdgeUpgrade ||
-        world.progression.equippedUpgrades.pulsecaster !== prevEquippedPulseUpgrade ||
-        (world.progression.equippedUpgrades.phase_rail ?? null) !== prevEquippedRailUpgrade ||
-        (world.progression.equippedUpgrades.grav_breaker ?? null) !== prevEquippedBreakerUpgrade ||
-        world.encounter.completed !== prevEncounterCompleted ||
-        world.exploration.activatedNodeIds.length !== prevActivatedNodesCount ||
-        world.exploration.completedObjectiveIds.length !== prevCompletedObjectivesCount ||
-        world.exploration.discoveredCodexIds.length !== prevDiscoveredCodexCount ||
-        world.exploration.discoveredSecretIds.length !== prevDiscoveredSecretsCount ||
-        world.exploration.unlockedRouteIds.length !== prevUnlockedRoutesCount ||
-        world.exploration.completedNarrativeEventIds.length !== prevCompletedNarrativeCount;
-
-      const currLockOnTargetId = activeLockTarget?.id ?? null;
-      const currLockOnStaggered = Boolean(activeLockTarget?.isStaggered);
       const currCanExecute =
         world.appState === 'playing' && findExecutionCandidate(world) !== null;
+      const syncDecision = evaluateHudSyncTick(
+        hudSyncTracker,
+        world,
+        activeLockTarget,
+        currCanExecute,
+        now,
+        100
+      );
 
-      const stateChanged =
-        persistenceChanged ||
-        world.tutorial.step !== prevTutorialStep ||
-        world.tutorial.enabled !== prevTutorialEnabled ||
-        world.tutorial.stuckHintActive !== prevTutorialStuck ||
-        world.echo.state !== prevEchoState ||
-        world.pressurePlate.active !== prevPlateActive ||
-        world.puzzle.stage !== prevPuzzleStage ||
-        world.puzzle.heavyReceiver.charged !== prevReceiverCharged ||
-        world.puzzle.combinePlate.active !== prevCombinePlateActive ||
-        world.puzzle.finalBarrier.open !== prevFinalBarrierOpen ||
-        world.relay.preview.canRelay !== prevCanRelay ||
-        world.relay.preview.status !== prevRelayStatus ||
-        world.relay.activationCount !== prevRelayCount ||
-        world.resonance.status !== prevResonanceStatus ||
-        currMarkId !== prevResonanceMarkId ||
-        world.resonance.convergenceCount !== prevConvergenceCount ||
-        currBossPhase !== prevBossPhase ||
-        currBossState !== prevBossState ||
-        currBossAttack !== prevBossAttack ||
-        currBossCoreExposed !== prevBossCoreExposed ||
-        currBossHp !== prevBossHp ||
-        currCommsId !== prevCommsId ||
-        world.player.equippedWeaponId !== prevEquippedWeapon ||
-        world.player.weaponOverheated !== prevWeaponOverheated ||
-        world.encounter.encounterId !== prevEncounterId ||
-        world.encounter.currentWaveIndex !== prevWaveIndex ||
-        world.encounter.waveClearedCount !== prevWaveClearedCount ||
-        world.exploration.lastTriggeredNarrativeEventId !== prevLastNarrativeId ||
-        (world.exploration.lastDiscoveryBanner?.secretId ?? null) !== prevDiscoveryBannerId ||
-        world.exploration.prompt.interactableId !== prevPromptId ||
-        world.exploration.prompt.status !== prevPromptStatus ||
-        currLockOnTargetId !== prevLockOnTargetId ||
-        currLockOnStaggered !== prevLockOnStaggered ||
-        currCanExecute !== prevCanExecute ||
-        Math.ceil(world.player.integrity) !== Math.ceil(prevIntegrity);
-
-      const hasActiveHostiles =
-        (world.boss !== null && world.boss.hp > 0) ||
-        world.enemies.some((e) => e.hp > 0 && e.aiState !== 'ko');
-      const hasLiveContinuousHud =
-        world.appState === 'playing' &&
-        (hasActiveHostiles ||
-          Boolean(currLockOnTargetId) ||
-          currCanExecute ||
-          world.echo.state === 'recording' ||
-          world.echo.state === 'playback' ||
-          world.player.chargeTime > 0 ||
-          world.player.weaponHeat > 0 ||
-          world.player.weaponOverheated ||
-          world.player.weaponOverheatTimer > 0 ||
-          world.player.weaponShotCooldownTimer > 0 ||
-          world.player.weaponSwitchCooldownTimer > 0 ||
-          (world.player.fluxDampenedTimer ?? 0) > 0 ||
-          (world.player.adrenalineDecayGraceTimer ?? 0) > 0 ||
-          world.player.ghostIntegrity > world.player.integrity + 0.05 ||
-          (world.player.riposteTimer ?? 0) > 0 ||
-          (world.player.chronoSlipTimer ?? 0) > 0 ||
-          (world.player.relayMomentumTimer ?? 0) > 0 ||
-          (world.player.quickDrawTimer ?? 0) > 0 ||
-          world.resonance.activeMark !== null ||
-          world.resonance.cooldownTimer > 0 ||
-          world.relay.cooldownTimer > 0 ||
-          world.relay.successFlashTimer > 0 ||
-          (world.gravityPin?.cooldownTimer ?? 0) > 0 ||
-          (world.gravityPin?.activeDurationTimer ?? 0) > 0 ||
-          (world.echoCollapse?.cooldownTimer ?? 0) > 0 ||
-          (world.echoCollapse?.blastTimer ?? 0) > 0 ||
-          world.puzzle.heavyReceiver.charged ||
-          world.run.stage === 'intro' ||
-          world.run.stage === 'transition_to_boss' ||
-          world.run.checkpointNoticeTimer > 0 ||
-          Boolean(world.comms.active) ||
-          Boolean(world.exploration.lastDiscoveryBanner) ||
-          Boolean(
-            world.choir?.active &&
-              (world.choir.syncTimer > 0 || world.choir.failureResetTimer > 0)
-          ) ||
-          Boolean(
-            world.matron?.active &&
-              (world.matron.chronoSeverWarningTimer > 0 || world.matron.echoSuppressedTimer > 0)
-          ));
-
-      if (stateChanged || (hasLiveContinuousHud && now - lastHudSyncTime >= 100)) {
-        lastHudSyncTime = now;
-        prevIntegrity = world.player.integrity;
-        prevAppState = world.appState;
-        prevEncounterMode = world.encounterMode;
-        prevRunStage = world.run.stage;
-        prevRunChapter = world.run.chapter;
-        prevPendingNextChapter = world.run.pendingNextChapter;
-        prevTutorialStep = world.tutorial.step;
-        prevTutorialEnabled = world.tutorial.enabled;
-        prevTutorialStuck = world.tutorial.stuckHintActive;
-        prevOutcome = world.outcome;
-        prevEchoState = world.echo.state;
-        prevPlateActive = world.pressurePlate.active;
-        prevPuzzleStage = world.puzzle.stage;
-        prevReceiverCharged = world.puzzle.heavyReceiver.charged;
-        prevCombinePlateActive = world.puzzle.combinePlate.active;
-        prevFinalBarrierOpen = world.puzzle.finalBarrier.open;
-        prevCanRelay = world.relay.preview.canRelay;
-        prevRelayStatus = world.relay.preview.status;
-        prevRelayCount = world.relay.activationCount;
-        prevResonanceStatus = world.resonance.status;
-        prevResonanceMarkId = currMarkId;
-        prevConvergenceCount = world.resonance.convergenceCount;
-        prevBossPhase = currBossPhase;
-        prevBossState = currBossState;
-        prevBossAttack = currBossAttack;
-        prevBossCoreExposed = currBossCoreExposed;
-        prevBossHp = currBossHp;
-        prevCommsId = currCommsId;
-        prevEquippedWeapon = world.player.equippedWeaponId;
-        prevWeaponOverheated = world.player.weaponOverheated;
-        prevMemoryFragments = world.progression.memoryFragments;
-        prevPurchasedCount = world.progression.purchasedUpgrades.length;
-        prevUnlockedWeaponsCount = (world.progression.unlockedWeaponIds ?? []).length;
-        prevEquippedEdgeUpgrade = world.progression.equippedUpgrades.chrono_edge;
-        prevEquippedPulseUpgrade = world.progression.equippedUpgrades.pulsecaster;
-        prevEquippedRailUpgrade = world.progression.equippedUpgrades.phase_rail ?? null;
-        prevEquippedBreakerUpgrade = world.progression.equippedUpgrades.grav_breaker ?? null;
-        prevEncounterId = world.encounter.encounterId;
-        prevWaveIndex = world.encounter.currentWaveIndex;
-        prevWaveClearedCount = world.encounter.waveClearedCount;
-        prevEncounterCompleted = world.encounter.completed;
-        prevActivatedNodesCount = world.exploration.activatedNodeIds.length;
-        prevCompletedObjectivesCount = world.exploration.completedObjectiveIds.length;
-        prevDiscoveredCodexCount = world.exploration.discoveredCodexIds.length;
-        prevDiscoveredSecretsCount = world.exploration.discoveredSecretIds.length;
-        prevUnlockedRoutesCount = world.exploration.unlockedRouteIds.length;
-        prevCompletedNarrativeCount = world.exploration.completedNarrativeEventIds.length;
-        prevLastNarrativeId = world.exploration.lastTriggeredNarrativeEventId;
-        prevDiscoveryBannerId = world.exploration.lastDiscoveryBanner?.secretId ?? null;
-        prevPromptId = world.exploration.prompt.interactableId;
-        prevPromptStatus = world.exploration.prompt.status;
-        prevLockOnTargetId = currLockOnTargetId;
-        prevLockOnStaggered = currLockOnStaggered;
-        prevCanExecute = currCanExecute;
+      if (syncDecision.shouldSyncHud) {
         document.body.dataset.state = world.appState;
         document.body.dataset.encounter = world.encounterMode;
         document.body.dataset.runMode = world.run.mode;
-        if (persistenceChanged || (world.run.mode === 'campaign' && now - lastAutosaveTime >= 3000)) {
+        if (
+          syncDecision.persistenceChanged ||
+          (world.run.mode === 'campaign' && now - lastAutosaveTime >= 3000)
+        ) {
           lastAutosaveTime = now;
           savePersistedCampaignProgress(world);
         }
         setHud(extractHudSnapshot(world, input.aimYaw));
+        if ((world.paradox?.damagePopups.length ?? 0) > 0 || lastPopupCountRef.current > 0) {
+          const projected = computeProjectedPopups(world, sceneRenderer);
+          lastPopupCountRef.current = projected.length;
+          setProjectedDamagePopups(projected);
+        }
       }
     };
 
@@ -1332,7 +2334,7 @@ export default function App() {
 
     const scheduleNextSoftwareFrame = (onReady: (ts: number) => void) => {
       const gl = sceneRenderer.getWebGLContext() as WebGL2RenderingContext | null;
-      if (gl && typeof gl.fenceSync === 'function' && typeof gl.clientWaitSync === 'function') {
+      if (gl && typeof gl.fenceSync === 'function' && typeof gl.getSyncParameter === 'function') {
         const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         if (sync) {
           gl.flush();
@@ -1346,23 +2348,18 @@ export default function App() {
               }
               return;
             }
-            const status = gl.clientWaitSync(sync, 0, 0);
             polls += 1;
-            if (
-              status === gl.ALREADY_SIGNALED ||
-              status === gl.CONDITION_SATISFIED ||
-              status === gl.WAIT_FAILED ||
-              polls >= 12
-            ) {
+            const status = gl.getSyncParameter(sync, gl.SYNC_STATUS);
+            if (status === gl.UNSIGNALED && polls < 24) {
+              headlessTimerId = window.setTimeout(pollFence, 5);
+            } else {
               gl.deleteSync(sync);
               headlessTimerId = window.setTimeout(() => {
                 if (!loopDisposed) rafId = requestAnimationFrame(onReady);
-              }, 32);
-            } else {
-              headlessTimerId = window.setTimeout(pollFence, 16);
+              }, 48);
             }
           };
-          headlessTimerId = window.setTimeout(pollFence, 16);
+          headlessTimerId = window.setTimeout(pollFence, 5);
           return;
         }
       }
@@ -1464,6 +2461,40 @@ export default function App() {
           outcome: UpgradeEquipOutcome;
           progression: WeaponProgressionState;
         };
+        overclockRigModule?: (moduleId: RigModuleId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        setSentinelProtocol?: (mode: SentinelProtocolMode) => SentinelProtocolMode;
+        unlockBossEchoCore?: (coreId: BossEchoCoreId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        equipBossEchoCore?: (coreId: BossEchoCoreId | null) => {
+          outcome: UpgradeEquipOutcome;
+          progression: WeaponProgressionState;
+        };
+        transcendBossEchoCore?: (coreId: BossEchoCoreId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        grantConfluenceCharge?: (amount: number) => number;
+        triggerConfluenceBurst?: () => boolean;
+        overclockUpgrade: (upgradeId: WeaponUpgradeId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        awakenUpgrade: (upgradeId: WeaponUpgradeId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        purchaseNeuralProtocol: (protocolId: NeuralProtocolId) => {
+          outcome: UpgradePurchaseOutcome;
+          progression: WeaponProgressionState;
+        };
+        resolveStoryChoice: (arcId: StoryArcId, optionId: string) => boolean;
+        claimFragmentCache: (cacheId: FragmentCacheId | string) => boolean;
+        activateSectorBeacon: (beaconId: SectorBeaconId | string) => boolean;
         setTacticalWaypoint: (
           waypoint: TacticalWaypointState | null
         ) => TacticalWaypointState | null;
@@ -1473,10 +2504,48 @@ export default function App() {
         evaluateInteraction: (targetId: InteractableId) => InteractionTargetEvaluation;
         completeObjective: (objectiveId: MissionObjectiveId) => boolean;
         discoverCodex: (codexId: CodexEntryId) => boolean;
+        equipSkin?: (skinId: SeraRigSkinId) => boolean;
+        purchaseFabricator?: (itemId: FabricatorItemId) => boolean;
+        useNanite?: () => boolean;
+        toggleMutator?: (key: keyof ChronoMutatorState) => boolean;
+        toggleSpeedrunHud?: () => boolean;
+        enterParadoxRift?: (skipIntro?: boolean) => WorldState;
+        unlockAchievement?: (id: ChronoAchievementId) => boolean;
+        pushTestDamagePopup?: (amount: number, kind?: DamageNumberKind) => void;
         discoverSecret: (secretId: SecretAreaId) => boolean;
         triggerNarrativeEvent: (eventId: NarrativeEventId) => boolean;
         getExplorationState: () => WorldExplorationState;
         getRendererDiagnostics: () => ReturnType<ArenaSceneRenderer['getDiagnostics']>;
+        startRecursionProtocol: (startLoop?: number) => WorldState;
+        startBossGauntlet: (skipIntro?: boolean) => WorldState;
+        startExpeditionJourney: (chapter?: CampaignChapterId) => WorldState;
+        startNewGamePlus: () => number;
+        triggerExpeditionBreach: () => boolean;
+        enterExpeditionAirlock: () => boolean;
+        useSafeRoomMedBay: () => boolean;
+        claimSafeRoomLysaBriefing: () => boolean;
+        claimSecretEchoVault: () => boolean;
+        grantOverdriveCharge: (amount?: number) => boolean;
+        activateChronoOverdrive: () => boolean;
+        selectRecursionRelic: (relicId: ChronoRelicId | string) => boolean;
+        setOverdriveDifficulty: (enabled: boolean) => boolean;
+        sealTemporalRift: () => boolean;
+        getAudioDiagnostics: () => ReturnType<SoundEngine['getDiagnostics']> | null;
+        startDailyTrial?: (skipIntro?: boolean) => WorldState;
+        unlockScythe?: () => boolean;
+        equipModChip?: (chipId: WeaponModChipId | null) => boolean;
+        triggerFinisher?: () => boolean;
+        setStylePoints?: (points: number) => void;
+        togglePhotoMode?: (patch?: Partial<PhotoModeState>) => PhotoModeState;
+        setLocale?: (next: AppLocale) => void;
+        projectHoloMemory?: () => boolean;
+        dismissHoloMemory?: () => boolean;
+        claimMasteryBounty?: (targetId: MasteryTargetId, kind: MasteryBountyKind) => boolean;
+        claimAllMasteryBounties?: () => number;
+        recordMasteryDemo?: (targetId: MasteryTargetId, hitless?: boolean) => boolean;
+        seedMasterySealDemo?: (targetCount?: number) => number;
+        triggerTemporalSlip?: () => boolean;
+        toggleFocusMode?: (force?: boolean) => boolean;
       };
     };
 
@@ -1486,11 +2555,17 @@ export default function App() {
       const stepDt = seconds / steps;
       for (let i = 0; i < steps; i++) {
         const beforeMode = world.encounterMode;
+        const beforeChapter = world.run.chapter;
+        const beforeBossId = world.boss?.id ?? null;
         const beforeEncId = world.encounter.encounterId;
         const beforeWave = world.encounter.currentWaveIndex;
         const frameInput = input.consumeFrameInput(stepDt);
         stepWorld(world, frameInput, stepDt);
-        if (world.encounterMode !== beforeMode) {
+        if (
+          world.encounterMode !== beforeMode ||
+          world.run.chapter !== beforeChapter ||
+          (world.boss?.id ?? null) !== beforeBossId
+        ) {
           sceneRenderer.syncEnemyRigs(world);
           input.resetCameraAngles();
           sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
@@ -1718,7 +2793,7 @@ export default function App() {
       },
       saveCampaignProgress: () => {
         savePersistedCampaignProgress(world);
-        return campaignSaveTracker.getLastPersistedJson();
+        return lastPersistedCampaignJson;
       },
       loadCampaignProgress: () => {
         loadPersistedCampaignProgress(world);
@@ -1782,6 +2857,127 @@ export default function App() {
           outcome: res.outcome,
           progression: world.progression,
         };
+      },
+      overclockRigModule: (moduleId: RigModuleId) => {
+        const res = overclockRigModule(world, moduleId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      setSentinelProtocol: (mode: SentinelProtocolMode) => {
+        const res = setSentinelProtocol(world, mode);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return res.mode;
+      },
+      unlockBossEchoCore: (coreId: BossEchoCoreId) => {
+        const res = unlockBossEchoCore(world, coreId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      equipBossEchoCore: (coreId: BossEchoCoreId | null) => {
+        const res = equipBossEchoCore(world, coreId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      transcendBossEchoCore: (coreId: BossEchoCoreId) => {
+        world.events.length = 0;
+        const res = transcendBossEchoCore(world, coreId);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          rendererRef.current?.handleCombatEvents(world.events);
+        }
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      grantConfluenceCharge: (amount: number) => {
+        const charge = grantConfluenceCharge(world, amount);
+        setHud(extractHudSnapshot(world));
+        return charge;
+      },
+      triggerConfluenceBurst: () => {
+        world.events.length = 0;
+        const fired = triggerConfluenceBurst(world);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          rendererRef.current?.handleCombatEvents(world.events);
+        }
+        setHud(extractHudSnapshot(world));
+        return fired;
+      },
+      overclockUpgrade: (upgradeId: WeaponUpgradeId) => {
+        const res = overclockWeaponUpgrade(world, upgradeId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      awakenUpgrade: (upgradeId: WeaponUpgradeId) => {
+        const res = awakenWeaponUpgrade(world, upgradeId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      purchaseNeuralProtocol: (protocolId: NeuralProtocolId) => {
+        const res = purchaseNeuralProtocol(world, protocolId);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return {
+          outcome: res.outcome,
+          progression: world.progression,
+        };
+      },
+      resolveStoryChoice: (arcId: StoryArcId, optionId: string) => {
+        const ok = resolveStoryArcChoice(world, arcId, optionId);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return ok;
+      },
+      claimFragmentCache: (cacheId: FragmentCacheId | string) => {
+        const ok = claimFragmentCache(world, cacheId);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return ok;
+      },
+      activateSectorBeacon: (beaconId: SectorBeaconId | string) => {
+        const ok = activateSectorBeacon(world, beaconId);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return ok;
       },
       setTacticalWaypoint: (waypoint: TacticalWaypointState | null) => {
         if (waypoint === null) {
@@ -1850,8 +3046,450 @@ export default function App() {
         setHud(extractHudSnapshot(world));
         return res;
       },
+      projectHoloMemory: () => {
+        world.events.length = 0;
+        const res = projectChapterHoloMemory(world);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return res;
+      },
+      dismissHoloMemory: () => {
+        const ok = dismissActiveHoloMemory(world);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return ok;
+      },
       getExplorationState: () => world.exploration,
       getRendererDiagnostics: () => sceneRenderer.getDiagnostics(),
+      startRecursionProtocol: (startLoop = 1) => {
+        soundRef.current?.unlock();
+        startRecursionProtocol(world, startLoop);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        savePersistedCampaignProgress(world);
+        document.body.dataset.state = world.appState;
+        document.body.dataset.encounter = world.encounterMode;
+        document.body.dataset.runMode = world.run.mode;
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return world;
+      },
+      startBossGauntlet: (skipIntro = true) => {
+        soundRef.current?.unlock();
+        startBossGauntletRun(world, skipIntro);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        savePersistedCampaignProgress(world);
+        document.body.dataset.state = world.appState;
+        document.body.dataset.encounter = world.encounterMode;
+        document.body.dataset.runMode = world.run.mode;
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return world;
+      },
+      startExpeditionJourney: (chapter: CampaignChapterId = 'prologue') => {
+        soundRef.current?.unlock();
+        startExpeditionJourneyRun(world, chapter, false);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        savePersistedCampaignProgress(world);
+        document.body.dataset.state = world.appState;
+        document.body.dataset.encounter = world.encounterMode;
+        document.body.dataset.runMode = world.run.mode;
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return world;
+      },
+      triggerExpeditionBreach: () => {
+        const ok = triggerExpeditionBreach(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      enterExpeditionAirlock: () => {
+        const ok = enterExpeditionTransitAirlock(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.syncEnemyRigs(world);
+          input.resetCameraAngles();
+          sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      startNewGamePlus: () => {
+        soundRef.current?.unlock();
+        const cycle = startNewGamePlusRun(world);
+        if (world.events.length > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+        }
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return cycle;
+      },
+      useSafeRoomMedBay: () => {
+        soundRef.current?.unlock();
+        const ok = useSafeRoomMedBay(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      claimSafeRoomLysaBriefing: () => {
+        soundRef.current?.unlock();
+        const ok = claimSafeRoomLysaBriefing(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      claimSecretEchoVault: () => {
+        soundRef.current?.unlock();
+        const ok = claimSecretEchoVault(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          savePersistedCampaignProgress(world);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      grantOverdriveCharge: (amount = 100) => {
+        const ok = grantOverdriveCharge(world, amount);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return ok;
+      },
+      activateChronoOverdrive: () => {
+        soundRef.current?.unlock();
+        const ok = attemptActivateChronoOverdrive(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      selectRecursionRelic: (relicId: ChronoRelicId | string) => {
+        soundRef.current?.unlock();
+        const ok = selectRecursionRelic(world, relicId as ChronoRelicId);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.syncEnemyRigs(world);
+          input.resetCameraAngles();
+          sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+          savePersistedCampaignProgress(world);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      setOverdriveDifficulty: (enabled: boolean) => {
+        const ok = setOverdriveDifficulty(world, enabled);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return ok;
+      },
+      sealTemporalRift: () => {
+        const ok = sealTemporalRift(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      getAudioDiagnostics: () => soundRef.current?.getDiagnostics() ?? null,
+      equipSkin: (skinId: SeraRigSkinId) => {
+        const ok = equipSeraRigSkin(world, skinId);
+        if (ok) {
+          savePersistedCampaignProgress(world);
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      purchaseFabricator: (itemId: FabricatorItemId) => {
+        const ok = purchaseFabricatorItem(world, itemId);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          savePersistedCampaignProgress(world);
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      useNanite: () => {
+        const ok = useMedNaniteInjector(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      toggleMutator: (key: keyof ChronoMutatorState) => {
+        const active = toggleChronoMutator(world, key);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return active;
+      },
+      toggleSpeedrunHud: () => {
+        const enabled = toggleSpeedrunHud(world);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return enabled;
+      },
+      enterParadoxRift: (skipIntro = true) => {
+        startEchoZeroParadoxEncounter(world, skipIntro);
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return world;
+      },
+      unlockAchievement: (id: ChronoAchievementId) => {
+        const ok = unlockChronoAchievement(world, id);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return ok;
+      },
+      pushTestDamagePopup: (amount: number, kind: DamageNumberKind = 'crit') => {
+        const target = world.boss ?? world.enemies[0] ?? world.player;
+        if (world.paradox) {
+          pushDamagePopup(world.paradox, amount, target.x, 1.9, target.z, kind);
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+          const projected = computeProjectedPopups(world, sceneRenderer);
+          lastPopupCountRef.current = projected.length;
+          setProjectedDamagePopups(projected);
+        }
+      },
+      startDailyTrial: (skipIntro = true) => {
+        startDailyChronoTrialRun(world, skipIntro);
+        sceneRenderer.syncEnemyRigs(world);
+        input.resetCameraAngles();
+        sceneRenderer.snapCameraToPlayer(world, input.aimYaw, input.aimPitch);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return world;
+      },
+      unlockScythe: () => {
+        const ok = unlockChronoScythe(world);
+        savePersistedCampaignProgress(world);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return ok;
+      },
+      equipModChip: (chipId: WeaponModChipId | null) => {
+        const ok = purchaseAndEquipWeaponModChip(world, chipId);
+        savePersistedCampaignProgress(world);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+        return ok;
+      },
+      triggerFinisher: () => {
+        const ok = triggerChronoFinisher(world);
+        if (ok) {
+          if (world.events.length > 0) {
+            soundRef.current?.playEvents(world.events);
+            sceneRenderer.handleCombatEvents(world.events);
+          }
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world, input.aimYaw));
+        }
+        return ok;
+      },
+      setStylePoints: (points: number) => {
+        const asc = ensureAscensionState(world);
+        asc.style.points = Math.max(0, Math.min(340, points));
+        asc.style.tier = computeStyleRankTier(asc.style.points);
+        asc.style.peakPoints = Math.max(asc.style.peakPoints, asc.style.points);
+        asc.style.decayGraceTimer = 8;
+        asc.style.finisherReady = asc.style.tier === 'S' || asc.style.tier === 'SSS';
+        asc.style.lastActionLabel = asc.style.tier === 'SSS' ? 'PARADOX COMBO' : 'SYNC STRIKE';
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        setHud(extractHudSnapshot(world, input.aimYaw));
+      },
+      togglePhotoMode: (patch?: Partial<PhotoModeState>) => {
+        const cur = photoModeRef.current;
+        const next: PhotoModeState = {
+          ...(patch?.active === true && !cur.active ? createInitialPhotoModeState() : cur),
+          active: patch?.active !== undefined ? patch.active : !cur.active,
+          ...patch,
+        };
+        photoModeRef.current = next;
+        setPhotoMode(next);
+        sceneRenderer.setPhotoModeCamera({
+          active: next.active,
+          yawOffset: next.yawOffset,
+          pitchOffset: next.pitchOffset,
+          distance: next.distance,
+          fov: next.fov,
+          showDrone: next.showDrone,
+        });
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        return next;
+      },
+      setLocale: (next: AppLocale) => {
+        saveLocale(next);
+        setLocale(next);
+      },
+      claimMasteryBounty: (targetId: MasteryTargetId, kind: MasteryBountyKind) => {
+        world.events.length = 0;
+        const ok = claimMasteryBountyInWorld(world, targetId, kind);
+        if (ok) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+          savePersistedCampaignProgress(world);
+          setHud(extractHudSnapshot(world));
+        }
+        return ok;
+      },
+      claimAllMasteryBounties: () => {
+        world.events.length = 0;
+        const n = claimAllMasteryBountiesInWorld(world);
+        if (n > 0) {
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+          savePersistedCampaignProgress(world);
+          setHud(extractHudSnapshot(world));
+        }
+        return n;
+      },
+      recordMasteryDemo: (targetId: MasteryTargetId, hitless = true) => {
+        const res = recordCombatMasteryVictory(world.progression.combatMastery, [targetId], {
+          outcome: 'victory',
+          chapter: world.run.chapter,
+          bossId: world.boss?.id ?? null,
+          selectedEnding: null,
+          elapsedTime: 24.5,
+          enemiesDefeated: 4,
+          totalEnemies: 4,
+          damageDealt: 920,
+          damageTaken: hitless ? 0 : 12,
+          parriesLanded: 4,
+          perfectDodges: 3,
+          vulnerableHits: 5,
+          convergencesTriggered: 2,
+          relaysUsed: 2,
+          remainingTargetHp: 0,
+        });
+        world.progression.combatMastery = res.ledger;
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return true;
+      },
+      seedMasterySealDemo: (targetCount = 6) => {
+        const capped = Math.max(1, Math.min(MASTERY_TARGETS.length, Math.floor(targetCount)));
+        const targetIds = MASTERY_TARGETS.slice(0, capped).map((t) => t.id);
+        const res = recordCombatMasteryVictory(world.progression.combatMastery, targetIds, {
+          outcome: 'victory',
+          chapter: world.run.chapter,
+          bossId: world.boss?.id ?? null,
+          selectedEnding: null,
+          elapsedTime: 18,
+          enemiesDefeated: 4,
+          totalEnemies: 4,
+          damageDealt: 960,
+          damageTaken: 0,
+          parriesLanded: 4,
+          perfectDodges: 3,
+          vulnerableHits: 5,
+          convergencesTriggered: 2,
+          relaysUsed: 2,
+          remainingTargetHp: 0,
+        });
+        world.progression.combatMastery = res.ledger;
+        const claimedCount = claimAllMasteryBountiesInWorld(world);
+        sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+        savePersistedCampaignProgress(world);
+        setHud(extractHudSnapshot(world));
+        return claimedCount;
+      },
+      triggerTemporalSlip: () => {
+        world.events.length = 0;
+        world.player.temporalSlipCooldown = 0;
+        const seal = computeMasterySealModifiers(world.progression.combatMastery);
+        const slip = tryTriggerTemporalSlip(world.player, seal.bonusSlipDurationSec);
+        if (slip.triggered) {
+          world.events.push(
+            { type: 'player_perfect_dodge', x: world.player.x, z: world.player.z },
+            {
+              type: 'temporal_slip_triggered',
+              x: world.player.x,
+              z: world.player.z,
+              amount: Math.round(slip.durationSec * 100),
+            }
+          );
+          if (seal.tier >= 1) {
+            applySovereignAstralPulse(world, seal.tier);
+          }
+          soundRef.current?.playEvents(world.events);
+          sceneRenderer.handleCombatEvents(world.events);
+          sceneRenderer.updateAndRender(world, input.aimYaw, input.aimPitch, 0.016);
+          setHud(extractHudSnapshot(world));
+        }
+        return slip.triggered;
+      },
+      toggleFocusMode: (force?: boolean) => handleToggleFocusMode(force),
     };
     }
 
@@ -1863,15 +3501,19 @@ export default function App() {
       }
       delete win.__advanceSimulation;
       delete win.__afterframeTest;
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('visibilitychange', handleVisibilityResume);
       if (combatFlashTimerRef.current !== null) {
         window.clearTimeout(combatFlashTimerRef.current);
         combatFlashTimerRef.current = null;
       }
+      unsubscribeMeshy();
       input.detach();
       sceneRenderer.dispose();
       soundRef.current?.dispose();
+      soundRef.current = null;
       rendererRef.current = null;
     };
   }, [
@@ -1897,6 +3539,12 @@ export default function App() {
     rendererRef.current?.setScreenEffects(cameraSettings.screenEffects ?? true);
     rendererRef.current?.applyPerformanceSettings(cameraSettings);
     fpsLimitRef.current = cameraSettings.fpsLimit ?? 60;
+    renderScaleRef.current = cameraSettings.renderScale ?? 0.85;
+    const nextAdaptive = cameraSettings.adaptiveResolution ?? true;
+    if (!nextAdaptive && adaptiveResolutionRef.current) {
+      adaptiveGovernorRef.current.dynamicScaleFactor = 1.0;
+    }
+    adaptiveResolutionRef.current = nextAdaptive;
     cameraShakeRef.current = cameraSettings.cameraShake ?? true;
     screenEffectsRef.current = cameraSettings.screenEffects ?? true;
     reducedMotionRef.current = cameraSettings.reducedMotion;
@@ -1921,31 +3569,50 @@ export default function App() {
     cameraSettings,
   ]);
 
-  const saveWarningBanner =
-    saveStatus !== 'ok' ? (
-      <SaveWarningBanner
-        status={saveStatus}
-        retryFailed={saveRetryFailed}
-        onRetry={handleRetrySave}
-        onOverwrite={handleOverwriteUnreadSave}
-        onReload={handleReloadForUnreadSave}
-      />
-    ) : null;
-
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#07090d]">
-      {/* Isolated WebGL Canvas Mount Container */}
+      {/* Isolated WebGL Canvas Mount Container (Supports Photo Mode drag-orbit, wheel-zoom & color grade filter) */}
       <div
         ref={canvasMountRef}
         data-testid="arena-canvas-container"
-        className="w-full h-full"
+        style={{
+          filter: photoMode.active ? getPhotoFilterCss(photoMode.filter) : undefined,
+        }}
+        onPointerDown={(e) => {
+          if (!photoModeRef.current.active) return;
+          photoDragRef.current = { active: true, lastX: e.clientX, lastY: e.clientY };
+        }}
+        onPointerMove={(e) => {
+          if (!photoModeRef.current.active || !photoDragRef.current.active) return;
+          const dx = e.clientX - photoDragRef.current.lastX;
+          const dy = e.clientY - photoDragRef.current.lastY;
+          photoDragRef.current.lastX = e.clientX;
+          photoDragRef.current.lastY = e.clientY;
+          handleUpdatePhotoMode({
+            yawOffset: photoModeRef.current.yawOffset + dx * 0.008,
+            pitchOffset: photoModeRef.current.pitchOffset + dy * 0.006,
+          });
+        }}
+        onPointerUp={() => {
+          photoDragRef.current.active = false;
+        }}
+        onPointerLeave={() => {
+          photoDragRef.current.active = false;
+        }}
+        onWheel={(e) => {
+          if (!photoModeRef.current.active) return;
+          handleUpdatePhotoMode({
+            distance: photoModeRef.current.distance + (e.deltaY > 0 ? 0.55 : -0.55),
+          });
+        }}
+        className={`w-full h-full ${photoMode.active ? 'cursor-grab active:cursor-grabbing' : ''}`}
       />
 
       {/* Projected World-Space Floating Combat Callout Pool Layer (Zero React re-renders) */}
       <div
         ref={calloutMountRef}
         data-testid="combat-callout-layer"
-        className="fixed inset-0 z-20 pointer-events-none overflow-hidden select-none"
+        className="fixed inset-0 z-[6] pointer-events-none overflow-hidden select-none"
       />
 
       {/* Peripheral Parry / Convergence / Dodge / Damage Edge Flash (Zero React re-renders) */}
@@ -1954,7 +3621,7 @@ export default function App() {
         data-testid="combat-screen-flash"
         data-tone="none"
         style={{ opacity: 0 }}
-        className="fixed inset-0 z-15 pointer-events-none select-none"
+        className="fixed inset-0 z-[7] pointer-events-none select-none"
         aria-hidden="true"
       />
 
@@ -1965,7 +3632,7 @@ export default function App() {
         data-active="false"
         data-staggered="false"
         style={{ opacity: 0 }}
-        className="group/reticle fixed left-0 top-0 z-25 pointer-events-none select-none will-change-transform"
+        className="group/reticle fixed left-0 top-0 z-[8] pointer-events-none select-none will-change-transform"
         aria-hidden="true"
       >
         <div className="relative w-11 h-11 flex items-center justify-center">
@@ -1990,9 +3657,14 @@ export default function App() {
       {/* Title Screen Overlay */}
       {hud.appState === 'title' && (
         <TitleScreen
-          saveWarning={saveWarningBanner}
           onStartCampaign={handleStartCampaignFromTitle}
+          onStartExpeditionJourney={() => handleStartExpeditionJourney('prologue')}
+          onStartNewGamePlus={handleStartNewGamePlus}
           onStartPracticeStandard={handleStartPracticeStandard}
+          onStartRecursion={() => handleStartRecursionProtocol(1)}
+          onStartBossGauntlet={() => handleStartBossGauntlet(false)}
+          onToggleOverdrive={handleToggleOverdriveDifficulty}
+          onSelectDifficultyTier={handleSelectDifficultyTier}
           onStartBoss={handleStartBoss}
           unlockedChapters={hud.run.unlockedChapters}
           completedChapters={hud.run.completedChapters}
@@ -2028,6 +3700,30 @@ export default function App() {
           onEquipUpgrade={handleEquipUpgrade}
           onPurchaseRigModule={handlePurchaseRigModule}
           onEquipRigModule={handleEquipRigModule}
+          onOverclockRigModule={handleOverclockRigModule}
+          onSetSentinelProtocol={handleSetSentinelProtocol}
+          onSetEchoDoctrine={handleSetEchoDoctrine}
+          onUnlockBossCore={handleUnlockBossCore}
+          onEquipBossCore={handleEquipBossCore}
+          onTranscendBossCore={handleTranscendBossCore}
+          onSaveLoadoutPreset={handleSaveLoadoutPreset}
+          onApplyLoadoutPreset={handleApplyLoadoutPreset}
+          onOverclockUpgrade={handleOverclockUpgrade}
+          onAwakenUpgrade={handleAwakenUpgrade}
+          onPurchaseNeuralProtocol={handlePurchaseNeuralProtocol}
+          onEquipSkin={handleEquipSkin}
+          onToggleMutator={handleToggleMutator}
+          onToggleSpeedrunHud={handleToggleSpeedrunHud}
+          onStartEchoZero={handleEnterParadoxRift}
+          locale={locale}
+          onToggleLocale={handleToggleLocale}
+          dailyTrialConfig={dailyTrialConfig}
+          dailyTrialRecord={dailyTrialRecord}
+          onStartDailyTrial={handleStartDailyTrial}
+          onUnlockChronoScythe={handleUnlockChronoScythe}
+          onEquipModChip={handleEquipModChip}
+          onClaimMasteryBounty={handleClaimMasteryBounty}
+          onClaimAllMasteryBounties={handleClaimAllMasteryBounties}
         />
       )}
 
@@ -2035,17 +3731,18 @@ export default function App() {
       {hud.appState !== 'title' && (
         <GameHud
           hud={hud}
-          saveWarning={saveWarningBanner}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onTogglePause={handleTogglePause}
           onOpenMap={handleOpenMap}
+          onOpenArmory={handleOpenArmory}
           onRestart={handleStartOrRestart}
           onStartBoss={() => handleStartBoss('helix-04')}
           onSkipIntro={handleSkipIntro}
           onSkipTransition={handleSkipTransition}
           onSkipBossIntro={handleSkipBossIntro}
           onDismissComms={handleDismissComms}
+          onDismissHoloMemory={handleDismissHoloMemory}
           onToggleTutorial={handleToggleTutorial}
           onEchoRecord={handleEchoRecord}
           onEchoReplay={handleEchoReplay}
@@ -2057,6 +3754,16 @@ export default function App() {
           onParry={handleParry}
           onGravityPin={handleGravityPin}
           onEchoCollapse={handleEchoCollapse}
+          onTriggerOverdrive={handleTriggerChronoOverdrive}
+          onTriggerExpeditionBreach={handleTriggerExpeditionBreach}
+          onEnterExpeditionAirlock={handleEnterExpeditionAirlock}
+          onSafeRoomMedBay={handleSafeRoomMedBay}
+          onSafeRoomLysaBriefing={handleSafeRoomLysaBriefing}
+          onClaimSecretVault={handleClaimSecretVault}
+          projectedDamagePopups={projectedDamagePopups}
+          onUseNanite={handleUseNanite}
+          onPurchaseFabricator={handlePurchaseFabricator}
+          onEnterParadoxRift={handleEnterParadoxRift}
           onToggleLockOn={handleToggleLockOn}
           onCycleLockOn={handleCycleLockOn}
           onSwitchWeapon={handleSwitchWeapon}
@@ -2064,13 +3771,27 @@ export default function App() {
           onInteract={handleInteract}
           onEngageWardenPrime={handleEngageWardenPrime}
           onSelectLoomEnding={handleSelectLoomEnding}
+          onSelectRecursionRelic={handleSelectRecursionRelic}
           onRestoreCampaign={handleRestoreSavedCampaign}
+          onResolveStoryChoice={handleResolveStoryChoice}
           cameraSettings={cameraSettings}
           onTouchMoveHold={handleTouchMoveHold}
           onTouchMovePulse={handleTouchMovePulse}
           onTouchCameraStart={handleTouchCameraStart}
           onTouchCameraMove={handleTouchCameraMove}
           onTouchCameraEnd={handleTouchCameraEnd}
+          locale={locale}
+          onToggleLocale={handleToggleLocale}
+          onTriggerChronoFinisher={handleTriggerChronoFinisher}
+          onCycleSentinelProtocol={handleCycleSentinelProtocol}
+          onCycleEchoDoctrine={handleCycleEchoDoctrine}
+          onTriggerConfluenceBurst={handleTriggerConfluenceBurst}
+          photoMode={photoMode}
+          onTogglePhotoMode={handleTogglePhotoMode}
+          onUpdatePhotoMode={handleUpdatePhotoMode}
+          onCapturePhoto={handleCapturePhoto}
+          focusMode={focusMode}
+          onToggleFocusMode={handleToggleFocusMode}
         />
       )}
 
@@ -2106,12 +3827,30 @@ export default function App() {
           progression={hud.progression}
           exploration={hud.exploration}
           radar={hud.radar}
+          recursion={hud.recursion}
+          gauntlet={hud.gauntlet}
+          temporalRift={hud.temporalRift}
+          onToggleOverdrive={handleToggleOverdriveDifficulty}
+          onSelectDifficultyTier={handleSelectDifficultyTier}
           equippedWeaponId={hud.weapon.equippedWeaponId}
           onSelectWeapon={handleSelectWeapon}
           onPurchaseUpgrade={handlePurchaseUpgrade}
           onEquipUpgrade={handleEquipUpgrade}
+          onOverclockUpgrade={handleOverclockUpgrade}
+          onAwakenUpgrade={handleAwakenUpgrade}
+          onEquipModChip={handleEquipModChip}
           onPurchaseRigModule={handlePurchaseRigModule}
           onEquipRigModule={handleEquipRigModule}
+          onOverclockRigModule={handleOverclockRigModule}
+          onSetSentinelProtocol={handleSetSentinelProtocol}
+          onSetEchoDoctrine={handleSetEchoDoctrine}
+          onUnlockBossCore={handleUnlockBossCore}
+          onEquipBossCore={handleEquipBossCore}
+          onTranscendBossCore={handleTranscendBossCore}
+          onSaveLoadoutPreset={handleSaveLoadoutPreset}
+          onApplyLoadoutPreset={handleApplyLoadoutPreset}
+          onPurchaseNeuralProtocol={handlePurchaseNeuralProtocol}
+          onResolveStoryChoice={handleResolveStoryChoice}
           onSetTacticalWaypoint={handleSetTacticalWaypoint}
           cameraSettings={cameraSettings}
           onUpdateCameraSettings={handleUpdateCameraSettings}
@@ -2129,6 +3868,18 @@ export default function App() {
           onRestartFullRun={handleRestartFullRun}
           onStartBoss={() => handleStartBoss('helix-04')}
           onReturnToTitle={handleReturnToTitle}
+          unlockedChapters={hud.run.unlockedChapters}
+          completedChapters={hud.run.completedChapters}
+          onJumpToExpeditionSector={handleJumpToExpeditionSector}
+          onStartNewGamePlus={handleStartNewGamePlus}
+          paradox={hud.paradox}
+          onEquipSkin={handleEquipSkin}
+          onPurchaseFabricator={handlePurchaseFabricator}
+          onToggleMutator={handleToggleMutator}
+          onToggleSpeedrunHud={handleToggleSpeedrunHud}
+          onClaimMasteryBounty={handleClaimMasteryBounty}
+          onClaimAllMasteryBounties={handleClaimAllMasteryBounties}
+          locale={locale}
         />
       )}
     </main>

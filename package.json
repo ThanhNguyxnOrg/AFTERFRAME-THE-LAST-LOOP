@@ -1,7 +1,7 @@
 {
   "name": "afterframe-the-last-loop",
   "private": true,
-  "version": "1.9.0",
+  "version": "4.2.0",
   "packageManager": "bun@1.4.4",
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/game/combat-flow.test.ts src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts src/game/performance.test.ts src/game/tactical-hud.test.ts src/game/gamepad.test.ts src/game/adrenaline.test.ts src/game/lock-on.test.ts src/game/combat-vfx.test.ts src/game/visual-palette.test.ts src/game/rig-progression.test.ts src/game/save-status.test.ts"
+    "test": "tsx --test src/game/combat-flow.test.ts src/game/simulation.test.ts src/game/campaign-release.test.ts src/game/reduced-motion.test.ts src/game/asset-lifecycle.test.ts src/game/performance.test.ts src/game/tactical-hud.test.ts src/game/gamepad.test.ts src/game/adrenaline.test.ts src/game/lock-on.test.ts src/game/combat-vfx.test.ts src/game/visual-palette.test.ts src/game/rig-progression.test.ts src/game/chronicle-expansion.test.ts src/game/recursion-mode.test.ts src/game/bestiary-and-meshy.test.ts src/game/prop-collision-layout.test.ts src/game/chrono-overdrive.test.ts src/game/expedition-path.test.ts src/game/paradox-expansion.test.ts src/game/ascension-expansion.test.ts src/game/singularity-combat.test.ts src/game/kinetic-overcharge.test.ts src/game/chronicle-narrative.test.ts src/game/echo-synergy.test.ts src/game/chrono-momentum.test.ts src/game/chrono-nexus.test.ts src/game/chrono-resonance.test.ts src/game/chronicle-awakening.test.ts src/game/chrono-aegis.test.ts src/game/boss-echo-cores.test.ts src/game/combat-mastery.test.ts src/game/hud-sync.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

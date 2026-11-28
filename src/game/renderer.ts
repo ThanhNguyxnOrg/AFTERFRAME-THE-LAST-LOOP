@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -13,29 +14,76 @@ import {
   getShadowMapSizeForQuality,
   resolveGraphicsSettings,
 } from './performance.ts';
+import { SENTINEL_PROTOCOL_SPECS } from './chrono-aegis.ts';
+import {
+  getEchoDoctrineSpec,
+  normalizeEchoDoctrineId,
+} from './echo-synergy.ts';
+import {
+  BOSS_ECHO_CORES,
+  isBossCoreTranscended,
+  isValidBossEchoCoreId,
+  isWeaponAttunedToBossCore,
+} from './boss-echo-cores.ts';
+import { computeMasterySealModifiers } from './combat-mastery.ts';
 import {
   buildArenaEnvironment,
   buildChapterEnvironment,
+  createAutonomousCombatDroneRig,
+  createBreachSealRig,
+  createChronoFinisherRiftRig,
   createChronoPlateAndReceiverRig,
+  createChronoStasisCoreRig,
   createDustMoteTexture,
   createEchoAfterimageGhost,
   createEchoPlayerRig,
   createEnemyRig,
+  createEntryBoardingAirlockRig,
+  createExpeditionTrailRig,
+  createFieldRefitDroneRig,
+  createHazardStripeTexture,
+  createLysaHoloProjectorRig,
+  createPhotoDroneRig,
   createRadialShadowTexture,
+  createSafeRoomHubRig,
   createScorchDecalTexture,
+  createSecretEchoVaultRig,
+  createSectorTransitAirlockRig,
   createSeraPlayerRig,
+  createSingularityGrenadeRig,
+  createSovereignObeliskRig,
   createStudioEnvironmentTexture,
+  type AutonomousCombatDroneRig,
+  type BreachSealRig,
   type ChapterEnvironmentRig,
+  type ChronoFinisherRiftRig,
   type ChronoPlateAndReceiverRig,
+  type ChronoStasisCoreRig,
   type EchoAfterimageGhost,
   type EnemyRig,
+  type EntryBoardingAirlockRig,
+  type ExpeditionTrailRig,
+  type FieldRefitDroneRig,
+  type LysaHoloProjectorRig,
+  type PhotoDroneRig,
   type PlayerRig,
+  type SafeRoomHubRig,
+  type SecretEchoVaultRig,
+  type SectorTransitAirlockRig,
+  type SingularityGrenadeRig,
+  type SovereignObeliskRig,
 } from './models.ts';
+import { getHoloMemoryForChapter } from './chronicle-narrative.ts';
+import { getSeraRigSkinDefinition } from './paradox-expansion.ts';
 import {
   formatCombatCallouts,
   projectNdcToViewport,
   type CombatCalloutTone,
 } from './tactical-hud.ts';
+import {
+  meshyAssetRegistry,
+  type MeshyAssetSlotId,
+} from './meshy-assets.ts';
 import { resolveActiveLockOnTarget } from './lock-on.ts';
 import {
   computeBossTelegraphVisuals,
@@ -49,9 +97,20 @@ import {
   computeArenaMoodModulation,
   resolveChapterVisualLook,
 } from './visual-palette.ts';
+import {
+  computeDampAlpha,
+  computeDirectionalDodgeTilt,
+  computeOrganicBreath,
+  computePropFloatMotion,
+  computeSquashStretch,
+  computeStrobeIntensity,
+  dampScalar,
+} from './animation-kinematics.ts';
 import type {
+  AppLocale,
   CameraSettings,
   CampaignChapterId,
+  CelestialAtmosphereGrade,
   ChronicleLoomEndingId,
   CombatEvent,
   FpsLimitOption,
@@ -70,17 +129,10 @@ const _lookAtTarget = new THREE.Vector3();
 const _dummyObj = new THREE.Object3D();
 const _color = new THREE.Color();
 const _projVec = new THREE.Vector3();
-const _auraInput = {
-  adrenalineScore: 0, riposteActive: false, chronoSlipActive: false,
-  kineticSurgeActive: false, isRecording: false, reducedMotion: false, timeSec: 0,
-};
-const _auraVisuals = computeChronoAuraVisuals(_auraInput);
-const _lockInput = {
-  active: false, isBoss: false, targetRadius: 0.7, isStaggered: false,
-  isTelegraphing: false, isResonanceMarked: false, coreExposed: false,
-  reducedMotion: false, timeSec: 0,
-};
-const _lockVisuals = computeLockOnGroundVisuals(_lockInput);
+const _droneUpVec = new THREE.Vector3(0, 1, 0);
+const _droneDirVec = new THREE.Vector3();
+const _astralCrownDummy = new THREE.Object3D();
+const _astralCrownColor = new THREE.Color();
 
 interface FloatingCalloutSlot {
   active: boolean;
@@ -119,20 +171,22 @@ const MATERIAL_TEXTURE_SLOTS = [
   'lightMap',
 ] as const;
 
-function disposeMeshResources(root: THREE.Object3D, borrowedTexture?: THREE.Texture): void {
+function disposeMeshResources(root: THREE.Object3D): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Points)) return;
-    if (object.geometry) geometries.add(object.geometry);
+    if (object.geometry && !object.geometry.userData?.sharedAsset) {
+      geometries.add(object.geometry);
+    }
     const collectMaterial = (material: THREE.Material | undefined) => {
       if (!material) return;
       materials.add(material);
       const matRecord = material as unknown as Record<string, unknown>;
       for (let i = 0; i < MATERIAL_TEXTURE_SLOTS.length; i++) {
         const tex = matRecord[MATERIAL_TEXTURE_SLOTS[i]];
-        if (tex instanceof THREE.Texture && tex !== borrowedTexture) {
+        if (tex instanceof THREE.Texture && !tex.userData?.sharedAsset) {
           textures.add(tex);
         }
       }
@@ -216,7 +270,7 @@ interface SlashRibbonSlot {
   baseOpacity: number;
   group: THREE.Group;
   mesh: THREE.Mesh;
-  mat: THREE.MeshBasicMaterial;
+  mat: THREE.ShaderMaterial;
 }
 
 interface DashGhostSlot {
@@ -384,6 +438,7 @@ export class ArenaSceneRenderer {
 
   private playerRig: PlayerRig;
   private echoRig: PlayerRig;
+  private lastEchoDoctrineTint = '';
   private echoGhosts: EchoAfterimageGhost[] = [];
   private echoHistory: EchoPoseSample[] = [];
   private echoHistoryHead = 0;
@@ -467,10 +522,33 @@ export class ArenaSceneRenderer {
   private relayArrivalPillarMat: THREE.MeshBasicMaterial;
   private relayVfxTimer = 0;
 
-  private impactRingMesh: THREE.Mesh;
-  private impactRingMat: THREE.MeshBasicMaterial;
+  // v2.7.0: 4-Slot Pooled Additive GLSL Plasma Shockwave Rings (zero-GC)
+  private impactRingPool: Array<{
+    mesh: THREE.Mesh;
+    mat: THREE.ShaderMaterial;
+    timer: number;
+    duration: number;
+    maxScale: number;
+  }> = [];
+  private impactRingNextIdx = 0;
+  private impactRingMesh?: THREE.Mesh;
   private impactRingTimer = 0;
-  private impactRingDuration = 0.28;
+  private overchargeSparkCooldown = 0;
+  // v2.8.0: 3D Orbital Atmospheric Motes & Live Twin-Sync Plasma Tether GLSL Shader
+  private ambientMotesPoints?: THREE.Points;
+  private ambientMotesMat?: THREE.ShaderMaterial;
+  private twinSyncBeamMesh?: THREE.Mesh;
+  private twinSyncBeamMat?: THREE.ShaderMaterial;
+  // v2.9.0: Holographic Arena Floor Scan Pulse, Volumetric Ceiling Light Shafts & Diegetic Weakpoint Halo
+  private arenaPulseMesh?: THREE.Mesh;
+  private arenaPulseMat?: THREE.ShaderMaterial;
+  private lightShaftsGroup?: THREE.Group;
+  private lightShaftMat?: THREE.ShaderMaterial;
+  private weakpointHaloMesh?: THREE.Mesh;
+  private weakpointHaloMat?: THREE.ShaderMaterial;
+  // v3.0.0: 3D Diegetic Chrono Nexus Constellation Mandala Aura beneath Sera when 2+ systems link
+  private nexusAuraMesh?: THREE.Mesh;
+  private nexusAuraMat?: THREE.ShaderMaterial;
 
   private railBeamMesh?: THREE.Mesh;
   private railBeamMat?: THREE.MeshBasicMaterial;
@@ -485,6 +563,23 @@ export class ArenaSceneRenderer {
   private dashGhostSlots: DashGhostSlot[] = [];
   private dashGhostNextIdx = 0;
   private dashGhostSpawnCooldown = 0;
+  // v3.9.0: 6-slot Pose-Matched 3D Sera Holographic Afterimage Pool + 3D Chrono Clockwork Slip-Ring
+  private playerAfterimagePool: Array<{
+    active: boolean;
+    age: number;
+    maxAge: number;
+    baseOpacity: number;
+    ghost: EchoAfterimageGhost;
+  }> = [];
+  private playerAfterimageNextIdx = 0;
+  private slipTrailSpawnCooldown = 0;
+  private temporalSlipRingGroup?: THREE.Group;
+  private temporalSlipOuterRing?: THREE.Mesh;
+  private temporalSlipOuterMat?: THREE.MeshBasicMaterial;
+  private temporalSlipInnerRing?: THREE.Mesh;
+  private temporalSlipInnerMat?: THREE.MeshBasicMaterial;
+  private temporalSlipTicksMesh?: THREE.InstancedMesh;
+  private temporalSlipTicksMat?: THREE.MeshBasicMaterial;
   private staggerBeaconSlots: StaggerBeaconSlot[] = [];
   private lockOnEl: HTMLDivElement | null = null;
   private lockOnGroundGroup?: THREE.Group;
@@ -516,6 +611,7 @@ export class ArenaSceneRenderer {
   }> = [];
   private gravityPinMesh: THREE.Mesh;
   private gravityPinMat: THREE.MeshBasicMaterial;
+  private gravityMineGroup: THREE.Group;
   private chronoSeverMesh: THREE.Mesh;
   private chronoSeverMat: THREE.MeshBasicMaterial;
   private chronoSeverWallMesh: THREE.Mesh;
@@ -524,6 +620,10 @@ export class ArenaSceneRenderer {
   private chronoSeverStrutMat: THREE.MeshBasicMaterial;
   private echoCollapseWaveMesh: THREE.Mesh;
   private echoCollapseWaveMat: THREE.MeshBasicMaterial;
+  private echoCollapseCoreGroup: THREE.Group;
+  private echoCollapsePetals: THREE.Group[] = [];
+  private echoCollapseGyroA?: THREE.Mesh;
+  private echoCollapseGyroB?: THREE.Mesh;
   private curatorTraceMeshes: Array<{
     mesh: THREE.Mesh;
     mat: THREE.MeshBasicMaterial;
@@ -559,6 +659,12 @@ export class ArenaSceneRenderer {
   private planetMat?: THREE.ShaderMaterial;
   private planetRingMat?: THREE.ShaderMaterial;
   private orbitalDrydockGroup?: THREE.Group;
+  private celestialAstrolabeOuterRing?: THREE.Mesh;
+  private celestialAstrolabeInnerRing?: THREE.Mesh;
+  private lysaHoloProjectorRig?: LysaHoloProjectorRig;
+  private orbitalShuttles: THREE.Group[] = [];
+  private orbitalDebris: THREE.Group[] = [];
+  private blastStrobeMat?: THREE.MeshStandardMaterial;
   private beamConeMat?: THREE.MeshBasicMaterial;
   private dynamicObstaclesGroup?: THREE.Group;
   private dynamicObstacleRigs: Array<{
@@ -612,6 +718,31 @@ export class ArenaSceneRenderer {
     ringMat: THREE.MeshBasicMaterial;
     discMat: THREE.MeshBasicMaterial;
   }> = [];
+  private artilleryZonesGroup?: THREE.Group;
+  private artilleryZoneRigs: Array<{
+    group: THREE.Group;
+    outerRing: THREE.Mesh;
+    fillDisc: THREE.Mesh;
+    shellMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+    discMat: THREE.MeshBasicMaterial;
+    shellMat: THREE.MeshBasicMaterial;
+  }> = [];
+  private conductorTethersGroup?: THREE.Group;
+  private conductorTetherRigs: Array<{
+    group: THREE.Group;
+    beamMesh: THREE.Mesh;
+    beamMat: THREE.MeshBasicMaterial;
+    allyHaloMesh: THREE.Mesh;
+    allyHaloMat: THREE.MeshBasicMaterial;
+    nodeGroup: THREE.Group;
+  }> = [];
+  private readonly _tetherVecA = new THREE.Vector3();
+  private readonly _tetherVecB = new THREE.Vector3();
+  private readonly _tetherMid = new THREE.Vector3();
+  private readonly _tetherDir = new THREE.Vector3();
+  private readonly _tetherUp = new THREE.Vector3(0, 1, 0);
+  private readonly _tetherQuat = new THREE.Quaternion();
   private waypointBeaconGroup?: THREE.Group;
   private waypointBeaconRig?: {
     group: THREE.Group;
@@ -622,17 +753,105 @@ export class ArenaSceneRenderer {
     diamondMesh: THREE.Mesh;
     diamondMat: THREE.MeshBasicMaterial;
   };
+  private fragmentCachesGroup?: THREE.Group;
+  private fragmentCacheRigs: Array<{
+    group: THREE.Group;
+    prismMesh: THREE.Mesh;
+    prismMat: THREE.MeshBasicMaterial;
+    ringMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+    beamMesh: THREE.Mesh;
+    beamMat: THREE.MeshBasicMaterial;
+  }> = [];
+  private sectorBeaconsGroup?: THREE.Group;
+  private sectorBeaconRigs: Array<{
+    group: THREE.Group;
+    pylonMesh: THREE.Mesh;
+    pylonMat: THREE.MeshStandardMaterial;
+    haloMesh: THREE.Mesh;
+    haloMat: THREE.MeshBasicMaterial;
+    ringMesh: THREE.Mesh;
+    ringMat: THREE.MeshBasicMaterial;
+  }> = [];
+  private chapterOrbitalCrownGroup: THREE.Group;
+  private orbitalCrownOuterRing: THREE.Mesh;
+  private orbitalCrownInnerRing: THREE.Mesh;
+  private orbitalCrownMat: THREE.MeshBasicMaterial;
+  private orbitalCrownInnerMat: THREE.MeshBasicMaterial;
+  private floorConduitsGroup: THREE.Group;
+  private floorConduitMat: THREE.MeshBasicMaterial;
+  private temporalRiftGroup: THREE.Group;
+  private temporalRiftRingMesh: THREE.Mesh;
+  private temporalRiftRingMat: THREE.MeshBasicMaterial;
+  private temporalRiftOuterTorus: THREE.Mesh;
+  private temporalRiftOuterTorusMat: THREE.MeshBasicMaterial;
+  private temporalRiftInnerTorus: THREE.Mesh;
+  private temporalRiftInnerTorusMat: THREE.MeshBasicMaterial;
+  private temporalRiftCoreMesh: THREE.Mesh;
+  private temporalRiftCoreMat: THREE.MeshBasicMaterial;
+  private temporalRiftBeamMesh: THREE.Mesh;
+  private temporalRiftBeamMat: THREE.MeshBasicMaterial;
+  private overdriveDomeGroup: THREE.Group;
+  private overdriveShellMesh: THREE.Mesh;
+  private overdriveShellMat: THREE.MeshBasicMaterial;
+  private overdriveOuterRing: THREE.Mesh;
+  private overdriveOuterRingMat: THREE.MeshBasicMaterial;
+  private overdriveInnerRing: THREE.Mesh;
+  private overdriveInnerRingMat: THREE.MeshBasicMaterial;
+  private overdriveGroundRing: THREE.Mesh;
+  private overdriveGroundRingMat: THREE.MeshBasicMaterial;
+  private overdriveVisualAlpha = 0;
+  private watchtowerHeads: THREE.Group[] = [];
+  private vaultWheels: THREE.Group[] = [];
+  private stasisCoreRig: ChronoStasisCoreRig;
+  private sovereignObelisks: SovereignObeliskRig[] = [];
+  private fieldRefitDroneRig: FieldRefitDroneRig;
+  private singularityGrenadeRig?: SingularityGrenadeRig;
+  private transitAirlockRig?: SectorTransitAirlockRig;
+  private entryAirlockRig?: EntryBoardingAirlockRig;
+  private breachSealRig?: BreachSealRig;
+  private expeditionTrailRig?: ExpeditionTrailRig;
+  private safeRoomHubRig?: SafeRoomHubRig;
+  private secretVaultRig?: SecretEchoVaultRig;
+  private combatDroneRig?: AutonomousCombatDroneRig;
+  private bossCoreSigilRig?: {
+    root: THREE.Group;
+    crystalMesh: THREE.Mesh;
+    outerRing: THREE.Mesh;
+    innerRing: THREE.Mesh;
+    omegaCrownRing: THREE.Mesh;
+    omegaWingLeft: THREE.Mesh;
+    omegaWingRight: THREE.Mesh;
+    crystalMat: THREE.MeshStandardMaterial;
+    ringMat: THREE.MeshStandardMaterial;
+    omegaMat: THREE.MeshStandardMaterial;
+  };
+  private bossCorePulseTimer = 0;
+  private finisherRiftRig?: ChronoFinisherRiftRig;
+  private photoDroneRig?: PhotoDroneRig;
+  private photoModeCam = {
+    active: false,
+    yawOffset: 0.45,
+    pitchOffset: 0.16,
+    distance: 7.4,
+    fov: 50,
+    showDrone: true,
+  };
+  private droneBeamTimer = 0;
+  private lastAppliedSkinId: string | null = null;
   private disposed = false;
 
   private viewportWidth = 1280;
   private viewportHeight = 720;
   private graphicsPreset: GraphicsPreset = getDefaultGraphicsSettings().graphicsPreset;
   private renderScale = getDefaultGraphicsSettings().renderScale;
+  private dynamicScaleFactor = 1.0;
   private shadowQuality: ShadowQuality = getDefaultGraphicsSettings().shadowQuality;
   private particleQuality: ParticleQuality = getDefaultGraphicsSettings().particleQuality;
   private particleScale = getParticleScaleFactor(getDefaultGraphicsSettings().particleQuality);
   private lightingQuality: LightingQuality = getDefaultGraphicsSettings().lightingQuality;
   private fpsLimit: FpsLimitOption = getDefaultGraphicsSettings().fpsLimit;
+  private celestialGrade: CelestialAtmosphereGrade = getDefaultGraphicsSettings().celestialGrade;
   private hasActiveParticles = false;
   private lastEnvChapter: CampaignChapterId | null = null;
   private lastEnvEnding: ChronicleLoomEndingId | null | undefined = undefined;
@@ -647,6 +866,7 @@ export class ArenaSceneRenderer {
   private reducedMotion = false;
   private cameraShakeEnabled = true;
   private screenEffectsEnabled = true;
+  private locale: AppLocale = 'en';
   private isSoftwareGl = false;
   private glVendor = '';
   private glRenderer = '';
@@ -712,7 +932,7 @@ export class ArenaSceneRenderer {
         this.appliedPixelRatio = computeEffectivePixelRatio(
           window.devicePixelRatio || 1,
           GAME_CONFIG.camera.maxPixelRatio,
-          this.renderScale,
+          this.renderScale * this.dynamicScaleFactor,
           this.isHeadless,
           true
         );
@@ -721,10 +941,10 @@ export class ArenaSceneRenderer {
       this.renderer.setPixelRatio(this.appliedPixelRatio);
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.02;
+      this.renderer.toneMappingExposure = 1.12;
       this.renderer.shadowMap.enabled =
         !this.isHeadless && !this.isSoftwareGl && this.shadowQuality !== 'off';
-      this.renderer.shadowMap.type = THREE.PCFShadowMap;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       mountEl.appendChild(this.renderer.domElement);
 
       // WebGL context loss safety listeners
@@ -746,30 +966,38 @@ export class ArenaSceneRenderer {
     }
 
     this.scene = new THREE.Scene();
-    const bgHex = 0x080d16;
+    const bgHex = 0x060b14;
     this.scene.background = new THREE.Color(bgHex);
-    this.sceneFog = new THREE.FogExp2(bgHex, 0.0165);
+    this.sceneFog = new THREE.FogExp2(bgHex, 0.0135);
     this.scene.fog = this.sceneFog;
 
-    // PBR Studio Reflection Map via PMREMGenerator + RoomEnvironment (falls back to equirectangular studioEnvTex)
+    // High-contrast Orbital Sci-Fi Studio PMREM Reflection Map (dark cavity + warm/cyan softbox speculars)
     this.studioEnvTex = createStudioEnvironmentTexture();
     if (this.renderer) {
       try {
         const pmrem = new THREE.PMREMGenerator(this.renderer);
         pmrem.compileEquirectangularShader();
-        const roomEnv = new RoomEnvironment();
-        this.pmremEnvTarget = pmrem.fromScene(roomEnv, 0.04);
-        roomEnv.dispose();
+        this.pmremEnvTarget = pmrem.fromEquirectangular(this.studioEnvTex);
         pmrem.dispose();
         this.scene.environment = this.pmremEnvTarget.texture;
-        this.scene.environmentIntensity = this.isHeadless || this.isSoftwareGl ? 0.62 : 0.68;
+        this.scene.environmentIntensity = 0.94;
       } catch {
-        if (!this.isHeadless && !this.isSoftwareGl) {
+        try {
+          const pmrem = new THREE.PMREMGenerator(this.renderer);
+          const roomEnv = new RoomEnvironment();
+          this.pmremEnvTarget = pmrem.fromScene(roomEnv, 0.04);
+          roomEnv.dispose();
+          pmrem.dispose();
+          this.scene.environment = this.pmremEnvTarget.texture;
+          this.scene.environmentIntensity = 0.82;
+        } catch {
           this.scene.environment = this.studioEnvTex;
+          this.scene.environmentIntensity = 0.85;
         }
       }
-    } else if (!this.isHeadless && !this.isSoftwareGl) {
+    } else {
       this.scene.environment = this.studioEnvTex;
+      this.scene.environmentIntensity = 0.85;
     }
 
     this.camera = new THREE.PerspectiveCamera(width / height < 0.75 ? 60 : 52, width / height, 0.1, 120);
@@ -786,13 +1014,13 @@ export class ArenaSceneRenderer {
       GAME_CONFIG.camera.defaultPitch
     );
 
-    // Balanced 3-Point + Practical Industrial Sci-Fi Lighting Rig
-    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x162235, 1.24);
+    // High-Contrast 3-Point Orbital Studio Lighting Rig (eliminates washed-out plastic fill)
+    const hemiLight = new THREE.HemisphereLight(0x7ab8f5, 0x090f1b, 0.62);
     hemiLight.position.set(0, 28, 0);
     this.scene.add(hemiLight);
     this.hemiLight = hemiLight;
 
-    const keyLight = new THREE.DirectionalLight(0xfffbeb, 2.65);
+    const keyLight = new THREE.DirectionalLight(0xfff5e0, 2.85);
     keyLight.position.set(15, 25, 16);
     if (!this.isHeadless) {
       const initShadowSize = getShadowMapSizeForQuality(this.shadowQuality) || 512;
@@ -812,14 +1040,14 @@ export class ArenaSceneRenderer {
     this.scene.add(keyLight);
     this.keyLight = keyLight;
 
-    // Cool Rim/Back Directional Light to sculpt dark metallic silhouettes against the north bulkhead
-    const rimLight = new THREE.DirectionalLight(0x38bdf8, 1.55);
+    // Crisp Cool Rim/Back Directional Light to sculpt dark metallic silhouettes
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 2.05);
     rimLight.position.set(-14, 19, -17);
     this.scene.add(rimLight);
     this.rimLight = rimLight;
 
     // Point light on the central Chronicle Loom Pylon
-    const loomLight = new THREE.PointLight(0x22d3ee, 5.4, 24, 1.65);
+    const loomLight = new THREE.PointLight(0x22d3ee, 5.8, 26, 1.55);
     loomLight.position.set(0, 4.1, -2);
     this.scene.add(loomLight);
     this.loomLight = loomLight;
@@ -855,15 +1083,24 @@ export class ArenaSceneRenderer {
     this.planetMat = env.planetMat;
     this.planetRingMat = env.planetRingMat;
     this.orbitalDrydockGroup = env.orbitalDrydockGroup;
+    this.celestialAstrolabeOuterRing = env.celestialAstrolabeOuterRing;
+    this.celestialAstrolabeInnerRing = env.celestialAstrolabeInnerRing;
+    this.orbitalShuttles = env.orbitalShuttles ?? [];
+    this.orbitalDebris = env.orbitalDebris ?? [];
+    this.watchtowerHeads = env.watchtowerHeads ?? [];
+    this.vaultWheels = env.vaultWheels ?? [];
+    this.blastStrobeMat = env.blastStrobeMat;
     this.beamConeMat = env.beamConeMat;
     this.obstacleMeshes = env.obstacleMeshes;
     this.obstacleMeshById = env.obstacleMeshById;
+
+    this.lysaHoloProjectorRig = createLysaHoloProjectorRig(this.shadowTex);
+    this.scene.add(this.lysaHoloProjectorRig.root);
 
     // GPU-only HDR Selective Bloom pipeline (bypassed automatically on Headless / Software-GL / Low preset)
     if (this.renderer && !this.isHeadless && !this.isSoftwareGl) {
       try {
         const composer = new EffectComposer(this.renderer);
-        this.composer = composer;
         composer.setPixelRatio(this.appliedPixelRatio);
         composer.setSize(width, height);
         composer.addPass(new RenderPass(this.scene, this.camera));
@@ -875,9 +1112,11 @@ export class ArenaSceneRenderer {
         );
         composer.addPass(bloomPass);
         composer.addPass(new OutputPass());
+        this.composer = composer;
         this.bloomPass = bloomPass;
       } catch {
-        this.disposePostprocessing();
+        this.composer = null;
+        this.bloomPass = null;
       }
     }
     this.syncBloomState();
@@ -1111,41 +1350,63 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.loomSealsGroup);
 
-    // Phase 18: Pre-allocate Pooled Environmental Interactable Rigs (Terminals with Holographic Slabs, Power Nodes, Gate Controls)
+    // LORE TERMINAL — Obsidian-Steel Archival Pedestal, Copper Trim, Angled Cyan Screen & Floating Diamond Holo (Sheet 4, Panel 2)
     this.interactablesGroup = new THREE.Group();
     this.interactablesGroup.name = 'EnvironmentalInteractablesPool';
-    const intPedestalGeo = new THREE.CylinderGeometry(0.28, 0.38, 1.05, 8);
-    const intCollarGeo = new THREE.CylinderGeometry(0.35, 0.37, 0.1, 8);
-    const intScreenBezelGeo = new THREE.BoxGeometry(0.6, 0.34, 0.042);
-    const intHoloScreenGeo = new THREE.BoxGeometry(0.5, 0.24, 0.016);
+    const termFootGeo = new RoundedBoxGeometry(0.68, 0.1, 0.56, 2, 0.025);
+    const termColGeo = new RoundedBoxGeometry(0.46, 1.02, 0.36, 2, 0.04);
+    const termCopperTrimGeo = new RoundedBoxGeometry(0.5, 0.34, 0.24, 2, 0.025);
+    const termNeckGeo = new RoundedBoxGeometry(0.32, 0.14, 0.26, 2, 0.02);
+    const termScreenHousingGeo = new RoundedBoxGeometry(0.76, 0.48, 0.09, 2, 0.03);
+    const intHoloScreenGeo = new THREE.BoxGeometry(0.62, 0.36, 0.022);
     const intCoreGeo = new THREE.OctahedronGeometry(0.22, 0);
     const intRingGeo = new THREE.RingGeometry(0.55, 0.72, 24);
     intRingGeo.rotateX(-Math.PI * 0.5);
+    const termObsidianMat = new THREE.MeshStandardMaterial({
+      color: 0x161b24,
+      roughness: 0.34,
+      metalness: 0.78,
+    });
+    const termCopperMat = new THREE.MeshStandardMaterial({
+      color: 0x9a6443,
+      roughness: 0.36,
+      metalness: 0.84,
+    });
     for (let i = 0; i < 6; i++) {
       const iGroup = new THREE.Group();
       iGroup.visible = false;
-      const ped = new THREE.Mesh(intPedestalGeo, pillarStructMat);
-      ped.position.y = 0.525;
+
+      const foot = new THREE.Mesh(termFootGeo, termObsidianMat);
+      foot.position.y = 0.05;
+      iGroup.add(foot);
+
+      const ped = new THREE.Mesh(termColGeo, termObsidianMat);
+      ped.position.y = 0.58;
       iGroup.add(ped);
 
-      const collar = new THREE.Mesh(intCollarGeo, pillarStructMat);
-      collar.position.y = 1.05;
-      iGroup.add(collar);
+      // Subtle copper side accent plates & front data port trim
+      const copperSide = new THREE.Mesh(termCopperTrimGeo, termCopperMat);
+      copperSide.position.set(0, 0.28, 0.06);
+      iGroup.add(copperSide);
 
-      const screenBezel = new THREE.Mesh(intScreenBezelGeo, pillarStructMat);
-      screenBezel.position.set(0, 1.14, 0.14);
-      screenBezel.rotation.x = -0.52;
+      const neck = new THREE.Mesh(termNeckGeo, pillarStructMat);
+      neck.position.set(0, 1.12, 0.04);
+      iGroup.add(neck);
+
+      const screenBezel = new THREE.Mesh(termScreenHousingGeo, termObsidianMat);
+      screenBezel.position.set(0, 1.24, 0.14);
+      screenBezel.rotation.x = -0.58;
       iGroup.add(screenBezel);
 
       const holoPaneMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: 0.38,
+        opacity: 0.78,
         depthWrite: false,
       });
       const holoScreen = new THREE.Mesh(intHoloScreenGeo, holoPaneMat);
-      holoScreen.position.set(0, 1.152, 0.158);
-      holoScreen.rotation.x = -0.52;
+      holoScreen.position.set(0, 1.26, 0.178);
+      holoScreen.rotation.x = -0.58;
       iGroup.add(holoScreen);
 
       const coreMat = new THREE.MeshBasicMaterial({
@@ -1154,7 +1415,8 @@ export class ArenaSceneRenderer {
         opacity: 0.9,
       });
       const coreMesh = new THREE.Mesh(intCoreGeo, coreMat);
-      coreMesh.position.set(0, 1.56, -0.04);
+      coreMesh.scale.set(0.85, 1.22, 0.85);
+      coreMesh.position.set(0, 1.72, 0.06);
       iGroup.add(coreMesh);
 
       const ringMat = new THREE.MeshBasicMaterial({
@@ -1246,80 +1508,151 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.hazardsGroup);
 
-    // v1.5.0 Package B + v1.7.0 Composite Silhouettes: Dynamic Cover Barricades & Bolted Pressurized Capacitors
+    // TACTICAL COVER (Sheet 4, Panel 1) & FLUX CRATE (Sheet 3, Panel 7) Dynamic Obstacle Pool
     this.dynamicObstaclesGroup = new THREE.Group();
     this.dynamicObstaclesGroup.name = 'DynamicChapterObstaclesPool';
-    const wallBodyGeo = new THREE.BoxGeometry(1.75, 1.15, 0.72);
-    const wallCapGeo = new THREE.BoxGeometry(1.88, 0.22, 0.84);
-    const wallTrimGeo = new THREE.BoxGeometry(1.62, 0.14, 0.78);
-    const wallButtressGeo = new THREE.BoxGeometry(0.2, 0.72, 1.04);
-    const crateShellGeo = new THREE.CylinderGeometry(0.62, 0.72, 1.25, 8);
-    const crateCoreGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.34, 8);
-    const crateTopGeo = new THREE.CylinderGeometry(0.46, 0.6, 0.22, 8);
-    const crateRibGeo = new THREE.BoxGeometry(0.11, 1.04, 0.16);
-    const crateValveGeo = new THREE.CylinderGeometry(0.24, 0.28, 0.12, 8);
+    const wallBodyGeo = new RoundedBoxGeometry(2.05, 1.08, 0.44, 2, 0.06);
+    const wallSkirtGeo = new RoundedBoxGeometry(2.14, 0.34, 0.56, 2, 0.04);
+    const wallHazardGeo = new THREE.BoxGeometry(1.76, 0.16, 0.59);
+    const wallSideCapGeo = new RoundedBoxGeometry(0.28, 1.24, 0.52, 2, 0.05);
+    const wallTrimGeo = new RoundedBoxGeometry(1.48, 0.14, 0.14, 2, 0.03);
+    const wallStrutFootGeo = new RoundedBoxGeometry(0.22, 0.12, 0.58, 2, 0.03);
+    const wallPistonGeo = new THREE.CylinderGeometry(0.052, 0.065, 0.78, 8);
+    // FLUX CRATE — Destructible Roll-Cage Volatile Capacitor Crate (Sheet 3, Panel 7 Match)
+    const crateFrameBarHGeo = new THREE.BoxGeometry(1.16, 0.085, 0.085);
+    const crateFrameBarVGeo = new THREE.BoxGeometry(0.085, 1.08, 0.085);
+    const crateFrameBarDGeo = new THREE.BoxGeometry(0.085, 0.085, 1.16);
+    const crateBaseGeo = new THREE.BoxGeometry(1.12, 0.14, 1.12);
+    const crateCanisterGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.82, 12);
+    const crateCanisterCapGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.12, 12);
+    const crateInnerAmberGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.68, 10);
+    const crateHazardBandGeo = new THREE.BoxGeometry(1.2, 0.14, 1.2);
+    const crateHazardTex = createHazardStripeTexture();
+    const crateHazardMat = new THREE.MeshStandardMaterial({
+      map: crateHazardTex,
+      roughness: 0.45,
+      metalness: 0.35,
+    });
+    const crateCyanGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x67e8f9,
+      emissive: 0x06b6d4,
+      emissiveIntensity: 1.8,
+      transparent: true,
+      opacity: 0.82,
+      roughness: 0.14,
+      metalness: 0.2,
+    });
     const dynBodyMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.44,
-      metalness: 0.68,
+      color: 0x262d38,
+      roughness: 0.4,
+      metalness: 0.72,
     });
     const dynFrameMat = new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      roughness: 0.28,
-      metalness: 0.82,
+      color: 0x475364,
+      roughness: 0.3,
+      metalness: 0.84,
     });
     for (let i = 0; i < 8; i++) {
       const dGroup = new THREE.Group();
       dGroup.visible = false;
 
       const trimMat = new THREE.MeshStandardMaterial({
-        color: 0x0ea5e9,
-        emissive: 0x0891b2,
-        emissiveIntensity: 0.55,
-        roughness: 0.3,
-        metalness: 0.5,
+        color: 0x22d3ee,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.35,
+        roughness: 0.2,
+        metalness: 0.35,
       });
       const coreMat = new THREE.MeshBasicMaterial({
-        color: 0xf59e0b,
+        color: 0xfde047,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.92,
       });
 
+      // TACTICAL COVER — Matte Gunmetal Ballistic Barricade, Hydraulic Struts, Hazard Base & Cyan Top Crest
       const wallGroup = new THREE.Group();
       const wBody = new THREE.Mesh(wallBodyGeo, dynBodyMat);
-      wBody.position.y = 0.58;
+      wBody.position.y = 0.68;
       wBody.castShadow = !this.isHeadless;
       wBody.receiveShadow = !this.isHeadless;
-      const wCap = new THREE.Mesh(wallCapGeo, dynFrameMat);
-      wCap.position.y = 1.24;
+      const wSkirt = new THREE.Mesh(wallSkirtGeo, dynFrameMat);
+      wSkirt.position.y = 0.18;
+      const wHazard = new THREE.Mesh(wallHazardGeo, crateHazardMat);
+      wHazard.position.y = 0.16;
       const wTrim = new THREE.Mesh(wallTrimGeo, trimMat);
-      wTrim.position.y = 0.96;
-      const wButtressL = new THREE.Mesh(wallButtressGeo, dynFrameMat);
-      wButtressL.position.set(-0.74, 0.36, 0);
-      const wButtressR = new THREE.Mesh(wallButtressGeo, dynFrameMat);
-      wButtressR.position.set(0.74, 0.36, 0);
-      wallGroup.add(wBody, wCap, wTrim, wButtressL, wButtressR);
+      wTrim.position.y = 1.24;
+      wallGroup.add(wBody, wSkirt, wHazard, wTrim);
+
+      for (const side of [-1, 1]) {
+        // Raised heavy armored shoulder cheeks flanking the cyan barrier top crest
+        const cheek = new THREE.Mesh(wallSideCapGeo, dynFrameMat);
+        cheek.position.set(side * 0.94, 0.64, 0);
+        cheek.castShadow = !this.isHeadless;
+        wallGroup.add(cheek);
+        // Angled hydraulic stabilizer struts gripping the deck on both front & rear
+        for (const zDir of [-1, 1]) {
+          const foot = new THREE.Mesh(wallStrutFootGeo, dynBodyMat);
+          foot.position.set(side * 0.86, 0.06, zDir * 0.34);
+          wallGroup.add(foot);
+          const piston = new THREE.Mesh(wallPistonGeo, dynFrameMat);
+          piston.position.set(side * 0.86, 0.42, zDir * 0.32);
+          piston.rotation.x = zDir * 0.46;
+          wallGroup.add(piston);
+        }
+      }
       dGroup.add(wallGroup);
 
       const crateGroup = new THREE.Group();
-      const cShell = new THREE.Mesh(crateShellGeo, dynBodyMat);
-      cShell.position.y = 0.64;
-      cShell.castShadow = !this.isHeadless;
-      cShell.receiveShadow = !this.isHeadless;
-      const cCore = new THREE.Mesh(crateCoreGeo, coreMat);
-      cCore.position.y = 0.68;
-      const cTop = new THREE.Mesh(crateTopGeo, dynFrameMat);
-      cTop.position.y = 1.36;
-      const cValve = new THREE.Mesh(crateValveGeo, dynFrameMat);
-      cValve.position.y = 1.5;
-      crateGroup.add(cShell, cCore, cTop, cValve);
-      for (let r = 0; r < 4; r++) {
-        const ribAngle = (r * Math.PI) / 2;
-        const rib = new THREE.Mesh(crateRibGeo, dynFrameMat);
-        rib.position.set(Math.sin(ribAngle) * 0.65, 0.68, Math.cos(ribAngle) * 0.65);
-        rib.rotation.y = ribAngle;
-        crateGroup.add(rib);
+      const cBase = new THREE.Mesh(crateBaseGeo, dynBodyMat);
+      cBase.position.y = 0.08;
+      cBase.castShadow = !this.isHeadless;
+      cBase.receiveShadow = !this.isHeadless;
+      crateGroup.add(cBase);
+
+      // 4 Glowing Unstable Cyan-Amber Plasma Canisters Inside the Cage
+      for (const cx of [-0.26, 0.26]) {
+        for (const cz of [-0.26, 0.26]) {
+          const canGlass = new THREE.Mesh(crateCanisterGeo, crateCyanGlowMat);
+          canGlass.position.set(cx, 0.58, cz);
+          crateGroup.add(canGlass);
+
+          const canCore = new THREE.Mesh(crateInnerAmberGeo, coreMat);
+          canCore.position.set(cx, 0.58, cz);
+          crateGroup.add(canCore);
+
+          const capTop = new THREE.Mesh(crateCanisterCapGeo, dynFrameMat);
+          capTop.position.set(cx, 1.0, cz);
+          crateGroup.add(capTop);
+        }
       }
+
+      // Heavy Dark-Steel Roll-Cage Outer Frame (4 corner posts + top/bottom rails)
+      for (const sx of [-0.56, 0.56]) {
+        for (const sz of [-0.56, 0.56]) {
+          const post = new THREE.Mesh(crateFrameBarVGeo, dynFrameMat);
+          post.position.set(sx, 0.58, sz);
+          post.castShadow = !this.isHeadless;
+          crateGroup.add(post);
+        }
+      }
+      for (const sy of [0.1, 1.08]) {
+        for (const sz of [-0.56, 0.56]) {
+          const railX = new THREE.Mesh(crateFrameBarHGeo, dynFrameMat);
+          railX.position.set(0, sy, sz);
+          crateGroup.add(railX);
+        }
+        for (const sx of [-0.56, 0.56]) {
+          const railZ = new THREE.Mesh(crateFrameBarDGeo, dynFrameMat);
+          railZ.position.set(sx, sy, 0);
+          crateGroup.add(railZ);
+        }
+      }
+
+      // Signature Diagonal Yellow-and-Black Hazard Stripe Band Around Upper Perimeter
+      const hazardBand = new THREE.Mesh(crateHazardBandGeo, crateHazardMat);
+      hazardBand.position.y = 0.84;
+      crateGroup.add(hazardBand);
+
       dGroup.add(crateGroup);
 
       this.dynamicObstacleRigs.push({
@@ -1336,53 +1669,101 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.dynamicObstaclesGroup);
 
-    // v1.5.0 Package C + v1.7.0 Octagonal Housing: Pooled Kinetic Vector Boost Pads (2 Flank Pads)
+    // BOOST PAD — Brushed-Titanium Circular Accelerator Pad, 4 Glowing Amber Corner Clamps & Turbine Core (Sheet 4, Panel 3)
     this.boostPadsGroup = new THREE.Group();
     this.boostPadsGroup.name = 'KineticBoostPadsPool';
-    const padBaseGeo = new THREE.CylinderGeometry(1.24, 1.38, 0.07, 8);
-    const padOuterRingGeo = new THREE.RingGeometry(0.98, 1.18, 28);
+    const padBaseGeo = new THREE.CylinderGeometry(1.36, 1.48, 0.09, 28);
+    const padBezelTorusGeo = new THREE.TorusGeometry(1.28, 0.095, 10, 32);
+    padBezelTorusGeo.rotateX(Math.PI * 0.5);
+    const padWellGeo = new THREE.CylinderGeometry(0.54, 0.48, 0.095, 24);
+    const padClampGeo = new RoundedBoxGeometry(0.42, 0.16, 0.52, 2, 0.04);
+    const padClampGlowGeo = new RoundedBoxGeometry(0.28, 0.12, 0.36, 2, 0.03);
+    const padBladeGeo = new THREE.BoxGeometry(0.055, 0.04, 0.42);
+    const padOuterRingGeo = new THREE.RingGeometry(0.92, 1.14, 32);
     padOuterRingGeo.rotateX(-Math.PI * 0.5);
-    const padInnerHaloGeo = new THREE.RingGeometry(0.68, 0.78, 8);
+    const padInnerHaloGeo = new THREE.RingGeometry(0.62, 0.78, 28);
     padInnerHaloGeo.rotateX(-Math.PI * 0.5);
-    const padChevronGeo = new THREE.RingGeometry(0.36, 0.58, 4);
+    const padChevronGeo = new THREE.RingGeometry(0.32, 0.46, 16);
     padChevronGeo.rotateX(-Math.PI * 0.5);
-    const padBaseMat = new THREE.MeshStandardMaterial({
-      color: 0x162234,
-      roughness: 0.36,
-      metalness: 0.8,
+    const padTitaniumMat = new THREE.MeshStandardMaterial({
+      color: 0x7b8798,
+      roughness: 0.28,
+      metalness: 0.86,
+    });
+    const padDarkWellMat = new THREE.MeshStandardMaterial({
+      color: 0x111827,
+      roughness: 0.48,
+      metalness: 0.74,
+    });
+    const padAmberClampMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xd97706,
+      emissiveIntensity: 1.55,
+      roughness: 0.2,
+      metalness: 0.3,
     });
     for (let i = 0; i < 2; i++) {
       const pGroup = new THREE.Group();
       pGroup.visible = false;
-      const pBase = new THREE.Mesh(padBaseGeo, padBaseMat);
-      pBase.position.y = 0.035;
+      const pBase = new THREE.Mesh(padBaseGeo, padDarkWellMat);
+      pBase.position.y = 0.045;
       pBase.receiveShadow = !this.isHeadless;
       pGroup.add(pBase);
 
+      const pBezel = new THREE.Mesh(padBezelTorusGeo, padTitaniumMat);
+      pBezel.position.y = 0.09;
+      pGroup.add(pBezel);
+
+      // 4 Heavy Glowing Amber Corner Clamp Brackets around the circular rim
+      for (let c = 0; c < 4; c++) {
+        const ca = (c / 4) * Math.PI * 2 + Math.PI / 4;
+        const clamp = new THREE.Mesh(padClampGeo, padTitaniumMat);
+        clamp.position.set(Math.sin(ca) * 1.24, 0.11, Math.cos(ca) * 1.24);
+        clamp.rotation.y = ca;
+        pGroup.add(clamp);
+
+        const clampLight = new THREE.Mesh(padClampGlowGeo, padAmberClampMat);
+        clampLight.position.set(Math.sin(ca) * 1.28, 0.145, Math.cos(ca) * 1.28);
+        clampLight.rotation.y = ca;
+        pGroup.add(clampLight);
+      }
+
+      const well = new THREE.Mesh(padWellGeo, padDarkWellMat);
+      well.position.y = 0.055;
+      pGroup.add(well);
+
       const ringMat = new THREE.MeshBasicMaterial({
-        color: 0x22d3ee,
+        color: 0x38bdf8,
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.82,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
       const outerRing = new THREE.Mesh(padOuterRingGeo, ringMat);
-      outerRing.position.y = 0.074;
+      outerRing.position.y = 0.098;
       pGroup.add(outerRing);
 
       const innerHalo = new THREE.Mesh(padInnerHaloGeo, ringMat);
-      innerHalo.position.y = 0.075;
+      innerHalo.position.y = 0.101;
       pGroup.add(innerHalo);
 
+      // Rotating Turbine Fan Core & Illuminated Hub inside chevronMesh
       const chevronMat = new THREE.MeshBasicMaterial({
         color: 0x67e8f9,
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.9,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
       const chevronMesh = new THREE.Mesh(padChevronGeo, chevronMat);
-      chevronMesh.position.y = 0.078;
+      chevronMesh.position.y = 0.106;
+      for (let b = 0; b < 8; b++) {
+        const ba = (b / 8) * Math.PI * 2;
+        const blade = new THREE.Mesh(padBladeGeo, padTitaniumMat);
+        blade.position.set(Math.sin(ba) * 0.24, 0, Math.cos(ba) * 0.24);
+        blade.rotation.y = ba + 0.32;
+        chevronMesh.add(blade);
+      }
       pGroup.add(chevronMesh);
 
       this.boostPadRigs.push({
@@ -1396,21 +1777,114 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.boostPadsGroup);
 
+    // OVERCLOCK CORE (Sheet 5, Panel 7) & MED NANITE POD (Sheet 5, Panel 5) in Secret Alcove Caches
     this.secretsGroup = new THREE.Group();
     this.secretsGroup.name = 'SecretAreasGroup';
     const secRingGeo = new THREE.RingGeometry(0.72, 0.94, 24);
     secRingGeo.rotateX(-Math.PI * 0.5);
-    const secCoreGeo = new THREE.OctahedronGeometry(0.32, 0);
+    const overclockHexEndGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.16, 6);
+    overclockHexEndGeo.rotateZ(Math.PI * 0.5);
+    const overclockCoilGeo = new THREE.TorusGeometry(0.2, 0.048, 8, 20);
+    overclockCoilGeo.rotateY(Math.PI * 0.5);
+    const overclockGunmetalMat = new THREE.MeshStandardMaterial({
+      color: 0x2a323f,
+      roughness: 0.34,
+      metalness: 0.86,
+    });
+    const overclockGoldMat = new THREE.MeshStandardMaterial({
+      color: 0xd4ad52,
+      roughness: 0.26,
+      metalness: 0.9,
+    });
+    const overclockAmberMat = new THREE.MeshStandardMaterial({
+      color: 0xf97316,
+      emissive: 0xea580c,
+      emissiveIntensity: 1.6,
+      roughness: 0.14,
+      metalness: 0.22,
+    });
+    const medWhiteMat = new THREE.MeshStandardMaterial({
+      color: 0xf1f5f9,
+      roughness: 0.22,
+      metalness: 0.22,
+    });
+    const medTealMat = new THREE.MeshStandardMaterial({
+      color: 0x0f766e,
+      roughness: 0.34,
+      metalness: 0.45,
+    });
+    const medMintGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x5eead4,
+      emissive: 0x10b981,
+      emissiveIntensity: 1.45,
+      roughness: 0.14,
+      metalness: 0.2,
+    });
+    const buildMedNanitePodMesh = (scale = 1.0): THREE.Group => {
+      const pod = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.24 * scale, 0.36 * scale, 8, 16), medTealMat);
+      pod.add(body);
+      for (const side of [-1, 1]) {
+        const shell = new THREE.Mesh(
+          new RoundedBoxGeometry(0.18 * scale, 0.54 * scale, 0.34 * scale, 2, 0.05 * scale),
+          medWhiteMat
+        );
+        shell.position.x = side * 0.18 * scale;
+        pod.add(shell);
+      }
+      // Glowing Mint-Green 3D Cross (+) Nanite Core Window on Front & Back
+      for (const zDir of [-1, 1]) {
+        const crossV = new THREE.Mesh(
+          new RoundedBoxGeometry(0.11 * scale, 0.34 * scale, 0.05 * scale, 1, 0.015 * scale),
+          medMintGlowMat
+        );
+        crossV.position.z = zDir * 0.24 * scale;
+        pod.add(crossV);
+        const crossH = new THREE.Mesh(
+          new RoundedBoxGeometry(0.32 * scale, 0.11 * scale, 0.05 * scale, 1, 0.015 * scale),
+          medMintGlowMat
+        );
+        crossH.position.z = zDir * 0.24 * scale;
+        pod.add(crossH);
+      }
+      return pod;
+    };
     for (let i = 0; i < 2; i++) {
       const sGroup = new THREE.Group();
       sGroup.visible = false;
       const coreMat = new THREE.MeshBasicMaterial({
-        color: 0x38bdf8,
+        color: i === 0 ? 0xf59e0b : 0x34d399,
         transparent: true,
         opacity: 0.9,
       });
-      const coreMesh = new THREE.Mesh(secCoreGeo, coreMat);
+      const coreMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.08, 0), coreMat);
       coreMesh.position.y = 1.15;
+      if (i === 0) {
+        // OVERCLOCK CORE — Precision Hexagonal Gunmetal & Gold Circuit Casing with Blazing Amber Plasma Coils
+        for (const ex of [-0.26, 0.26]) {
+          const cap = new THREE.Mesh(overclockHexEndGeo, overclockGunmetalMat);
+          cap.position.x = ex;
+          coreMesh.add(cap);
+          const goldRim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.028, 6, 6), overclockGoldMat);
+          goldRim.rotation.y = Math.PI * 0.5;
+          goldRim.position.x = ex + Math.sign(ex) * 0.08;
+          coreMesh.add(goldRim);
+        }
+        for (const cx of [-0.1, 0, 0.1]) {
+          const coil = new THREE.Mesh(overclockCoilGeo, overclockAmberMat);
+          coil.position.x = cx;
+          coreMesh.add(coil);
+        }
+        for (let b = 0; b < 3; b++) {
+          const ba = (b / 3) * Math.PI * 2;
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.055, 0.065), overclockGoldMat);
+          rail.position.set(0, Math.cos(ba) * 0.28, Math.sin(ba) * 0.28);
+          coreMesh.add(rail);
+        }
+      } else {
+        // MED NANITE POD — Glossy White & Emerald-Teal Capsule with Glowing Mint Cross Window
+        coreMesh.add(buildMedNanitePodMesh(1.05));
+      }
       sGroup.add(coreMesh);
 
       const ringMat = new THREE.MeshBasicMaterial({
@@ -1435,37 +1909,87 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.secretsGroup);
 
-    // v1.9.0: Pooled Charged Flux Pools (spawned by shattered Chrono-Capacitors)
+    // SURGE POOL — Recessed Octagonal Gunmetal Titanium Energy Grate Pad with Cyan-Emerald Flux Vortex (Sheet 7, Panel 4)
     this.fluxPoolsGroup = new THREE.Group();
     this.fluxPoolsGroup.name = 'ChargedFluxPoolsGroup';
-    const fluxRingGeo = new THREE.RingGeometry(0.84, 1.0, 32);
+    const surgeRimMat = new THREE.MeshStandardMaterial({
+      color: 0x3b4452,
+      roughness: 0.36,
+      metalness: 0.84,
+    });
+    const surgeGrateDarkMat = new THREE.MeshStandardMaterial({
+      color: 0x1b232e,
+      roughness: 0.44,
+      metalness: 0.78,
+    });
+    const surgeCyanGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x2dd4bf,
+      emissive: 0x0d9488,
+      emissiveIntensity: 1.45,
+      roughness: 0.14,
+      metalness: 0.2,
+    });
+    const fluxRingGeo = new THREE.RingGeometry(0.84, 1.0, 8);
     fluxRingGeo.rotateX(-Math.PI * 0.5);
-    const fluxDiscGeo = new THREE.CircleGeometry(0.84, 28);
+    const fluxDiscGeo = new THREE.CircleGeometry(0.42, 6);
     fluxDiscGeo.rotateX(-Math.PI * 0.5);
+    const surgeBaseOctGeo = new THREE.CylinderGeometry(0.92, 1.02, 0.08, 8);
+    const surgeInnerHexRimGeo = new THREE.TorusGeometry(0.42, 0.04, 6, 6);
+    surgeInnerHexRimGeo.rotateX(Math.PI * 0.5);
+    const surgeLouverGeo = new THREE.BoxGeometry(0.58, 0.024, 0.045);
     for (let i = 0; i < 4; i++) {
       const fGroup = new THREE.Group();
       fGroup.visible = false;
+      // Beveled octagonal titanium outer pad frame + underglow ring
+      const octPad = new THREE.Mesh(surgeBaseOctGeo, surgeRimMat);
+      octPad.position.y = 0.036;
+      fGroup.add(octPad);
+      const octRecess = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.84, 0.045, 8), surgeGrateDarkMat);
+      octRecess.position.y = 0.06;
+      fGroup.add(octRecess);
+      // 8 metallic deck louver vent ribs around the octagonal grate
+      for (let lv = 0; lv < 8; lv++) {
+        const la = (lv / 8) * Math.PI * 2;
+        const bar = new THREE.Mesh(surgeLouverGeo, surgeRimMat);
+        bar.position.set(Math.sin(la) * 0.62, 0.084, Math.cos(la) * 0.62);
+        bar.rotation.y = la;
+        fGroup.add(bar);
+      }
+      // Glowing cyan-emerald hexagonal core rim & swirling liquid flux plasma vortex
+      const innerHexRim = new THREE.Mesh(surgeInnerHexRimGeo, surgeRimMat);
+      innerHexRim.position.y = 0.088;
+      fGroup.add(innerHexRim);
+      const underRim = new THREE.Mesh(new THREE.TorusGeometry(0.96, 0.025, 6, 8), surgeCyanGlowMat);
+      underRim.rotation.x = Math.PI * 0.5;
+      underRim.position.y = 0.024;
+      fGroup.add(underRim);
+
       const ringMat = new THREE.MeshBasicMaterial({
-        color: 0x22d3ee,
+        color: 0x2dd4bf,
         transparent: true,
         opacity: 0.72,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
       const outerRing = new THREE.Mesh(fluxRingGeo, ringMat);
-      outerRing.position.y = 0.045;
+      outerRing.position.y = 0.095;
       fGroup.add(outerRing);
 
       const discMat = new THREE.MeshBasicMaterial({
-        color: 0x06b6d4,
+        color: 0x22d3ee,
         transparent: true,
-        opacity: 0.22,
+        opacity: 0.82,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
       const innerDisc = new THREE.Mesh(fluxDiscGeo, discMat);
-      innerDisc.position.y = 0.036;
+      innerDisc.position.y = 0.09;
       fGroup.add(innerDisc);
+
+      // Floating Med Nanite Pod hovering inside the Flux/Nanite Surge Pool
+      const poolPod = buildMedNanitePodMesh(0.46);
+      poolPod.position.y = 0.42;
+      outerRing.add(poolPod);
 
       this.fluxPoolRigs.push({
         group: fGroup,
@@ -1478,10 +2002,218 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.fluxPoolsGroup);
 
-    // v1.9.0: Tactical Sector Waypoint 3D Ground Beacon
+    // ARTILLERY SHELL — Heavy Industrial Charcoal Mortar Warhead with Hazard Stripes, 4 Tail Fins & Molten-Amber Plasma Nose (Sheet 7, Panel 2)
+    this.artilleryZonesGroup = new THREE.Group();
+    this.artilleryZonesGroup.name = 'ArtilleryZonesGroup';
+    const artRingGeo = new THREE.RingGeometry(0.88, 1.0, 36);
+    artRingGeo.rotateX(-Math.PI * 0.5);
+    const artDiscGeo = new THREE.CircleGeometry(0.88, 32);
+    artDiscGeo.rotateX(-Math.PI * 0.5);
+    const artShellCoreGeo = new THREE.CylinderGeometry(0.22, 0.24, 0.78, 12);
+    const artShellNoseGeo = new THREE.CylinderGeometry(0.11, 0.24, 0.34, 12);
+    const artShellFinGeo = new THREE.BoxGeometry(0.04, 0.34, 0.24);
+    const artShellCasingMat = new THREE.MeshStandardMaterial({
+      color: 0x2c333e,
+      roughness: 0.44,
+      metalness: 0.78,
+    });
+    const artShellHazardMat = new THREE.MeshStandardMaterial({
+      color: 0xeab308,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.45,
+      roughness: 0.35,
+      metalness: 0.5,
+    });
+    const artShellPlasmaMat = new THREE.MeshStandardMaterial({
+      color: 0xf97316,
+      emissive: 0xea580c,
+      emissiveIntensity: 1.65,
+      roughness: 0.16,
+      metalness: 0.2,
+    });
+    for (let i = 0; i < 12; i++) {
+      const aGroup = new THREE.Group();
+      aGroup.visible = false;
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.86,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const outerRing = new THREE.Mesh(artRingGeo, ringMat);
+      outerRing.position.y = 0.052;
+      aGroup.add(outerRing);
+
+      const discMat = new THREE.MeshBasicMaterial({
+        color: 0xef4444,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const fillDisc = new THREE.Mesh(artDiscGeo, discMat);
+      fillDisc.position.y = 0.042;
+      aGroup.add(fillDisc);
+
+      const shellMat = new THREE.MeshBasicMaterial({
+        color: 0xfef08a,
+        transparent: true,
+        opacity: 0.94,
+      });
+      // Descending Nose-Down Artillery Warhead Pod
+      const shellMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), shellMat);
+      shellMesh.position.y = 5.0;
+      const bodyCyl = new THREE.Mesh(artShellCoreGeo, artShellCasingMat);
+      bodyCyl.position.y = 0.44;
+      shellMesh.add(bodyCyl);
+      // Hazard stripe collar around midsection
+      const hazardBand = new THREE.Mesh(new THREE.CylinderGeometry(0.245, 0.245, 0.14, 12), artShellHazardMat);
+      hazardBand.position.y = 0.42;
+      shellMesh.add(hazardBand);
+      // Tapered nose cone pointing downward with 6 glowing molten-amber plasma vent slots
+      const noseCone = new THREE.Mesh(artShellNoseGeo, artShellCasingMat);
+      noseCone.rotation.x = Math.PI;
+      noseCone.position.y = -0.06;
+      shellMesh.add(noseCone);
+      for (let v = 0; v < 6; v++) {
+        const va = (v / 6) * Math.PI * 2;
+        const vent = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.22, 0.045), artShellPlasmaMat);
+        vent.position.set(Math.sin(va) * 0.18, -0.04, Math.cos(va) * 0.18);
+        vent.rotation.y = va;
+        shellMesh.add(vent);
+      }
+      // 4 Stabilizer Tail Fins at upper tail + rear exhaust booster glow
+      for (let fn = 0; fn < 4; fn++) {
+        const fa = (fn / 4) * Math.PI * 2 + Math.PI / 4;
+        const fin = new THREE.Mesh(artShellFinGeo, artShellCasingMat);
+        fin.position.set(Math.sin(fa) * 0.26, 0.78, Math.cos(fa) * 0.26);
+        fin.rotation.y = fa;
+        shellMesh.add(fin);
+      }
+      const tailExhaust = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.36, 8), artShellPlasmaMat);
+      tailExhaust.position.y = 1.02;
+      shellMesh.add(tailExhaust);
+      aGroup.add(shellMesh);
+
+      this.artilleryZoneRigs.push({
+        group: aGroup,
+        outerRing,
+        fillDisc,
+        shellMesh,
+        ringMat,
+        discMat,
+        shellMat,
+      });
+      this.artilleryZonesGroup.add(aGroup);
+    }
+    this.scene.add(this.artilleryZonesGroup);
+
+    // TETHER NODE — Floating Harmonic Shield Relay Orb with Antique-Brass Gimbal Rings, White Armor Plates & Emerald Crystal Core (Sheet 7, Panel 3)
+    this.conductorTethersGroup = new THREE.Group();
+    this.conductorTethersGroup.name = 'ConductorTethersGroup';
+    const tetherBeamGeo = new THREE.CylinderGeometry(0.065, 0.065, 1.0, 10, 1, true);
+    const tetherHaloGeo = new THREE.RingGeometry(0.82, 1.04, 32);
+    tetherHaloGeo.rotateX(-Math.PI * 0.5);
+    const tetherBrassMat = new THREE.MeshStandardMaterial({
+      color: 0xc9a24b,
+      roughness: 0.28,
+      metalness: 0.88,
+    });
+    const tetherCeramicMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      roughness: 0.24,
+      metalness: 0.26,
+    });
+    const tetherEmeraldMat = new THREE.MeshStandardMaterial({
+      color: 0x34d399,
+      emissive: 0x059669,
+      emissiveIntensity: 1.65,
+      roughness: 0.14,
+      metalness: 0.2,
+    });
+    for (let i = 0; i < 4; i++) {
+      const tGroup = new THREE.Group();
+      tGroup.visible = false;
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const beamMesh = new THREE.Mesh(tetherBeamGeo, beamMat);
+      tGroup.add(beamMesh);
+
+      // Floating TETHER NODE relay drone orb suspended at beam midpoint
+      const nodeGroup = new THREE.Group();
+      const brassRingOuter = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.048, 8, 24), tetherBrassMat);
+      nodeGroup.add(brassRingOuter);
+      const brassRingInner = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.036, 8, 24), tetherBrassMat);
+      brassRingInner.rotation.y = Math.PI * 0.5;
+      nodeGroup.add(brassRingInner);
+      for (let ap = 0; ap < 4; ap++) {
+        const aa = (ap / 4) * Math.PI * 2 + Math.PI / 4;
+        const plate = new THREE.Mesh(new RoundedBoxGeometry(0.18, 0.26, 0.16, 2, 0.04), tetherCeramicMat);
+        plate.position.set(Math.cos(aa) * 0.38, Math.sin(aa) * 0.38, 0);
+        plate.rotation.z = aa;
+        nodeGroup.add(plate);
+      }
+      const emeraldCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0), tetherEmeraldMat);
+      emeraldCrystal.scale.set(0.85, 1.45, 0.85);
+      nodeGroup.add(emeraldCrystal);
+      tGroup.add(nodeGroup);
+
+      const allyHaloMat = new THREE.MeshBasicMaterial({
+        color: 0x34d399,
+        transparent: true,
+        opacity: 0.72,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const allyHaloMesh = new THREE.Mesh(tetherHaloGeo, allyHaloMat);
+      allyHaloMesh.position.y = 0.055;
+      tGroup.add(allyHaloMesh);
+
+      this.conductorTetherRigs.push({
+        group: tGroup,
+        beamMesh,
+        beamMat,
+        allyHaloMesh,
+        allyHaloMat,
+        nodeGroup,
+      });
+      this.conductorTethersGroup.add(tGroup);
+    }
+    this.scene.add(this.conductorTethersGroup);
+
+    // WAYPOINT SPIRE — Gilded Dark-Titanium Circular Projector Base, Warm Amber Beam & Spinning Cyan Octahedron (Sheet 6, Panel 8)
     this.waypointBeaconGroup = new THREE.Group();
     this.waypointBeaconGroup.name = 'TacticalWaypointBeaconGroup';
     this.waypointBeaconGroup.visible = false;
+    const wpGoldMat = new THREE.MeshStandardMaterial({
+      color: 0xd4ad52,
+      roughness: 0.26,
+      metalness: 0.9,
+    });
+    const wpBaseSlateMat = new THREE.MeshStandardMaterial({
+      color: 0x262f3b,
+      roughness: 0.38,
+      metalness: 0.82,
+    });
+    const wpPlinthLower = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.88, 0.14, 24), wpGoldMat);
+    wpPlinthLower.position.y = 0.07;
+    this.waypointBeaconGroup.add(wpPlinthLower);
+    const wpPlinthUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.72, 0.1, 24), wpBaseSlateMat);
+    wpPlinthUpper.position.y = 0.17;
+    this.waypointBeaconGroup.add(wpPlinthUpper);
+    const wpEmitterCollar = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.04, 8, 24), wpGoldMat);
+    wpEmitterCollar.rotation.x = Math.PI * 0.5;
+    wpEmitterCollar.position.y = 0.22;
+    this.waypointBeaconGroup.add(wpEmitterCollar);
+
     const wpRingGeo = new THREE.RingGeometry(0.88, 1.08, 28);
     wpRingGeo.rotateX(-Math.PI * 0.5);
     const wpRingMat = new THREE.MeshBasicMaterial({
@@ -1492,29 +2224,35 @@ export class ArenaSceneRenderer {
       depthWrite: false,
     });
     const wpRingMesh = new THREE.Mesh(wpRingGeo, wpRingMat);
-    wpRingMesh.position.y = 0.06;
+    wpRingMesh.position.y = 0.05;
     this.waypointBeaconGroup.add(wpRingMesh);
 
-    const wpColGeo = new THREE.CylinderGeometry(0.14, 0.28, 4.6, 14, 1, true);
+    const wpColGeo = new THREE.CylinderGeometry(0.26, 0.34, 3.2, 18, 1, true);
     const wpColMat = new THREE.MeshBasicMaterial({
-      color: 0xfbbf24,
+      color: 0xf59e0b,
       transparent: true,
-      opacity: 0.24,
+      opacity: 0.3,
       side: THREE.DoubleSide,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
     const wpColMesh = new THREE.Mesh(wpColGeo, wpColMat);
-    wpColMesh.position.y = 2.32;
+    wpColMesh.position.y = 1.78;
     this.waypointBeaconGroup.add(wpColMesh);
 
-    const wpDiamondGeo = new THREE.OctahedronGeometry(0.28, 0);
+    const wpDiamondGeo = new THREE.OctahedronGeometry(0.38, 0);
     const wpDiamondMat = new THREE.MeshBasicMaterial({
       color: 0x22d3ee,
       transparent: true,
       opacity: 0.94,
     });
     const wpDiamondMesh = new THREE.Mesh(wpDiamondGeo, wpDiamondMat);
-    wpDiamondMesh.position.y = 1.65;
+    wpDiamondMesh.position.y = 2.45;
+    const wpWire = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.41, 0),
+      new THREE.MeshBasicMaterial({ color: 0xe0f2fe, wireframe: true, transparent: true, opacity: 0.72 })
+    );
+    wpDiamondMesh.add(wpWire);
     this.waypointBeaconGroup.add(wpDiamondMesh);
 
     this.waypointBeaconRig = {
@@ -1527,6 +2265,562 @@ export class ArenaSceneRenderer {
       diamondMat: wpDiamondMat,
     };
     this.scene.add(this.waypointBeaconGroup);
+
+    // FRAGMENT CACHE — Dark Octagonal Pedestal, 4 Charcoal-and-Gold Lotus Containment Petals & Floating Amber Crystal (Sheet 4, Panel 4)
+    this.fragmentCachesGroup = new THREE.Group();
+    this.fragmentCachesGroup.name = 'FragmentCachesGroup';
+    const fcBaseOctGeo = new THREE.CylinderGeometry(0.68, 0.78, 0.24, 8);
+    const fcGoldRimGeo = new THREE.TorusGeometry(0.62, 0.035, 8, 8);
+    fcGoldRimGeo.rotateX(Math.PI * 0.5);
+    const fcPetalGeo = new RoundedBoxGeometry(0.34, 1.08, 0.14, 2, 0.04);
+    const fcPetalGoldGeo = new RoundedBoxGeometry(0.39, 0.86, 0.08, 2, 0.025);
+    const fcPrismGeo = new THREE.IcosahedronGeometry(0.32, 0);
+    const fcRingGeo = new THREE.RingGeometry(0.76, 0.98, 24);
+    fcRingGeo.rotateX(-Math.PI * 0.5);
+    const fcBeamGeo = new THREE.CylinderGeometry(0.06, 0.16, 2.2, 10, 1, true);
+    const fcObsidianMat = new THREE.MeshStandardMaterial({
+      color: 0x1d232d,
+      roughness: 0.38,
+      metalness: 0.78,
+    });
+    const fcGoldMat = new THREE.MeshStandardMaterial({
+      color: 0xd4ad52,
+      roughness: 0.24,
+      metalness: 0.9,
+    });
+    for (let i = 0; i < 2; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+
+      const baseOct = new THREE.Mesh(fcBaseOctGeo, fcObsidianMat);
+      baseOct.position.y = 0.12;
+      group.add(baseOct);
+      const goldTrim = new THREE.Mesh(fcGoldRimGeo, fcGoldMat);
+      goldTrim.position.y = 0.23;
+      group.add(goldTrim);
+
+      // 4 Sculpted Charcoal-and-Gold Curved Containment Lotus Petals Opening Around the Relic Crystal
+      for (let p = 0; p < 4; p++) {
+        const pa = (p / 4) * Math.PI * 2 + Math.PI / 4;
+        const pPivot = new THREE.Group();
+        pPivot.position.y = 0.24;
+        pPivot.rotation.y = pa;
+        group.add(pPivot);
+
+        const petal = new THREE.Mesh(fcPetalGeo, fcObsidianMat);
+        petal.position.set(0, 0.52, 0.44);
+        petal.rotation.x = 0.14;
+        pPivot.add(petal);
+
+        const petalGold = new THREE.Mesh(fcPetalGoldGeo, fcGoldMat);
+        petalGold.position.set(0, 0.54, 0.41);
+        petalGold.rotation.x = 0.14;
+        pPivot.add(petalGold);
+      }
+
+      const prismMat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24,
+        transparent: true,
+        opacity: 0.96,
+      });
+      const prismMesh = new THREE.Mesh(fcPrismGeo, prismMat);
+      prismMesh.position.y = 1.05;
+      group.add(prismMesh);
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.78,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ringMesh = new THREE.Mesh(fcRingGeo, ringMat);
+      ringMesh.position.y = 0.055;
+      group.add(ringMesh);
+
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0xfef3c7,
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const beamMesh = new THREE.Mesh(fcBeamGeo, beamMat);
+      beamMesh.position.y = 1.12;
+      group.add(beamMesh);
+
+      this.fragmentCacheRigs.push({
+        group,
+        prismMesh,
+        prismMat,
+        ringMesh,
+        ringMat,
+        beamMesh,
+        beamMat,
+      });
+      this.fragmentCachesGroup.add(group);
+    }
+    this.scene.add(this.fragmentCachesGroup);
+
+    // SECTOR BEACON — White-Ceramic & Gunmetal Bio-Flux Spire, Cyan Core Column & Twin Floating Holo Halos (Sheet 4, Panel 5)
+    this.sectorBeaconsGroup = new THREE.Group();
+    this.sectorBeaconsGroup.name = 'SectorBeaconsGroup';
+    const sbBasePadGeo = new THREE.CylinderGeometry(0.84, 0.94, 0.12, 24);
+    const sbBaseWhiteGeo = new THREE.CylinderGeometry(0.68, 0.76, 0.14, 24);
+    const sbSpireWhiteGeo = new THREE.CylinderGeometry(0.14, 0.34, 1.92, 14);
+    const sbPylonGeo = new THREE.CylinderGeometry(0.11, 0.13, 1.56, 12);
+    const sbHaloGeo = new THREE.TorusGeometry(0.56, 0.032, 8, 32);
+    const sbHaloLowerGeo = new THREE.TorusGeometry(0.46, 0.026, 8, 28);
+    const sbRingGeo = new THREE.RingGeometry(0.95, 1.18, 28);
+    sbRingGeo.rotateX(-Math.PI * 0.5);
+    const sbWhiteCeramicMat = new THREE.MeshStandardMaterial({
+      color: 0xf1f5f9,
+      roughness: 0.22,
+      metalness: 0.24,
+    });
+    const sbGunmetalMat = new THREE.MeshStandardMaterial({
+      color: 0x262e3c,
+      roughness: 0.36,
+      metalness: 0.82,
+    });
+    for (let i = 0; i < 2; i++) {
+      const group = new THREE.Group();
+      group.visible = false;
+
+      // Circular White-Ceramic & Gunmetal Emitter Floor Base
+      const baseDark = new THREE.Mesh(sbBasePadGeo, sbGunmetalMat);
+      baseDark.position.y = 0.06;
+      group.add(baseDark);
+      const baseWhite = new THREE.Mesh(sbBaseWhiteGeo, sbWhiteCeramicMat);
+      baseWhite.position.y = 0.12;
+      group.add(baseWhite);
+
+      // Tapered White-Ceramic Spire with Dark Gunmetal Split Spine
+      const spireBody = new THREE.Mesh(sbSpireWhiteGeo, sbWhiteCeramicMat);
+      spireBody.position.y = 1.12;
+      group.add(spireBody);
+      const spireSpine = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.26, 2.04, 10),
+        sbGunmetalMat
+      );
+      spireSpine.position.set(0, 1.16, -0.04);
+      group.add(spireSpine);
+
+      // Vertical Glowing Turquoise-Cyan Bio-Flux Energy Column (`pylonMesh`)
+      const pylonMat = new THREE.MeshStandardMaterial({
+        color: 0x2dd4bf,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.35,
+        roughness: 0.16,
+        metalness: 0.25,
+      });
+      const pylonMesh = new THREE.Mesh(sbPylonGeo, pylonMat);
+      pylonMesh.position.set(0, 1.14, 0.14);
+      group.add(pylonMesh);
+
+      // Docked Mini MED NANITE POD Canister mounted on the Emitter Collar
+      const dockedPod = buildMedNanitePodMesh(0.42);
+      dockedPod.position.set(0.46, 0.34, 0.22);
+      group.add(dockedPod);
+
+      // Twin Delicate Floating Holographic Cyan Halo Rings Around the Upper Spire
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.88,
+      });
+      const haloMesh = new THREE.Mesh(sbHaloGeo, haloMat);
+      haloMesh.position.y = 1.88;
+      haloMesh.rotation.x = Math.PI * 0.5;
+      const lowerHalo = new THREE.Mesh(sbHaloLowerGeo, haloMat);
+      lowerHalo.position.z = 0.34;
+      haloMesh.add(lowerHalo);
+      group.add(haloMesh);
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const ringMesh = new THREE.Mesh(sbRingGeo, ringMat);
+      ringMesh.position.y = 0.05;
+      group.add(ringMesh);
+
+      this.sectorBeaconRigs.push({
+        group,
+        pylonMesh,
+        pylonMat,
+        haloMesh,
+        haloMat,
+        ringMesh,
+        ringMat,
+      });
+      this.sectorBeaconsGroup.add(group);
+    }
+    this.scene.add(this.sectorBeaconsGroup);
+
+    // Dual Counter-Rotating Chapter Orbital Crown Rings (Mesh-only, zero allocations per frame)
+    const initialLook = resolveChapterVisualLook(initialWorld.run.chapter, null);
+    this.chapterOrbitalCrownGroup = new THREE.Group();
+    this.chapterOrbitalCrownGroup.position.set(0, 7.4, 0);
+    this.orbitalCrownMat = new THREE.MeshBasicMaterial({
+      color: initialLook.rim,
+      transparent: true,
+      opacity: 0.42,
+    });
+    this.orbitalCrownInnerMat = new THREE.MeshBasicMaterial({
+      color: initialLook.conduit,
+      transparent: true,
+      opacity: 0.34,
+    });
+    const crownOuterGeo = new THREE.TorusGeometry(15.6, 0.075, 10, 64);
+    crownOuterGeo.rotateX(Math.PI * 0.5);
+    this.orbitalCrownOuterRing = new THREE.Mesh(crownOuterGeo, this.orbitalCrownMat);
+    this.chapterOrbitalCrownGroup.add(this.orbitalCrownOuterRing);
+
+    const crownInnerGeo = new THREE.TorusGeometry(13.2, 0.055, 10, 56);
+    crownInnerGeo.rotateX(Math.PI * 0.5);
+    this.orbitalCrownInnerRing = new THREE.Mesh(crownInnerGeo, this.orbitalCrownInnerMat);
+    this.chapterOrbitalCrownGroup.add(this.orbitalCrownInnerRing);
+
+    const crownNodeGeo = new THREE.OctahedronGeometry(0.28, 0);
+    for (let i = 0; i < 4; i++) {
+      const ang = (i * Math.PI) / 2;
+      const nodeMesh = new THREE.Mesh(crownNodeGeo, this.orbitalCrownMat);
+      nodeMesh.position.set(Math.cos(ang) * 15.6, 0, Math.sin(ang) * 15.6);
+      this.orbitalCrownOuterRing.add(nodeMesh);
+    }
+    this.scene.add(this.chapterOrbitalCrownGroup);
+
+    // 8 Radial Floor Energy Conduits
+    this.floorConduitsGroup = new THREE.Group();
+    this.floorConduitMat = new THREE.MeshBasicMaterial({
+      color: initialLook.conduit,
+      transparent: true,
+      opacity: 0.24,
+      depthWrite: false,
+    });
+    const conduitStripGeo = new THREE.BoxGeometry(0.16, 0.014, 13.8);
+    for (let i = 0; i < 8; i++) {
+      const ang = (i * Math.PI) / 4;
+      const strip = new THREE.Mesh(conduitStripGeo, this.floorConduitMat);
+      strip.position.set(Math.sin(ang) * 11.2, 0.024, Math.cos(ang) * 11.2);
+      strip.rotation.y = ang;
+      this.floorConduitsGroup.add(strip);
+    }
+    this.scene.add(this.floorConduitsGroup);
+
+    // Dynamic Arena Anomaly: Pre-allocated 3D TEMPORAL RIFT Rig (Sheet 10, Panel 1)
+    // Swirling cyan-gold vertical space-time fracture portal framed by fractured obsidian-steel stabilizer rings
+    this.temporalRiftGroup = new THREE.Group();
+    this.temporalRiftGroup.visible = false;
+    const riftRingGeo = new THREE.RingGeometry(0.84, 1.0, 36);
+    riftRingGeo.rotateX(-Math.PI * 0.5);
+    this.temporalRiftRingMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.82,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.temporalRiftRingMesh = new THREE.Mesh(riftRingGeo, this.temporalRiftRingMat);
+    this.temporalRiftRingMesh.position.y = 0.04;
+    this.temporalRiftGroup.add(this.temporalRiftRingMesh);
+
+    const riftObsidianMat = new THREE.MeshStandardMaterial({
+      color: 0x263140,
+      roughness: 0.34,
+      metalness: 0.86,
+    });
+    const riftGoldRimMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0.94,
+    });
+
+    // Outer fractured obsidian-steel stabilizer ring (segmented armored torus + bolted clamps)
+    const riftOuterTorusGeo = new THREE.TorusGeometry(1.18, 0.075, 10, 28);
+    this.temporalRiftOuterTorusMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.9,
+    });
+    this.temporalRiftOuterTorus = new THREE.Mesh(riftOuterTorusGeo, riftObsidianMat);
+    this.temporalRiftOuterTorus.position.y = 1.52;
+    for (let s = 0; s < 6; s++) {
+      const sa = (s / 6) * Math.PI * 2;
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.18), riftObsidianMat);
+      clamp.position.set(Math.cos(sa) * 1.18, Math.sin(sa) * 1.18, 0);
+      clamp.rotation.z = sa;
+      this.temporalRiftOuterTorus.add(clamp);
+    }
+    const outerEnergyArc = new THREE.Mesh(new THREE.TorusGeometry(1.06, 0.036, 8, 32), this.temporalRiftOuterTorusMat);
+    this.temporalRiftOuterTorus.add(outerEnergyArc);
+    this.temporalRiftGroup.add(this.temporalRiftOuterTorus);
+
+    // Inner counter-rotating dark-steel stabilizer ring + golden fracture corona
+    const riftInnerTorusGeo = new THREE.TorusGeometry(0.92, 0.055, 10, 24);
+    this.temporalRiftInnerTorusMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.94,
+    });
+    this.temporalRiftInnerTorus = new THREE.Mesh(riftInnerTorusGeo, riftObsidianMat);
+    this.temporalRiftInnerTorus.position.y = 1.52;
+    const goldInnerHalo = new THREE.Mesh(new THREE.TorusGeometry(0.84, 0.052, 10, 32), riftGoldRimMat);
+    this.temporalRiftInnerTorus.add(goldInnerHalo);
+    this.temporalRiftGroup.add(this.temporalRiftInnerTorus);
+
+    // Swirling vertical cyan-to-gold portal vortex core
+    const riftCoreGeo = new THREE.CircleGeometry(0.82, 28);
+    this.temporalRiftCoreMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.88,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.temporalRiftCoreMesh = new THREE.Mesh(riftCoreGeo, this.temporalRiftCoreMat);
+    this.temporalRiftCoreMesh.position.y = 1.52;
+    const vortexSwirlA = new THREE.Mesh(
+      new THREE.TorusGeometry(0.48, 0.048, 8, 24, Math.PI * 1.45),
+      new THREE.MeshBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.92 })
+    );
+    vortexSwirlA.position.z = 0.03;
+    this.temporalRiftCoreMesh.add(vortexSwirlA);
+    const vortexEye = new THREE.Mesh(
+      new THREE.CircleGeometry(0.24, 18),
+      new THREE.MeshBasicMaterial({ color: 0x082f49, transparent: true, opacity: 0.92, side: THREE.DoubleSide })
+    );
+    vortexEye.position.z = 0.04;
+    this.temporalRiftCoreMesh.add(vortexEye);
+    const vortexGoldEdge = new THREE.Mesh(
+      new THREE.TorusGeometry(0.76, 0.042, 8, 30),
+      riftGoldRimMat
+    );
+    this.temporalRiftCoreMesh.add(vortexGoldEdge);
+    this.temporalRiftGroup.add(this.temporalRiftCoreMesh);
+
+    const riftBeamGeo = new THREE.CylinderGeometry(0.22, 0.48, 5.2, 16, 1, true);
+    this.temporalRiftBeamMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.temporalRiftBeamMesh = new THREE.Mesh(riftBeamGeo, this.temporalRiftBeamMat);
+    this.temporalRiftBeamMesh.position.y = 2.6;
+    this.temporalRiftGroup.add(this.temporalRiftBeamMesh);
+    this.scene.add(this.temporalRiftGroup);
+
+    // Chrono Stasis Overdrive [5] 3D Temporal Dilation Dome & Astrolabe Rings
+    this.overdriveDomeGroup = new THREE.Group();
+    this.overdriveDomeGroup.visible = false;
+    const odShellGeo = new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.52);
+    this.overdriveShellMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      wireframe: true,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this.overdriveShellMesh = new THREE.Mesh(odShellGeo, this.overdriveShellMat);
+    this.overdriveDomeGroup.add(this.overdriveShellMesh);
+
+    const odOuterRingGeo = new THREE.TorusGeometry(1, 0.018, 8, 48);
+    this.overdriveOuterRingMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this.overdriveOuterRing = new THREE.Mesh(odOuterRingGeo, this.overdriveOuterRingMat);
+    this.overdriveOuterRing.rotation.x = Math.PI / 2;
+    this.overdriveOuterRing.position.y = 1.6;
+    const chevronGeo = new THREE.BoxGeometry(0.08, 0.04, 0.04);
+    for (let ci = 0; ci < 12; ci++) {
+      const ca = (ci / 12) * Math.PI * 2;
+      const tick = new THREE.Mesh(chevronGeo, this.overdriveOuterRingMat);
+      tick.position.set(Math.cos(ca) * 1.03, Math.sin(ca) * 1.03, 0);
+      tick.rotation.z = ca;
+      this.overdriveOuterRing.add(tick);
+    }
+    this.overdriveDomeGroup.add(this.overdriveOuterRing);
+
+    const odInnerRingGeo = new THREE.TorusGeometry(0.76, 0.014, 8, 40);
+    this.overdriveInnerRingMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this.overdriveInnerRing = new THREE.Mesh(odInnerRingGeo, this.overdriveInnerRingMat);
+    this.overdriveInnerRing.rotation.x = Math.PI / 2;
+    this.overdriveInnerRing.position.y = 2.8;
+    this.overdriveDomeGroup.add(this.overdriveInnerRing);
+
+    const odGroundGeo = new THREE.RingGeometry(0.88, 1.0, 48);
+    odGroundGeo.rotateX(-Math.PI / 2);
+    this.overdriveGroundRingMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.overdriveGroundRing = new THREE.Mesh(odGroundGeo, this.overdriveGroundRingMat);
+    this.overdriveGroundRing.position.y = 0.06;
+    this.overdriveDomeGroup.add(this.overdriveGroundRing);
+    this.scene.add(this.overdriveDomeGroup);
+
+    // SHEET 11 · CHRONO STASIS CORE (Panel 1) — Orbits Sera when Overdrive is 100% READY & ascends above the dome when ACTIVE
+    this.stasisCoreRig = createChronoStasisCoreRig();
+    this.stasisCoreRig.root.visible = false;
+    this.scene.add(this.stasisCoreRig.root);
+
+    // SHEET 11 · SOVEREIGN OBELISKS (Panel 2) — Twin Boss-Rush Trophy Monoliths with live Roman Numeral I-V progression & spinning cyan crowns
+    for (const [ox, oz] of [
+      [-4.2, -17.6],
+      [4.2, -17.6],
+    ] as const) {
+      const obelisk = createSovereignObeliskRig();
+      obelisk.root.position.set(ox, 0, oz);
+      obelisk.root.visible = false;
+      this.scene.add(obelisk.root);
+      this.sovereignObelisks.push(obelisk);
+    }
+
+    // SHEET 11 · FIELD REFIT DRONE (Panel 3) — Hovering White-and-Gold Repair Drone accompanying Sera in Sovereign Gauntlet & Overdrive
+    this.fieldRefitDroneRig = createFieldRefitDroneRig();
+    this.fieldRefitDroneRig.root.visible = false;
+    this.scene.add(this.fieldRefitDroneRig.root);
+
+    // EXPEDITION JOURNEY 3D ARCHITECTURE — South Entry Boarding Airlock, North Sector Transit Airlock, Central Breach Seal & 3D Floor Chevron Guide Trail
+    this.entryAirlockRig = createEntryBoardingAirlockRig();
+    this.entryAirlockRig.root.position.set(0, 0, 17.4);
+    this.entryAirlockRig.root.visible = false;
+    this.scene.add(this.entryAirlockRig.root);
+
+    this.transitAirlockRig = createSectorTransitAirlockRig();
+    this.transitAirlockRig.root.position.set(0, 0, -16.4);
+    this.transitAirlockRig.root.visible = false;
+    this.scene.add(this.transitAirlockRig.root);
+
+    this.breachSealRig = createBreachSealRig();
+    this.breachSealRig.root.position.set(0, 0.02, 0);
+    this.breachSealRig.root.visible = false;
+    this.scene.add(this.breachSealRig.root);
+
+    this.expeditionTrailRig = createExpeditionTrailRig(8);
+    this.expeditionTrailRig.root.visible = false;
+    this.scene.add(this.expeditionTrailRig.root);
+
+    this.safeRoomHubRig = createSafeRoomHubRig();
+    this.safeRoomHubRig.root.visible = false;
+    this.scene.add(this.safeRoomHubRig.root);
+
+    this.secretVaultRig = createSecretEchoVaultRig();
+    this.secretVaultRig.root.visible = false;
+    this.scene.add(this.secretVaultRig.root);
+
+    this.combatDroneRig = createAutonomousCombatDroneRig();
+    this.combatDroneRig.root.visible = false;
+    this.scene.add(this.combatDroneRig.root);
+
+    // Pre-allocated 4-part Dorsal Boss Echo Core Sigil (Octahedron crystal + 2 gyroscopic rings + spine mount)
+    {
+      const sigilRoot = new THREE.Group();
+      sigilRoot.visible = false;
+      const crystalMat = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 2.1,
+        metalness: 0.35,
+        roughness: 0.18,
+      });
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x22d3ee,
+        emissiveIntensity: 1.75,
+        metalness: 0.72,
+        roughness: 0.22,
+      });
+      const mountMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        metalness: 0.85,
+        roughness: 0.32,
+      });
+      const spineMount = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.052, 0.22, 8),
+        mountMat
+      );
+      spineMount.rotation.x = Math.PI * 0.5;
+      spineMount.position.set(0, 0, 0.12);
+      const crystalMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.145, 0), crystalMat);
+      const outerRing = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.02, 8, 28), ringMat);
+      const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.016, 8, 24), ringMat);
+      innerRing.rotation.y = Math.PI * 0.28;
+
+      const omegaMat = new THREE.MeshStandardMaterial({
+        color: 0xfef08a,
+        emissive: 0xfbbf24,
+        emissiveIntensity: 2.1,
+        metalness: 0.9,
+        roughness: 0.16,
+      });
+      const omegaCrownRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.18, 0.014, 8, 24, Math.PI * 1.45),
+        omegaMat
+      );
+      omegaCrownRing.position.set(0, 0.27, 0);
+      omegaCrownRing.rotation.z = -Math.PI * 0.225;
+      omegaCrownRing.visible = false;
+
+      const wingGeom = new THREE.ConeGeometry(0.055, 0.34, 4);
+      const omegaWingLeft = new THREE.Mesh(wingGeom, omegaMat);
+      omegaWingLeft.position.set(-0.34, 0.06, -0.02);
+      omegaWingLeft.rotation.z = Math.PI * 0.32;
+      omegaWingLeft.visible = false;
+
+      const omegaWingRight = new THREE.Mesh(wingGeom, omegaMat);
+      omegaWingRight.position.set(0.34, 0.06, -0.02);
+      omegaWingRight.rotation.z = -Math.PI * 0.32;
+      omegaWingRight.visible = false;
+
+      sigilRoot.add(
+        spineMount,
+        crystalMesh,
+        outerRing,
+        innerRing,
+        omegaCrownRing,
+        omegaWingLeft,
+        omegaWingRight
+      );
+      this.scene.add(sigilRoot);
+      this.bossCoreSigilRig = {
+        root: sigilRoot,
+        crystalMesh,
+        outerRing,
+        innerRing,
+        omegaCrownRing,
+        omegaWingLeft,
+        omegaWingRight,
+        crystalMat,
+        ringMat,
+        omegaMat,
+      };
+    }
+
+    this.finisherRiftRig = createChronoFinisherRiftRig();
+    this.finisherRiftRig.root.visible = false;
+    this.scene.add(this.finisherRiftRig.root);
+
+    this.photoDroneRig = createPhotoDroneRig();
+    this.photoDroneRig.root.visible = false;
+    this.scene.add(this.photoDroneRig.root);
 
     // Player Rig
     this.playerRig = createSeraPlayerRig(this.shadowTex, !this.isHeadless);
@@ -1706,19 +3000,58 @@ export class ArenaSceneRenderer {
     this.relayArrivalPillarMesh.visible = false;
     this.scene.add(this.relayArrivalPillarMesh);
 
-    // Single-Trigger Combat Impact Shockwave Ring (Heavy hits, Parries, Guard Clangs, Staggers)
-    const impactGeo = new THREE.RingGeometry(0.42, 0.68, 28);
+    // v2.7.0: 4-Slot Pooled Additive GLSL Plasma Shockwave Rings (Heavy hits, Parries, Overcharges, Staggers)
+    const impactGeo = new THREE.PlaneGeometry(2.6, 2.6, 1, 1);
     impactGeo.rotateX(-Math.PI * 0.5);
-    this.impactRingMat = new THREE.MeshBasicMaterial({
-      color: 0x22d3ee,
-      transparent: true,
-      opacity: 0,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    this.impactRingMesh = new THREE.Mesh(impactGeo, this.impactRingMat);
-    this.impactRingMesh.visible = false;
-    this.scene.add(this.impactRingMesh);
+    impactGeo.userData.sharedAsset = true;
+    this.impactRingPool = [];
+    for (let i = 0; i < 4; i++) {
+      const mat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        uniforms: {
+          uColor: { value: new THREE.Color(0x22d3ee) },
+          uProgress: { value: 0 },
+          uOpacity: { value: 0 },
+          uTime: { value: 0 },
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uColor;
+          uniform float uProgress;
+          uniform float uOpacity;
+          uniform float uTime;
+          varying vec2 vUv;
+          void main() {
+            vec2 p = vUv * 2.0 - 1.0;
+            float r = length(p);
+            if (r > 1.0) discard;
+            float angle = atan(p.y, p.x);
+            float wave = 0.018 * sin(angle * 8.0 + uTime * 11.0) + 0.012 * cos(angle * 13.0 - uTime * 7.0);
+            float radius = mix(0.24, 0.94, uProgress) + wave * (1.0 - uProgress * 0.5);
+            float outerBand = smoothstep(radius - 0.14, radius, r) * (1.0 - smoothstep(radius, radius + 0.055, r));
+            float coreEdge = exp(-pow((r - radius) / 0.028, 2.0));
+            float innerWake = smoothstep(radius - 0.34, radius - 0.04, r) * (1.0 - smoothstep(radius - 0.04, radius, r)) * 0.36;
+            float alpha = clamp((outerBand * 0.85 + coreEdge * 1.15 + innerWake) * uOpacity, 0.0, 1.0);
+            vec3 col = mix(uColor, vec3(1.0, 0.99, 0.95), coreEdge * 0.72);
+            gl_FragColor = vec4(col, alpha);
+          }
+        `,
+      });
+      const mesh = new THREE.Mesh(impactGeo, mat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.impactRingPool.push({ mesh, mat, timer: 0, duration: 0.28, maxScale: 3.1 });
+    }
+    this.impactRingMesh = this.impactRingPool[0]?.mesh;
 
     // Pooled Additive Phase Rail Muzzle Lance Beam
     const railBeamGeo = new THREE.CylinderGeometry(0.08, 0.14, 16, 12, 1, true);
@@ -1736,23 +3069,56 @@ export class ArenaSceneRenderer {
     this.railBeamMesh.visible = false;
     this.scene.add(this.railBeamMesh);
 
-    // v1.2.0: Pooled Weapon Slash Arc Ribbons (6 additive crescent slots)
+    // v2.6.0: Pooled Custom GLSL Energy Slash Arc Ribbons (6 additive plasma crescents)
     const slashRibbonGeo = new THREE.RingGeometry(
-      0.95,
-      2.05,
-      20,
+      0.88,
+      2.18,
+      28,
       1,
-      -Math.PI * 0.45,
-      Math.PI * 0.9
+      -Math.PI * 0.48,
+      Math.PI * 0.96
     );
     slashRibbonGeo.rotateX(-Math.PI * 0.5);
+    const slashVertexShader = `
+      varying vec2 vPos2d;
+      void main() {
+        vPos2d = position.xz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    const slashFragmentShader = `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      uniform float uProgress;
+      varying vec2 vPos2d;
+      void main() {
+        float r = length(vPos2d);
+        float radialNorm = clamp((r - 0.88) / (2.18 - 0.88), 0.0, 1.0);
+        // Razor-sharp outer cutting edge with soft plasma inner wake
+        float outerEdge = smoothstep(0.68, 0.98, radialNorm) * (1.0 - smoothstep(0.96, 1.0, radialNorm));
+        float bodyGlow = pow(radialNorm, 1.35) * (1.0 - smoothstep(0.93, 1.0, radialNorm));
+        // Angular taper from leading blade tip to trailing wake
+        float angle = atan(vPos2d.y, vPos2d.x);
+        float angNorm = clamp((angle + 1.508) / 3.016, 0.0, 1.0);
+        float leadTip = smoothstep(0.0, 0.25, angNorm) * smoothstep(1.0, 0.84, angNorm);
+        float streak = 0.78 + 0.22 * sin(radialNorm * 18.0 - uProgress * 12.0);
+        float alpha = (bodyGlow * 0.65 + outerEdge * 1.15) * leadTip * streak * uOpacity;
+        vec3 hotCore = mix(uColor, vec3(1.0, 0.98, 0.94), clamp(outerEdge * 0.85 + pow(angNorm, 3.0) * 0.4, 0.0, 1.0));
+        gl_FragColor = vec4(hotCore * 1.25, alpha);
+      }
+    `;
     for (let i = 0; i < SLASH_RIBBON_POOL_SIZE; i++) {
       const rGroup = new THREE.Group();
       rGroup.visible = false;
-      const rMat = new THREE.MeshBasicMaterial({
-        color: 0x22d3ee,
+      const rMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(0x22d3ee) },
+          uOpacity: { value: 0 },
+          uProgress: { value: 0 },
+        },
+        vertexShader: slashVertexShader,
+        fragmentShader: slashFragmentShader,
         transparent: true,
-        opacity: 0,
         side: THREE.DoubleSide,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
@@ -1809,6 +3175,89 @@ export class ArenaSceneRenderer {
         mat: gMat,
       });
     }
+
+    // v3.9.0: Pre-allocate 6-slot Pose-Matched 3D Sera Holographic Afterimage Pool & 3D Clockwork Slip-Ring (Zero-GC)
+    for (let i = 0; i < 6; i++) {
+      const ghost = createEchoAfterimageGhost(0.42);
+      ghost.root.visible = false;
+      this.scene.add(ghost.root);
+      this.playerAfterimagePool.push({
+        active: false,
+        age: 0,
+        maxAge: 0.45,
+        baseOpacity: 0.42,
+        ghost,
+      });
+    }
+
+    const slipGroup = new THREE.Group();
+    slipGroup.visible = false;
+    const slipOuterGeo = new THREE.RingGeometry(2.08, 2.32, 36);
+    slipOuterGeo.rotateX(-Math.PI * 0.5);
+    const slipOuterMat = new THREE.MeshBasicMaterial({
+      color: 0x67e8f9,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const slipOuterMesh = new THREE.Mesh(slipOuterGeo, slipOuterMat);
+    slipOuterMesh.position.y = 0.045;
+    slipGroup.add(slipOuterMesh);
+
+    const slipInnerGeo = new THREE.RingGeometry(1.12, 1.26, 24);
+    slipInnerGeo.rotateX(-Math.PI * 0.5);
+    const slipInnerMat = new THREE.MeshBasicMaterial({
+      color: 0xc084fc,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const slipInnerMesh = new THREE.Mesh(slipInnerGeo, slipInnerMat);
+    slipInnerMesh.position.y = 0.055;
+    slipGroup.add(slipInnerMesh);
+
+    const slipTickGeo = new THREE.BoxGeometry(0.055, 0.015, 0.34);
+    const slipTicksMat = new THREE.MeshBasicMaterial({
+      color: 0xe0f2fe,
+      transparent: true,
+      opacity: 0.68,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const slipTicksMesh = new THREE.InstancedMesh(slipTickGeo, slipTicksMat, 12);
+    const tickDummy = new THREE.Object3D();
+    for (let t = 0; t < 12; t++) {
+      const ang = (t / 12) * Math.PI * 2;
+      tickDummy.position.set(Math.sin(ang) * 1.72, 0.05, Math.cos(ang) * 1.72);
+      tickDummy.rotation.set(0, ang, 0);
+      tickDummy.scale.setScalar(t % 3 === 0 ? 1.25 : 0.85);
+      tickDummy.updateMatrix();
+      slipTicksMesh.setMatrixAt(t, tickDummy.matrix);
+    }
+    slipTicksMesh.instanceMatrix.needsUpdate = true;
+    slipTicksMesh.computeBoundingSphere();
+    slipGroup.add(slipTicksMesh);
+    this.scene.add(slipGroup);
+    this.temporalSlipRingGroup = slipGroup;
+    this.temporalSlipOuterRing = slipOuterMesh;
+    this.temporalSlipOuterMat = slipOuterMat;
+    this.temporalSlipInnerRing = slipInnerMesh;
+    this.temporalSlipInnerMat = slipInnerMat;
+    this.temporalSlipTicksMesh = slipTicksMesh;
+    this.temporalSlipTicksMat = slipTicksMat;
 
     // v1.3.0: Pooled Stagger Execution Floor Beacons (4 additive execution halos beneath staggered targets)
     const beaconOuterGeo = new THREE.RingGeometry(0.95, 1.26, 32);
@@ -1930,6 +3379,306 @@ export class ArenaSceneRenderer {
     this.echoTetherMesh.visible = false;
     this.scene.add(this.echoTetherMesh);
 
+    // v2.8.0: Custom Additive GLSL Twin-Sync Plasma Tether Beam wrapping Sera <-> Echo link
+    const twinSyncGeo = new THREE.CylinderGeometry(0.085, 0.085, 1, 12, 1, true);
+    twinSyncGeo.rotateX(Math.PI * 0.5);
+    twinSyncGeo.userData.sharedAsset = true;
+    this.twinSyncBeamMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: new THREE.Color(0x22d3ee) },
+        uTime: { value: 0 },
+        uIntensity: { value: 0.7 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uTime;
+        uniform float uIntensity;
+        varying vec2 vUv;
+        void main() {
+          float endFade = smoothstep(0.0, 0.14, vUv.y) * smoothstep(1.0, 0.86, vUv.y);
+          float pulseA = 0.5 + 0.5 * sin(vUv.y * 22.0 - uTime * 9.5);
+          float pulseB = 0.5 + 0.5 * cos(vUv.y * 13.0 + uTime * 6.2);
+          float core = 0.42 + 0.58 * pow(pulseA * 0.65 + pulseB * 0.35, 1.4);
+          vec3 col = mix(uColor, vec3(1.0, 0.98, 0.94), core * 0.45);
+          float alpha = clamp(endFade * core * uIntensity, 0.0, 0.95);
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+    });
+    this.twinSyncBeamMesh = new THREE.Mesh(twinSyncGeo, this.twinSyncBeamMat);
+    this.twinSyncBeamMesh.visible = false;
+    this.scene.add(this.twinSyncBeamMesh);
+
+    // v2.8.0: 160 Floating 3D Orbital Atmospheric Motes (GPU-animated soft radial bokeh GLSL)
+    const moteCount = 160;
+    const motePositions = new Float32Array(moteCount * 3);
+    const motePhases = new Float32Array(moteCount);
+    const moteSizes = new Float32Array(moteCount);
+    for (let i = 0; i < moteCount; i++) {
+      const seedA = Math.sin(i * 12.9898 + 4.1414) * 43758.5453;
+      const seedB = Math.sin(i * 78.233 + 1.618) * 24634.6345;
+      const seedC = Math.sin(i * 39.425 + 9.21) * 19191.1919;
+      const fracA = seedA - Math.floor(seedA);
+      const fracB = seedB - Math.floor(seedB);
+      const fracC = seedC - Math.floor(seedC);
+      motePositions[i * 3] = (fracA * 2 - 1) * 17.5;
+      motePositions[i * 3 + 1] = 0.65 + fracB * 5.6;
+      motePositions[i * 3 + 2] = (fracC * 2 - 1) * 17.5;
+      motePhases[i] = fracA * Math.PI * 2;
+      moteSizes[i] = 10.0 + fracB * 14.0;
+    }
+    const moteGeo = new THREE.BufferGeometry();
+    moteGeo.setAttribute('position', new THREE.BufferAttribute(motePositions, 3));
+    moteGeo.setAttribute('aPhase', new THREE.BufferAttribute(motePhases, 1));
+    moteGeo.setAttribute('aSize', new THREE.BufferAttribute(moteSizes, 1));
+    this.ambientMotesMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x38bdf8) },
+        uOpacity: { value: 0.42 },
+      },
+      vertexShader: `
+        attribute float aPhase;
+        attribute float aSize;
+        uniform float uTime;
+        varying float vTwinkle;
+        void main() {
+          vec3 pos = position;
+          pos.x += sin(uTime * 0.42 + aPhase) * 0.55;
+          pos.y += mod(uTime * 0.16 + aPhase, 5.4) - 2.4;
+          pos.z += cos(uTime * 0.36 + aPhase * 1.3) * 0.55;
+          vTwinkle = 0.55 + 0.45 * sin(uTime * 1.8 + aPhase * 2.1);
+          vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+          gl_PointSize = clamp(aSize * (16.0 / max(2.5, -mvPosition.z)), 2.0, 26.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        varying float vTwinkle;
+        void main() {
+          vec2 c = gl_PointCoord - vec2(0.5);
+          float d = length(c);
+          if (d > 0.5) discard;
+          float glow = pow(1.0 - d * 2.0, 2.0);
+          vec3 col = mix(uColor, vec3(1.0, 0.99, 0.96), glow * 0.5);
+          gl_FragColor = vec4(col, glow * uOpacity * vTwinkle);
+        }
+      `,
+    });
+    this.ambientMotesPoints = new THREE.Points(moteGeo, this.ambientMotesMat);
+    this.ambientMotesPoints.frustumCulled = false;
+    this.scene.add(this.ambientMotesPoints);
+
+    // v2.9.0: Animated 3D Holographic Arena Floor Scan Pulse Shader (subtle radial deck sweep)
+    const arenaPulseGeo = new THREE.PlaneGeometry(34, 34);
+    arenaPulseGeo.rotateX(-Math.PI * 0.5);
+    arenaPulseGeo.userData.sharedAsset = true;
+    this.arenaPulseMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x22d3ee) },
+        uIntensity: { value: 0.16 },
+        uSpeed: { value: 0.26 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uColor;
+        uniform float uIntensity;
+        uniform float uSpeed;
+        varying vec2 vUv;
+        void main() {
+          vec2 p = vUv * 2.0 - 1.0;
+          float r = length(p);
+          if (r > 0.98) discard;
+          float sweep = fract(uTime * uSpeed);
+          float band = exp(-pow((r - sweep) / 0.032, 2.0));
+          float trail = smoothstep(sweep - 0.16, sweep, r) * (1.0 - smoothstep(sweep, sweep + 0.015, r)) * 0.35;
+          float edgeFade = smoothstep(0.04, 0.18, r) * (1.0 - smoothstep(0.75, 0.98, r));
+          float alpha = clamp((band + trail) * edgeFade * uIntensity, 0.0, 0.45);
+          if (alpha < 0.004) discard;
+          vec3 col = mix(uColor, vec3(0.96, 0.99, 1.0), band * 0.45);
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+    });
+    this.arenaPulseMesh = new THREE.Mesh(arenaPulseGeo, this.arenaPulseMat);
+    this.arenaPulseMesh.position.y = 0.044;
+    this.scene.add(this.arenaPulseMesh);
+
+    // v2.9.0: 4 Volumetric Overhead Orbital Light Shaft Cones (soft Fresnel-faded GLSL atmosphere)
+    this.lightShaftsGroup = new THREE.Group();
+    const shaftGeo = new THREE.CylinderGeometry(1.15, 3.8, 15.5, 18, 1, true);
+    shaftGeo.userData.sharedAsset = true;
+    this.lightShaftMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: new THREE.Color(0x38bdf8) },
+        uOpacity: { value: 0.055 },
+        uTime: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormalDir;
+        varying vec3 vViewDir;
+        void main() {
+          vUv = uv;
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vNormalDir = normalize(normalMatrix * normal);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        uniform float uTime;
+        varying vec2 vUv;
+        varying vec3 vNormalDir;
+        varying vec3 vViewDir;
+        void main() {
+          float vertFade = smoothstep(0.0, 0.38, vUv.y) * smoothstep(1.0, 0.48, vUv.y);
+          float edgeSoft = pow(abs(dot(vNormalDir, vViewDir)), 1.65);
+          float shimmer = 0.88 + 0.12 * sin(uTime * 0.9 + vUv.x * 6.2831);
+          float alpha = vertFade * edgeSoft * uOpacity * shimmer;
+          if (alpha < 0.002) discard;
+          gl_FragColor = vec4(uColor, alpha);
+        }
+      `,
+    });
+    const shaftConfigs: Array<[number, number, number, number]> = [
+      [-8.5, -8.5, 0.24, -0.24],
+      [8.5, -8.5, 0.24, 0.24],
+      [-9.2, 7.2, -0.22, -0.24],
+      [9.2, 7.2, -0.22, 0.24],
+    ];
+    for (let s = 0; s < shaftConfigs.length; s++) {
+      const [sx, sz, rx, rz] = shaftConfigs[s];
+      const cone = new THREE.Mesh(shaftGeo, this.lightShaftMat);
+      cone.position.set(sx, 7.2, sz);
+      cone.rotation.set(rx, 0, rz);
+      this.lightShaftsGroup.add(cone);
+    }
+    this.scene.add(this.lightShaftsGroup);
+
+    // v2.9.0: Diegetic 3D Weakpoint Execution Halo (hovers over staggered / core-exposed priority target)
+    const wpHaloGeo = new THREE.PlaneGeometry(3.2, 3.2);
+    wpHaloGeo.rotateX(-Math.PI * 0.5);
+    wpHaloGeo.userData.sharedAsset = true;
+    this.weakpointHaloMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0xfbbf24) },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        void main() {
+          vec2 p = vUv * 2.0 - 1.0;
+          float r = length(p);
+          if (r > 1.0) discard;
+          float ang = atan(p.y, p.x);
+          float seg = step(0.15, sin(ang * 4.0 + uTime * 4.2));
+          float outerRing = exp(-pow((r - 0.84) / 0.045, 2.0)) * (0.45 + 0.55 * seg);
+          float innerRing = exp(-pow((r - 0.54) / 0.028, 2.0)) * 0.72;
+          float pulse = 0.75 + 0.25 * sin(uTime * 8.5);
+          float alpha = clamp((outerRing + innerRing) * pulse, 0.0, 0.92);
+          if (alpha < 0.01) discard;
+          vec3 col = mix(uColor, vec3(1.0, 0.98, 0.92), innerRing * 0.65);
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+    });
+    this.weakpointHaloMesh = new THREE.Mesh(wpHaloGeo, this.weakpointHaloMat);
+    this.weakpointHaloMesh.visible = false;
+    this.scene.add(this.weakpointHaloMesh);
+
+    // v3.0.0: 3D Diegetic Chrono Nexus Constellation Mandala beneath Sera (visible at Nexus ×2 / ×3 / ×4)
+    const nexusAuraGeo = new THREE.PlaneGeometry(4.2, 4.2, 1, 1);
+    nexusAuraGeo.rotateX(-Math.PI * 0.5);
+    nexusAuraGeo.userData.sharedAsset = true;
+    this.nexusAuraMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x22d3ee) },
+        uLinks: { value: 2.0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uColor;
+        uniform float uLinks;
+        varying vec2 vUv;
+        void main() {
+          vec2 p = vUv * 2.0 - 1.0;
+          float r = length(p);
+          if (r > 1.0 || r < 0.22) discard;
+          float ang = atan(p.y, p.x);
+          float petals = max(4.0, uLinks * 2.0);
+          float wave = 0.5 + 0.5 * cos(ang * petals - uTime * 2.6);
+          float outerBand = exp(-pow((r - 0.86) / 0.032, 2.0)) * (0.45 + 0.55 * wave);
+          float innerHex = exp(-pow((r - (0.58 + 0.05 * sin(ang * petals + uTime * 3.2))) / 0.024, 2.0)) * 0.72;
+          float spokes = exp(-pow(abs(sin(ang * (petals * 0.5) - uTime * 1.3)), 2.0) * 65.0) * smoothstep(0.9, 0.35, r) * 0.28;
+          float alpha = clamp((outerBand + innerHex + spokes) * (0.52 + 0.1 * uLinks), 0.0, 0.85);
+          if (alpha < 0.01) discard;
+          vec3 col = mix(uColor, vec3(1.0, 0.98, 0.94), innerHex * 0.48);
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+    });
+    this.nexusAuraMesh = new THREE.Mesh(nexusAuraGeo, this.nexusAuraMat);
+    this.nexusAuraMesh.visible = false;
+    this.scene.add(this.nexusAuraMesh);
+
     // v1.9.0: Pre-allocated 3D Diegetic Target Lock-On Ground Ring (tracks locked hostile in floor space)
     this.lockOnGroundGroup = new THREE.Group();
     this.lockOnGroundGroup.visible = false;
@@ -1961,46 +3710,101 @@ export class ArenaSceneRenderer {
 
     this.scene.add(this.lockOnGroundGroup);
 
-    // Chapter II Harmonic Nodes (3 linked acoustic resonator pylons + 3D harmonic tether beams to THE CHOIR)
+    // HARMONIC PYLON — Tapered Gold-Banded Cyan Resonance Obelisk (Sheet 3, Panel 8 Match)
     this.choirNodesGroup = new THREE.Group();
     this.choirNodesGroup.visible = false;
-    const nodePipeMat = new THREE.MeshStandardMaterial({
-      color: 0xd97706,
-      roughness: 0.3,
-      metalness: 0.82,
+    const pylonDarkSteelMat = new THREE.MeshStandardMaterial({
+      color: 0x252f3d,
+      roughness: 0.36,
+      metalness: 0.78,
+    });
+    const pylonGoldBandMat = new THREE.MeshStandardMaterial({
+      color: 0xd4a948,
+      roughness: 0.24,
+      metalness: 0.9,
+    });
+    const pylonBaseSlateMat = new THREE.MeshStandardMaterial({
+      color: 0x161f2b,
+      roughness: 0.42,
+      metalness: 0.74,
     });
     for (let n = 0; n < 3; n++) {
       const nGroup = new THREE.Group();
-      const baseMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.72, 0.9, 0.32, 16),
-        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.78 })
-      );
-      baseMesh.position.y = 0.16;
-      nGroup.add(baseMesh);
 
-      // 3 Fluted Acoustic Organ-Pipe Columns surrounding the Harmonic Node core
-      for (let pIdx = 0; pIdx < 3; pIdx++) {
-        const pAngle = (pIdx * Math.PI * 2) / 3;
-        const pipe = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.065, 0.08, 1.65, 10),
-          nodePipeMat
-        );
-        pipe.position.set(Math.cos(pAngle) * 0.56, 0.92, Math.sin(pAngle) * 0.56);
-        nGroup.add(pipe);
-      }
+      // Illuminated Hexagonal Floor Plinth Base
+      const hexBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.92, 1.08, 0.2, 6),
+        pylonBaseSlateMat
+      );
+      hexBase.position.y = 0.1;
+      nGroup.add(hexBase);
 
       const coreMat = new THREE.MeshStandardMaterial({
         color: 0x38bdf8,
-        emissive: 0x0891b2,
-        emissiveIntensity: 1.35,
-        roughness: 0.2,
-        metalness: 0.5,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 1.75,
+        roughness: 0.14,
+        metalness: 0.35,
       });
-      const columnMesh = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.46, 0),
+
+      // Glowing Hexagonal Floor Border Trace
+      const hexGlowBorder = new THREE.Mesh(
+        new THREE.TorusGeometry(0.94, 0.036, 8, 6),
         coreMat
       );
-      columnMesh.position.y = 1.22;
+      hexGlowBorder.rotation.x = Math.PI / 2;
+      hexGlowBorder.position.y = 0.21;
+      nGroup.add(hexGlowBorder);
+
+      // Tapered Hexagonal Dark-Metallic Obelisk Spire (lower taper + main upper taper)
+      const lowerSpire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.46, 0.28, 0.52, 6),
+        pylonDarkSteelMat
+      );
+      lowerSpire.position.y = 0.46;
+      nGroup.add(lowerSpire);
+
+      const upperSpire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.46, 1.72, 6),
+        pylonDarkSteelMat
+      );
+      upperSpire.position.y = 1.58;
+      nGroup.add(upperSpire);
+
+      // 2 Crisp Antique-Gold Conductor Bands Wrapping the Obelisk
+      const lowerGoldBand = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.48, 0.46, 0.09, 6),
+        pylonGoldBandMat
+      );
+      lowerGoldBand.position.y = 0.72;
+      nGroup.add(lowerGoldBand);
+
+      const upperGoldBand = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32, 0.34, 0.09, 6),
+        pylonGoldBandMat
+      );
+      upperGoldBand.position.y = 1.88;
+      nGroup.add(upperGoldBand);
+
+      // 3 Vertical Glowing Cyan Energy Channels Recessed Up the Obelisk Faces
+      for (let ch = 0; ch < 3; ch++) {
+        const chAngle = (ch * Math.PI * 2) / 3 + Math.PI / 6;
+        const channel = new THREE.Mesh(
+          new THREE.BoxGeometry(0.068, 1.66, 0.068),
+          coreMat
+        );
+        channel.position.set(Math.cos(chAngle) * 0.36, 1.48, Math.sin(chAngle) * 0.36);
+        channel.rotation.y = -chAngle;
+        channel.rotation.z = -0.11;
+        nGroup.add(channel);
+      }
+
+      // Floating Crown Resonance Beacon Crystal (coreMesh — rotates & pulses smoothly)
+      const columnMesh = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.24, 0),
+        coreMat
+      );
+      columnMesh.position.y = 2.66;
       nGroup.add(columnMesh);
 
       const ringMat = new THREE.MeshBasicMaterial({
@@ -2010,7 +3814,7 @@ export class ArenaSceneRenderer {
         side: THREE.DoubleSide,
         depthWrite: false,
       });
-      const rGeo = new THREE.RingGeometry(1.15, 1.38, 32);
+      const rGeo = new THREE.RingGeometry(1.15, 1.38, 6);
       rGeo.rotateX(-Math.PI * 0.5);
       const ringMesh = new THREE.Mesh(rGeo, ringMat);
       ringMesh.position.y = 0.04;
@@ -2044,11 +3848,11 @@ export class ArenaSceneRenderer {
     }
     this.scene.add(this.choirNodesGroup);
 
-    // Chapter III Gravity Pin [G] Field & Reconstructed Trace Lanes (Floor Lane + 3D Vertical Energy Curtain)
+    // GRAVITY MINE — Spherical Brushed-Titanium Snare Core, 3 Articulated Stabilizer Fins & Ultraviolet Singularity Lens (Sheet 5, Panel 6)
     const gPinGeo = new THREE.RingGeometry(0.4, 1.0, 36);
     gPinGeo.rotateX(-Math.PI * 0.5);
     this.gravityPinMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
+      color: 0xa855f7,
       transparent: true,
       opacity: 0,
       side: THREE.DoubleSide,
@@ -2058,6 +3862,12 @@ export class ArenaSceneRenderer {
     this.gravityPinMesh.visible = false;
     this.gravityPinMesh.position.y = 0.05;
     this.scene.add(this.gravityPinMesh);
+
+    // SHEET 11 · SINGULARITY GRENADE (Panel 6) — Spherical Gunmetal Gravity Device with Amber Arming Ring & Violet-Cyan Micro Black Hole Core
+    this.singularityGrenadeRig = createSingularityGrenadeRig();
+    this.gravityMineGroup = this.singularityGrenadeRig.root;
+    this.gravityMineGroup.visible = false;
+    this.scene.add(this.gravityMineGroup);
 
     for (let t = 0; t < 4; t++) {
       const tGeo = new THREE.PlaneGeometry(1, 1);
@@ -2144,23 +3954,73 @@ export class ArenaSceneRenderer {
     this.chronoSeverWallMesh.position.y = 0.95;
     this.scene.add(this.chronoSeverWallMesh);
 
+    // CHRONO SEVER — Glossy White-Ceramic & Crimson Cylindrical Laser-Cage Projector Stakes with 3-Prong Titanium Claws & Red Scanner Rings (Sheet 8, Panel 7)
     this.chronoSeverStrutsGroup = new THREE.Group();
     this.chronoSeverStrutsGroup.visible = false;
     this.chronoSeverStrutMat = new THREE.MeshBasicMaterial({
-      color: 0xfb7185,
+      color: 0xf43f5e,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.88,
       depthWrite: false,
     });
-    const severStrutGeo = new THREE.CylinderGeometry(0.035, 0.035, 1.85, 6);
+    const severCeramicMat = new THREE.MeshStandardMaterial({
+      color: 0xf1f5f9,
+      roughness: 0.22,
+      metalness: 0.24,
+    });
+    const severTitaniumMat = new THREE.MeshStandardMaterial({
+      color: 0x262c36,
+      roughness: 0.36,
+      metalness: 0.85,
+    });
+    const severRingMat = new THREE.MeshBasicMaterial({
+      color: 0xe11d48,
+      transparent: true,
+      opacity: 0.78,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const severBodyGeo = new THREE.CylinderGeometry(0.068, 0.068, 1.32, 10);
+    const severCapGeo = new THREE.CylinderGeometry(0.072, 0.072, 0.1, 10);
+    const severSlitGeo = new THREE.BoxGeometry(0.028, 1.05, 0.145);
+    const severClawGeo = new THREE.BoxGeometry(0.032, 0.42, 0.055);
+    const severRingGeo = new THREE.TorusGeometry(0.115, 0.022, 8, 18);
+    severRingGeo.rotateX(Math.PI / 2);
+
     for (let s = 0; s < 12; s++) {
       const angle = (s / 12) * Math.PI * 2;
-      const strut = new THREE.Mesh(severStrutGeo, this.chronoSeverStrutMat);
-      strut.position.set(Math.sin(angle), 0.95, Math.cos(angle));
-      this.chronoSeverStrutsGroup.add(strut);
+      const stake = new THREE.Group();
+      stake.position.set(Math.sin(angle), 0, Math.cos(angle));
+      stake.rotation.y = angle;
+      // 3-prong dark-titanium ground anchor claws
+      for (let c = 0; c < 3; c++) {
+        const ca = (c / 3) * Math.PI * 2;
+        const claw = new THREE.Mesh(severClawGeo, severTitaniumMat);
+        claw.position.set(Math.sin(ca) * 0.085, 0.22, Math.cos(ca) * 0.085);
+        claw.rotation.y = ca;
+        claw.rotation.x = 0.2;
+        stake.add(claw);
+      }
+      // White ceramic cylindrical stake shaft + crimson top collar + vertical glowing crimson emitter slits
+      const body = new THREE.Mesh(severBodyGeo, severCeramicMat);
+      body.position.y = 1.08;
+      stake.add(body);
+      const topTrim = new THREE.Mesh(severCapGeo, this.chronoSeverStrutMat);
+      topTrim.position.y = 1.72;
+      stake.add(topTrim);
+      const slit = new THREE.Mesh(severSlitGeo, this.chronoSeverStrutMat);
+      slit.position.y = 1.08;
+      stake.add(slit);
+      // Glowing translucent crimson scanner ring collar around lower stake
+      const scannerRing = new THREE.Mesh(severRingGeo, severRingMat);
+      scannerRing.position.y = 0.56;
+      stake.add(scannerRing);
+      this.chronoSeverStrutsGroup.add(stake);
     }
     this.scene.add(this.chronoSeverStrutsGroup);
 
+    // ECHO COLLAPSE — Fractured Dark-Titanium & Antique-Gold Containment Cage around Blazing Cyan-Gold Rift Core (Sheet 7, Panel 1)
     const collapseGeo = new THREE.RingGeometry(0.65, 1.0, 36);
     collapseGeo.rotateX(-Math.PI * 0.5);
     this.echoCollapseWaveMat = new THREE.MeshBasicMaterial({
@@ -2175,8 +4035,55 @@ export class ArenaSceneRenderer {
     this.echoCollapseWaveMesh.position.y = 0.12;
     this.scene.add(this.echoCollapseWaveMesh);
 
+    this.echoCollapseCoreGroup = new THREE.Group();
+    this.echoCollapseCoreGroup.visible = false;
+    const ecShellMat = new THREE.MeshStandardMaterial({
+      color: 0x252e3a,
+      roughness: 0.34,
+      metalness: 0.84,
+    });
+    const ecGoldMat = new THREE.MeshStandardMaterial({
+      color: 0xd4ad52,
+      roughness: 0.26,
+      metalness: 0.9,
+    });
+    const ecCyanMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x22d3ee,
+      emissiveIntensity: 1.75,
+      roughness: 0.12,
+      metalness: 0.2,
+    });
+    const ecRiftOrb = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.42, 1),
+      new THREE.MeshBasicMaterial({ color: 0xe0f2fe })
+    );
+    this.echoCollapseCoreGroup.add(ecRiftOrb);
+    this.echoCollapseGyroA = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.036, 8, 28), ecCyanMat);
+    this.echoCollapseGyroA.rotation.set(0.6, 0.25, 0);
+    this.echoCollapseCoreGroup.add(this.echoCollapseGyroA);
+    this.echoCollapseGyroB = new THREE.Mesh(new THREE.TorusGeometry(0.54, 0.032, 8, 28), ecCyanMat);
+    this.echoCollapseGyroB.rotation.set(-0.55, 0.95, 0.4);
+    this.echoCollapseCoreGroup.add(this.echoCollapseGyroB);
+    this.echoCollapsePetals = [];
+    for (let ep = 0; ep < 4; ep++) {
+      const ea = (ep / 4) * Math.PI * 2;
+      const petalPivot = new THREE.Group();
+      petalPivot.rotation.y = ea;
+      const armor = new THREE.Mesh(new RoundedBoxGeometry(0.36, 0.95, 0.16, 2, 0.04), ecShellMat);
+      armor.position.z = 0.78;
+      petalPivot.add(armor);
+      const goldTrim = new THREE.Mesh(new RoundedBoxGeometry(0.4, 0.72, 0.07, 1, 0.02), ecGoldMat);
+      goldTrim.position.z = 0.84;
+      petalPivot.add(goldTrim);
+      this.echoCollapseCoreGroup.add(petalPivot);
+      this.echoCollapsePetals.push(petalPivot);
+    }
+    this.scene.add(this.echoCollapseCoreGroup);
+
     // Enemy Rigs
     this.syncEnemyRigs(initialWorld);
+    this.syncCustomMeshyModels(initialWorld);
 
     // Zero-GC Pooled Particle Ring Buffer (Faceted Octahedron Energy Sparks)
     const pGeo = new THREE.OctahedronGeometry(0.11, 0);
@@ -2307,6 +4214,7 @@ export class ArenaSceneRenderer {
     graphics?: {
       preset: GraphicsPreset;
       renderScale: number;
+      dynamicScaleFactor: number;
       shadowQuality: ShadowQuality;
       particleQuality: ParticleQuality;
       lightingQuality: LightingQuality;
@@ -2346,6 +4254,7 @@ export class ArenaSceneRenderer {
       graphics: {
         preset: this.graphicsPreset ?? 'balanced',
         renderScale: this.renderScale ?? 0.85,
+        dynamicScaleFactor: this.dynamicScaleFactor ?? 1.0,
         shadowQuality: this.shadowQuality ?? 'medium',
         particleQuality: this.particleQuality ?? 'medium',
         lightingQuality: this.lightingQuality ?? 'standard',
@@ -2394,6 +4303,12 @@ export class ArenaSceneRenderer {
     if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
     if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
     if (this.impactRingMesh) this.impactRingMesh.visible = false;
+    if (this.impactRingPool) {
+      for (let i = 0; i < this.impactRingPool.length; i++) {
+        this.impactRingPool[i].timer = 0;
+        this.impactRingPool[i].mesh.visible = false;
+      }
+    }
     if (this.railBeamMesh) this.railBeamMesh.visible = false;
     if (this.staggerBeaconSlots) {
       for (let i = 0; i < this.staggerBeaconSlots.length; i++) {
@@ -2418,7 +4333,7 @@ export class ArenaSceneRenderer {
       let rig = this.enemyRigs.get(enemy.id);
       if (rig && rig.archetype !== enemy.archetype) {
         this.scene.remove(rig.root);
-        disposeMeshResources(rig.root, this.shadowTex);
+        disposeMeshResources(rig.root);
         this.enemyRigs.delete(enemy.id);
         rig = undefined;
       }
@@ -2438,9 +4353,61 @@ export class ArenaSceneRenderer {
     for (const [id, rig] of this.enemyRigs.entries()) {
       if (!activeIds.has(id)) {
         this.scene.remove(rig.root);
-        disposeMeshResources(rig.root, this.shadowTex);
+        disposeMeshResources(rig.root);
         this.enemyRigs.delete(id);
         this.enemyGuardRecoilTimers?.delete(id);
+      }
+    }
+    this.syncCustomMeshyModels(world);
+  }
+
+  private applyMeshySlotOverride(
+    slotGroup: THREE.Group | undefined,
+    proceduralGroup: THREE.Group | undefined,
+    slotId: MeshyAssetSlotId | null
+  ): void {
+    if (!slotGroup || !proceduralGroup) return;
+    while (slotGroup.children.length > 0) {
+      const child = slotGroup.children[0];
+      slotGroup.remove(child);
+    }
+    if (!slotId || !meshyAssetRegistry.hasSlot(slotId)) {
+      slotGroup.visible = false;
+      proceduralGroup.visible = true;
+      return;
+    }
+    const clone = meshyAssetRegistry.cloneForRig(slotId);
+    if (!clone) {
+      slotGroup.visible = false;
+      proceduralGroup.visible = true;
+      return;
+    }
+    slotGroup.add(clone);
+    slotGroup.visible = true;
+    proceduralGroup.visible = false;
+  }
+
+  public syncCustomMeshyModels(_world?: WorldState | null): void {
+    if (this.disposed) return;
+    this.applyMeshySlotOverride(
+      this.playerRig?.customMeshySlot,
+      this.playerRig?.bodyGroup,
+      'player'
+    );
+    if (this.enemyRigs) {
+      for (const rig of this.enemyRigs.values()) {
+        const mappedSlot: MeshyAssetSlotId | null =
+          rig.archetype === 'phase_stalker' ||
+          rig.archetype === 'chrono_mortar' ||
+          rig.archetype === 'resonance_warden' ||
+          rig.archetype === 'bastion' ||
+          rig.archetype === 'scrapper' ||
+          rig.archetype === 'scout' ||
+          rig.archetype === 'helix' ||
+          rig.archetype === 'warden_prime'
+            ? rig.archetype
+            : null;
+        this.applyMeshySlotOverride(rig.customMeshySlot, rig.bodyGroup, mappedSlot);
       }
     }
   }
@@ -2465,16 +4432,24 @@ export class ArenaSceneRenderer {
     y: number,
     z: number,
     hexColor: number,
-    duration = 0.26
+    duration = 0.28,
+    maxScale = 2.95
   ): void {
-    if (this.screenEffectsEnabled === false) return;
-    this.impactRingMesh.position.set(x, y, z);
-    this.impactRingMesh.scale.setScalar(0.5);
-    this.impactRingMat.color.setHex(hexColor);
-    this.impactRingMat.opacity = 0.9;
-    this.impactRingMesh.visible = true;
-    this.impactRingDuration = Math.max(0.08, duration);
-    this.impactRingTimer = this.impactRingDuration;
+    if (this.screenEffectsEnabled === false || !this.impactRingPool || this.impactRingPool.length === 0) {
+      return;
+    }
+    const slot = this.impactRingPool[this.impactRingNextIdx % this.impactRingPool.length];
+    this.impactRingNextIdx = (this.impactRingNextIdx + 1) % this.impactRingPool.length;
+    slot.mesh.position.set(x, y, z);
+    slot.mesh.scale.setScalar(0.65);
+    slot.mat.uniforms.uColor.value.setHex(hexColor);
+    slot.mat.uniforms.uProgress.value = 0;
+    slot.mat.uniforms.uOpacity.value = 0.95;
+    slot.mesh.visible = true;
+    slot.duration = Math.max(0.1, duration);
+    slot.timer = slot.duration;
+    slot.maxScale = maxScale;
+    this.impactRingTimer = Math.max(this.impactRingTimer, slot.timer);
   }
 
   private spawnBurst(
@@ -2558,6 +4533,10 @@ export class ArenaSceneRenderer {
     }
   }
 
+  public setLocale(locale: AppLocale): void {
+    this.locale = locale;
+  }
+
   private spawnCombatCallouts(events: CombatEvent[]): void {
     if (
       this.screenEffectsEnabled === false ||
@@ -2567,7 +4546,7 @@ export class ArenaSceneRenderer {
     ) {
       return;
     }
-    const specs = formatCombatCallouts(events);
+    const specs = formatCombatCallouts(events, this.locale);
     if (specs.length === 0) return;
     for (let i = 0; i < specs.length; i++) {
       const spec = specs[i];
@@ -2641,6 +4620,25 @@ export class ArenaSceneRenderer {
       node.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -50%) scale(${pop.toFixed(2)})`;
     }
     this.hasActiveCallouts = anyActive;
+  }
+
+  public projectWorldToViewport(
+    x: number,
+    y: number,
+    z: number
+  ): { x: number; y: number; visible: boolean } {
+    if (!this.camera) {
+      return { x: 0, y: 0, visible: false };
+    }
+    const vw = this.viewportWidth || 1280;
+    const vh = this.viewportHeight || 720;
+    _projVec.set(x, y, z).project(this.camera);
+    const projected = projectNdcToViewport(_projVec.x, _projVec.y, _projVec.z, vw, vh);
+    return {
+      x: projected.x,
+      y: projected.y,
+      visible: projected.visible,
+    };
   }
 
   public handleCombatEvents(events: CombatEvent[]): void {
@@ -2802,21 +4800,58 @@ export class ArenaSceneRenderer {
             this.fovKick = Math.max(this.fovKick ?? 0, 1.6);
           }
           break;
-        case 'player_perfect_dodge':
+        case 'player_perfect_dodge': {
           this.spawnBurst(ev.x, 1.05, ev.z, 18, 0x67e8f9, 7.8);
           this.spawnBurst(ev.x, 1.15, ev.z, 10, 0xffffff, 6.2);
           this.triggerImpactRing(ev.x, 0.18, ev.z, 0x67e8f9, 0.3);
+          const pdYaw = this.playerRig?.root?.rotation?.y ?? 0;
+          this.spawnPlayerAfterimage(ev.x, ev.z, pdYaw, 0x67e8f9, 0.48, 0.52);
           if (!this.reducedMotion) {
             this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.042);
             this.fovKick = Math.max(this.fovKick ?? 0, 1.85);
           }
           break;
+        }
+        case 'temporal_slip_triggered': {
+          const slipYaw = this.playerRig?.root?.rotation?.y ?? 0;
+          const backX = -Math.sin(slipYaw);
+          const backZ = -Math.cos(slipYaw);
+          const sideX = Math.cos(slipYaw);
+          const sideZ = -Math.sin(slipYaw);
+          this.spawnPlayerAfterimage(ev.x + backX * 0.42 + sideX * 0.68, ev.z + backZ * 0.42 + sideZ * 0.68, slipYaw + 0.14, 0x67e8f9, 0.58, 0.32);
+          this.spawnPlayerAfterimage(ev.x + backX * 0.48 - sideX * 0.68, ev.z + backZ * 0.48 - sideZ * 0.68, slipYaw - 0.14, 0xc084fc, 0.58, 0.28);
+          this.spawnPlayerAfterimage(ev.x + backX * 0.92, ev.z + backZ * 0.92, slipYaw, 0x38bdf8, 0.52, 0.22);
+          this.spawnBurst(ev.x, 1.2, ev.z, 22, 0xc084fc, 8.2);
+          this.triggerImpactRing(ev.x, 0.12, ev.z, 0xc084fc, 0.52, 2.8);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.35);
+          }
+          break;
+        }
+        case 'sovereign_astral_pulse': {
+          this.spawnBurst(ev.x, 1.32, ev.z, 26, 0xfde047, 9.2);
+          this.spawnBurst(ev.x, 1.05, ev.z, 18, 0x67e8f9, 7.6);
+          this.triggerImpactRing(ev.x, 0.14, ev.z, 0xfbbf24, 0.56, 3.6);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xc084fc, 0.42, 2.7);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.65);
+          }
+          break;
+        }
+        case 'mastery_bounty_claimed':
+          this.spawnBurst(ev.x, 1.55, ev.z, 28, 0xfde047, 8.4);
+          this.spawnBurst(ev.x, 1.2, ev.z, 16, 0x67e8f9, 6.4);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0xfbbf24, 0.48, 2.4);
+          break;
         case 'player_damaged':
           this.spawnBurst(ev.x, 1.1, ev.z, 14, 0xef4444, 6.5);
           break;
-        case 'player_dodge':
+        case 'player_dodge': {
           this.spawnBurst(ev.x, 0.4, ev.z, 6, 0x22d3ee, 3.8);
+          const dYaw = this.playerRig?.root?.rotation?.y ?? 0;
+          this.spawnPlayerAfterimage(ev.x, ev.z, dYaw, 0x22d3ee, 0.34, 0.38);
           break;
+        }
         case 'echo_recording_started':
         case 'echo_recording_replaced':
           this.clearEchoHistory();
@@ -2873,15 +4908,58 @@ export class ArenaSceneRenderer {
         case 'echo_puzzle_completed':
           this.spawnBurst(ev.x, 1.2, ev.z, 28, 0xffffff, 8.8);
           break;
+        case 'phase_stalker_blink':
+          if (typeof ev.originX === 'number' && typeof ev.originZ === 'number') {
+            this.spawnBurst(ev.originX, 1.0, ev.originZ, 16, 0xa855f7, 6.2);
+          }
+          this.spawnBurst(ev.x, 1.05, ev.z, 20, 0xe879f9, 7.6);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0xa855f7, 0.28);
+          break;
+        case 'chrono_mortar_barrage_fired':
+          if (typeof ev.originX === 'number' && typeof ev.originZ === 'number') {
+            this.spawnBurst(ev.originX, 2.2, ev.originZ, 16, 0xf59e0b, 6.8);
+          }
+          break;
+        case 'chrono_mortar_detonated':
+          this.spawnBurst(ev.x, 0.7, ev.z, 24, 0xf97316, 9.0);
+          this.spawnBurst(ev.x, 0.9, ev.z, 14, 0xfef08a, 7.2);
+          this.triggerImpactRing(ev.x, 0.15, ev.z, 0xf59e0b, 0.36);
+          break;
+        case 'conductor_tether_severed':
+          this.spawnBurst(ev.x, 1.2, ev.z, 20, 0x34d399, 7.4);
+          this.spawnBurst(ev.x, 1.25, ev.z, 10, 0xffffff, 6.0);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x10b981, 0.32);
+          break;
+        case 'volatile_core_detonated':
+          this.spawnBurst(ev.x, 1.0, ev.z, 30, 0xef4444, 10.2);
+          this.spawnBurst(ev.x, 1.15, ev.z, 18, 0xf59e0b, 8.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xef4444, 0.44);
+          break;
         case 'echo_relay_success':
           if (typeof ev.originX === 'number' && typeof ev.originZ === 'number') {
             this.spawnBurst(ev.originX, 1.0, ev.originZ, 18, 0x38bdf8, 6.8);
+            this.spawnPlayerAfterimage(
+              ev.originX,
+              ev.originZ,
+              this.playerRig?.root?.rotation?.y ?? 0,
+              0x38bdf8,
+              0.44,
+              0.46
+            );
             if (this.screenEffectsEnabled !== false) {
               this.relayOriginPillarMesh.position.set(ev.originX, 1.4, ev.originZ);
               this.relayOriginPillarMesh.visible = true;
             }
           }
           this.spawnBurst(ev.x, 1.0, ev.z, 24, 0xe0f2fe, 7.6);
+          this.spawnPlayerAfterimage(
+            ev.x,
+            ev.z,
+            this.playerRig?.root?.rotation?.y ?? 0,
+            0xe0f2fe,
+            0.36,
+            0.38
+          );
           if (this.screenEffectsEnabled !== false) {
             this.relayArrivalPillarMesh.position.set(ev.x, 1.4, ev.z);
             this.relayArrivalPillarMesh.visible = true;
@@ -2982,6 +5060,238 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.25, ev.z, 12, 0xfbbf24, 6.4);
           this.triggerImpactRing(ev.x, 0.2, ev.z, 0xfbbf24, 0.38);
           break;
+        case 'temporal_rift_spawned':
+          this.spawnBurst(ev.x, 1.1, ev.z, 18, 0xe879f9, 6.8);
+          this.spawnBurst(ev.x, 0.9, ev.z, 10, 0x22d3ee, 5.2);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0xe879f9, 0.42);
+          break;
+        case 'temporal_rift_sealed':
+          this.spawnBurst(ev.x, 1.2, ev.z, 24, 0x22d3ee, 8.6);
+          this.spawnBurst(ev.x, 1.35, ev.z, 14, 0xe0f2fe, 6.8);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0x22d3ee, 0.46);
+          this.spawnImpactDecal(ev.x, ev.z, 0x22d3ee, 2.4, 6.5);
+          break;
+        case 'temporal_rift_ruptured':
+          this.spawnBurst(ev.x, 1.25, ev.z, 26, 0xf43f5e, 9.0);
+          this.spawnBurst(ev.x, 1.0, ev.z, 16, 0xf59e0b, 7.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xf43f5e, 0.5);
+          break;
+        case 'recursion_loop_cleared':
+          this.spawnBurst(ev.x, 1.3, ev.z, 28, 0x22d3ee, 8.8);
+          this.spawnBurst(ev.x, 1.4, ev.z, 16, 0xfbbf24, 7.0);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xfbbf24, 0.48);
+          break;
+        case 'recursion_relic_picked':
+          this.spawnBurst(ev.x, 1.25, ev.z, 22, 0x34d399, 7.8);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0x34d399, 0.36);
+          break;
+        case 'chrono_overdrive_activated':
+          this.spawnBurst(ev.x, 1.35, ev.z, 34, 0xfbbf24, 10.5);
+          this.spawnBurst(ev.x, 1.25, ev.z, 26, 0x22d3ee, 8.8);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfbbf24, 0.62);
+          this.spawnImpactDecal(ev.x, ev.z, 0x38bdf8, 3.6, 4.5);
+          break;
+        case 'chrono_overdrive_ended':
+          this.spawnBurst(ev.x, 1.2, ev.z, 16, 0x38bdf8, 5.4);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0x38bdf8, 0.32);
+          break;
+        case 'gauntlet_stage_cleared':
+          this.spawnBurst(ev.x, 1.4, ev.z, 30, 0xfbbf24, 9.4);
+          this.spawnBurst(ev.x, 1.2, ev.z, 20, 0x34d399, 7.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xfbbf24, 0.56);
+          break;
+        case 'gauntlet_victory':
+          this.spawnBurst(ev.x, 1.6, ev.z, 44, 0xfbbf24, 11.2);
+          this.spawnBurst(ev.x, 1.4, ev.z, 32, 0x22d3ee, 9.5);
+          this.triggerImpactRing(ev.x, 0.24, ev.z, 0xfbbf24, 0.72);
+          break;
+        case 'expedition_breach_triggered':
+          this.spawnBurst(ev.x, 1.4, ev.z, 34, 0xf59e0b, 9.6);
+          this.spawnBurst(ev.x, 1.2, ev.z, 22, 0x38bdf8, 8.0);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xf59e0b, 0.62);
+          break;
+        case 'expedition_airlock_unlocked':
+          this.spawnBurst(ev.x, 2.1, ev.z, 36, 0x10b981, 9.4);
+          this.spawnBurst(ev.x, 1.6, ev.z, 24, 0x22d3ee, 7.8);
+          this.triggerImpactRing(ev.x, 0.24, ev.z, 0x10b981, 0.68);
+          break;
+        case 'expedition_sector_transit':
+          this.spawnBurst(ev.x, 1.35, ev.z, 32, 0x38bdf8, 9.0);
+          this.spawnBurst(ev.x, 1.25, ev.z, 20, 0x34d399, 7.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x38bdf8, 0.56);
+          break;
+        case 'safe_room_entered':
+          this.spawnBurst(ev.x, 1.4, ev.z, 24, 0x34d399, 7.6);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x38bdf8, 0.52);
+          break;
+        case 'safe_room_med_used':
+          this.spawnBurst(ev.x, 1.6, ev.z, 34, 0x34d399, 8.8);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x10b981, 0.62);
+          break;
+        case 'safe_room_lysa_briefing':
+          this.spawnBurst(ev.x, 1.9, ev.z, 28, 0x38bdf8, 8.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x38bdf8, 0.58);
+          break;
+        case 'secret_vault_unlocked':
+          this.spawnBurst(ev.x, 1.5, ev.z, 30, 0x34d399, 9.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x10b981, 0.64);
+          break;
+        case 'secret_vault_looted':
+          this.spawnBurst(ev.x, 1.5, ev.z, 40, 0xfbbf24, 10.4);
+          this.spawnBurst(ev.x, 1.4, ev.z, 24, 0x38bdf8, 8.4);
+          this.triggerImpactRing(ev.x, 0.24, ev.z, 0xfbbf24, 0.72);
+          break;
+        case 'ng_plus_started':
+          this.spawnBurst(ev.x, 1.6, ev.z, 42, 0xfbbf24, 11.0);
+          this.spawnBurst(ev.x, 1.4, ev.z, 28, 0xa855f7, 9.2);
+          this.triggerImpactRing(ev.x, 0.24, ev.z, 0xfbbf24, 0.76);
+          break;
+        case 'nanite_injector_used':
+          this.spawnBurst(ev.x, 1.35, ev.z, 28, 0x34d399, 7.6);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0x10b981, 0.56);
+          break;
+        case 'aegis_shield_absorbed':
+          this.spawnBurst(ev.x, 1.25, ev.z, 18, 0x38bdf8, 6.4);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x38bdf8, 0.44);
+          break;
+        case 'combat_drone_fired': {
+          this.spawnBurst(ev.x, 1.35, ev.z, 10, 0x67e8f9, 5.2);
+          if (this.combatDroneRig) {
+            const ox = ev.originX ?? ev.x;
+            const oz = ev.originZ ?? ev.z;
+            const dx = ev.x - ox;
+            const dz = ev.z - oz;
+            const dy = 1.35 - 1.85;
+            const len = Math.max(0.2, Math.hypot(dx, dy, dz));
+            const beam = this.combatDroneRig.beamMesh;
+            beam.visible = true;
+            beam.position.set(
+              (ox + ev.x) * 0.5 - this.combatDroneRig.root.position.x,
+              (1.85 + 1.35) * 0.5 - this.combatDroneRig.root.position.y,
+              (oz + ev.z) * 0.5 - this.combatDroneRig.root.position.z
+            );
+            beam.scale.set(1, len, 1);
+            _droneDirVec.set(dx, dy, dz).normalize();
+            beam.quaternion.setFromUnitVectors(_droneUpVec, _droneDirVec);
+            this.combatDroneRig.beamMat.opacity = 0.9;
+            this.combatDroneRig.muzzleFlashMesh.visible = true;
+            this.droneBeamTimer = 0.18;
+          }
+          break;
+        }
+        case 'combat_drone_shield_triggered':
+          this.spawnBurst(ev.x, 1.3, ev.z, 30, 0xfbbf24, 8.2);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0x38bdf8, 0.62);
+          break;
+        case 'fabricator_purchased':
+        case 'skin_equipped':
+          this.spawnBurst(ev.x, 1.35, ev.z, 24, 0xfbbf24, 7.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0x38bdf8, 0.52);
+          break;
+        case 'boss_killcam_triggered':
+        case 'echo_zero_defeated':
+          this.spawnBurst(ev.x, 1.9, ev.z, 52, 0xe879f9, 12.5);
+          this.spawnBurst(ev.x, 1.6, ev.z, 38, 0xfde047, 10.2);
+          this.triggerImpactRing(ev.x, 0.25, ev.z, 0xe879f9, 0.92);
+          break;
+        case 'paradox_rift_entered':
+          this.spawnBurst(ev.x, 1.5, ev.z, 36, 0xc084fc, 9.8);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xe879f9, 0.72);
+          break;
+        case 'achievement_unlocked':
+          this.spawnBurst(ev.x, 1.8, ev.z, 20, 0xfde047, 6.8);
+          break;
+        case 'flash_swap_triggered': {
+          this.spawnBurst(ev.x, 1.25, ev.z, 24, 0x22d3ee, 8.6);
+          this.spawnBurst(ev.x, 1.25, ev.z, 14, 0xfbbf24, 6.8);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfbbf24, 0.5);
+          const swapYaw = this.playerRig?.root?.rotation?.y ?? 0;
+          this.spawnDashGhost(ev.x, ev.z, swapYaw, 0xfbbf24);
+          this.spawnPlayerAfterimage(ev.x, ev.z, swapYaw, 0xfbbf24, 0.44, 0.5);
+          this.triggerSlashRibbon(ev.x, 1.15, ev.z, swapYaw, 0.22, 0xfbbf24, 1.28, 0.22, 1);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.2);
+          }
+          break;
+        }
+        case 'chrono_chain_milestone':
+          this.spawnBurst(ev.x, 1.5, ev.z, 28, 0xfde047, 9.2);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfde047, 0.58);
+          break;
+        case 'weapon_overcharge_ready': {
+          const ovColor =
+            ev.weaponId === 'chrono_scythe'
+              ? 0xe879f9
+              : ev.weaponId === 'grav_breaker'
+                ? 0xf59e0b
+                : ev.weaponId === 'phase_rail'
+                  ? 0xe0f2fe
+                  : ev.weaponId === 'pulsecaster'
+                    ? 0x38bdf8
+                    : 0x22d3ee;
+          this.spawnBurst(ev.x, 1.35, ev.z, 34, ovColor, 9.8);
+          this.spawnBurst(ev.x, 1.15, ev.z, 18, 0xfde047, 7.6);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, ovColor, 0.56, 3.6);
+          this.triggerImpactRing(ev.x, 0.45, ev.z, 0xfde047, 0.36, 2.4);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.6);
+          }
+          break;
+        }
+        case 'twin_sync_tier_up': {
+          const syncHex = (ev.amount ?? 1) >= 3 ? 0xfbbf24 : (ev.amount ?? 1) === 2 ? 0x818cf8 : 0x22d3ee;
+          this.spawnBurst(ev.x, 1.35, ev.z, 26, syncHex, 8.8);
+          this.triggerImpactRing(ev.x, 0.25, ev.z, syncHex, 0.46, 3.3);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 1.9);
+          }
+          break;
+        }
+        case 'twin_sync_pincer':
+          this.spawnBurst(ev.x, 1.25, ev.z, 22, 0xfbbf24, 8.4);
+          this.spawnBurst(ev.x, 1.15, ev.z, 14, 0x22d3ee, 6.8);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfbbf24, 0.36, 2.7);
+          break;
+        case 'weakpoint_break_triggered':
+          this.spawnBurst(ev.x, 1.45, ev.z, 30, 0xfbbf24, 9.6);
+          this.spawnBurst(ev.x, 1.2, ev.z, 18, 0xfef08a, 7.2);
+          this.triggerImpactRing(ev.x, 0.24, ev.z, 0xfbbf24, 0.52, 3.9);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.4);
+          }
+          break;
+        case 'chrono_momentum_tier_up': {
+          const momHex = (ev.amount ?? 1) >= 3 ? 0xfbbf24 : (ev.amount ?? 1) === 2 ? 0xa78bfa : 0x22d3ee;
+          this.spawnBurst(ev.x, 1.35, ev.z, 22, momHex, 8.2);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, momHex, 0.42, 3.0);
+          break;
+        }
+        case 'chrono_nexus_linked': {
+          const nxHex = (ev.amount ?? 2) >= 4 ? 0xfbbf24 : (ev.amount ?? 2) === 3 ? 0xa78bfa : 0x22d3ee;
+          this.spawnBurst(ev.x, 1.4, ev.z, 28, nxHex, 9.2);
+          this.spawnBurst(ev.x, 1.15, ev.z, 16, 0xf8fafc, 6.4);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, nxHex, 0.5, 3.6);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.6);
+          }
+          break;
+        }
+        case 'chrono_nexus_pulse': {
+          const pHex = (ev.amount ?? 3) >= 4 ? 0xfbbf24 : 0xa78bfa;
+          this.spawnBurst(ev.x, 1.1, ev.z, 24, pHex, 10.2);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, pHex, 0.56, 4.8);
+          break;
+        }
+        case 'weapon_swap_resonance': {
+          const wrHex = typeof ev.amount === 'number' && ev.amount > 0xff ? ev.amount : 0x22d3ee;
+          this.spawnBurst(ev.x, 1.25, ev.z, 26, wrHex, 9.4);
+          this.spawnBurst(ev.x, 1.05, ev.z, 14, 0xf8fafc, 6.2);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, wrHex, 0.48, 4.4);
+          if (!this.reducedMotion) {
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.2);
+          }
+          break;
+        }
         case 'weapon_switched':
           this.spawnBurst(
             ev.x,
@@ -3082,7 +5392,8 @@ export class ArenaSceneRenderer {
         case 'chrono_execution_finisher': {
           this.spawnBurst(ev.x, 1.35, ev.z, 34, 0xfbbf24, 10.6);
           this.spawnBurst(ev.x, 1.25, ev.z, 24, 0x22d3ee, 8.8);
-          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfbbf24, 0.48);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, 0xfbbf24, 0.48, 3.8);
+          this.triggerImpactRing(ev.x, 0.46, ev.z, 0x22d3ee, 0.34, 2.5);
           this.spawnImpactDecal(ev.x, ev.z, 0xfbbf24, 2.4, 7.5);
           const execYaw =
             typeof ev.originX === 'number' && typeof ev.originZ === 'number'
@@ -3166,6 +5477,117 @@ export class ArenaSceneRenderer {
           this.spawnBurst(ev.x, 1.15, ev.z, 20, 0x34d399, 6.8);
           this.triggerImpactRing(ev.x, 0.16, ev.z, 0x34d399, 0.42);
           break;
+        case 'fragment_cache_claimed':
+          this.spawnBurst(ev.x, 1.35, ev.z, 24, 0xfbbf24, 7.4);
+          this.spawnBurst(ev.x, 1.45, ev.z, 12, 0xffffff, 5.8);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0xfbbf24, 0.4);
+          break;
+        case 'sector_beacon_activated':
+          this.spawnBurst(ev.x, 1.3, ev.z, 26, 0x22d3ee, 8.2);
+          this.spawnBurst(ev.x, 1.2, ev.z, 14, 0x34d399, 6.2);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0x22d3ee, 0.44);
+          break;
+        case 'weapon_upgrade_overclocked':
+          this.spawnBurst(ev.x, 1.25, ev.z, 18, 0xfbbf24, 6.4);
+          this.triggerImpactRing(ev.x, 0.14, ev.z, 0xfbbf24, 0.34);
+          break;
+        case 'weapon_mythic_awakened':
+          this.spawnBurst(ev.x, 1.35, ev.z, 26, 0xfbbf24, 7.6);
+          this.spawnBurst(ev.x, 1.2, ev.z, 16, 0x34d399, 6.2);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0xfbbf24, 0.42);
+          break;
+        case 'rig_module_overclocked':
+          this.spawnBurst(ev.x, 1.3, ev.z, 22, 0x34d399, 7.0);
+          this.spawnBurst(ev.x, 1.15, ev.z, 12, 0xfbbf24, 5.6);
+          this.triggerImpactRing(ev.x, 0.15, ev.z, 0x34d399, 0.36);
+          break;
+        case 'sentinel_mode_switched':
+          this.spawnBurst(ev.x, 1.65, ev.z, 16, 0x22d3ee, 5.8);
+          this.triggerImpactRing(ev.x, 0.14, ev.z, 0x22d3ee, 0.3);
+          break;
+        case 'echo_doctrine_switched':
+          this.spawnBurst(ev.x, 1.35, ev.z, 18, 0x38bdf8, 6.2);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0x38bdf8, 0.34);
+          break;
+        case 'echo_doctrine_nova_pulse':
+          this.spawnBurst(ev.x, 1.2, ev.z, 28, 0xe879f9, 8.8);
+          this.spawnBurst(ev.x, 1.05, ev.z, 14, 0xf0abfc, 6.4);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0xe879f9, 0.56);
+          break;
+        case 'holo_memory_projected':
+          this.spawnBurst(ev.x, 1.45, ev.z, 26, 0x22d3ee, 7.8);
+          this.spawnBurst(ev.x, 1.65, ev.z, 18, 0xfbbf24, 6.4);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0x22d3ee, 0.48);
+          this.resonanceFlash = Math.max(this.resonanceFlash ?? 0, 0.72);
+          break;
+        case 'chrono_ward_absorbed':
+          this.spawnBurst(ev.x, 1.15, ev.z, 14, 0x34d399, 6.2);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, 0x34d399, 0.28);
+          break;
+        case 'chrono_ward_shatter':
+          this.spawnBurst(ev.x, 1.2, ev.z, 30, 0x34d399, 9.2);
+          this.spawnBurst(ev.x, 1.35, ev.z, 16, 0xffffff, 7.4);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0x34d399, 0.52);
+          break;
+        case 'phantom_afterimage_strike':
+          this.spawnBurst(ev.x, 1.25, ev.z, 20, 0xa78bfa, 7.6);
+          this.spawnBurst(ev.x, 1.1, ev.z, 10, 0x22d3ee, 5.8);
+          this.triggerImpactRing(ev.x, 0.15, ev.z, 0xa78bfa, 0.34);
+          break;
+        case 'boss_core_unlocked':
+          this.bossCorePulseTimer = 0.75;
+          this.spawnBurst(ev.x, 1.45, ev.z, 28, 0xfbbf24, 8.6);
+          this.spawnBurst(ev.x, 1.3, ev.z, 16, 0x22d3ee, 6.8);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0xfbbf24, 0.5);
+          break;
+        case 'boss_core_equipped':
+          this.bossCorePulseTimer = 0.55;
+          this.spawnBurst(ev.x, 1.4, ev.z, 18, 0x38bdf8, 6.2);
+          this.triggerImpactRing(ev.x, 0.15, ev.z, 0x38bdf8, 0.34);
+          break;
+        case 'boss_core_pulse': {
+          this.bossCorePulseTimer = 0.48;
+          const pulseColor = this.bossCoreSigilRig?.root.visible
+            ? this.bossCoreSigilRig.crystalMat.color.getHex()
+            : 0xfbbf24;
+          const ringColor = this.bossCoreSigilRig?.root.visible
+            ? this.bossCoreSigilRig.ringMat.color.getHex()
+            : 0x22d3ee;
+          this.spawnBurst(ev.x, 1.25, ev.z, 24, pulseColor, 8.2);
+          this.spawnBurst(ev.x, 1.05, ev.z, 12, ringColor, 6.4);
+          this.triggerImpactRing(ev.x, 0.16, ev.z, pulseColor, 0.44);
+          break;
+        }
+        case 'boss_core_omega_awakened': {
+          this.bossCorePulseTimer = 0.95;
+          this.spawnBurst(ev.x, 1.55, ev.z, 34, 0xfde047, 9.8);
+          this.spawnBurst(ev.x, 1.35, ev.z, 22, 0x22d3ee, 7.6);
+          this.triggerImpactRing(ev.x, 0.2, ev.z, 0xfde047, 0.56);
+          break;
+        }
+        case 'confluence_burst_triggered': {
+          this.bossCorePulseTimer = 0.85;
+          const burstCrystalHex = this.bossCoreSigilRig?.root.visible
+            ? this.bossCoreSigilRig.crystalMat.color.getHex()
+            : 0x38bdf8;
+          this.spawnBurst(ev.x, 1.4, ev.z, 36, burstCrystalHex, 10.6);
+          this.spawnBurst(ev.x, 1.2, ev.z, 24, 0xffffff, 8.4);
+          this.triggerImpactRing(ev.x, 0.22, ev.z, burstCrystalHex, 0.58);
+          this.spawnImpactDecal(ev.x, ev.z, burstCrystalHex, 3.1, 7.2);
+          if (!this.reducedMotion) {
+            this.hitstopTimer = Math.max(this.hitstopTimer ?? 0, 0.045);
+            this.fovKick = Math.max(this.fovKick ?? 0, 2.4);
+          }
+          break;
+        }
+        case 'neural_protocol_purchased':
+          this.spawnBurst(ev.x, 1.25, ev.z, 18, 0x38bdf8, 6.4);
+          this.triggerImpactRing(ev.x, 0.14, ev.z, 0x38bdf8, 0.34);
+          break;
+        case 'story_choice_resolved':
+          this.spawnBurst(ev.x, 1.4, ev.z, 22, 0x34d399, 7.0);
+          this.triggerImpactRing(ev.x, 0.18, ev.z, 0x34d399, 0.38);
+          break;
       }
     }
   }
@@ -3247,9 +5669,47 @@ export class ArenaSceneRenderer {
     slot.group.rotation.set(0, yaw, rollTilt);
     slot.mesh.rotation.y = Math.PI * 0.5 - slot.spinDir * 0.45;
     slot.group.scale.setScalar(scale * 0.72);
-    slot.mat.color.setHex(colorHex);
-    slot.mat.opacity = 0.88;
+    slot.mat.uniforms.uColor.value.setHex(colorHex);
+    slot.mat.uniforms.uOpacity.value = 0.94;
+    slot.mat.uniforms.uProgress.value = 0;
     slot.group.visible = true;
+  }
+
+  private spawnPlayerAfterimage(
+    x: number,
+    z: number,
+    yaw: number,
+    colorHex = 0x67e8f9,
+    maxAge = 0.42,
+    baseOpacity = 0.44
+  ): void {
+    if (this.reducedMotion || this.screenEffectsEnabled === false) {
+      return;
+    }
+    if (!this.playerAfterimagePool || this.playerAfterimagePool.length === 0) return;
+    const poolLen = this.playerAfterimagePool.length;
+    const slot = this.playerAfterimagePool[this.playerAfterimageNextIdx % poolLen];
+    this.playerAfterimageNextIdx = (this.playerAfterimageNextIdx + 1) % poolLen;
+    slot.active = true;
+    slot.age = 0;
+    slot.maxAge = Math.max(0.12, maxAge);
+    slot.baseOpacity = baseOpacity;
+    const g = slot.ghost;
+    g.root.position.set(x, 0, z);
+    g.root.rotation.set(0, yaw, 0);
+    g.root.scale.setScalar(1);
+    if (this.playerRig) {
+      g.bodyGroup.position.y = this.playerRig.bodyGroup.position.y;
+      g.bodyGroup.rotation.copy(this.playerRig.bodyGroup.rotation);
+      g.torsoPivot.rotation.copy(this.playerRig.torsoPivot.rotation);
+      g.rightArmPivot.rotation.copy(this.playerRig.rightArmPivot.rotation);
+      g.leftArmPivot.rotation.copy(this.playerRig.leftArmPivot.rotation);
+      g.leftLegPivot.rotation.copy(this.playerRig.leftLegPivot.rotation);
+      g.rightLegPivot.rotation.copy(this.playerRig.rightLegPivot.rotation);
+    }
+    g.material.color.setHex(colorHex);
+    g.material.opacity = baseOpacity;
+    g.root.visible = true;
   }
 
   private spawnDashGhost(
@@ -3287,9 +5747,10 @@ export class ArenaSceneRenderer {
       }
       const progress = slot.age / slot.maxAge;
       const eased = 1 - Math.pow(1 - progress, 2);
-      slot.group.scale.setScalar(slot.startScale * (0.72 + eased * 0.48));
-      slot.mesh.rotation.y += slot.spinDir * dt * 10.5;
-      slot.mat.opacity = slot.baseOpacity * Math.max(0, 1 - progress * progress);
+      slot.group.scale.setScalar(slot.startScale * (0.72 + eased * 0.52));
+      slot.mesh.rotation.y += slot.spinDir * dt * 11.2;
+      slot.mat.uniforms.uProgress.value = progress;
+      slot.mat.uniforms.uOpacity.value = slot.baseOpacity * Math.max(0, 1 - progress * progress);
     }
 
     for (let i = 0; i < this.dashGhostSlots.length; i++) {
@@ -3304,6 +5765,20 @@ export class ArenaSceneRenderer {
       const progress = slot.age / slot.maxAge;
       slot.group.scale.setScalar(1 + progress * 0.08);
       slot.mat.opacity = 0.44 * Math.max(0, 1 - progress);
+    }
+
+    for (let i = 0; i < this.playerAfterimagePool.length; i++) {
+      const slot = this.playerAfterimagePool[i];
+      if (!slot.active) continue;
+      slot.age += dt;
+      if (slot.age >= slot.maxAge) {
+        slot.active = false;
+        slot.ghost.root.visible = false;
+        continue;
+      }
+      const progress = slot.age / slot.maxAge;
+      slot.ghost.root.scale.setScalar(1 + progress * 0.07);
+      slot.ghost.material.opacity = slot.baseOpacity * Math.pow(Math.max(0, 1 - progress), 1.35);
     }
 
     if (this.decalSlots) {
@@ -3373,20 +5848,21 @@ export class ArenaSceneRenderer {
         ? resolveActiveLockOnTarget(world, world.player.lockOnTargetId)
         : null;
     const lockedEnemy = target ? world.enemies?.find?.((e) => e.id === target.id) ?? null : null;
-    _lockInput.active = Boolean(target);
-    _lockInput.isBoss = Boolean(target?.isBoss);
-    _lockInput.targetRadius = lockedEnemy?.radius ?? (target?.isBoss ? 1.45 : 0.7);
-    _lockInput.isStaggered = Boolean(target?.isStaggered);
-    _lockInput.isTelegraphing = lockedEnemy?.aiState === 'telegraph';
-    _lockInput.isResonanceMarked = Boolean(
+    const lockVis = computeLockOnGroundVisuals({
+      active: Boolean(target),
+      isBoss: Boolean(target?.isBoss),
+      targetRadius: lockedEnemy?.radius ?? (target?.isBoss ? 1.45 : 0.7),
+      isStaggered: Boolean(target?.isStaggered),
+      isTelegraphing: lockedEnemy?.aiState === 'telegraph',
+      isResonanceMarked: Boolean(
         target &&
           world.resonance?.activeMark?.enemyId === target.id &&
           world.resonance.activeMark.remainingTime > 0
-      );
-    _lockInput.coreExposed = Boolean(target?.isBoss && world.boss?.coreExposed);
-    _lockInput.reducedMotion = this.reducedMotion;
-    _lockInput.timeSec = world.elapsedTime;
-    const lockVis = computeLockOnGroundVisuals(_lockInput, _lockVisuals);
+      ),
+      coreExposed: Boolean(target?.isBoss && world.boss?.coreExposed),
+      reducedMotion: this.reducedMotion,
+      timeSec: world.elapsedTime,
+    });
 
     if (this.lockOnGroundGroup) {
       if (lockVis.visible && target) {
@@ -3451,6 +5927,12 @@ export class ArenaSceneRenderer {
       if (this.relayOriginPillarMesh) this.relayOriginPillarMesh.visible = false;
       if (this.relayArrivalPillarMesh) this.relayArrivalPillarMesh.visible = false;
       if (this.impactRingMesh) this.impactRingMesh.visible = false;
+      if (this.impactRingPool) {
+        for (let i = 0; i < this.impactRingPool.length; i++) {
+          this.impactRingPool[i].timer = 0;
+          this.impactRingPool[i].mesh.visible = false;
+        }
+      }
       if (this.slashRibbonSlots) {
         for (let i = 0; i < this.slashRibbonSlots.length; i++) {
           this.slashRibbonSlots[i].active = false;
@@ -3462,6 +5944,15 @@ export class ArenaSceneRenderer {
           this.dashGhostSlots[i].active = false;
           this.dashGhostSlots[i].group.visible = false;
         }
+      }
+      if (this.playerAfterimagePool) {
+        for (let i = 0; i < this.playerAfterimagePool.length; i++) {
+          this.playerAfterimagePool[i].active = false;
+          this.playerAfterimagePool[i].ghost.root.visible = false;
+        }
+      }
+      if (this.temporalSlipRingGroup) {
+        this.temporalSlipRingGroup.visible = false;
       }
       if (this.staggerBeaconSlots) {
         for (let i = 0; i < this.staggerBeaconSlots.length; i++) {
@@ -3484,6 +5975,29 @@ export class ArenaSceneRenderer {
     this.syncBloomState();
   }
 
+  public setDynamicRenderScaleFactor(factor: number): void {
+    if (this.isHeadless || this.isSoftwareGl || !this.renderer) return;
+    const clamped = Math.max(0.55, Math.min(1.0, Number.isFinite(factor) ? factor : 1.0));
+    if (Math.abs(clamped - this.dynamicScaleFactor) < 0.015) return;
+    this.dynamicScaleFactor = clamped;
+    const nextDpr = computeEffectivePixelRatio(
+      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+      GAME_CONFIG.camera.maxPixelRatio,
+      this.renderScale * this.dynamicScaleFactor,
+      this.isHeadless,
+      this.isSoftwareGl
+    );
+    if (Math.abs(nextDpr - (this.appliedPixelRatio ?? 1)) >= 0.02) {
+      this.appliedPixelRatio = nextDpr;
+      this.renderer.setPixelRatio?.(nextDpr);
+      this.composer?.setPixelRatio?.(nextDpr);
+      if (this.viewportWidth > 0 && this.viewportHeight > 0) {
+        this.renderer.setSize?.(this.viewportWidth, this.viewportHeight, false);
+        this.composer?.setSize?.(this.viewportWidth, this.viewportHeight);
+      }
+    }
+  }
+
   public applyPerformanceSettings(settings: Partial<CameraSettings>): void {
     const resolved = resolveGraphicsSettings(settings);
     this.graphicsPreset = resolved.graphicsPreset;
@@ -3493,6 +6007,7 @@ export class ArenaSceneRenderer {
     this.particleScale = getParticleScaleFactor(resolved.particleQuality);
     this.lightingQuality = resolved.lightingQuality;
     this.fpsLimit = resolved.fpsLimit;
+    this.celestialGrade = resolved.celestialGrade;
     this.lastEnvLightingQuality = null;
 
     if (typeof settings.reducedMotion === 'boolean') {
@@ -3505,10 +6020,14 @@ export class ArenaSceneRenderer {
       this.setScreenEffects(settings.screenEffects);
     }
 
+    if (settings.adaptiveResolution === false) {
+      this.dynamicScaleFactor = 1.0;
+    }
+
     const nextDpr = computeEffectivePixelRatio(
       typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
       GAME_CONFIG.camera.maxPixelRatio,
-      resolved.renderScale,
+      resolved.renderScale * this.dynamicScaleFactor,
       this.isHeadless,
       this.isSoftwareGl
     );
@@ -3540,13 +6059,7 @@ export class ArenaSceneRenderer {
     }
     if (this.scene) {
       this.scene.environmentIntensity =
-        this.isHeadless || this.isSoftwareGl
-          ? resolved.lightingQuality === 'lite'
-            ? 0.36
-            : 0.54
-          : resolved.lightingQuality === 'lite'
-            ? 0.38
-            : 0.58;
+        resolved.lightingQuality === 'lite' ? 0.68 : 0.94;
     }
     if (resolved.particleQuality === 'low') {
       if (this.echoGhosts) {
@@ -3648,25 +6161,68 @@ export class ArenaSceneRenderer {
       this.loomLight.intensity = look.loomIntensity;
       this.calLight.color.setHex(look.practical);
       this.calLight.visible = this.lightingQuality !== 'lite';
-      if (!this.isHeadless && !this.isSoftwareGl) {
-        this.scene.environmentIntensity = look.envIntensity;
-      }
+      this.scene.environmentIntensity = look.envIntensity;
       this.conduitGlowMat.color.setHex(look.conduit);
       this.floorTelemetryMat?.uniforms?.uColor?.value?.setHex?.(look.conduit);
       this.skyDomeMat?.uniforms?.uZenith?.value?.setHex?.(look.skyZenith);
       this.skyDomeMat?.uniforms?.uHorizon?.value?.setHex?.(look.skyHorizon);
       this.skyDomeMat?.uniforms?.uNebula?.value?.setHex?.(look.nebulaTint);
+      this.skyDomeMat?.uniforms?.uAurora?.value?.setHex?.(look.auroraTint);
       this.planetMat?.uniforms?.uAccent?.value?.setHex?.(look.rim);
+      this.planetMat?.uniforms?.uRimTint?.value?.setHex?.(look.planetRimTint);
       this.planetRingMat?.uniforms?.uAccent?.value?.setHex?.(look.conduit);
       this.beamConeMat?.color?.setHex?.(look.rim);
       this.loomLightShaftMat?.color.setHex(look.loom);
       this.dustMat?.color.setHex(look.rim);
+      this.orbitalCrownMat?.color.setHex(look.rim);
+      this.orbitalCrownInnerMat?.color.setHex(look.conduit);
+      this.floorConduitMat?.color.setHex(look.conduit);
     }
 
     if (this.visibleChapterEnv) {
       for (let r = 0; r < this.visibleChapterEnv.rotors.length; r++) {
-        this.visibleChapterEnv.rotors[r].rotation.y +=
-          ambientDt * (r % 2 === 0 ? 0.46 : -0.34) * ringSpeedScale;
+        const rotor = this.visibleChapterEnv.rotors[r];
+        const ud = rotor.userData as {
+          animKind?: string;
+          baseY?: number;
+          baseZ?: number;
+          amp?: number;
+          speed?: number;
+          phase?: number;
+          rx?: number;
+          ry?: number;
+          rz?: number;
+        };
+        const kind = ud?.animKind;
+        if (kind === 'scanY') {
+          const baseY = ud.baseY ?? rotor.position.y;
+          const amp = ud.amp ?? 1.2;
+          const speed = ud.speed ?? 1.3;
+          const phase = ud.phase ?? r * 0.8;
+          rotor.position.y = baseY + Math.sin(ambientTime * speed + phase) * amp * ambientScale;
+        } else if (kind === 'scanZ') {
+          const baseZ = ud.baseZ ?? rotor.position.z;
+          const amp = ud.amp ?? 0.4;
+          const speed = ud.speed ?? 1.15;
+          const phase = ud.phase ?? r * 0.8;
+          rotor.position.z = baseZ + Math.sin(ambientTime * speed + phase) * amp * ambientScale;
+        } else if (kind === 'floatSpin') {
+          const baseY = ud.baseY ?? rotor.position.y;
+          const amp = ud.amp ?? 0.12;
+          const speed = ud.speed ?? 0.9;
+          const phase = ud.phase ?? r * 1.1;
+          const sample = computePropFloatMotion(ambientTime, phase, amp, this.reducedMotion);
+          rotor.position.y = baseY + sample.offsetY;
+          rotor.rotation.y += ambientDt * speed * ringSpeedScale;
+          rotor.rotation.x = sample.tiltX;
+          rotor.rotation.z = sample.tiltZ;
+        } else if (kind === 'gyroSpin') {
+          rotor.rotation.x += ambientDt * (ud.rx ?? 0.5) * ringSpeedScale;
+          rotor.rotation.y += ambientDt * (ud.ry ?? 0.9) * ringSpeedScale;
+          rotor.rotation.z += ambientDt * (ud.rz ?? 0.4) * ringSpeedScale;
+        } else {
+          rotor.rotation.y += ambientDt * (r % 2 === 0 ? 0.46 : -0.34) * ringSpeedScale;
+        }
       }
       for (let m = 0; m < this.visibleChapterEnv.pulseMaterials.length; m++) {
         this.visibleChapterEnv.pulseMaterials[m].opacity =
@@ -3687,6 +6243,41 @@ export class ArenaSceneRenderer {
     if (this.orbitalDrydockGroup) {
       this.orbitalDrydockGroup.rotation.y += ambientDt * 0.016 * ringSpeedScale;
     }
+    if (this.celestialAstrolabeOuterRing) {
+      this.celestialAstrolabeOuterRing.rotation.z += ambientDt * 0.022 * ringSpeedScale;
+    }
+    if (this.celestialAstrolabeInnerRing) {
+      this.celestialAstrolabeInnerRing.rotation.z -= ambientDt * 0.034 * ringSpeedScale;
+    }
+    if (this.orbitalShuttles) {
+      for (let i = 0; i < this.orbitalShuttles.length; i++) {
+        const sh = this.orbitalShuttles[i];
+        const baseY = Number(sh.userData.baseY) || sh.position.y;
+        const baseRotX = Number(sh.userData.baseRotX) || 0.04;
+        const baseRotZ = Number(sh.userData.baseRotZ) || 0;
+        const phase = i * 2.15;
+        sh.position.y = baseY + Math.sin(ambientTime * 0.85 + phase) * 0.55 * ambientScale;
+        sh.rotation.x = baseRotX + Math.sin(ambientTime * 0.6 + phase) * 0.04 * ambientScale;
+        sh.rotation.z = baseRotZ + Math.cos(ambientTime * 0.72 + phase) * 0.06 * ambientScale;
+      }
+    }
+    if (this.orbitalDebris) {
+      for (let i = 0; i < this.orbitalDebris.length; i++) {
+        const db = this.orbitalDebris[i];
+        const baseY = Number(db.userData.baseY) || db.position.y;
+        const dir = i % 2 === 0 ? 1 : -1;
+        db.rotation.x += ambientDt * 0.08 * dir * ringSpeedScale;
+        db.rotation.y += ambientDt * 0.12 * ringSpeedScale;
+        db.rotation.z += ambientDt * 0.06 * -dir * ringSpeedScale;
+        db.position.y = baseY + Math.sin(ambientTime * 0.45 + i * 1.9) * 0.42 * ambientScale;
+      }
+    }
+    if (this.blastStrobeMat) {
+      this.blastStrobeMat.emissiveIntensity =
+        selectedEnding === 'silence'
+          ? 0.25
+          : computeStrobeIntensity(ambientTime, 0, 1.35, this.reducedMotion);
+    }
     if (this.skyDomeMat?.uniforms?.uTime) {
       this.skyDomeMat.uniforms.uTime.value = ambientTime;
     }
@@ -3695,6 +6286,9 @@ export class ArenaSceneRenderer {
     }
     if (this.planetMat?.uniforms?.uTime) {
       this.planetMat.uniforms.uTime.value = ambientTime;
+    }
+    if (this.planetRingMat?.uniforms?.uTime) {
+      this.planetRingMat.uniforms.uTime.value = ambientTime;
     }
     this.conduitGlowMat.opacity =
       selectedEnding === 'silence'
@@ -3710,13 +6304,34 @@ export class ArenaSceneRenderer {
     const isBossActive = Boolean(
       world.boss && world.boss.hp > 0 && world.boss.aiState !== 'defeated'
     );
+    const holoProjectingNow = (world.exploration?.activeHoloMemoryTimer ?? 0) > 0;
     const mood = computeArenaMoodModulation(baseChapterLook, {
       bossPhase: isBossActive ? world.boss!.phase : 1,
       bossCoreExposed: Boolean(isBossActive && world.boss?.coreExposed),
       adrenalineTier: Math.min(5, Math.max(0, Math.floor(world.player?.adrenalineScore ?? 0))),
       resonanceFlash: this.resonanceFlash ?? 0,
       reducedMotion: this.reducedMotion,
+      overdriveActive: Boolean(world.overdrive?.active),
+      holoActive: holoProjectingNow,
+      celestialGrade: this.celestialGrade,
     });
+    if (this.skyDomeMat?.uniforms) {
+      if (this.skyDomeMat.uniforms.uAuroraIntensity) {
+        this.skyDomeMat.uniforms.uAuroraIntensity.value =
+          selectedEnding === 'silence' ? 0.15 : mood.auroraIntensity;
+      }
+      if (this.skyDomeMat.uniforms.uNebulaBoost) {
+        this.skyDomeMat.uniforms.uNebulaBoost.value =
+          selectedEnding === 'silence' ? 0.45 : mood.nebulaBoost;
+      }
+      if (this.skyDomeMat.uniforms.uStarTwinkle) {
+        this.skyDomeMat.uniforms.uStarTwinkle.value = mood.starTwinkle;
+      }
+      if (this.skyDomeMat.uniforms.uEclipseRim) {
+        this.skyDomeMat.uniforms.uEclipseRim.value =
+          selectedEnding === 'silence' ? 0.12 : mood.eclipseRim;
+      }
+    }
     if (selectedEnding !== 'silence') {
       if (this.rimLight) {
         this.rimLight.color?.setHex?.(mood.rimHex);
@@ -3932,27 +6547,36 @@ export class ArenaSceneRenderer {
               ? 0.52
               : 0.36;
         rig.ringMat.color.setHex(hexColor);
-        rig.coreMesh.rotation.y += ambientDt * (isPrompted ? 2.4 : 1.1);
-        rig.coreMesh.position.y =
-          1.56 + Math.sin(ambientTime * 2.8 + i) * 0.07 * ambientScale;
+        const floatSample = computePropFloatMotion(ambientTime, i + 0.5, isPrompted ? 0.1 : 0.075, this.reducedMotion);
+        rig.coreMesh.rotation.y += ambientDt * (isPrompted ? 2.6 : 1.25);
+        rig.coreMesh.rotation.x = floatSample.tiltX * 1.4;
+        rig.coreMesh.rotation.z = floatSample.tiltZ * 1.4;
+        rig.coreMesh.position.y = 1.56 + floatSample.offsetY;
+        rig.ringMesh.scale.setScalar(
+          item.status === 'activated' ? 0.92 : isPrompted ? floatSample.pulseScale * 1.08 : floatSample.pulseScale
+        );
         rig.ringMat.opacity =
           item.status === 'activated'
             ? 0.32
             : isPrompted
-              ? 0.82
+              ? 0.82 + Math.sin(ambientTime * 5.2 + i) * 0.1 * ambientScale
               : 0.48 + Math.sin(ambientTime * 3.2 + i) * 0.14 * ambientScale;
       }
     }
 
-    // Phase 19: Retract unlocked corner containment pylons smoothly into the deck floor
+    const inSafeRoom = Boolean(
+      world.expedition?.enabled && world.expedition.phase === 'safe_room'
+    );
+
+    // Phase 19: Retract unlocked corner containment pylons smoothly into the deck floor (instant in Safe-Room)
     if (world.obstacles && this.obstacleMeshById && this.obstacleMeshById.size > 0) {
       for (let i = 0; i < world.obstacles.length; i++) {
         const obs = world.obstacles[i];
         if (!obs || obs.id === 'loom-pylon') continue;
         const meshGroup = this.obstacleMeshById.get(obs.id);
         if (!meshGroup) continue;
-        const targetY = obs.disabled ? -(obs.height + 0.35) : 0;
-        if (this.reducedMotion) {
+        const targetY = obs.disabled || inSafeRoom ? -(obs.height + 0.35) : 0;
+        if (this.reducedMotion || inSafeRoom) {
           meshGroup.position.y = targetY;
         } else {
           meshGroup.position.y +=
@@ -3964,8 +6588,8 @@ export class ArenaSceneRenderer {
         const meshGroup = this.obstacleMeshes[i];
         const obs = world.obstacles[i];
         if (!meshGroup || !obs || obs.id === 'loom-pylon') continue;
-        const targetY = obs.disabled ? -(obs.height + 0.35) : 0;
-        if (this.reducedMotion) {
+        const targetY = obs.disabled || inSafeRoom ? -(obs.height + 0.35) : 0;
+        if (this.reducedMotion || inSafeRoom) {
           meshGroup.position.y = targetY;
         } else {
           meshGroup.position.y +=
@@ -3976,7 +6600,7 @@ export class ArenaSceneRenderer {
 
     // v1.5.0 Package B: Update Dynamic Chapter Cover Barricades & Destructible Capacitors
     if (this.dynamicObstaclesGroup && this.dynamicObstacleRigs && world.obstacles) {
-      const lookAccent = CHAPTER_VISUAL_LOOKS[ch].conduit;
+      const lookAccent = (CHAPTER_VISUAL_LOOKS[ch] ?? CHAPTER_VISUAL_LOOKS.prologue).conduit;
       let rigIdx = 0;
       for (let i = 0; i < world.obstacles.length && rigIdx < this.dynamicObstacleRigs.length; i++) {
         const obs = world.obstacles[i];
@@ -4005,11 +6629,21 @@ export class ArenaSceneRenderer {
         if (rig.hitTimer > 0) {
           rig.hitTimer = Math.max(0, rig.hitTimer - dt);
         }
-        const wobble = rig.hitTimer > 0 && !this.reducedMotion ? Math.sin(rig.hitTimer * 52) * 0.06 : 0;
-        rig.group.rotation.z = wobble;
-
         const maxHp = Math.max(1, obs.maxHp ?? 45);
         const hpRatio = obs.destructible ? curHp / maxHp : 1;
+        const criticalJitter =
+          obs.kind === 'destructible_crate' && hpRatio < 0.55 && !this.reducedMotion
+            ? Math.sin(ambientTime * 34 + i * 2.1) * 0.022
+            : 0;
+        const wobble = rig.hitTimer > 0 && !this.reducedMotion ? Math.sin(rig.hitTimer * 52) * 0.065 : criticalJitter;
+        rig.group.rotation.z = wobble;
+        if (obs.kind === 'destructible_crate') {
+          const coreBreath = 1 + Math.sin(ambientTime * (hpRatio < 0.55 ? 10.5 : 3.4) + i) * 0.028 * ambientScale;
+          rig.crateGroup.scale.set(coreBreath, 1 / Math.sqrt(coreBreath), coreBreath);
+        } else {
+          rig.crateGroup.scale.setScalar(1);
+        }
+
         rig.coreMat.color.setHex(
           rig.hitTimer > 0 ? 0xffffff : hpRatio < 0.6 ? 0xef4444 : 0xf59e0b
         );
@@ -4032,13 +6666,16 @@ export class ArenaSceneRenderer {
         bRig.group.visible = true;
         bRig.group.position.set(pad.x, 0, pad.z);
         const ready = pad.cooldown <= 0;
-        bRig.chevronMesh.rotation.y += ambientDt * (ready ? 2.4 : 0.35);
+        bRig.chevronMesh.rotation.y += ambientDt * (ready ? 2.85 : 0.4);
+        bRig.outerRing.rotation.z -= ambientDt * (ready ? 1.35 : 0.25);
+        const padPulse = ready ? 1 + Math.sin(ambientTime * 4.8 + i) * 0.055 * ambientScale : 0.92;
+        bRig.outerRing.scale.setScalar(padPulse);
         bRig.ringMat.color.setHex(ready ? 0x22d3ee : 0x475569);
         bRig.ringMat.opacity = ready
           ? 0.56 + Math.sin(ambientTime * 4.2 + i) * 0.14 * ambientScale
           : 0.24;
         bRig.chevronMat.color.setHex(ready ? 0x67e8f9 : 0x64748b);
-        bRig.chevronMat.opacity = ready ? 0.8 : 0.26;
+        bRig.chevronMat.opacity = ready ? 0.84 : 0.26;
       }
     }
 
@@ -4136,7 +6773,99 @@ export class ArenaSceneRenderer {
       }
     }
 
-    // v1.9.0: Update Tactical Waypoint 3D Ground Beacon
+    // Update Pooled Artillery Strike & Volatile Detonation Warning Zones
+    if (this.artilleryZonesGroup && this.artilleryZoneRigs.length > 0) {
+      const zones = world.artilleryZones ?? [];
+      for (let i = 0; i < this.artilleryZoneRigs.length; i++) {
+        const aRig = this.artilleryZoneRigs[i];
+        const zone = zones[i];
+        if (!zone || zone.remainingTimer <= 0) {
+          aRig.group.visible = false;
+          continue;
+        }
+        aRig.group.visible = true;
+        aRig.group.position.set(zone.x, 0, zone.z);
+        const progress = Math.max(
+          0,
+          Math.min(1, 1 - zone.remainingTimer / Math.max(0.05, zone.maxDuration))
+        );
+        const isVolatile = zone.kind === 'volatile_core';
+        aRig.outerRing.scale.setScalar(zone.radius);
+        aRig.outerRing.rotation.z = ambientTime * (isVolatile ? -3.4 : 2.2);
+        aRig.ringMat.color.setHex(isVolatile ? 0xef4444 : 0xf59e0b);
+        aRig.ringMat.opacity = 0.65 + progress * 0.32;
+
+        aRig.fillDisc.scale.setScalar(Math.max(0.08, zone.radius * progress));
+        aRig.discMat.color.setHex(isVolatile ? 0xdc2626 : 0xf97316);
+        aRig.discMat.opacity = 0.16 + progress * 0.34;
+
+        if (isVolatile) {
+          aRig.shellMesh.visible = true;
+          aRig.shellMesh.position.y = 0.85;
+          const pulse = 0.8 + progress * 1.4 + Math.sin(ambientTime * 22) * 0.14;
+          aRig.shellMesh.scale.setScalar(pulse);
+          aRig.shellMat.color.setHex(0xfef08a);
+        } else {
+          aRig.shellMesh.visible = true;
+          // Parabolic descent arc toward ground impact
+          const fallY = Math.max(0.22, (1 - progress) * (1 - progress) * 10.5);
+          aRig.shellMesh.position.y = fallY;
+          aRig.shellMesh.scale.setScalar(0.85 + progress * 0.45);
+          aRig.shellMat.color.setHex(0xfbbf24);
+        }
+      }
+    }
+
+    // Update Pooled Harmonic Conductor Shield-Tether Beams & Ally Shield Halos
+    if (this.conductorTethersGroup && this.conductorTetherRigs.length > 0) {
+      let tetherUsed = 0;
+      for (let i = 0; i < world.enemies.length && tetherUsed < this.conductorTetherRigs.length; i++) {
+        const conductor = world.enemies[i];
+        if (
+          conductor.archetype !== 'resonance_warden' ||
+          conductor.hp <= 0 ||
+          conductor.aiState === 'ko' ||
+          conductor.aiState === 'staggered' ||
+          !conductor.tetherTargetId
+        ) {
+          continue;
+        }
+        const ally = world.enemies.find(
+          (e) => e.id === conductor.tetherTargetId && e.hp > 0 && e.aiState !== 'ko'
+        );
+        if (!ally) continue;
+
+        const tRig = this.conductorTetherRigs[tetherUsed++];
+        tRig.group.visible = true;
+        this._tetherVecA.set(conductor.x, 1.65, conductor.z);
+        this._tetherVecB.set(ally.x, 1.25, ally.z);
+        const beamLen = Math.max(0.1, this._tetherVecA.distanceTo(this._tetherVecB));
+        this._tetherMid.addVectors(this._tetherVecA, this._tetherVecB).multiplyScalar(0.5);
+        this._tetherDir.subVectors(this._tetherVecB, this._tetherVecA).normalize();
+        this._tetherQuat.setFromUnitVectors(this._tetherUp, this._tetherDir);
+
+        tRig.beamMesh.position.copy(this._tetherMid);
+        tRig.beamMesh.quaternion.copy(this._tetherQuat);
+        const pulseThick = 0.85 + Math.sin(ambientTime * 8.0 + tetherUsed) * 0.25;
+        tRig.beamMesh.scale.set(pulseThick, beamLen, pulseThick);
+        tRig.beamMat.opacity = 0.65 + Math.sin(ambientTime * 6.5) * 0.2;
+
+        // Hover & rotate the TETHER NODE harmonic relay drone at the beam midpoint
+        tRig.nodeGroup.position.copy(this._tetherMid);
+        tRig.nodeGroup.rotation.y = ambientTime * 2.4 + tetherUsed;
+        tRig.nodeGroup.rotation.x = Math.sin(ambientTime * 1.8 + tetherUsed) * 0.3;
+
+        tRig.allyHaloMesh.position.set(ally.x, 0.06, ally.z);
+        tRig.allyHaloMesh.scale.setScalar(Math.max(0.95, ally.radius * 1.45));
+        tRig.allyHaloMesh.rotation.z = ambientTime * 2.1;
+        tRig.allyHaloMat.opacity = 0.6 + Math.sin(ambientTime * 5.0) * 0.18;
+      }
+      for (let i = tetherUsed; i < this.conductorTetherRigs.length; i++) {
+        this.conductorTetherRigs[i].group.visible = false;
+      }
+    }
+
+    // WAYPOINT SPIRE — Animate Gilded Projector Base, Amber Beam & Spinning Cyan Octahedron
     if (this.waypointBeaconRig) {
       const wp = world.exploration?.tacticalWaypoint ?? null;
       if (!wp) {
@@ -4149,10 +6878,954 @@ export class ArenaSceneRenderer {
         this.waypointBeaconRig.ringMat.opacity =
           0.72 + Math.sin(ambientTime * 5.0) * 0.18 * ambientScale;
         this.waypointBeaconRig.columnMat.opacity =
-          0.2 + Math.sin(ambientTime * 3.8) * 0.07 * ambientScale;
+          0.26 + Math.sin(ambientTime * 3.8) * 0.08 * ambientScale;
         this.waypointBeaconRig.diamondMesh.rotation.y += ambientDt * 2.6;
         this.waypointBeaconRig.diamondMesh.position.y =
-          1.65 + Math.sin(ambientTime * 3.2) * 0.14 * ambientScale;
+          2.45 + Math.sin(ambientTime * 3.2) * 0.16 * ambientScale;
+      }
+    }
+
+    // Chronicle Expansion: Update Pooled Arena Fragment Caches
+    if (this.fragmentCachesGroup && this.fragmentCacheRigs.length > 0) {
+      const caches = world.fragmentCaches ?? [];
+      for (let i = 0; i < this.fragmentCacheRigs.length; i++) {
+        const fcRig = this.fragmentCacheRigs[i];
+        const cache = caches[i];
+        if (!cache) {
+          fcRig.group.visible = false;
+          continue;
+        }
+        fcRig.group.visible = true;
+        fcRig.group.position.set(cache.x, 0, cache.z);
+        const claimed = Boolean(cache.claimed);
+        const fcFloat = computePropFloatMotion(ambientTime, i * 1.4, claimed ? 0.045 : 0.12, this.reducedMotion);
+        fcRig.prismMesh.rotation.y += ambientDt * (claimed ? 0.7 : 2.45);
+        fcRig.prismMesh.rotation.x = fcFloat.tiltX * 1.5;
+        fcRig.prismMesh.rotation.z = fcFloat.tiltZ * 1.5;
+        fcRig.prismMesh.position.y = (claimed ? 0.92 : 1.25) + fcFloat.offsetY;
+        fcRig.prismMesh.scale.setScalar(claimed ? 0.62 : fcFloat.pulseScale);
+        fcRig.prismMat.color.setHex(claimed ? 0x34d399 : 0xfbbf24);
+        fcRig.prismMat.opacity = claimed ? 0.48 : 0.95;
+        fcRig.ringMesh.rotation.z -= ambientDt * (claimed ? 0.4 : 1.4);
+        fcRig.ringMesh.scale.setScalar(claimed ? 0.72 : 1 + Math.sin(ambientTime * 4.2 + i) * 0.08 * ambientScale);
+        fcRig.ringMat.color.setHex(claimed ? 0x10b981 : 0xf59e0b);
+        fcRig.ringMat.opacity = claimed ? 0.28 : 0.78 + Math.sin(ambientTime * 4.5 + i) * 0.14 * ambientScale;
+        fcRig.beamMesh.visible = !claimed;
+        fcRig.beamMat.opacity = claimed ? 0 : 0.2 + Math.sin(ambientTime * 3.6 + i) * 0.06 * ambientScale;
+      }
+    }
+
+    // Chronicle Expansion: Update Pooled Sector Tactical Beacons
+    if (this.sectorBeaconsGroup && this.sectorBeaconRigs.length > 0) {
+      const beacons = world.sectorBeacons ?? [];
+      for (let i = 0; i < this.sectorBeaconRigs.length; i++) {
+        const sbRig = this.sectorBeaconRigs[i];
+        const beacon = beacons[i];
+        if (!beacon) {
+          sbRig.group.visible = false;
+          continue;
+        }
+        sbRig.group.visible = true;
+        sbRig.group.position.set(beacon.x, 0, beacon.z);
+        const ready = beacon.cooldown <= 0;
+        const sbFloat = computePropFloatMotion(ambientTime, i * 1.7, ready ? 0.11 : 0.03, this.reducedMotion);
+        sbRig.haloMesh.rotation.z += ambientDt * (ready ? 2.4 : 0.5);
+        sbRig.haloMesh.rotation.y += ambientDt * (ready ? 1.55 : 0.32);
+        sbRig.haloMesh.position.y = 1.65 + sbFloat.offsetY;
+        sbRig.pylonMat.emissive.setHex(ready ? 0x06b6d4 : 0x334155);
+        sbRig.pylonMat.emissiveIntensity = ready
+          ? 1.05 + Math.sin(ambientTime * 4.8 + i) * 0.28 * ambientScale
+          : 0.25;
+        sbRig.haloMat.color.setHex(ready ? 0x22d3ee : 0x64748b);
+        sbRig.haloMat.opacity = ready ? 0.92 : 0.42;
+        sbRig.ringMat.color.setHex(ready ? 0x38bdf8 : 0x475569);
+        sbRig.ringMat.opacity = ready
+          ? 0.68 + Math.sin(ambientTime * 4.2 + i) * 0.15 * ambientScale
+          : 0.24;
+      }
+    }
+
+    // v3.8.0: Update Interactive 3D Dr. Lysa Venn Holo-Memory Astrolabe Projector
+    if (this.lysaHoloProjectorRig) {
+      const holoRig = this.lysaHoloProjectorRig;
+      const holoDef = getHoloMemoryForChapter(ch);
+      const showHolo = world.run.mode !== 'boss_gauntlet' && !inSafeRoom;
+      holoRig.root.visible = showHolo;
+      if (showHolo) {
+        holoRig.root.position.set(holoDef.x, 0, holoDef.z);
+        const discoveredIds = world.exploration?.discoveredHoloMemoryIds;
+        const isDiscovered = Boolean(discoveredIds && discoveredIds.includes(holoDef.id));
+        const isProjecting =
+          world.exploration?.activeHoloMemoryId === holoDef.id &&
+          (world.exploration?.activeHoloMemoryTimer ?? 0) > 0;
+
+        holoRig.holoShaderMat.uniforms.uTime.value = ambientTime;
+        const primaryHex = isProjecting ? 0x67e8f9 : isDiscovered ? 0x34d399 : 0x22d3ee;
+        const secondaryHex = isProjecting ? 0xfef08a : 0xfbbf24;
+        holoRig.holoShaderMat.uniforms.uPrimaryColor.value.setHex(primaryHex);
+        holoRig.holoShaderMat.uniforms.uSecondaryColor.value.setHex(secondaryHex);
+        holoRig.holoShaderMat.uniforms.uOpacity.value = isProjecting
+          ? 0.96
+          : isDiscovered
+            ? 0.68
+            : 0.88;
+
+        const floatSample = computePropFloatMotion(
+          ambientTime,
+          1.15,
+          isProjecting ? 0.09 : 0.055,
+          this.reducedMotion
+        );
+        holoRig.hologramFigureGroup.position.y =
+          (isProjecting ? 0.3 : 0.22) + floatSample.offsetY;
+        const dxToPlayer = world.player.x - holoDef.x;
+        const dzToPlayer = world.player.z - holoDef.z;
+        if (dxToPlayer * dxToPlayer + dzToPlayer * dzToPlayer > 0.04) {
+          holoRig.hologramFigureGroup.rotation.y = Math.atan2(dxToPlayer, dzToPlayer);
+        }
+
+        const spinMult = isProjecting ? 2.4 : isDiscovered ? 0.85 : 1.35;
+        holoRig.outerGimbalRing.rotation.z += ambientDt * 0.9 * spinMult * ringSpeedScale;
+        holoRig.innerHarmonicRing.rotation.y -= ambientDt * 1.35 * spinMult * ringSpeedScale;
+        holoRig.innerHarmonicRing.rotation.z += ambientDt * 0.65 * spinMult * ringSpeedScale;
+        holoRig.seedCrystalMesh.rotation.y += ambientDt * 2.2 * spinMult * ringSpeedScale;
+        holoRig.seedCrystalMesh.scale.setScalar(
+          isProjecting ? 1.24 + Math.sin(ambientTime * 6.0) * 0.1 * ambientScale : 1.0
+        );
+
+        holoRig.floorHaloMat.color.setHex(isProjecting ? 0xfbbf24 : primaryHex);
+        holoRig.floorHaloMat.opacity = isProjecting
+          ? 0.92
+          : (isDiscovered ? 0.44 : 0.72) + Math.sin(ambientTime * 4.0) * 0.12 * ambientScale;
+        holoRig.beamConeMat.color.setHex(primaryHex);
+        holoRig.beamConeMat.opacity = isProjecting
+          ? 0.26
+          : isDiscovered
+            ? 0.09
+            : 0.16 + Math.sin(ambientTime * 3.2) * 0.04 * ambientScale;
+        holoRig.apertureLensMat.emissiveIntensity = isProjecting ? 3.2 : isDiscovered ? 1.4 : 2.2;
+      }
+    }
+
+    // Chapter Orbital Crown Rings & Radial Floor Energy Conduits
+    if (this.orbitalCrownOuterRing && this.orbitalCrownInnerRing) {
+      this.orbitalCrownOuterRing.rotation.y += ambientDt * 0.14 * ringSpeedScale;
+      this.orbitalCrownInnerRing.rotation.y -= ambientDt * 0.22 * ringSpeedScale;
+      const crownOpacity =
+        selectedEnding === 'silence'
+          ? 0.12
+          : 0.34 + Math.sin(ambientTime * 2.2) * 0.08 * ambientScale;
+      this.orbitalCrownMat.opacity = crownOpacity;
+      this.orbitalCrownInnerMat.opacity = crownOpacity * 0.85;
+    }
+    if (this.floorConduitMat) {
+      this.floorConduitMat.opacity =
+        selectedEnding === 'silence'
+          ? 0.08
+          : 0.22 + Math.sin(ambientTime * 3.1) * 0.07 * ambientScale;
+    }
+
+    // Dynamic Arena Anomaly: 3D Temporal Rift Rig
+    if (this.temporalRiftGroup) {
+      const rift = world.temporalRift ?? null;
+      if (!rift || rift.remainingTimer <= 0) {
+        this.temporalRiftGroup.visible = false;
+      } else {
+        this.temporalRiftGroup.visible = true;
+        this.temporalRiftGroup.position.set(rift.x, 0, rift.z);
+        const ratio = Math.max(0.05, Math.min(1, rift.remainingTimer / Math.max(0.1, rift.maxDuration)));
+        const urgent = rift.remainingTimer <= 4.0;
+        const pulse = 1 + Math.sin(ambientTime * (urgent ? 11.0 : 5.2)) * 0.06 * ambientScale;
+        this.temporalRiftRingMesh.scale.setScalar(rift.radius * pulse);
+        this.temporalRiftRingMesh.rotation.z -= ambientDt * (urgent ? 3.2 : 1.5);
+        this.temporalRiftOuterTorus.rotation.y += ambientDt * 2.1;
+        this.temporalRiftOuterTorus.rotation.x += ambientDt * 1.1;
+        this.temporalRiftInnerTorus.rotation.y -= ambientDt * 2.9;
+        this.temporalRiftInnerTorus.rotation.z += ambientDt * 1.6;
+        this.temporalRiftCoreMesh.rotation.z -= ambientDt * 3.2;
+        this.temporalRiftCoreMesh.rotation.y += ambientDt * 1.1;
+        this.temporalRiftCoreMesh.position.y =
+          1.52 + Math.sin(ambientTime * 3.8) * 0.12 * ambientScale;
+        this.temporalRiftCoreMesh.scale.setScalar(0.88 + (1 - ratio) * 0.3);
+        this.temporalRiftRingMat.color.setHex(urgent ? 0xf59e0b : 0x38bdf8);
+        this.temporalRiftOuterTorusMat.color.setHex(urgent ? 0xf43f5e : 0xfbbf24);
+        this.temporalRiftBeamMat.color.setHex(urgent ? 0xf59e0b : 0x22d3ee);
+        this.temporalRiftBeamMat.opacity =
+          (urgent ? 0.32 : 0.2) + Math.sin(ambientTime * 7.5) * 0.05 * ambientScale;
+      }
+    }
+
+    // Chrono Stasis Overdrive [5] Expanding Geodesic Time-Dilation Dome
+    if (this.overdriveDomeGroup) {
+      const od = world.overdrive;
+      const odActive = Boolean(od?.active);
+      const targetAlpha = odActive ? 1 : 0;
+      const dampRate = odActive ? 11 : 7;
+      this.overdriveVisualAlpha +=
+        (targetAlpha - this.overdriveVisualAlpha) * (1 - Math.exp(-dampRate * Math.max(0.001, dt)));
+      if (this.overdriveVisualAlpha < 0.015 && !odActive) {
+        this.overdriveVisualAlpha = 0;
+        this.overdriveDomeGroup.visible = false;
+      } else {
+        this.overdriveDomeGroup.visible = true;
+        this.overdriveDomeGroup.position.set(world.player.x, 0, world.player.z);
+        const radius = 3.2 + this.overdriveVisualAlpha * 14.5;
+        const flicker =
+          od && od.active && od.remainingTimer < 1.0
+            ? 0.65 + Math.sin(ambientTime * 22) * 0.35
+            : 1.0;
+        const a = this.overdriveVisualAlpha * flicker;
+        this.overdriveShellMesh.scale.set(radius, radius * 0.56, radius);
+        this.overdriveShellMesh.rotation.y += ambientDt * 0.22;
+        this.overdriveShellMat.opacity = a * 0.14;
+
+        this.overdriveOuterRing.scale.setScalar(radius * 0.92);
+        this.overdriveOuterRing.rotation.z -= ambientDt * 0.65;
+        this.overdriveOuterRingMat.opacity = a * 0.42;
+
+        this.overdriveInnerRing.scale.setScalar(radius * 0.68);
+        this.overdriveInnerRing.rotation.z += ambientDt * 1.05;
+        this.overdriveInnerRingMat.opacity = a * 0.36;
+
+        this.overdriveGroundRing.scale.setScalar(radius * 0.98);
+        this.overdriveGroundRing.rotation.y += ambientDt * 0.45;
+        this.overdriveGroundRingMat.opacity = a * 0.34;
+      }
+    }
+
+    // SHEET 11 · Animate Perimeter Orbital Watchtower Scanner Heads & Quantum Archive Vault Locking Wheels
+    if (this.watchtowerHeads) {
+      for (let wi = 0; wi < this.watchtowerHeads.length; wi++) {
+        const head = this.watchtowerHeads[wi];
+        const phase = typeof head.userData?.phase === 'number' ? head.userData.phase : wi;
+        head.rotation.y = Math.sin(ambientTime * 0.85 + phase) * 0.68 * ambientScale;
+      }
+    }
+    if (this.vaultWheels) {
+      for (let vi = 0; vi < this.vaultWheels.length; vi++) {
+        this.vaultWheels[vi].rotation.z += ambientDt * (vi % 2 === 0 ? 0.52 : -0.44);
+      }
+    }
+
+    // SHEET 11 · Chrono Stasis Core (Panel 1) — Orbits Sera when Overdrive is 100% READY or ascends above active Dome
+    if (this.stasisCoreRig) {
+      const od = world.overdrive;
+      const odActive = Boolean(od?.active);
+      const odReady = Boolean(od && !od.active && od.charge >= 100);
+      if (odActive || odReady) {
+        this.stasisCoreRig.root.visible = true;
+        const bob = Math.sin(ambientTime * 3.8) * 0.12 * ambientScale;
+        if (odActive) {
+          this.stasisCoreRig.root.position.set(world.player.x, 3.65 + bob, world.player.z);
+          this.stasisCoreRig.root.scale.setScalar(1.25);
+        } else {
+          const orbA = ambientTime * 1.4;
+          this.stasisCoreRig.root.position.set(
+            world.player.x + Math.cos(orbA) * 0.95,
+            2.35 + bob,
+            world.player.z + Math.sin(orbA) * 0.95
+          );
+          this.stasisCoreRig.root.scale.setScalar(0.54);
+        }
+        const spinMult = odActive ? 2.4 : 1.1;
+        this.stasisCoreRig.geodesicShell.rotation.y += ambientDt * 0.9 * spinMult;
+        this.stasisCoreRig.outerBrassRing.rotation.y -= ambientDt * 1.3 * spinMult;
+        this.stasisCoreRig.midDarkRing.rotation.x += ambientDt * 1.5 * spinMult;
+        this.stasisCoreRig.innerGoldRing.rotation.z -= ambientDt * 1.8 * spinMult;
+        const corePulse = 0.94 + Math.sin(ambientTime * 7.2) * 0.08 * ambientScale;
+        this.stasisCoreRig.innerCore.scale.setScalar(corePulse);
+      } else {
+        this.stasisCoreRig.root.visible = false;
+      }
+    }
+
+    // SHEET 11 · Sovereign Obelisks (Panel 2) — Visible in Sovereign Gauntlet & Chapter V, lighting Roman Numerals I-V live
+    if (this.sovereignObelisks) {
+      const showObelisks = Boolean(world.gauntlet?.active || world.run?.chapter === 'chapter_5_loom');
+      const clearedTrials = world.gauntlet?.active
+        ? world.gauntlet.defeatedBossIds.length
+        : world.run?.completedChapters?.length ?? 0;
+      const currentTrialIdx = world.gauntlet?.active ? world.gauntlet.stageIndex : -1;
+      for (let oi = 0; oi < this.sovereignObelisks.length; oi++) {
+        const ob = this.sovereignObelisks[oi];
+        ob.root.visible = showObelisks;
+        if (!showObelisks) continue;
+        ob.crownGroup.rotation.y += ambientDt * (oi === 0 ? 1.15 : -1.15);
+        ob.crownGroup.position.y = 4.72 + Math.sin(ambientTime * 2.6 + oi * 1.8) * 0.14 * ambientScale;
+        for (let t = 0; t < ob.runeMaterials.length; t++) {
+          const mat = ob.runeMaterials[t];
+          if (t < clearedTrials) {
+            mat.emissive.setHex(0x10b981);
+            mat.emissiveIntensity = 1.65;
+          } else if (t === currentTrialIdx) {
+            mat.emissive.setHex(0xf59e0b);
+            mat.emissiveIntensity = 1.25 + Math.sin(ambientTime * 6.5) * 0.45 * ambientScale;
+          } else {
+            mat.emissive.setHex(0x92400e);
+            mat.emissiveIntensity = 0.32;
+          }
+        }
+      }
+    }
+
+    // SHEET 11 · Field Refit Drone (Panel 3) — Hovering Repair Companion in Sovereign Gauntlet & Overdrive
+    if (this.fieldRefitDroneRig) {
+      const showDrone = Boolean(world.gauntlet?.active || world.overdrive?.active);
+      this.fieldRefitDroneRig.root.visible = showDrone;
+      if (showDrone) {
+        const refitActive = Boolean(world.gauntlet && world.gauntlet.refitBannerTimer > 0);
+        const orbitAngle = world.player.rotationY - 1.15 + Math.sin(ambientTime * 1.2) * 0.25;
+        const orbitDist = refitActive ? 1.15 : 1.68;
+        const targetX = world.player.x + Math.sin(orbitAngle) * orbitDist;
+        const targetZ = world.player.z + Math.cos(orbitAngle) * orbitDist;
+        const targetY = (refitActive ? 1.75 : 2.12) + Math.sin(ambientTime * 4.4) * 0.14 * ambientScale;
+        this.fieldRefitDroneRig.root.position.set(targetX, targetY, targetZ);
+        this.fieldRefitDroneRig.root.rotation.y = Math.atan2(
+          world.player.x - targetX,
+          world.player.z - targetZ
+        );
+        const weldSwing = Math.sin(ambientTime * (refitActive ? 14 : 4.2)) * (refitActive ? 0.35 : 0.12);
+        this.fieldRefitDroneRig.leftWelderArm.rotation.x = weldSwing;
+        this.fieldRefitDroneRig.rightWelderArm.rotation.x = -weldSwing;
+        const plumeScale = 0.85 + Math.sin(ambientTime * 24) * 0.22 * ambientScale;
+        for (let pi = 0; pi < this.fieldRefitDroneRig.thrusterPlumes.length; pi++) {
+          this.fieldRefitDroneRig.thrusterPlumes[pi].scale.set(1, plumeScale, 1);
+        }
+        this.fieldRefitDroneRig.naniteCanisterMat.emissive.setHex(refitActive ? 0x10b981 : 0x06b6d4);
+        this.fieldRefitDroneRig.naniteCanisterMat.emissiveIntensity = refitActive ? 2.6 : 1.6;
+      }
+    }
+
+    // EXPEDITION JOURNEY 3D GATEWAYS, BREACH SEAL & FLOOR GUIDE TRAIL (guarded for headless tests)
+    const exp = world.expedition;
+    const isExpedition = Boolean(exp?.enabled);
+    const isLoomFinal = world.run?.chapter === 'chapter_5_loom';
+
+    if (this.entryAirlockRig) {
+      this.entryAirlockRig.root.visible = isExpedition;
+      if (isExpedition) {
+        this.entryAirlockRig.beaconMat.emissiveIntensity =
+          1.15 + Math.sin(ambientTime * 3.0) * 0.28 * ambientScale;
+      }
+    }
+
+    if (this.transitAirlockRig) {
+      const showNorthAirlock =
+        isExpedition && (!isLoomFinal || exp?.phase === 'safe_room');
+      this.transitAirlockRig.root.visible = showNorthAirlock;
+      if (showNorthAirlock && exp) {
+        const unlocked = exp.airlockUnlocked;
+        this.transitAirlockRig.lockBarsGroup.visible = !unlocked;
+        if (unlocked) {
+          const pulse = 0.5 + 0.5 * Math.sin(ambientTime * 4.6) * ambientScale;
+          this.transitAirlockRig.statusStripMat.color.setHex(0x34d399);
+          this.transitAirlockRig.statusStripMat.emissive.setHex(0x10b981);
+          this.transitAirlockRig.statusStripMat.emissiveIntensity = 1.65 + pulse * 0.75;
+          this.transitAirlockRig.portalMat.opacity = 0.44 + pulse * 0.24;
+          this.transitAirlockRig.portalRingMat.opacity = 0.85;
+          this.transitAirlockRig.portalRing.rotation.z += ambientDt * 2.1;
+          const ringScale = 0.96 + pulse * 0.08;
+          this.transitAirlockRig.portalRing.scale.set(ringScale, ringScale, 1);
+          this.transitAirlockRig.thresholdMat.color.setHex(0x10b981);
+          this.transitAirlockRig.thresholdMat.opacity = 0.34 + pulse * 0.22;
+        } else {
+          this.transitAirlockRig.statusStripMat.color.setHex(0xf43f5e);
+          this.transitAirlockRig.statusStripMat.emissive.setHex(0xe11d48);
+          this.transitAirlockRig.statusStripMat.emissiveIntensity =
+            1.1 + Math.sin(ambientTime * 3.2) * 0.35 * ambientScale;
+          this.transitAirlockRig.portalMat.opacity = 0.0;
+          this.transitAirlockRig.portalRingMat.opacity = 0.0;
+          this.transitAirlockRig.thresholdMat.color.setHex(0xf43f5e);
+          this.transitAirlockRig.thresholdMat.opacity = 0.18;
+        }
+      }
+    }
+
+    if (this.breachSealRig) {
+      const showSeal = Boolean(isExpedition && exp?.phase === 'explore');
+      this.breachSealRig.root.visible = showSeal;
+      if (showSeal && exp) {
+        this.breachSealRig.root.position.set(exp.breachSealPos.x, 0.02, exp.breachSealPos.z);
+        this.breachSealRig.outerRing.rotation.z += ambientDt * 0.75;
+        this.breachSealRig.innerRing.rotation.z -= ambientDt * 1.35;
+        this.breachSealRig.crystalPrism.rotation.y += ambientDt * 1.9;
+        this.breachSealRig.crystalPrism.position.y =
+          1.62 + Math.sin(ambientTime * 3.2) * 0.16 * ambientScale;
+        const inside = exp.playerInsideBreachSeal;
+        this.breachSealRig.zoneMat.opacity = inside
+          ? 0.3 + Math.sin(ambientTime * 8.0) * 0.08 * ambientScale
+          : 0.14;
+        this.breachSealRig.prismMat.emissiveIntensity = inside ? 2.3 : 1.35;
+      }
+    }
+
+    if (this.safeRoomHubRig) {
+      const showSafeRoom = Boolean(
+        isExpedition && exp?.phase === 'safe_room' && exp.safeRoom?.active
+      );
+      this.safeRoomHubRig.root.visible = showSafeRoom;
+      if (showSafeRoom && exp?.safeRoom) {
+        const sr = exp.safeRoom;
+        const pulse = 0.5 + 0.5 * Math.sin(ambientTime * 3.6) * ambientScale;
+        this.safeRoomHubRig.workbenchHolo.rotation.y += ambientDt * 1.15;
+        this.safeRoomHubRig.workbenchHolo.position.y =
+          1.98 + Math.sin(ambientTime * 2.8) * 0.07 * ambientScale;
+        for (let i = 0; i < this.safeRoomHubRig.welderArms.length; i++) {
+          this.safeRoomHubRig.welderArms[i].rotation.y =
+            Math.sin(ambientTime * 1.6 + i * 1.9) * 0.14 * ambientScale;
+        }
+        this.safeRoomHubRig.medCore.rotation.y += ambientDt * 1.4;
+        this.safeRoomHubRig.medCore.position.y =
+          2.52 + Math.sin(ambientTime * 3.2) * 0.09 * ambientScale;
+        this.safeRoomHubRig.medRing.rotation.z += ambientDt * 0.85;
+        this.safeRoomHubRig.medGlowMat.emissiveIntensity = sr.medBayUsed
+          ? 0.55
+          : 1.55 + pulse * 0.65;
+        this.safeRoomHubRig.lysaHoloGroup.rotation.y =
+          Math.sin(ambientTime * 0.7) * 0.22 * ambientScale;
+        this.safeRoomHubRig.lysaHoloGroup.position.y =
+          1.98 + Math.sin(ambientTime * 2.4) * 0.06 * ambientScale;
+        this.safeRoomHubRig.lysaOuterRing.rotation.z += ambientDt * 0.95;
+        this.safeRoomHubRig.lysaInnerRing.rotation.z -= ambientDt * 1.35;
+        this.safeRoomHubRig.lysaRing.rotation.z -= ambientDt * 0.9;
+        this.safeRoomHubRig.lysaMat.emissiveIntensity = sr.lysaBriefingClaimed
+          ? 0.85
+          : 1.5 + pulse * 0.55;
+
+        // Station Holo-Map Table (Sheet 12, Panel 7) — highlight cleared sectors in emerald
+        this.safeRoomHubRig.holoMapGroup.rotation.y += ambientDt * 0.42;
+        this.safeRoomHubRig.holoMapGroup.position.y =
+          1.58 + Math.sin(ambientTime * 2.1) * 0.05 * ambientScale;
+        for (let i = 0; i < this.safeRoomHubRig.holoMapNodeMats.length; i++) {
+          const cleared = i <= exp.sectorIndex;
+          this.safeRoomHubRig.holoMapNodeMats[i].color.setHex(cleared ? 0x6ee7b7 : 0x7dd3fc);
+          this.safeRoomHubRig.holoMapNodeMats[i].emissive.setHex(cleared ? 0x10b981 : 0x0ea5e9);
+        }
+
+        // Sovereign NG+ Crest (Sheet 12, Panel 8) — twin gyro rings & golden crown
+        const ngCycle = world.progression.ngPlusCycle ?? 0;
+        const ngSpeed = ngCycle > 0 ? 1.55 : 0.85;
+        this.safeRoomHubRig.crestOuterRing.rotation.z += ambientDt * 1.15 * ngSpeed;
+        this.safeRoomHubRig.crestInnerRing.rotation.x += ambientDt * 1.45 * ngSpeed;
+        this.safeRoomHubRig.crestCrown.rotation.y += ambientDt * 0.9 * ngSpeed;
+        this.safeRoomHubRig.crestCrown.position.y =
+          1.58 + Math.sin(ambientTime * 2.7) * 0.07 * ambientScale;
+        this.safeRoomHubRig.crestCrownMat.emissiveIntensity =
+          (ngCycle > 0 ? 2.0 : 1.35) + pulse * 0.55;
+
+        // Paradox Rift Gate (0, 0, -6.2) — Sheet 13 Panel 4 (vortex + orbiting crystal shards)
+        const riftReady = Boolean(world.paradox?.paradoxRiftUnlocked);
+        const riftSpeed = riftReady ? 1.65 : 0.45;
+        this.safeRoomHubRig.paradoxRiftOuterRing.rotation.z += ambientDt * 1.15 * riftSpeed;
+        this.safeRoomHubRig.paradoxRiftInnerRing.rotation.z -= ambientDt * 1.55 * riftSpeed;
+        this.safeRoomHubRig.paradoxRiftInnerRing.rotation.y = Math.sin(ambientTime * 1.4) * 0.24;
+        if (this.safeRoomHubRig.paradoxVortexMesh) {
+          this.safeRoomHubRig.paradoxVortexMesh.rotation.z -= ambientDt * 1.4 * riftSpeed;
+        }
+        if (this.safeRoomHubRig.paradoxCrystalShards) {
+          for (let s = 0; s < this.safeRoomHubRig.paradoxCrystalShards.length; s++) {
+            const shard = this.safeRoomHubRig.paradoxCrystalShards[s];
+            const baseAngle = Number(shard.userData.baseAngle) || 0;
+            const orbitRad = Number(shard.userData.orbitRadius) || 1.45;
+            const a = baseAngle + ambientTime * (s % 2 === 0 ? 0.36 : -0.52) * riftSpeed;
+            shard.position.x = Math.cos(a) * orbitRad;
+            shard.position.y = 1.72 + Math.sin(a) * orbitRad;
+            shard.rotation.z = a - Math.PI * 0.5;
+            shard.rotation.y += ambientDt * 1.4;
+          }
+        }
+        this.safeRoomHubRig.paradoxRiftRingMat.color.setHex(riftReady ? 0xe879f9 : 0x475569);
+        this.safeRoomHubRig.paradoxRiftRingMat.emissive.setHex(riftReady ? 0xa855f7 : 0x1e293b);
+        this.safeRoomHubRig.paradoxRiftRingMat.emissiveIntensity = riftReady
+          ? 1.7 + pulse * 0.75
+          : 0.45;
+        this.safeRoomHubRig.paradoxRiftCoreMat.opacity = riftReady
+          ? 0.78 + pulse * 0.18
+          : 0.22;
+
+        // Field Fabricator Kiosk (-3.2, 0, -0.6) — Sheet 13 Panel 3 amber holo blueprint
+        if (this.safeRoomHubRig.fabricatorHoloMesh) {
+          this.safeRoomHubRig.fabricatorHoloMesh.position.y =
+            1.88 + Math.sin(ambientTime * 2.6) * 0.04 * ambientScale;
+        }
+        if (this.safeRoomHubRig.fabricatorHoloMat) {
+          this.safeRoomHubRig.fabricatorHoloMat.opacity = 0.82 + pulse * 0.16;
+        }
+
+        // Daily Trial Obelisk (3.2, 0, -0.6) — Sheet 14 Panel 6 chronometer hologram
+        if (this.safeRoomHubRig.dailyObeliskChronoGroup) {
+          this.safeRoomHubRig.dailyObeliskChronoGroup.rotation.y += ambientDt * 1.15;
+          this.safeRoomHubRig.dailyObeliskChronoGroup.position.y =
+            1.78 + Math.sin(ambientTime * 2.4) * 0.06 * ambientScale;
+        }
+        if (this.safeRoomHubRig.dailyObeliskBeamMat) {
+          this.safeRoomHubRig.dailyObeliskBeamMat.opacity = 0.26 + pulse * 0.14;
+        }
+      }
+    }
+
+    // Sheet 14 Panel 7: Sleek Chrono Finisher Rift VFX eruption
+    if (this.finisherRiftRig) {
+      const riftTimer = world.ascension?.finisherRiftTimer ?? 0;
+      const showRift = riftTimer > 0.01;
+      this.finisherRiftRig.root.visible = showRift;
+      if (showRift) {
+        const progress = Math.max(0, Math.min(1, 1 - riftTimer / 1.45));
+        const expandScale = 0.45 + Math.sin(Math.min(1, progress * 2.1) * Math.PI * 0.5) * 1.65;
+        const fade = Math.pow(Math.max(0, Math.min(1, riftTimer / 0.58)), 1.3);
+        this.finisherRiftRig.root.position.set(
+          world.ascension?.finisherRiftX ?? world.player.x,
+          0,
+          world.ascension?.finisherRiftZ ?? world.player.z
+        );
+        this.finisherRiftRig.root.scale.set(expandScale, 0.92 + progress * 0.25, expandScale);
+        this.finisherRiftRig.outerRing.rotation.z += ambientDt * 3.4;
+        this.finisherRiftRig.slashShardsGroup.rotation.y -= ambientDt * 5.2;
+        this.finisherRiftRig.voidMat.opacity = 0.32 * fade;
+        this.finisherRiftRig.goldSlashMat.opacity = 0.68 * fade;
+        this.finisherRiftRig.violetSlashMat.opacity = 0.56 * fade;
+      }
+    }
+
+    // Sheet 14 Panel 8: Photo Drone Lens orbiting Sera during 3D Photo Mode
+    if (this.photoDroneRig) {
+      const showPhotoDrone = Boolean(this.photoModeCam?.active && this.photoModeCam?.showDrone);
+      this.photoDroneRig.root.visible = showPhotoDrone;
+      if (showPhotoDrone && this.photoModeCam) {
+        const orbitAngle = this.photoModeCam.yawOffset + 0.65;
+        const px = world.player.x + Math.sin(orbitAngle) * 1.85;
+        const pz = world.player.z + Math.cos(orbitAngle) * 1.85;
+        const py = 2.05 + Math.sin(ambientTime * 2.8) * 0.08;
+        this.photoDroneRig.root.position.set(px, py, pz);
+        this.photoDroneRig.bodyGroup.rotation.y = Math.atan2(
+          world.player.x - px,
+          world.player.z - pz
+        );
+        this.photoDroneRig.lensRing.rotation.z += ambientDt * 2.2;
+      }
+    }
+
+    // Live 3D Sera Rig Skin Application (applies live on Title Screen & in Gameplay)
+    const activeSkinId = world.progression?.equippedSkinId ?? 'nadir_standard';
+    if (this.playerRig && this.lastAppliedSkinId !== activeSkinId) {
+      this.lastAppliedSkinId = activeSkinId;
+      const skinDef = getSeraRigSkinDefinition(activeSkinId);
+      if (this.playerRig.armorMaterial) {
+        this.playerRig.armorMaterial.color.setHex(skinDef.armorHex);
+      }
+      if (this.playerRig.suitMaterial) {
+        this.playerRig.suitMaterial.color.setHex(skinDef.suitHex);
+      }
+      if (this.playerRig.visorMaterial) {
+        this.playerRig.visorMaterial.color.setHex(skinDef.accentHex);
+        this.playerRig.visorMaterial.emissive.setHex(skinDef.accentHex);
+      }
+      if (this.playerRig.chronoAccentMaterial) {
+        this.playerRig.chronoAccentMaterial.color.setHex(skinDef.ringHex);
+        this.playerRig.chronoAccentMaterial.emissive.setHex(skinDef.accentHex);
+      }
+      if (this.playerRig.bladeMaterial) {
+        this.playerRig.bladeMaterial.color.setHex(skinDef.bladeHex);
+        this.playerRig.bladeMaterial.emissive.setHex(skinDef.accentHex);
+      }
+      if (this.playerRig.sovereignCrownHaloGroup) {
+        this.playerRig.sovereignCrownHaloGroup.visible = activeSkinId === 'sovereign_gold';
+      }
+      if (this.playerRig.paradoxPrismSpikesGroup) {
+        this.playerRig.paradoxPrismSpikesGroup.visible = activeSkinId === 'paradox_prism';
+      }
+      if (this.playerRig.paradoxPrismHeadFinsGroup) {
+        this.playerRig.paradoxPrismHeadFinsGroup.visible = activeSkinId === 'paradox_prism';
+      }
+    }
+    if (this.playerRig?.sovereignCrownHaloGroup?.visible) {
+      this.playerRig.sovereignCrownHaloGroup.rotation.y += ambientDt * 1.15;
+      this.playerRig.sovereignCrownHaloGroup.position.y =
+        0.25 + Math.sin(ambientTime * 3.1) * 0.018 * ambientScale;
+    }
+
+    // v4.0.0: Zero-GC 3D Sovereign Astral Crown Rig (Mastery Seal Tiers 0..4)
+    if (this.playerRig?.astralCrownRig) {
+      const crown = this.playerRig.astralCrownRig;
+      const sealTier = computeMasterySealModifiers(world.progression?.combatMastery).tier;
+      const crownVisible = sealTier >= 1 && world.player.actionState !== 'dead';
+      crown.group.visible = crownVisible;
+      if (crownVisible) {
+        const slipActive = (world.player.temporalSlipTimer ?? 0) > 0;
+        const overdriveActive = Boolean(world.overdrive?.active);
+        const flareBoost = slipActive ? 1.0 : overdriveActive ? 0.55 : 0;
+        const bladeCount = sealTier * 2;
+        crown.bladesInstancedMesh.count = bladeCount;
+        crown.innerGimbalArc.visible = sealTier >= 2;
+        crown.omegaKeystoneGroup.visible = sealTier >= 4;
+
+        const arcHex =
+          sealTier === 1
+            ? 0xd97706
+            : sealTier === 2
+              ? 0x94a3b8
+              : sealTier === 3
+                ? 0xfbbf24
+                : 0xfde047;
+        const bladeEmissiveHex =
+          sealTier === 1
+            ? 0xf59e0b
+            : sealTier === 2
+              ? 0x38bdf8
+              : sealTier === 3
+                ? 0xfacc15
+                : slipActive
+                  ? 0x67e8f9
+                  : 0xc084fc;
+        crown.arcMaterial.color.setHex(arcHex);
+        crown.arcMaterial.emissive.setHex(bladeEmissiveHex);
+        crown.arcMaterial.emissiveIntensity = 0.42 + flareBoost * 0.55;
+        crown.bladeMaterial.emissive.setHex(bladeEmissiveHex);
+        crown.bladeMaterial.emissiveIntensity = 0.78 + flareBoost * 0.75;
+
+        const spinRate = (0.72 + sealTier * 0.18 + flareBoost * 1.45) * ambientScale;
+        crown.outerAstrolabeArc.rotation.z += ambientDt * spinRate;
+        crown.innerGimbalArc.rotation.z -= ambientDt * spinRate * 1.32;
+        if (crown.omegaKeystoneGroup.visible) {
+          crown.omegaKeystoneGroup.position.y =
+            0.73 + Math.sin(ambientTime * 3.4) * 0.025 * ambientScale + flareBoost * 0.05;
+        }
+
+        const baseRadius = 0.74 + sealTier * 0.025 + flareBoost * 0.14;
+        const orbitPhase = ambientTime * (0.95 + flareBoost * 1.35) * ambientScale;
+        for (let b = 0; b < bladeCount; b += 1) {
+          const theta = orbitPhase + (b / bladeCount) * Math.PI * 2;
+          const radialPulse =
+            baseRadius + Math.sin(ambientTime * 2.8 + b * 1.1) * 0.024 * ambientScale;
+          const zWave = Math.cos(ambientTime * 2.2 + b * 0.85) * 0.055 * ambientScale;
+          _astralCrownDummy.position.set(
+            Math.cos(theta) * radialPulse,
+            Math.sin(theta) * radialPulse,
+            zWave
+          );
+          _astralCrownDummy.rotation.set(
+            zWave * 1.8,
+            Math.sin(theta) * 0.24,
+            theta - Math.PI * 0.5
+          );
+          const s = (0.9 + (b % 2) * 0.14) * (1 + flareBoost * 0.16);
+          _astralCrownDummy.scale.set(s, s, s);
+          _astralCrownDummy.updateMatrix();
+          crown.bladesInstancedMesh.setMatrixAt(b, _astralCrownDummy.matrix);
+
+          if (sealTier === 4) {
+            _astralCrownColor.setHex(
+              b % 3 === 0 ? 0xfde047 : b % 3 === 1 ? 0x67e8f9 : 0xc084fc
+            );
+          } else if (sealTier === 3) {
+            _astralCrownColor.setHex(b % 2 === 0 ? 0xfef08a : 0x67e8f9);
+          } else if (sealTier === 2) {
+            _astralCrownColor.setHex(b % 2 === 0 ? 0x7dd3fc : 0xe2e8f0);
+          } else {
+            _astralCrownColor.setHex(0xfcd34d);
+          }
+          crown.bladesInstancedMesh.setColorAt(b, _astralCrownColor);
+        }
+        crown.bladesInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (crown.bladesInstancedMesh.instanceColor) {
+          crown.bladesInstancedMesh.instanceColor.needsUpdate = true;
+        }
+      }
+    }
+
+    // Tactical Med-Nanite Canister (Sheet 13 Panel 5) holstered on Sera's left hip
+    const naniteCount = world.paradox?.loadout?.naniteInjectors ?? 0;
+    if (this.playerRig?.naniteCanisterGroup) {
+      this.playerRig.naniteCanisterGroup.visible =
+        naniteCount > 0 && world.player.actionState !== 'dead';
+    }
+
+    // Reactive 3D Aegis Honeycomb Shield Dome + Regenerative Chrono Ward (Sheet 13 Panel 6)
+    const aegisHp = world.paradox?.loadout?.aegisShieldHp ?? 0;
+    const chronoWard = world.chronoAegis?.ward ?? 0;
+    const totalWardHp = aegisHp + chronoWard;
+    const hasAegis = totalWardHp > 0 && world.player.actionState !== 'dead';
+    if (this.playerRig?.aegisEmitterGroup) {
+      this.playerRig.aegisEmitterGroup.visible = hasAegis;
+    }
+    if (this.playerRig?.aegisShieldMesh && this.playerRig?.aegisShieldMaterial) {
+      this.playerRig.aegisShieldMesh.visible = hasAegis;
+      if (hasAegis) {
+        this.playerRig.aegisShieldMesh.rotation.y += ambientDt * 0.65;
+        this.playerRig.aegisShieldMesh.rotation.x = Math.sin(ambientTime * 1.2) * 0.1;
+        this.playerRig.aegisShieldMaterial.color.setHex(aegisHp > 0 ? 0x38bdf8 : 0x34d399);
+        this.playerRig.aegisShieldMaterial.opacity =
+          0.32 + Math.min(0.32, (totalWardHp / 65) * 0.28) + Math.sin(ambientTime * 4.2) * 0.05;
+      }
+    }
+
+    if (this.bossCorePulseTimer > 0) {
+      this.bossCorePulseTimer = Math.max(0, this.bossCorePulseTimer - ambientDt);
+    }
+
+    // v3.4.0 Dorsal Boss Echo Core 3D Sigil behind Sera's Chrono Rig
+    if (this.bossCoreSigilRig) {
+      const equippedCoreId = world.progression?.equippedBossCore;
+      const showCoreSigil = Boolean(
+        equippedCoreId &&
+          isValidBossEchoCoreId(equippedCoreId) &&
+          world.player.actionState !== 'dead'
+      );
+      this.bossCoreSigilRig.root.visible = showCoreSigil;
+      if (showCoreSigil && equippedCoreId && isValidBossEchoCoreId(equippedCoreId)) {
+        const coreSpec = BOSS_ECHO_CORES[equippedCoreId];
+        const isOmegaCore = isBossCoreTranscended(
+          equippedCoreId,
+          world.progression?.transcendedBossCores
+        );
+        const isAttuned = isWeaponAttunedToBossCore(
+          world.player.equippedWeaponId,
+          equippedCoreId,
+          world.progression?.transcendedBossCores
+        );
+        const attuneSpinMult = isAttuned ? 1.45 : 1.0;
+        const attuneGlowBonus = isAttuned ? 0.35 : 0;
+        const yaw = world.player.rotationY;
+        const backDist = 0.4;
+        const bobY = 1.46 + Math.sin(ambientTime * 3.4) * 0.042 * ambientScale;
+        this.bossCoreSigilRig.root.position.set(
+          world.player.x - Math.sin(yaw) * backDist,
+          bobY,
+          world.player.z - Math.cos(yaw) * backDist
+        );
+        this.bossCoreSigilRig.root.rotation.y = yaw;
+        const flare =
+          (isOmegaCore ? 1.12 : 1) +
+          (isAttuned ? 0.06 : 0) +
+          this.bossCorePulseTimer * 0.65;
+        this.bossCoreSigilRig.root.scale.setScalar(flare);
+        this.bossCoreSigilRig.outerRing.rotation.z +=
+          ambientDt * 2.15 * attuneSpinMult * ambientScale;
+        this.bossCoreSigilRig.innerRing.rotation.x +=
+          ambientDt * 2.85 * attuneSpinMult * ambientScale;
+        this.bossCoreSigilRig.crystalMesh.rotation.y +=
+          ambientDt * 1.9 * attuneSpinMult * ambientScale;
+        this.bossCoreSigilRig.crystalMat.color.setHex(coreSpec.crystalHex);
+        this.bossCoreSigilRig.crystalMat.emissive.setHex(coreSpec.crystalHex);
+        this.bossCoreSigilRig.crystalMat.emissiveIntensity =
+          (isOmegaCore ? 2.45 : 2.05) +
+          attuneGlowBonus +
+          this.bossCorePulseTimer * 2.2 +
+          Math.sin(ambientTime * 5.0) * 0.25;
+        this.bossCoreSigilRig.ringMat.color.setHex(coreSpec.ringHex);
+        this.bossCoreSigilRig.ringMat.emissive.setHex(coreSpec.ringHex);
+        this.bossCoreSigilRig.ringMat.emissiveIntensity =
+          (isOmegaCore ? 2.05 : 1.65) + attuneGlowBonus + this.bossCorePulseTimer * 1.6;
+
+        this.bossCoreSigilRig.omegaCrownRing.visible = isOmegaCore;
+        this.bossCoreSigilRig.omegaWingLeft.visible = isOmegaCore;
+        this.bossCoreSigilRig.omegaWingRight.visible = isOmegaCore;
+        if (isOmegaCore) {
+          const wingBreath = Math.sin(ambientTime * 4.2) * 0.08 * ambientScale;
+          this.bossCoreSigilRig.omegaWingLeft.rotation.z = Math.PI * 0.32 + wingBreath;
+          this.bossCoreSigilRig.omegaWingRight.rotation.z = -Math.PI * 0.32 - wingBreath;
+          this.bossCoreSigilRig.omegaMat.emissive.setHex(coreSpec.crystalHex);
+          this.bossCoreSigilRig.omegaMat.emissiveIntensity =
+            2.25 + this.bossCorePulseTimer * 1.8 + Math.sin(ambientTime * 6.0) * 0.28;
+        }
+      }
+    }
+
+    // Autonomous 3D Combat Drone Wingman & LYS-04 Chrono Sentinel Companion (Sheet 13 Panel 2)
+    if (this.combatDroneRig) {
+      const loadout = world.paradox?.loadout;
+      const aegisCompanion = world.chronoAegis;
+      const hasParadoxDrone = Boolean(loadout && loadout.combatDroneTier > 0);
+      const hasSentinelDrone = Boolean(
+        aegisCompanion &&
+          aegisCompanion.mode !== 'off' &&
+          world.player.actionState !== 'dead'
+      );
+      const showDrone = hasParadoxDrone || hasSentinelDrone;
+      this.combatDroneRig.root.visible = showDrone;
+      if (showDrone) {
+        const hoverY = 1.85 + Math.sin(ambientTime * 3.8) * 0.12 * ambientScale;
+        if (hasParadoxDrone && loadout) {
+          const isMk2 = loadout.combatDroneTier >= 2;
+          this.combatDroneRig.root.position.set(loadout.droneX, hoverY, loadout.droneZ);
+          this.combatDroneRig.haloRing.rotation.z += ambientDt * (isMk2 ? 3.2 : 1.9);
+          this.combatDroneRig.haloMat.color.setHex(isMk2 ? 0x67e8f9 : 0x38bdf8);
+          this.combatDroneRig.haloMat.emissive.setHex(isMk2 ? 0x06b6d4 : 0x0ea5e9);
+          this.combatDroneRig.haloMat.emissiveIntensity = isMk2 ? 2.35 : 1.65;
+          this.combatDroneRig.coreMat.color.setHex(isMk2 ? 0x67e8f9 : 0x38bdf8);
+          this.combatDroneRig.coreMat.emissive.setHex(isMk2 ? 0x06b6d4 : 0x0284c7);
+
+          if (this.combatDroneRig.thrusterFlames) {
+            const flamePulse = 0.85 + Math.sin(ambientTime * 24) * 0.22;
+            for (let f = 0; f < this.combatDroneRig.thrusterFlames.length; f++) {
+              this.combatDroneRig.thrusterFlames[f].scale.set(
+                1,
+                isMk2 ? flamePulse * 1.2 : flamePulse * 0.85,
+                1
+              );
+            }
+          }
+
+          const targetEnemy = loadout.droneTargetId
+            ? world.enemies.find((e) => e.id === loadout.droneTargetId && e.hp > 0)
+            : null;
+          if (targetEnemy) {
+            this.combatDroneRig.bodyGroup.rotation.y = Math.atan2(
+              targetEnemy.x - loadout.droneX,
+              targetEnemy.z - loadout.droneZ
+            );
+          } else {
+            this.combatDroneRig.bodyGroup.rotation.y = world.player.rotationY;
+          }
+        } else if (aegisCompanion) {
+          const spec =
+            SENTINEL_PROTOCOL_SPECS[aegisCompanion.mode] ?? SENTINEL_PROTOCOL_SPECS.aegis;
+          this.combatDroneRig.root.position.set(
+            aegisCompanion.droneX,
+            hoverY,
+            aegisCompanion.droneZ
+          );
+          this.combatDroneRig.haloRing.rotation.z += ambientDt * 2.45;
+          this.combatDroneRig.haloMat.color.setHex(spec.haloHex);
+          this.combatDroneRig.haloMat.emissive.setHex(spec.emissiveHex);
+          this.combatDroneRig.haloMat.emissiveIntensity = 2.05;
+          this.combatDroneRig.coreMat.color.setHex(spec.haloHex);
+          this.combatDroneRig.coreMat.emissive.setHex(spec.emissiveHex);
+
+          if (this.combatDroneRig.thrusterFlames) {
+            const flamePulse = 0.88 + Math.sin(ambientTime * 22) * 0.2;
+            for (let f = 0; f < this.combatDroneRig.thrusterFlames.length; f++) {
+              this.combatDroneRig.thrusterFlames[f].scale.set(1, flamePulse, 1);
+            }
+          }
+
+          const targetEnemy = aegisCompanion.lastTargetId
+            ? world.enemies.find((e) => e.id === aegisCompanion.lastTargetId && e.hp > 0)
+            : null;
+          if (targetEnemy) {
+            this.combatDroneRig.bodyGroup.rotation.y = Math.atan2(
+              targetEnemy.x - aegisCompanion.droneX,
+              targetEnemy.z - aegisCompanion.droneZ
+            );
+          } else {
+            this.combatDroneRig.bodyGroup.rotation.y = world.player.rotationY;
+          }
+        }
+
+        if (this.droneBeamTimer > 0) {
+          this.droneBeamTimer = Math.max(0, this.droneBeamTimer - ambientDt);
+          this.combatDroneRig.beamMat.opacity = Math.min(0.95, this.droneBeamTimer / 0.18);
+          this.combatDroneRig.muzzleFlashMesh.visible = this.droneBeamTimer > 0.09;
+          if (this.droneBeamTimer <= 0) {
+            this.combatDroneRig.beamMesh.visible = false;
+            this.combatDroneRig.muzzleFlashMesh.visible = false;
+          }
+        }
+      }
+    }
+
+    if (this.secretVaultRig) {
+      const vault = isExpedition && exp?.phase !== 'safe_room' ? exp?.secretVault ?? null : null;
+      this.secretVaultRig.root.visible = Boolean(vault);
+      if (vault) {
+        this.secretVaultRig.switchGroup.position.set(vault.switchPos.x, 0, vault.switchPos.z);
+        this.secretVaultRig.vaultGroup.position.set(vault.vaultPos.x, 0, vault.vaultPos.z);
+
+        // Stretch floor energy conduit between West Switch Pad and East Secret Vault
+        const cdx = vault.vaultPos.x - vault.switchPos.x;
+        const cdz = vault.vaultPos.z - vault.switchPos.z;
+        const cLen = Math.hypot(cdx, cdz);
+        this.secretVaultRig.conduitLine.position.set(
+          (vault.switchPos.x + vault.vaultPos.x) * 0.5,
+          0.045,
+          (vault.switchPos.z + vault.vaultPos.z) * 0.5
+        );
+        this.secretVaultRig.conduitLine.scale.set(Math.max(1, cLen - 3.4), 1, 1);
+        this.secretVaultRig.conduitLine.rotation.z = -Math.atan2(cdz, cdx);
+
+        const open = vault.gateOpen;
+        this.secretVaultRig.laserBarsGroup.visible = !open;
+        this.secretVaultRig.emitterBeamsGroup.visible = !open;
+        this.secretVaultRig.relicCore.visible = !vault.looted;
+
+        this.secretVaultRig.switchCrystal.rotation.y += ambientDt * (vault.switchPressed ? 3.4 : 1.2);
+        this.secretVaultRig.switchCrystal.position.y =
+          (vault.switchPressed ? 1.22 : 1.0) + Math.sin(ambientTime * 3.2) * 0.08 * ambientScale;
+        this.secretVaultRig.switchRingMat.color.setHex(
+          vault.heldByEcho ? 0x34d399 : vault.switchPressed ? 0xfbbf24 : 0x38bdf8
+        );
+
+        this.secretVaultRig.relicCore.rotation.y += ambientDt * 2.1;
+        this.secretVaultRig.relicCore.position.y =
+          1.54 + Math.sin(ambientTime * 3.0) * 0.11 * ambientScale;
+
+        const vaultColor = vault.looted ? 0x38bdf8 : open ? 0x10b981 : 0xf43f5e;
+        this.secretVaultRig.vaultRingMat.color.setHex(vaultColor);
+        this.secretVaultRig.conduitMat.color.setHex(vaultColor);
+        this.secretVaultRig.conduitMat.opacity = open ? 0.66 : 0.3;
+      }
+    }
+
+    if (this.expeditionTrailRig) {
+      const guide = exp?.guideTarget ?? null;
+      const showTrail = Boolean(
+        isExpedition &&
+          guide &&
+          (exp?.phase === 'explore' ||
+            exp?.phase === 'airlock_open' ||
+            exp?.phase === 'safe_room') &&
+          guide.distance > 1.8
+      );
+      this.expeditionTrailRig.root.visible = showTrail;
+      if (showTrail && guide) {
+        const dx = guide.x - world.player.x;
+        const dz = guide.z - world.player.z;
+        const dist = Math.hypot(dx, dz);
+        const dirX = dist > 0.001 ? dx / dist : 0;
+        const dirZ = dist > 0.001 ? dz / dist : -1;
+        // ShapeGeometry points toward -Z after -PI/2 X rotation; align with (dirX, dirZ)
+        const yaw = Math.atan2(dirX, dirZ) + Math.PI;
+        const trailColor =
+          guide.kind === 'transit_gate' || guide.kind === 'safe_room_med'
+            ? 0x10b981
+            : guide.kind === 'cache' || guide.kind === 'secret_vault'
+              ? 0xfbbf24
+              : guide.kind === 'terminal' || guide.kind === 'safe_room_lysa'
+                ? 0x38bdf8
+                : guide.kind === 'beacon'
+                  ? 0x34d399
+                  : 0xf59e0b;
+
+        const chevrons = this.expeditionTrailRig.chevrons;
+        const mats = this.expeditionTrailRig.materials;
+        const maxSteps = chevrons.length;
+        const startOffset = 1.65;
+        const span = Math.max(0, dist - startOffset - 1.0);
+        const stepDist = Math.min(2.15, Math.max(1.15, span / Math.max(1, maxSteps)));
+        const wavePhase = (ambientTime * 3.8) % maxSteps;
+
+        for (let ci = 0; ci < maxSteps; ci++) {
+          const along = startOffset + ci * stepDist;
+          const mesh = chevrons[ci];
+          const mat = mats[ci];
+          if (along < dist - 0.85) {
+            mesh.visible = true;
+            mesh.position.set(
+              world.player.x + dirX * along,
+              0.08,
+              world.player.z + dirZ * along
+            );
+            mesh.rotation.y = yaw;
+            const pulseDist = Math.abs(((ci - wavePhase + maxSteps) % maxSteps));
+            const waveBoost = pulseDist < 1.5 ? 1 - pulseDist / 1.5 : 0;
+            const scale = 0.82 + waveBoost * 0.28 * ambientScale;
+            mesh.scale.set(scale, 1, scale);
+            mat.color.setHex(trailColor);
+            mat.opacity = 0.34 + waveBoost * 0.56;
+          } else {
+            mesh.visible = false;
+          }
+        }
       }
     }
   }
@@ -4197,14 +7870,149 @@ export class ArenaSceneRenderer {
       }
     }
 
-    if (this.impactRingTimer > 0) {
-      this.impactRingTimer = Math.max(0, this.impactRingTimer - dt);
-      const progress = 1 - this.impactRingTimer / this.impactRingDuration;
-      this.impactRingMesh.scale.setScalar(0.55 + progress * 2.25);
-      this.impactRingMat.opacity = Math.max(0, (1 - progress) * 0.85);
-      this.impactRingMesh.rotation.z += dt * 3.5;
-      if (this.impactRingTimer <= 0) {
-        this.impactRingMesh.visible = false;
+    if (this.impactRingPool) {
+      let maxRemaining = 0;
+      for (let i = 0; i < this.impactRingPool.length; i++) {
+        const slot = this.impactRingPool[i];
+        if (slot.timer > 0) {
+          slot.timer = Math.max(0, slot.timer - dt);
+          if (slot.timer > maxRemaining) maxRemaining = slot.timer;
+          const progress = 1 - slot.timer / Math.max(0.05, slot.duration);
+          const eased = 1 - Math.pow(1 - progress, 2.2);
+          slot.mesh.scale.setScalar(0.65 + eased * slot.maxScale);
+          slot.mat.uniforms.uProgress.value = eased;
+          slot.mat.uniforms.uOpacity.value = Math.max(0, (1 - progress * progress) * 0.92);
+          slot.mat.uniforms.uTime.value = world.elapsedTime;
+          slot.mesh.rotation.y += dt * 1.9;
+          if (slot.timer <= 0) {
+            slot.mesh.visible = false;
+          }
+        }
+      }
+      this.impactRingTimer = maxRemaining;
+    }
+
+    // v2.8.0: Animate 3D Orbital Atmospheric Motes tinted by active chapter palette (zero-GC)
+    if (this.ambientMotesPoints && this.ambientMotesMat) {
+      const motesEnabled = this.screenEffectsEnabled !== false && this.particleQuality !== 'low';
+      this.ambientMotesPoints.visible = motesEnabled;
+      if (motesEnabled) {
+        const chapterId = world.run?.chapter ?? 'prologue';
+        const moteHex =
+          chapterId === 'chapter_2_choir'
+            ? 0x34d399
+            : chapterId === 'chapter_3_curator'
+              ? 0xa78bfa
+              : chapterId === 'chapter_4_matron'
+                ? 0xfb7185
+                : chapterId === 'chapter_5_loom'
+                  ? 0xfbbf24
+                  : 0x38bdf8;
+        this.ambientMotesMat.uniforms.uColor.value.setHex(moteHex);
+        this.ambientMotesMat.uniforms.uTime.value = this.reducedMotion ? 0 : world.elapsedTime;
+        this.ambientMotesMat.uniforms.uOpacity.value =
+          world.overdrive?.active ? 0.56 : 0.38;
+      }
+    }
+
+    // v2.9.0: Animate Holographic Floor Scan Pulse, Volumetric Light Shafts & Diegetic Weakpoint Halo
+    const v29Chapter = world.run?.chapter ?? 'prologue';
+    const v29AccentHex =
+      (world.momentum?.weakpointTimer ?? 0) > 0
+        ? 0xfbbf24
+        : world.boss && world.boss.hp > 0 && world.boss.phase === 2
+          ? 0xf97316
+          : v29Chapter === 'chapter_2_choir'
+            ? 0x34d399
+            : v29Chapter === 'chapter_3_curator'
+              ? 0xa78bfa
+              : v29Chapter === 'chapter_4_matron'
+                ? 0xfb7185
+                : v29Chapter === 'chapter_5_loom'
+                  ? 0xfbbf24
+                  : 0x22d3ee;
+
+    if (this.arenaPulseMesh && this.arenaPulseMat) {
+      const pulseOn = this.screenEffectsEnabled !== false && this.particleQuality !== 'low';
+      this.arenaPulseMesh.visible = pulseOn;
+      if (pulseOn) {
+        const resBoost = (world.weaponResonance?.timer ?? 0) > 0;
+        const phase2Boost = Boolean(world.boss && world.boss.hp > 0 && world.boss.phase === 2);
+        this.arenaPulseMat.uniforms.uColor.value.setHex(v29AccentHex);
+        this.arenaPulseMat.uniforms.uTime.value = this.reducedMotion ? 0.35 : world.elapsedTime;
+        this.arenaPulseMat.uniforms.uSpeed.value =
+          (world.momentum?.weakpointTimer ?? 0) > 0 || world.overdrive?.active || resBoost
+            ? 0.48
+            : phase2Boost
+              ? 0.36
+              : 0.24;
+        this.arenaPulseMat.uniforms.uIntensity.value =
+          (world.momentum?.weakpointTimer ?? 0) > 0 || resBoost
+            ? 0.28
+            : phase2Boost
+              ? 0.22
+              : 0.15;
+      }
+    }
+
+    if (this.lightShaftsGroup && this.lightShaftMat) {
+      const shaftsOn = this.screenEffectsEnabled !== false && this.particleQuality !== 'low';
+      this.lightShaftsGroup.visible = shaftsOn;
+      if (shaftsOn) {
+        this.lightShaftMat.uniforms.uColor.value.setHex(v29AccentHex);
+        this.lightShaftMat.uniforms.uTime.value = this.reducedMotion ? 0 : world.elapsedTime;
+        this.lightShaftMat.uniforms.uOpacity.value =
+          world.overdrive?.active ? 0.08 : 0.052;
+      }
+    }
+
+    if (this.weakpointHaloMesh && this.weakpointHaloMat) {
+      let wpTargetX: number | null = null;
+      let wpTargetZ: number | null = null;
+      let wpScale = 1.0;
+      if (
+        world.boss &&
+        world.boss.hp > 0 &&
+        (world.boss.coreExposed || world.boss.aiState === 'staggered')
+      ) {
+        wpTargetX = world.boss.x;
+        wpTargetZ = world.boss.z;
+        wpScale = 1.55;
+      } else {
+        for (let wi = 0; wi < world.enemies.length; wi++) {
+          const we = world.enemies[wi];
+          if (we.hp > 0 && we.aiState === 'staggered') {
+            wpTargetX = we.x;
+            wpTargetZ = we.z;
+            wpScale = 1.0;
+            break;
+          }
+        }
+      }
+      if (wpTargetX !== null && wpTargetZ !== null && this.screenEffectsEnabled !== false) {
+        this.weakpointHaloMesh.visible = true;
+        this.weakpointHaloMesh.position.set(wpTargetX, 0.12, wpTargetZ);
+        this.weakpointHaloMesh.scale.setScalar(wpScale);
+        this.weakpointHaloMat.uniforms.uTime.value = this.reducedMotion ? 0 : world.elapsedTime;
+      } else {
+        this.weakpointHaloMesh.visible = false;
+      }
+    }
+
+    if (this.nexusAuraMesh && this.nexusAuraMat) {
+      const linkCount = world.nexus?.linkCount ?? 0;
+      if (linkCount >= 2 && this.screenEffectsEnabled !== false) {
+        this.nexusAuraMesh.visible = true;
+        this.nexusAuraMesh.position.set(world.player.x, 0.08, world.player.z);
+        const auraScale = linkCount >= 4 ? 1.24 : linkCount === 3 ? 1.12 : 1.0;
+        this.nexusAuraMesh.scale.setScalar(auraScale);
+        this.nexusAuraMat.uniforms.uTime.value = this.reducedMotion ? 0 : world.elapsedTime;
+        this.nexusAuraMat.uniforms.uLinks.value = linkCount;
+        this.nexusAuraMat.uniforms.uColor.value.setHex(
+          linkCount >= 4 ? 0xfbbf24 : linkCount === 3 ? 0xa78bfa : 0x22d3ee
+        );
+      } else {
+        this.nexusAuraMesh.visible = false;
       }
     }
 
@@ -4238,14 +8046,15 @@ export class ArenaSceneRenderer {
     this.smoothedSideAccel += (rawSideAccel - this.smoothedSideAccel) * Math.min(1, dt * 10);
 
     // Rotate Dorsal Chrono Rig harmonic rings & drive Adrenaline Overdrive ground halo
-    _auraInput.adrenalineScore = p.adrenalineScore ?? 0;
-    _auraInput.riposteActive = (p.riposteTimer ?? 0) > 0;
-    _auraInput.chronoSlipActive = (p.chronoSlipTimer ?? 0) > 0;
-    _auraInput.kineticSurgeActive = (p.surgeTimer ?? 0) > 0;
-    _auraInput.isRecording = world.echo?.state === 'recording';
-    _auraInput.reducedMotion = this.reducedMotion;
-    _auraInput.timeSec = world.elapsedTime ?? 0;
-    const auraSpec = computeChronoAuraVisuals(_auraInput, _auraVisuals);
+    const auraSpec = computeChronoAuraVisuals({
+      adrenalineScore: p.adrenalineScore ?? 0,
+      riposteActive: (p.riposteTimer ?? 0) > 0,
+      chronoSlipActive: (p.chronoSlipTimer ?? 0) > 0,
+      kineticSurgeActive: (p.surgeTimer ?? 0) > 0,
+      isRecording: world.echo?.state === 'recording',
+      reducedMotion: this.reducedMotion,
+      timeSec: world.elapsedTime ?? 0,
+    });
     this.playerRig.chronoRingMesh.rotation.z += dt * 0.92 * auraSpec.spinMultiplier;
     this.playerRig.chronoInnerRingMesh.rotation.z -= dt * 1.55 * auraSpec.spinMultiplier;
     if (this.playerRig.chronoAccentMaterial) {
@@ -4278,68 +8087,72 @@ export class ArenaSceneRenderer {
     const swing = isMoving ? Math.sin(phase) * strideAmp : 0;
     const cosPhase = Math.cos(phase);
 
-    const idleBreath = Math.sin(world.elapsedTime * 2.5);
-    const idleSway = Math.cos(world.elapsedTime * 1.35);
+    const seraBreath = computeOrganicBreath(world.elapsedTime, 0, 2.35, this.reducedMotion);
+    const idleBreath = seraBreath.chest;
+    const idleSway = seraBreath.sway;
+    const idleHeadScan = seraBreath.headScan;
+    const idleWeaponFloat = seraBreath.weaponFloat;
 
     // Target leg, shin & ankle pivots (preventing foot sliding during contact & push-off)
     let targetLeftLegX = swing;
     let targetRightLegX = -swing;
-    let targetLeftLegZ = isMoving ? -0.035 * speedRatio : -0.028;
-    let targetRightLegZ = isMoving ? 0.035 * speedRatio : 0.028;
+    let targetLeftLegZ = isMoving ? -0.035 * speedRatio : -0.032 + idleSway * 0.008;
+    let targetRightLegZ = isMoving ? 0.035 * speedRatio : 0.032 + idleSway * 0.008;
     let targetLeftShinX = isMoving
       ? Math.max(0.05, -Math.sin(phase + 0.55)) * (0.38 + 0.46 * speedRatio)
-      : 0.08 + idleBreath * 0.015;
+      : 0.095 + idleBreath * 0.022;
     let targetRightShinX = isMoving
       ? Math.max(0.05, Math.sin(phase + 0.55)) * (0.38 + 0.46 * speedRatio)
-      : 0.08 - idleBreath * 0.015;
+      : 0.095 - idleBreath * 0.018;
     let targetLeftFootX = isMoving
       ? -targetLeftLegX * 0.45 - targetLeftShinX * 0.35 + cosPhase * 0.16 * speedRatio
-      : -0.04;
+      : -0.045 - idleBreath * 0.01;
     let targetRightFootX = isMoving
       ? -targetRightLegX * 0.45 - targetRightShinX * 0.35 - cosPhase * 0.16 * speedRatio
-      : -0.04;
+      : -0.045 + idleBreath * 0.01;
 
     // Pelvis weight transfer & hip counter-rotation
-    let targetPelvisX = isMoving ? 0.04 * speedRatio : -idleBreath * 0.012;
-    let targetPelvisY = isMoving ? swing * 0.24 : -idleSway * 0.032;
-    let targetPelvisZ = isMoving ? -cosPhase * 0.055 * speedRatio : idleSway * 0.016;
+    let targetPelvisX = isMoving ? 0.045 * speedRatio : -idleBreath * 0.018;
+    let targetPelvisY = isMoving ? swing * 0.26 : -idleSway * 0.045;
+    let targetPelvisZ = isMoving ? -cosPhase * 0.06 * speedRatio : idleSway * 0.024;
 
     // Body group bounce, pitch & turn banking
     let targetBodyY = isMoving
-      ? Math.abs(Math.sin(phase)) * 0.084 * speedRatio
-      : idleBreath * 0.016;
+      ? Math.abs(Math.sin(phase)) * 0.088 * speedRatio
+      : idleBreath * 0.022;
     let targetBodyRotX = isMoving
-      ? 0.07 * speedRatio + this.smoothedFwdAccel * 0.45
-      : this.smoothedFwdAccel * 0.35;
+      ? 0.075 * speedRatio + this.smoothedFwdAccel * 0.45
+      : this.smoothedFwdAccel * 0.35 + idleBreath * 0.012;
     const turnBank = isMoving
-      ? THREE.MathUtils.clamp(-this.smoothedPlayerTurnRate * 0.035 * speedRatio, -0.16, 0.16)
-      : idleSway * 0.012;
+      ? THREE.MathUtils.clamp(-this.smoothedPlayerTurnRate * 0.038 * speedRatio, -0.17, 0.17)
+      : idleSway * 0.018;
     let targetBodyRotZ = turnBank - this.smoothedSideAccel * 0.35;
 
     // Torso baseline before combat state overrides
-    let targetTorsoY = 1.02 + (isMoving ? 0 : idleBreath * 0.01);
-    let targetTorsoRotX = isMoving ? 0.14 * speedRatio : idleBreath * 0.024;
-    let targetTorsoRotY = isMoving ? -swing * 0.38 : idleSway * 0.048;
-    let targetTorsoRotZ = isMoving ? swing * 0.085 : -idleSway * 0.018;
+    let targetTorsoY = 1.02 + (isMoving ? 0 : idleBreath * 0.015);
+    let targetTorsoRotX = isMoving ? 0.15 * speedRatio : idleBreath * 0.036;
+    let targetTorsoRotY = isMoving ? -swing * 0.4 : idleSway * 0.068;
+    let targetTorsoRotZ = isMoving ? swing * 0.09 : -idleSway * 0.026;
 
-    // Default arm, forearm & weapon wrist pose
-    let targetRightArmX = -0.22 + swing * 0.46;
-    let targetRightArmY = 0.16 + (isMoving ? 0 : idleSway * 0.045);
-    let targetRightArmZ = 0.06;
-    let targetRightForearmX = -0.32 + (isMoving ? Math.abs(swing) * 0.15 : idleBreath * 0.035);
+    // Default arm, forearm & weapon wrist pose (combat-ready organic poise)
+    let targetRightArmX = -0.24 + swing * 0.48 + (isMoving ? 0 : idleBreath * 0.045);
+    let targetRightArmY = 0.16 + (isMoving ? 0 : idleSway * 0.06);
+    let targetRightArmZ = 0.07 + (isMoving ? 0 : idleBreath * 0.024);
+    let targetRightForearmX = -0.34 + (isMoving ? Math.abs(swing) * 0.16 : idleWeaponFloat * 0.055);
 
-    let targetLeftArmX = -0.12 - swing * 0.48;
-    let targetLeftArmY = -0.08;
-    let targetLeftArmZ = -0.06;
-    let targetLeftForearmX = -0.26 - (isMoving ? Math.abs(swing) * 0.13 : -idleBreath * 0.025);
+    let targetLeftArmX = -0.14 - swing * 0.5 + (isMoving ? 0 : -idleBreath * 0.035);
+    let targetLeftArmY = -0.08 + (isMoving ? 0 : -idleSway * 0.045);
+    let targetLeftArmZ = -0.07 - (isMoving ? 0 : idleBreath * 0.02);
+    let targetLeftForearmX = -0.28 - (isMoving ? Math.abs(swing) * 0.14 : -idleWeaponFloat * 0.04);
 
-    let targetWeaponRotX = isMoving ? 0.06 * speedRatio : idleSway * 0.03;
-    let targetWeaponRotY = 0;
-    let targetWeaponRotZ = 0;
+    let targetWeaponRotX = isMoving ? 0.07 * speedRatio : idleWeaponFloat * 0.055;
+    let targetWeaponRotY = isMoving ? 0 : idleSway * 0.04;
+    let targetWeaponRotZ = isMoving ? 0 : idleBreath * 0.025;
 
     // Reset transient VFX meshes
     this.playerRig.slashArcMaterial.opacity = 0;
     this.playerRig.parryShieldMaterial.opacity = 0;
+    this.playerRig.parryShieldMesh.visible = false;
     this.playerRig.chargeRingMaterial.opacity = 0;
     this.playerRig.slashArcMesh.rotation.z = 0;
     this.playerRig.slashArcPivot.rotation.set(0, 0, 0);
@@ -4348,38 +8161,135 @@ export class ArenaSceneRenderer {
       p.equippedWeaponId === 'pulsecaster' || p.equippedWeaponId === 'phase_rail';
     const isPhaseRail = p.equippedWeaponId === 'phase_rail';
     const isGravBreaker = p.equippedWeaponId === 'grav_breaker';
+    const isChronoScythe = p.equippedWeaponId === 'chrono_scythe';
 
-    // Visually distinguish active weapon on Sera's rig across all 4 Arsenal weapons
+    // Visually distinguish active weapon on Sera's rig across all 5 Arsenal weapons (+ Sheet 11 Phase-Blade MK.II)
+    const usePhaseBladeMk2 =
+      p.equippedWeaponId === 'chrono_edge' &&
+      Boolean(
+        world.overdrive?.active ||
+          world.gauntlet?.active ||
+          (world.progression?.overclockedUpgrades ?? []).some((u) => u.startsWith('edge_'))
+      );
     this.playerRig.bladeMesh.visible =
-      p.equippedWeaponId === 'chrono_edge' || p.equippedWeaponId === 'pulsecaster';
+      (p.equippedWeaponId === 'chrono_edge' && !usePhaseBladeMk2) ||
+      p.equippedWeaponId === 'pulsecaster';
+    if (this.playerRig.phaseBladeMk2Group) {
+      this.playerRig.phaseBladeMk2Group.visible = usePhaseBladeMk2;
+    }
     if (this.playerRig.phaseRailGroup) {
       this.playerRig.phaseRailGroup.visible = isPhaseRail;
     }
     if (this.playerRig.gravBreakerGroup) {
       this.playerRig.gravBreakerGroup.visible = isGravBreaker;
     }
+    if (this.playerRig.chronoScytheGroup) {
+      this.playerRig.chronoScytheGroup.visible = isChronoScythe;
+    }
+    const ovState = world.kineticOvercharge;
+    const activeEquippedMod = world.progression?.equippedUpgrades?.[p.equippedWeaponId];
+    const isEquippedModMythic = Boolean(
+      activeEquippedMod &&
+        (world.progression?.awakenedUpgrades ?? []).includes(activeEquippedMod)
+    );
+    const isWeaponOvercharged = Boolean(
+      (ovState && ovState.activeWeaponId === p.equippedWeaponId && ovState.activeTimer > 0) ||
+        isEquippedModMythic
+    );
+    const overchargeSpinMult = isWeaponOvercharged ? 2.25 : 1.0;
+
+    if (isChronoScythe && this.playerRig.chronoScytheHaloRing) {
+      this.playerRig.chronoScytheHaloRing.rotation.z += dt * 3.1 * overchargeSpinMult;
+      this.playerRig.chronoScytheHaloRing.rotation.y += dt * 1.4 * overchargeSpinMult;
+    }
+
+    // Periodic orbital plasma sparks when Weapon Kinetic Overcharge is active
+    if (isWeaponOvercharged && world.appState === 'playing' && !this.reducedMotion) {
+      this.overchargeSparkCooldown = Math.max(0, (this.overchargeSparkCooldown ?? 0) - dt);
+      if (this.overchargeSparkCooldown <= 0) {
+        const sparkCol =
+          isChronoScythe
+            ? 0xe879f9
+            : isGravBreaker
+              ? 0xf59e0b
+              : isPhaseRail
+                ? 0xe0f2fe
+                : isPulsecaster
+                  ? 0x38bdf8
+                  : 0x22d3ee;
+        this.spawnBurst(p.x, 1.18, p.z, 2, sparkCol, 2.9);
+        this.overchargeSparkCooldown = 0.085;
+      }
+    }
+
+    // Sheet 14 Panels 2–4: Live 3D Weapon Mod Socket Chip mounted on Sera's dorsal Chrono Rig
+    const equippedChip = world.progression?.equippedModChipId ?? null;
+    if (this.playerRig.modChipSocketGroup) {
+      this.playerRig.modChipSocketGroup.visible = Boolean(equippedChip);
+      if (this.playerRig.modChipVoltGroup) {
+        this.playerRig.modChipVoltGroup.visible = equippedChip === 'mod_volt_arc';
+      }
+      if (this.playerRig.modChipSiphonGroup) {
+        this.playerRig.modChipSiphonGroup.visible = equippedChip === 'mod_siphon_leech';
+      }
+      if (this.playerRig.modChipNovaGroup) {
+        this.playerRig.modChipNovaGroup.visible = equippedChip === 'mod_chrono_nova';
+      }
+    }
+
+    // Sheet 14 Panel 5: Floating Winged Style SSS Ascension Crest behind Sera when Rank is S or SSS
+    if (this.playerRig.styleCrestGroup) {
+      const styleTier = world.ascension?.style?.tier ?? 'D';
+      const showCrest = styleTier === 'S' || styleTier === 'SSS';
+      this.playerRig.styleCrestGroup.visible = showCrest;
+      if (showCrest) {
+        const isPeak = styleTier === 'SSS';
+        const crestScale = isPeak ? 1.18 : 0.88;
+        this.playerRig.styleCrestGroup.scale.setScalar(crestScale);
+        this.playerRig.styleCrestGroup.position.y =
+          0.9 + Math.sin(world.elapsedTime * 3.6) * 0.05;
+        if (this.playerRig.styleCrestHaloRing) {
+          this.playerRig.styleCrestHaloRing.rotation.z += dt * (isPeak ? 3.2 : 1.8) * overchargeSpinMult;
+        }
+        if (this.playerRig.styleCrestWingMat) {
+          this.playerRig.styleCrestWingMat.emissiveIntensity = isPeak ? 1.35 : 0.85;
+        }
+      }
+    }
 
     const adrTier = Math.min(5, Math.max(0, Math.floor(p.adrenalineScore ?? 0)));
-    const adrGlowBoost = adrTier * 0.14;
+    const adrGlowBoost = adrTier * 0.14 + (isWeaponOvercharged ? 0.85 : 0);
 
     if (this.playerRig.chronoAccentMaterial) {
       this.playerRig.chronoAccentMaterial.emissive.setHex(
-        adrTier >= 5 ? 0xfbbf24 : adrTier >= 3 ? 0x38bdf8 : 0x22d3ee
+        isWeaponOvercharged
+          ? isChronoScythe
+            ? 0xe879f9
+            : 0xfde047
+          : adrTier >= 5
+            ? 0xfbbf24
+            : adrTier >= 3
+              ? 0x38bdf8
+              : 0x22d3ee
       );
-      this.playerRig.chronoAccentMaterial.emissiveIntensity = 1.2 + adrTier * 0.24;
+      this.playerRig.chronoAccentMaterial.emissiveIntensity =
+        1.2 + adrTier * 0.24 + (isWeaponOvercharged ? 1.1 : 0);
     }
     if (isPhaseRail && this.playerRig.phaseRailCoils) {
-      const coilSpin = p.actionState === 'charging_heavy' ? 8.5 : 2.1 + adrTier * 0.4;
+      const coilSpin = (p.actionState === 'charging_heavy' ? 8.5 : 2.1 + adrTier * 0.4) * overchargeSpinMult;
       for (let c = 0; c < this.playerRig.phaseRailCoils.length; c++) {
         this.playerRig.phaseRailCoils[c].rotation.z += dt * coilSpin * (c % 2 === 0 ? 1 : -1);
       }
     }
     if (isGravBreaker && this.playerRig.gravBreakerOrbs) {
-      const chargeScale = p.actionState === 'charging_heavy' ? 1.28 : 1 + Math.sin(world.elapsedTime * 6) * 0.08;
+      const chargeScale =
+        p.actionState === 'charging_heavy'
+          ? 1.28
+          : (isWeaponOvercharged ? 1.16 : 1) + Math.sin(world.elapsedTime * 6) * 0.08;
       for (let g = 0; g < this.playerRig.gravBreakerOrbs.length; g++) {
         const orb = this.playerRig.gravBreakerOrbs[g];
-        orb.rotation.y += dt * (g === 0 ? 2.6 : -3.4);
-        orb.rotation.x += dt * (g === 1 ? 1.8 : 0.9);
+        orb.rotation.y += dt * (g === 0 ? 2.6 : -3.4) * overchargeSpinMult;
+        orb.rotation.x += dt * (g === 1 ? 1.8 : 0.9) * overchargeSpinMult;
         if (g === this.playerRig.gravBreakerOrbs.length - 1) {
           orb.scale.setScalar(chargeScale);
         }
@@ -4450,6 +8360,46 @@ export class ArenaSceneRenderer {
       );
     }
 
+    let playerSquash = 0;
+    let playerStretch = 0;
+
+    if (isPhaseRail) {
+      // Two-handed precision Rail Lance carry stance (right hand grip, left hand forward barrel support)
+      targetRightArmX = -0.78 + swing * 0.14 + (isMoving ? 0 : idleBreath * 0.028);
+      targetRightArmY = -0.14;
+      targetRightArmZ = 0.08;
+      targetRightForearmX = -0.34;
+      targetLeftArmX = -0.94 - swing * 0.12 + (isMoving ? 0 : idleBreath * 0.025);
+      targetLeftArmY = 0.42;
+      targetLeftArmZ = -0.22;
+      targetLeftForearmX = -0.48;
+      targetWeaponRotX = 0.12 + (isMoving ? 0 : idleWeaponFloat * 0.02);
+    } else if (isGravBreaker) {
+      // Heavy two-handed Gravity Maul low-ready poise
+      targetRightArmX = -0.36 + swing * 0.34 + (isMoving ? 0 : idleBreath * 0.04);
+      targetRightArmY = 0.24;
+      targetRightArmZ = 0.12;
+      targetRightForearmX = -0.42;
+      targetLeftArmX = -0.46 - swing * 0.32 + (isMoving ? 0 : idleBreath * 0.035);
+      targetLeftArmY = 0.42;
+      targetLeftArmZ = -0.24;
+      targetLeftForearmX = -0.38;
+      targetWeaponRotX = -0.16 + (isMoving ? 0 : idleWeaponFloat * 0.04);
+    } else if (isChronoScythe) {
+      // v2.7.0: Two-handed diagonal Chrono Scythe polearm ready stance (swept across body, scythe crescent high behind right shoulder)
+      targetTorsoRotY = isMoving ? targetTorsoRotY - 0.14 : -0.22;
+      targetRightArmX = -0.58 + swing * 0.28 + (isMoving ? 0 : idleBreath * 0.036);
+      targetRightArmY = -0.28;
+      targetRightArmZ = 0.34;
+      targetRightForearmX = -0.52;
+      targetLeftArmX = -0.78 - swing * 0.24 + (isMoving ? 0 : idleBreath * 0.03);
+      targetLeftArmY = 0.56;
+      targetLeftArmZ = -0.32;
+      targetLeftForearmX = -0.46;
+      targetWeaponRotX = -0.28 + (isMoving ? 0 : idleWeaponFloat * 0.035);
+      targetWeaponRotZ = 0.32;
+    }
+
     switch (p.actionState) {
       case 'charging_heavy': {
         const threshold = isPhaseRail
@@ -4460,7 +8410,25 @@ export class ArenaSceneRenderer {
               ? GAME_CONFIG.weapons.grav_breaker.heavySlam.chargeThreshold
               : GAME_CONFIG.player.heavyAttack.chargeThreshold;
         const ratio = Math.min(1, p.chargeTime / Math.max(0.01, threshold));
-        if (isPulsecaster) {
+        if (isPhaseRail) {
+          // Precision crouched two-handed Rail Lance overcharge brace
+          targetBodyY = -0.07 * ratio;
+          targetBodyRotX = 0.08 * ratio;
+          targetPelvisY = -0.24 - ratio * 0.12;
+          targetTorsoRotX = 0.06 * ratio;
+          targetTorsoRotY = -0.32 - ratio * 0.14;
+          targetTorsoRotZ = 0.05;
+          targetRightArmX = -1.32 - ratio * 0.12;
+          targetRightArmY = -0.18;
+          targetRightArmZ = 0.06;
+          targetRightForearmX = -0.16;
+          targetLeftArmX = -1.24 - ratio * 0.1;
+          targetLeftArmY = 0.48;
+          targetLeftArmZ = -0.24;
+          targetLeftForearmX = -0.36;
+          targetWeaponRotX = 0.24;
+          playerSquash = 0.28 * ratio;
+        } else if (isPulsecaster) {
           targetBodyY = -0.04 * ratio;
           targetBodyRotX = 0.06 * ratio;
           targetPelvisY = 0.24 + ratio * 0.12;
@@ -4474,6 +8442,24 @@ export class ArenaSceneRenderer {
           targetRightArmX = 0.28;
           targetRightArmY = -0.24;
           targetRightArmZ = 0.22;
+        } else if (isGravBreaker) {
+          // Colossal two-handed overhead Gravity Maul hoist
+          targetBodyY = -0.06 * ratio;
+          targetBodyRotX = -0.14 * ratio;
+          targetPelvisY = -0.22 * ratio;
+          targetTorsoRotX = -0.34 * ratio;
+          targetTorsoRotY = -0.28 * ratio;
+          targetTorsoRotZ = 0.08 * ratio;
+          targetRightArmX = -1.82 - ratio * 0.42;
+          targetRightArmY = -0.22;
+          targetRightArmZ = 0.28;
+          targetRightForearmX = -0.58 - ratio * 0.2;
+          targetLeftArmX = -1.72 - ratio * 0.36;
+          targetLeftArmY = 0.34;
+          targetLeftArmZ = -0.32;
+          targetLeftForearmX = -0.54;
+          targetWeaponRotX = -0.45 * ratio;
+          playerStretch = 0.36 * ratio;
         } else {
           targetBodyY = -0.05 * ratio;
           targetBodyRotX = -0.06 * ratio;
@@ -4502,6 +8488,18 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'light_windup': {
+        if (isPhaseRail) {
+          targetBodyRotX = 0.05;
+          targetTorsoRotY = -0.3;
+          targetRightArmX = -1.28;
+          targetRightArmY = -0.16;
+          targetRightForearmX = -0.18;
+          targetLeftArmX = -1.18;
+          targetLeftArmY = 0.44;
+          targetLeftForearmX = -0.36;
+          targetWeaponRotX = 0.22;
+          break;
+        }
         if (isPulsecaster) {
           targetBodyRotX = 0.06;
           targetTorsoRotY = 0.34;
@@ -4559,10 +8557,26 @@ export class ArenaSceneRenderer {
           targetLeftArmX = -0.58;
           targetLeftArmY = 0.48;
           targetLeftArmZ = -0.38;
+          playerSquash = 0.32;
         }
         break;
       }
       case 'light_active': {
+        if (isPhaseRail) {
+          // Sharp sniper discharge shoulder recoil
+          targetBodyRotX = -0.12;
+          targetTorsoRotX = -0.14;
+          targetTorsoRotY = -0.36;
+          targetRightArmX = -1.48;
+          targetRightArmY = -0.2;
+          targetRightForearmX = -0.08;
+          targetLeftArmX = -1.36;
+          targetLeftArmY = 0.46;
+          targetLeftForearmX = -0.24;
+          targetWeaponRotX = 0.08;
+          playerSquash = 0.3;
+          break;
+        }
         if (isPulsecaster) {
           targetBodyRotX = -0.06;
           targetTorsoRotY = 0.38;
@@ -4573,6 +8587,7 @@ export class ArenaSceneRenderer {
           break;
         }
         targetBodyRotX = 0.15;
+        playerStretch = p.comboIndex >= 2 ? 0.34 : 0.16;
         if (p.comboIndex === 0) {
           // Strike 1 active: crisp right-to-left diagonal slash
           targetPelvisY = 0.24;
@@ -4651,6 +8666,16 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'light_recovery': {
+        if (isPhaseRail) {
+          targetTorsoRotY = -0.24;
+          targetRightArmX = -1.08;
+          targetRightArmY = -0.14;
+          targetRightForearmX = -0.24;
+          targetLeftArmX = -1.04;
+          targetLeftArmY = 0.42;
+          targetLeftForearmX = -0.38;
+          break;
+        }
         if (isPulsecaster) {
           targetTorsoRotY = 0.26;
           targetLeftArmX = -1.16;
@@ -4688,12 +8713,49 @@ export class ArenaSceneRenderer {
         break;
       }
       case 'heavy_windup': {
+        if (isPhaseRail) {
+          targetBodyY = -0.08;
+          targetTorsoRotY = -0.4;
+          targetRightArmX = -1.4;
+          targetRightArmY = -0.2;
+          targetRightForearmX = -0.14;
+          targetLeftArmX = -1.32;
+          targetLeftArmY = 0.5;
+          targetLeftForearmX = -0.3;
+          targetWeaponRotX = 0.24;
+          playerSquash = 0.35;
+          break;
+        }
         if (isPulsecaster) {
           targetBodyY = -0.05;
           targetTorsoRotY = 0.44;
           targetLeftArmX = -1.38;
           targetLeftArmY = -0.22;
           targetLeftForearmX = -0.14;
+          break;
+        }
+        if (isGravBreaker) {
+          // Colossal overhead maul windup lift
+          targetBodyY = 0.04;
+          targetBodyRotX = -0.22;
+          targetPelvisY = -0.24;
+          targetLeftLegX = -0.24;
+          targetRightLegX = 0.28;
+          targetLeftShinX = 0.38;
+          targetRightShinX = 0.42;
+          targetTorsoRotX = -0.42;
+          targetTorsoRotY = -0.3;
+          targetTorsoRotZ = 0.1;
+          targetRightArmX = -2.18;
+          targetRightArmY = -0.18;
+          targetRightArmZ = 0.24;
+          targetRightForearmX = -0.68;
+          targetLeftArmX = -2.08;
+          targetLeftArmY = 0.3;
+          targetLeftArmZ = -0.28;
+          targetLeftForearmX = -0.64;
+          targetWeaponRotX = -0.5;
+          playerStretch = 0.58;
           break;
         }
         targetBodyY = -0.07;
@@ -4715,15 +8777,87 @@ export class ArenaSceneRenderer {
         targetLeftArmY = 0.48;
         targetLeftArmZ = -0.36;
         targetLeftForearmX = -0.52;
+        playerSquash = 0.28;
         break;
       }
       case 'heavy_active': {
+        if (isPhaseRail) {
+          // Heavy Rail Lance beam kickback
+          targetBodyY = -0.06;
+          targetBodyRotX = -0.24;
+          targetTorsoRotX = -0.26;
+          targetTorsoRotY = -0.44;
+          targetRightArmX = -1.68;
+          targetRightArmY = -0.24;
+          targetRightForearmX = -0.06;
+          targetLeftArmX = -1.52;
+          targetLeftArmY = 0.48;
+          targetLeftForearmX = -0.18;
+          targetWeaponRotX = -0.08;
+          playerSquash = 0.62;
+          break;
+        }
         if (isPulsecaster) {
           targetBodyRotX = -0.12;
           targetTorsoRotY = 0.42;
           targetLeftArmX = -1.58;
           targetLeftArmY = -0.18;
           targetLeftForearmX = -0.06;
+          playerSquash = 0.35;
+          break;
+        }
+        if (isGravBreaker) {
+          // Seismic two-handed overhead ground slam!
+          targetBodyY = -0.16;
+          targetBodyRotX = 0.38;
+          targetPelvisY = 0.26;
+          targetLeftLegX = 0.52;
+          targetRightLegX = -0.48;
+          targetLeftShinX = 0.62;
+          targetRightShinX = 0.36;
+          targetTorsoRotX = 0.48;
+          targetTorsoRotY = 0.28;
+          targetTorsoRotZ = -0.08;
+          targetRightArmX = 0.56;
+          targetRightArmY = 0.24;
+          targetRightArmZ = -0.22;
+          targetRightForearmX = -0.12;
+          targetLeftArmX = 0.48;
+          targetLeftArmY = -0.28;
+          targetLeftArmZ = 0.22;
+          targetLeftForearmX = -0.16;
+          targetWeaponRotX = 0.54;
+          playerSquash = 0.85;
+          this.playerRig.slashArcPivot.rotation.set(0.62, 0, 0);
+          this.playerRig.slashArcMaterial.color.setHex(0xfbbf24);
+          this.playerRig.slashArcMaterial.opacity = 0.96;
+          this.playerRig.slashArcMesh.scale.setScalar(1.62);
+          break;
+        }
+        if (isChronoScythe) {
+          // v2.7.0: Chrono Scythe 360-degree Vortex Whirl-Cleave horizontal reaper spin
+          const whirlPhase = world.elapsedTime * 22;
+          targetBodyY = -0.09;
+          targetBodyRotX = 0.24;
+          targetPelvisY = 0.72;
+          targetTorsoRotX = 0.32;
+          targetTorsoRotY = 1.28 + Math.sin(whirlPhase) * 0.35;
+          targetTorsoRotZ = -0.26;
+          targetRightArmX = -0.18;
+          targetRightArmY = 1.56;
+          targetRightArmZ = -0.82;
+          targetRightForearmX = -0.1;
+          targetLeftArmX = -0.26;
+          targetLeftArmY = -0.68;
+          targetLeftArmZ = -0.44;
+          targetLeftForearmX = -0.22;
+          targetWeaponRotX = 0.24;
+          targetWeaponRotZ = -0.92;
+          playerStretch = 0.54;
+          this.playerRig.slashArcPivot.rotation.set(0.08, whirlPhase * 0.2, 0);
+          this.playerRig.slashArcMaterial.color.setHex(p.isEmpoweredHeavy ? 0xe879f9 : 0xc084fc);
+          this.playerRig.slashArcMaterial.opacity = 0.98;
+          this.playerRig.slashArcMesh.scale.setScalar(1.76);
           break;
         }
         targetBodyY = -0.06;
@@ -4744,22 +8878,27 @@ export class ArenaSceneRenderer {
         targetLeftArmX = 0.48;
         targetLeftArmY = -0.52;
         targetLeftArmZ = -0.38;
+        playerStretch = 0.42;
 
         this.playerRig.slashArcPivot.rotation.set(0.42, 0.15, -0.68);
         this.playerRig.slashArcMaterial.color.setHex(
-          isGravBreaker
-            ? 0xfbbf24
-            : isPhaseRail
-              ? 0xe0f2fe
-              : p.isEmpoweredHeavy
-                ? 0xf59e0b
-                : 0x38bdf8
+          p.isEmpoweredHeavy ? 0xf59e0b : 0x38bdf8
         );
         this.playerRig.slashArcMaterial.opacity = 0.96;
-        this.playerRig.slashArcMesh.scale.setScalar(isGravBreaker ? 1.52 : 1.38);
+        this.playerRig.slashArcMesh.scale.setScalar(1.38);
         break;
       }
       case 'heavy_recovery': {
+        if (isPhaseRail) {
+          targetTorsoRotY = -0.26;
+          targetRightArmX = -1.1;
+          targetRightArmY = -0.14;
+          targetRightForearmX = -0.26;
+          targetLeftArmX = -1.04;
+          targetLeftArmY = 0.4;
+          targetLeftForearmX = -0.4;
+          break;
+        }
         if (isPulsecaster) {
           targetTorsoRotY = 0.28;
           targetLeftArmX = -1.12;
@@ -4811,6 +8950,7 @@ export class ArenaSceneRenderer {
         targetLeftArmZ = -0.36;
         targetLeftForearmX = -0.48;
         this.playerRig.parryShieldMaterial.opacity = isActiveParry ? 0.78 : 0.24;
+        this.playerRig.parryShieldMesh.visible = true;
         break;
       }
       case 'dodging': {
@@ -4818,17 +8958,23 @@ export class ArenaSceneRenderer {
           this.spawnDashGhost(p.x, p.z, p.rotationY, 0x22d3ee);
           this.dashGhostSpawnCooldown = 0.042;
         }
+        const dodgeTilt = computeDirectionalDodgeTilt(
+          p.vx,
+          p.vz,
+          p.rotationY,
+          this.reducedMotion
+        );
         targetBodyY = -0.14;
-        targetBodyRotX = 0.48;
-        targetBodyRotZ = turnBank * 1.45;
+        targetBodyRotX = dodgeTilt.bodyRotX;
+        targetBodyRotZ = dodgeTilt.bodyRotZ;
         targetPelvisX = 0.16;
         targetLeftLegX = -0.45;
         targetRightLegX = 0.32;
         targetLeftShinX = 0.68;
         targetRightShinX = 0.54;
-        targetTorsoRotX = 0.28;
-        targetTorsoRotY = 0;
-        targetTorsoRotZ = 0;
+        targetTorsoRotX = dodgeTilt.bodyRotX * 0.55;
+        targetTorsoRotY = dodgeTilt.torsoRotY;
+        targetTorsoRotZ = dodgeTilt.bodyRotZ * 0.35;
         targetRightArmX = 0.42;
         targetRightArmY = -0.26;
         targetRightArmZ = 0.22;
@@ -4837,34 +8983,61 @@ export class ArenaSceneRenderer {
         targetLeftArmY = 0.26;
         targetLeftArmZ = -0.22;
         targetLeftForearmX = -0.44;
+        playerStretch = 0.55;
         break;
       }
       case 'dead': {
-        targetBodyRotX = -Math.PI * 0.42;
-        targetBodyY = 0.25;
-        targetTorsoRotX = 0;
-        targetTorsoRotY = 0;
-        targetTorsoRotZ = 0;
+        targetBodyRotX = -Math.PI * 0.44;
+        targetBodyRotZ = 0.14;
+        targetBodyY = 0.22;
+        targetLeftLegX = 0.28;
+        targetRightLegX = -0.12;
+        targetLeftShinX = 0.55;
+        targetRightShinX = 0.42;
+        targetTorsoRotX = -0.12;
+        targetTorsoRotY = 0.18;
+        targetTorsoRotZ = 0.08;
+        targetRightArmX = 0.54;
+        targetRightArmZ = 0.48;
+        targetLeftArmX = 0.42;
+        targetLeftArmZ = -0.42;
         break;
       }
       default:
         break;
     }
 
-    // Apply upper-body recoil jolt when damaged (hurtFlashTimer > 0)
+    // Apply upper-body recoil jolt & squash compression when damaged (hurtFlashTimer > 0)
     if (p.hurtFlashTimer > 0 && p.actionState !== 'dead') {
       const hurtRatio = Math.min(1, p.hurtFlashTimer / 0.22);
       targetTorsoRotX -= 0.32 * hurtRatio;
       targetTorsoRotZ += 0.18 * hurtRatio;
+      playerSquash = Math.max(playerSquash, 0.52 * hurtRatio);
     }
 
-    // Smoothly damp all Sera joints toward target pose
+    // Smoothly damp all Sera joints + volume-preserving squash & stretch toward target pose
     this.playerRig.bodyGroup.position.y +=
       (targetBodyY - this.playerRig.bodyGroup.position.y) * poseAlpha;
     this.playerRig.bodyGroup.rotation.x +=
       (targetBodyRotX - this.playerRig.bodyGroup.rotation.x) * poseAlpha;
     this.playerRig.bodyGroup.rotation.z +=
       (targetBodyRotZ - this.playerRig.bodyGroup.rotation.z) * poseAlpha;
+    const pScale = computeSquashStretch(playerSquash, playerStretch, this.reducedMotion);
+    this.playerRig.bodyGroup.scale.x = dampScalar(
+      this.playerRig.bodyGroup.scale.x,
+      pScale.scaleXZ,
+      poseAlpha
+    );
+    this.playerRig.bodyGroup.scale.y = dampScalar(
+      this.playerRig.bodyGroup.scale.y,
+      pScale.scaleY,
+      poseAlpha
+    );
+    this.playerRig.bodyGroup.scale.z = dampScalar(
+      this.playerRig.bodyGroup.scale.z,
+      pScale.scaleXZ,
+      poseAlpha
+    );
 
     dampEuler(
       this.playerRig.pelvisPivot.rotation,
@@ -4898,17 +9071,25 @@ export class ArenaSceneRenderer {
       rigLagAlpha
     );
 
-    this.playerRig.leftPauldronPivot.rotation.z =
-      0.22 + Math.max(0, -targetLeftArmX * 0.18) + idleBreath * 0.025;
-    this.playerRig.rightPauldronPivot.rotation.z =
-      -0.22 - Math.max(0, -targetRightArmX * 0.18) - idleBreath * 0.025;
+    const targetLeftPauldronZ = 0.22 + Math.max(0, -targetLeftArmX * 0.18) + idleBreath * 0.032;
+    const targetRightPauldronZ = -0.22 - Math.max(0, -targetRightArmX * 0.18) - idleBreath * 0.032;
+    this.playerRig.leftPauldronPivot.rotation.z = dampScalar(
+      this.playerRig.leftPauldronPivot.rotation.z,
+      targetLeftPauldronZ,
+      rigLagAlpha
+    );
+    this.playerRig.rightPauldronPivot.rotation.z = dampScalar(
+      this.playerRig.rightPauldronPivot.rotation.z,
+      targetRightPauldronZ,
+      rigLagAlpha
+    );
 
-    // Head stabilization & target look counter-rotation
+    // Head stabilization, subtle idle readiness scan & target look counter-rotation
     dampEuler(
       this.playerRig.headGroup.rotation,
-      isMoving ? -0.06 * speedRatio : idleBreath * 0.028,
-      -this.playerRig.torsoPivot.rotation.y * 0.48,
-      -this.playerRig.bodyGroup.rotation.z * 0.35,
+      isMoving ? -0.06 * speedRatio : idleBreath * 0.034 - Math.abs(idleHeadScan) * 0.015,
+      -this.playerRig.torsoPivot.rotation.y * 0.48 + (isMoving ? 0 : idleHeadScan * 0.11),
+      -this.playerRig.bodyGroup.rotation.z * 0.35 + (isMoving ? 0 : idleHeadScan * 0.028),
       poseAlpha
     );
 
@@ -4978,6 +9159,22 @@ export class ArenaSceneRenderer {
       this.smoothedEchoTurnRate +=
         (rawEchoTurn - this.smoothedEchoTurnRate) * Math.min(1, dt * 14);
 
+      const activeDocId = normalizeEchoDoctrineId(world.progression?.echoDoctrine);
+      if (this.lastEchoDoctrineTint !== activeDocId) {
+        this.lastEchoDoctrineTint = activeDocId;
+        const docSpec = getEchoDoctrineSpec(activeDocId);
+        const ringMatA = this.echoRig.chronoRingMesh.material as THREE.MeshBasicMaterial | undefined;
+        if (ringMatA) ringMatA.color.setHex(docSpec.ringHex);
+        const ringMatB = this.echoRig.chronoInnerRingMesh.material as THREE.MeshBasicMaterial | undefined;
+        if (ringMatB) ringMatB.color.setHex(docSpec.accentHex);
+        const phaseMatA = this.echoRig.echoPhaseRingMesh?.material as THREE.MeshBasicMaterial | undefined;
+        if (phaseMatA) phaseMatA.color.setHex(docSpec.ringHex);
+        const phaseMatB = this.echoRig.echoSecondPhaseRingMesh?.material as THREE.MeshBasicMaterial | undefined;
+        if (phaseMatB) phaseMatB.color.setHex(docSpec.accentHex);
+        const baseRipMat = this.echoRig.echoBaseRippleMesh?.material as THREE.MeshBasicMaterial | undefined;
+        if (baseRipMat) baseRipMat.color.setHex(docSpec.ringHex);
+      }
+
       this.echoRig.chronoRingMesh.rotation.z -= dt * 1.85;
       this.echoRig.chronoInnerRingMesh.rotation.z += dt * 2.6;
 
@@ -5011,58 +9208,52 @@ export class ArenaSceneRenderer {
       const echoPhase = actor.gaitPhase * 2.25;
       const echoSwing = echoMoving ? Math.sin(echoPhase) * 0.64 : 0;
       const echoCosPhase = Math.cos(echoPhase);
+      const echoBreath = computeOrganicBreath(world.elapsedTime, 1.7, 2.8, this.reducedMotion);
+      const echoPoseAlpha = computeDampAlpha(22, animDt, this.reducedMotion);
 
-      this.echoRig.leftLegPivot.rotation.x = echoSwing;
-      this.echoRig.rightLegPivot.rotation.x = -echoSwing;
-      this.echoRig.leftShinPivot.rotation.x = echoMoving
+      const echoLeftLegX = echoSwing;
+      const echoRightLegX = -echoSwing;
+      const echoLeftShinX = echoMoving
         ? Math.max(0.05, -Math.sin(echoPhase + 0.55)) * 0.72
-        : 0.08;
-      this.echoRig.rightShinPivot.rotation.x = echoMoving
+        : 0.09 + echoBreath.chest * 0.018;
+      const echoRightShinX = echoMoving
         ? Math.max(0.05, Math.sin(echoPhase + 0.55)) * 0.72
-        : 0.08;
-      this.echoRig.leftFootPivot.rotation.x = echoMoving
+        : 0.09 - echoBreath.chest * 0.018;
+      const echoLeftFootX = echoMoving
         ? -echoSwing * 0.42 + echoCosPhase * 0.14
         : -0.04;
-      this.echoRig.rightFootPivot.rotation.x = echoMoving
+      const echoRightFootX = echoMoving
         ? echoSwing * 0.42 - echoCosPhase * 0.14
         : -0.04;
 
-      this.echoRig.pelvisPivot.rotation.set(
-        echoMoving ? 0.04 : 0,
-        echoMoving ? echoSwing * 0.22 : 0,
-        echoMoving ? -echoCosPhase * 0.05 : 0
-      );
+      const echoPelvisX = echoMoving ? 0.04 : -echoBreath.chest * 0.014;
+      const echoPelvisY = echoMoving ? echoSwing * 0.22 : -echoBreath.sway * 0.035;
+      const echoPelvisZ = echoMoving ? -echoCosPhase * 0.05 : echoBreath.sway * 0.018;
 
-      this.echoRig.bodyGroup.position.y = echoMoving
-        ? Math.abs(Math.sin(echoPhase)) * 0.08
-        : Math.sin(world.elapsedTime * 3.4) * 0.024;
-      this.echoRig.bodyGroup.rotation.z = echoMoving
-        ? THREE.MathUtils.clamp(-this.smoothedEchoTurnRate * 0.032, -0.15, 0.15)
-        : 0;
+      let echoBodyY = echoMoving
+        ? Math.abs(Math.sin(echoPhase)) * 0.082
+        : echoBreath.chest * 0.028;
+      let echoBodyRotX = echoMoving ? 0.07 : echoBreath.chest * 0.012;
+      const echoBodyRotZ = echoMoving
+        ? THREE.MathUtils.clamp(-this.smoothedEchoTurnRate * 0.034, -0.16, 0.16)
+        : echoBreath.sway * 0.015;
 
-      this.echoRig.torsoPivot.position.y = 1.02;
-      this.echoRig.torsoPivot.rotation.set(
-        echoMoving ? 0.14 : Math.sin(world.elapsedTime * 2.8) * 0.025,
-        echoMoving ? -echoSwing * 0.36 : Math.cos(world.elapsedTime * 1.6) * 0.05,
-        echoMoving ? echoSwing * 0.08 : 0
-      );
-      this.echoRig.chronoRigPivot.rotation.set(
-        -this.echoRig.torsoPivot.rotation.x * 0.3,
-        -this.echoRig.torsoPivot.rotation.y * 0.25,
-        0
-      );
+      let echoTorsoX = echoMoving ? 0.14 : echoBreath.chest * 0.03;
+      let echoTorsoY = echoMoving ? -echoSwing * 0.36 : echoBreath.sway * 0.055;
+      let echoTorsoZ = echoMoving ? echoSwing * 0.08 : -echoBreath.sway * 0.02;
 
       this.echoRig.slashArcMaterial.opacity = 0;
       this.echoRig.parryShieldMaterial.opacity = 0;
+      this.echoRig.parryShieldMesh.visible = false;
       this.echoRig.chargeRingMaterial.opacity = 0;
       this.echoRig.slashArcMesh.rotation.z = 0;
       this.echoRig.slashArcPivot.rotation.set(0, 0, 0);
-      this.echoRig.weaponPivot.rotation.set(0, 0, 0);
 
       const echoPulsecaster =
         actor.weaponId === 'pulsecaster' || actor.weaponId === 'phase_rail';
       const echoPhaseRail = actor.weaponId === 'phase_rail';
       const echoGravBreaker = actor.weaponId === 'grav_breaker';
+      const echoChronoScythe = actor.weaponId === 'chrono_scythe';
       this.echoRig.bladeMesh.visible =
         actor.weaponId === 'chrono_edge' || actor.weaponId === 'pulsecaster';
       if (this.echoRig.phaseRailGroup) {
@@ -5071,25 +9262,75 @@ export class ArenaSceneRenderer {
       if (this.echoRig.gravBreakerGroup) {
         this.echoRig.gravBreakerGroup.visible = echoGravBreaker;
       }
+      if (this.echoRig.chronoScytheGroup) {
+        this.echoRig.chronoScytheGroup.visible = echoChronoScythe;
+      }
       if (echoPulsecaster) {
         this.echoRig.bladeMesh.scale.set(0.72, 0.72, 0.28);
       } else {
         this.echoRig.bladeMesh.scale.set(1, 1, 1);
       }
 
+      if (echoPhaseRail && this.echoRig.phaseRailCoils) {
+        const coilSpin = actor.actionState === 'charging_heavy' ? 8.2 : 2.2;
+        for (let c = 0; c < this.echoRig.phaseRailCoils.length; c++) {
+          this.echoRig.phaseRailCoils[c].rotation.z += dt * coilSpin * (c % 2 === 0 ? 1 : -1);
+        }
+      }
+      if (echoGravBreaker && this.echoRig.gravBreakerOrbs) {
+        for (let g = 0; g < this.echoRig.gravBreakerOrbs.length; g++) {
+          this.echoRig.gravBreakerOrbs[g].rotation.y += dt * (g === 0 ? 2.6 : -3.4);
+          this.echoRig.gravBreakerOrbs[g].rotation.x += dt * (g === 1 ? 1.8 : 0.9);
+        }
+      }
+
+      let echoRightArmX = echoPhaseRail
+        ? -0.78 + echoSwing * 0.14
+        : echoGravBreaker
+          ? -0.36 + echoSwing * 0.34
+          : echoPulsecaster
+            ? 0.18 + echoSwing * 0.24
+            : -0.2 + echoSwing * 0.44;
+      let echoRightArmY = echoPhaseRail ? -0.14 : echoGravBreaker ? 0.24 : echoPulsecaster ? -0.12 : 0.14;
+      let echoRightArmZ = echoPhaseRail ? 0.08 : echoGravBreaker ? 0.12 : echoPulsecaster ? 0.14 : 0.05;
+      let echoRightForearmX = echoPhaseRail ? -0.34 : echoGravBreaker ? -0.42 : echoPulsecaster ? -0.48 : -0.3;
+
+      let echoLeftArmX = echoPhaseRail
+        ? -0.94 - echoSwing * 0.12
+        : echoGravBreaker
+          ? -0.46 - echoSwing * 0.32
+          : echoPulsecaster
+            ? -0.58 - echoSwing * 0.18
+            : -0.1 - echoSwing * 0.46;
+      let echoLeftArmY = echoPhaseRail || echoGravBreaker ? 0.42 : echoPulsecaster ? 0.16 : -0.06;
+      let echoLeftArmZ = echoPhaseRail || echoGravBreaker ? -0.22 : echoPulsecaster ? -0.14 : -0.05;
+      let echoLeftForearmX = echoPhaseRail ? -0.48 : echoGravBreaker ? -0.38 : echoPulsecaster ? -0.44 : -0.24;
+
       switch (actor.actionState) {
         case 'charging_heavy': {
           const ratio = Math.min(1, actor.chargeRatio);
           if (echoPulsecaster) {
-            this.echoRig.torsoPivot.rotation.set(0.08 * ratio, 0.36 + ratio * 0.14, -0.06);
-            this.echoRig.leftArmPivot.rotation.set(-1.28 - ratio * 0.14, -0.18, -0.08);
-            this.echoRig.leftForearmPivot.rotation.set(-0.18, 0, 0);
-            this.echoRig.rightArmPivot.rotation.set(0.28, -0.24, 0.22);
+            echoTorsoX = 0.08 * ratio;
+            echoTorsoY = 0.36 + ratio * 0.14;
+            echoTorsoZ = -0.06;
+            echoLeftArmX = -1.28 - ratio * 0.14;
+            echoLeftArmY = -0.18;
+            echoLeftArmZ = -0.08;
+            echoLeftForearmX = -0.18;
+            echoRightArmX = 0.28;
+            echoRightArmY = -0.24;
+            echoRightArmZ = 0.22;
           } else {
-            this.echoRig.torsoPivot.rotation.set(-0.2 - ratio * 0.16, -0.48 - ratio * 0.28, 0.1);
-            this.echoRig.rightArmPivot.rotation.set(-1.12 - ratio * 0.48, -0.66, 0.46);
-            this.echoRig.rightForearmPivot.rotation.set(-0.62 - ratio * 0.24, 0, 0);
-            this.echoRig.leftArmPivot.rotation.set(-0.54, 0.42, -0.3);
+            echoTorsoX = -0.2 - ratio * 0.16;
+            echoTorsoY = -0.48 - ratio * 0.28;
+            echoTorsoZ = 0.1;
+            echoRightArmX = -1.12 - ratio * 0.48;
+            echoRightArmY = -0.66;
+            echoRightArmZ = 0.46;
+            echoRightForearmX = -0.62 - ratio * 0.24;
+            echoLeftArmX = -0.54;
+            echoLeftArmY = 0.42;
+            echoLeftArmZ = -0.3;
           }
           this.echoRig.chargeRingMaterial.opacity = 0.45 + ratio * 0.5;
           this.echoRig.chargeRingMaterial.color.setHex(0x38bdf8);
@@ -5098,32 +9339,52 @@ export class ArenaSceneRenderer {
         }
         case 'light_windup': {
           if (echoPulsecaster) {
-            this.echoRig.torsoPivot.rotation.set(0.06, 0.34, 0);
-            this.echoRig.leftArmPivot.rotation.set(-1.32, -0.18, -0.08);
-            this.echoRig.leftForearmPivot.rotation.set(-0.16, 0, 0);
+            echoTorsoX = 0.06;
+            echoTorsoY = 0.34;
+            echoTorsoZ = 0;
+            echoLeftArmX = -1.32;
+            echoLeftArmY = -0.18;
+            echoLeftArmZ = -0.08;
+            echoLeftForearmX = -0.16;
           } else if (actor.comboIndex === 1) {
-            this.echoRig.torsoPivot.rotation.set(-0.04, 0.52, -0.08);
-            this.echoRig.rightArmPivot.rotation.set(-0.46, 0.86, -0.4);
-            this.echoRig.rightForearmPivot.rotation.set(-0.6, 0, 0);
+            echoTorsoX = -0.04;
+            echoTorsoY = 0.52;
+            echoTorsoZ = -0.08;
+            echoRightArmX = -0.46;
+            echoRightArmY = 0.86;
+            echoRightArmZ = -0.4;
+            echoRightForearmX = -0.6;
           } else {
-            this.echoRig.torsoPivot.rotation.set(-0.08, -0.52, 0.08);
-            this.echoRig.rightArmPivot.rotation.set(-0.62, -0.84, 0.42);
-            this.echoRig.rightForearmPivot.rotation.set(-0.52, 0, 0);
+            echoTorsoX = -0.08;
+            echoTorsoY = -0.52;
+            echoTorsoZ = 0.08;
+            echoRightArmX = -0.62;
+            echoRightArmY = -0.84;
+            echoRightArmZ = 0.42;
+            echoRightForearmX = -0.52;
           }
           break;
         }
         case 'light_active': {
           if (echoPulsecaster) {
-            this.echoRig.torsoPivot.rotation.set(-0.06, 0.38, 0);
-            this.echoRig.leftArmPivot.rotation.set(-1.48, -0.16, -0.06);
-            this.echoRig.leftForearmPivot.rotation.set(-0.08, 0, 0);
+            echoTorsoX = -0.06;
+            echoTorsoY = 0.38;
+            echoTorsoZ = 0;
+            echoLeftArmX = -1.48;
+            echoLeftArmY = -0.16;
+            echoLeftArmZ = -0.06;
+            echoLeftForearmX = -0.08;
             break;
           }
           const dir = actor.comboIndex === 1 ? -1 : 1;
           const isFinisher = actor.comboIndex >= 2;
-          this.echoRig.torsoPivot.rotation.set(0.2, dir * (isFinisher ? 0.82 : 0.56), -0.1 * dir);
-          this.echoRig.rightArmPivot.rotation.set(-0.14, dir * 1.24, -0.46 * dir);
-          this.echoRig.rightForearmPivot.rotation.set(-0.1, 0, 0);
+          echoTorsoX = 0.2;
+          echoTorsoY = dir * (isFinisher ? 0.82 : 0.56);
+          echoTorsoZ = -0.1 * dir;
+          echoRightArmX = -0.14;
+          echoRightArmY = dir * 1.24;
+          echoRightArmZ = -0.46 * dir;
+          echoRightForearmX = -0.1;
           this.echoRig.slashArcPivot.rotation.set(
             actor.comboIndex === 1 ? -0.16 : 0.18,
             0,
@@ -5140,39 +9401,121 @@ export class ArenaSceneRenderer {
         }
         case 'light_recovery': {
           if (echoPulsecaster) {
-            this.echoRig.torsoPivot.rotation.set(0, 0.26, 0);
-            this.echoRig.leftArmPivot.rotation.set(-1.16, -0.12, -0.06);
-            this.echoRig.leftForearmPivot.rotation.set(-0.26, 0, 0);
+            echoTorsoX = 0;
+            echoTorsoY = 0.26;
+            echoTorsoZ = 0;
+            echoLeftArmX = -1.16;
+            echoLeftArmY = -0.12;
+            echoLeftArmZ = -0.06;
+            echoLeftForearmX = -0.26;
             break;
           }
           const dir = actor.comboIndex === 1 ? -1 : 1;
-          this.echoRig.torsoPivot.rotation.set(0.12, dir * 0.36, 0);
-          this.echoRig.rightArmPivot.rotation.set(-0.18, dir * 0.68, -0.22 * dir);
-          this.echoRig.rightForearmPivot.rotation.set(-0.22, 0, 0);
+          echoTorsoX = 0.12;
+          echoTorsoY = dir * 0.36;
+          echoTorsoZ = 0;
+          echoRightArmX = -0.18;
+          echoRightArmY = dir * 0.68;
+          echoRightArmZ = -0.22 * dir;
+          echoRightForearmX = -0.22;
           break;
         }
         case 'heavy_windup': {
-          if (echoPulsecaster) {
-            this.echoRig.torsoPivot.rotation.set(-0.05, 0.44, 0);
-            this.echoRig.leftArmPivot.rotation.set(-1.38, -0.22, -0.08);
-            this.echoRig.leftForearmPivot.rotation.set(-0.14, 0, 0);
+          if (echoPhaseRail) {
+            echoTorsoX = 0.04;
+            echoTorsoY = -0.38;
+            echoTorsoZ = 0;
+            echoRightArmX = -1.4;
+            echoRightArmY = -0.2;
+            echoRightForearmX = -0.14;
+            echoLeftArmX = -1.32;
+            echoLeftArmY = 0.5;
+            echoLeftForearmX = -0.3;
             break;
           }
-          this.echoRig.torsoPivot.rotation.set(-0.3, -0.68, 0.14);
-          this.echoRig.rightArmPivot.rotation.set(-1.38, -0.96, 0.54);
-          this.echoRig.rightForearmPivot.rotation.set(-0.66, 0, 0);
+          if (echoPulsecaster) {
+            echoTorsoX = -0.05;
+            echoTorsoY = 0.44;
+            echoTorsoZ = 0;
+            echoLeftArmX = -1.38;
+            echoLeftArmY = -0.22;
+            echoLeftArmZ = -0.08;
+            echoLeftForearmX = -0.14;
+            break;
+          }
+          if (echoGravBreaker) {
+            echoTorsoX = -0.4;
+            echoTorsoY = -0.28;
+            echoTorsoZ = 0.1;
+            echoRightArmX = -2.14;
+            echoRightArmY = -0.18;
+            echoRightArmZ = 0.24;
+            echoRightForearmX = -0.66;
+            echoLeftArmX = -2.04;
+            echoLeftArmY = 0.3;
+            echoLeftArmZ = -0.28;
+            echoLeftForearmX = -0.62;
+            break;
+          }
+          echoTorsoX = -0.3;
+          echoTorsoY = -0.68;
+          echoTorsoZ = 0.14;
+          echoRightArmX = -1.38;
+          echoRightArmY = -0.96;
+          echoRightArmZ = 0.54;
+          echoRightForearmX = -0.66;
           break;
         }
         case 'heavy_active': {
-          if (echoPulsecaster) {
-            this.echoRig.torsoPivot.rotation.set(-0.12, 0.42, 0);
-            this.echoRig.leftArmPivot.rotation.set(-1.58, -0.18, -0.06);
-            this.echoRig.leftForearmPivot.rotation.set(-0.06, 0, 0);
+          if (echoPhaseRail) {
+            echoTorsoX = -0.24;
+            echoTorsoY = -0.42;
+            echoTorsoZ = 0;
+            echoRightArmX = -1.66;
+            echoRightArmY = -0.24;
+            echoRightForearmX = -0.06;
+            echoLeftArmX = -1.5;
+            echoLeftArmY = 0.48;
+            echoLeftForearmX = -0.18;
             break;
           }
-          this.echoRig.torsoPivot.rotation.set(0.36, 0.78, -0.18);
-          this.echoRig.rightArmPivot.rotation.set(0.34, 1.44, -0.7);
-          this.echoRig.rightForearmPivot.rotation.set(-0.08, 0, 0);
+          if (echoPulsecaster) {
+            echoTorsoX = -0.12;
+            echoTorsoY = 0.42;
+            echoTorsoZ = 0;
+            echoLeftArmX = -1.58;
+            echoLeftArmY = -0.18;
+            echoLeftArmZ = -0.06;
+            echoLeftForearmX = -0.06;
+            break;
+          }
+          if (echoGravBreaker) {
+            echoBodyY = -0.14;
+            echoBodyRotX = 0.36;
+            echoTorsoX = 0.46;
+            echoTorsoY = 0.26;
+            echoTorsoZ = -0.08;
+            echoRightArmX = 0.54;
+            echoRightArmY = 0.24;
+            echoRightArmZ = -0.22;
+            echoRightForearmX = -0.12;
+            echoLeftArmX = 0.46;
+            echoLeftArmY = -0.28;
+            echoLeftArmZ = 0.22;
+            echoLeftForearmX = -0.16;
+            this.echoRig.slashArcPivot.rotation.set(0.62, 0, 0);
+            this.echoRig.slashArcMaterial.color.setHex(0xfbbf24);
+            this.echoRig.slashArcMaterial.opacity = 0.94;
+            this.echoRig.slashArcMesh.scale.setScalar(1.56);
+            break;
+          }
+          echoTorsoX = 0.36;
+          echoTorsoY = 0.78;
+          echoTorsoZ = -0.18;
+          echoRightArmX = 0.34;
+          echoRightArmY = 1.44;
+          echoRightArmZ = -0.7;
+          echoRightForearmX = -0.08;
           this.echoRig.slashArcPivot.rotation.set(0.42, 0.15, -0.68);
           this.echoRig.slashArcMaterial.color.setHex(0xe0f2fe);
           this.echoRig.slashArcMaterial.opacity = 0.92;
@@ -5181,50 +9524,96 @@ export class ArenaSceneRenderer {
         }
         case 'heavy_recovery': {
           if (echoPulsecaster) {
-            this.echoRig.torsoPivot.rotation.set(0, 0.28, 0);
-            this.echoRig.leftArmPivot.rotation.set(-1.12, -0.12, -0.06);
-            this.echoRig.leftForearmPivot.rotation.set(-0.24, 0, 0);
+            echoTorsoX = 0;
+            echoTorsoY = 0.28;
+            echoTorsoZ = 0;
+            echoLeftArmX = -1.12;
+            echoLeftArmY = -0.12;
+            echoLeftArmZ = -0.06;
+            echoLeftForearmX = -0.24;
             break;
           }
-          this.echoRig.torsoPivot.rotation.set(0.2, 0.46, -0.1);
-          this.echoRig.rightArmPivot.rotation.set(0.08, 0.88, -0.38);
-          this.echoRig.rightForearmPivot.rotation.set(-0.18, 0, 0);
+          echoTorsoX = 0.2;
+          echoTorsoY = 0.46;
+          echoTorsoZ = -0.1;
+          echoRightArmX = 0.08;
+          echoRightArmY = 0.88;
+          echoRightArmZ = -0.38;
+          echoRightForearmX = -0.18;
           break;
         }
         case 'parry_active':
         case 'parry_recovery': {
-          this.echoRig.torsoPivot.rotation.set(0.08, 0.26, 0);
-          this.echoRig.rightArmPivot.rotation.set(-0.78, 0.52, 0.68);
-          this.echoRig.rightForearmPivot.rotation.set(-0.68, 0, 0);
-          this.echoRig.leftArmPivot.rotation.set(-0.68, -0.38, -0.32);
+          echoTorsoX = 0.08;
+          echoTorsoY = 0.26;
+          echoTorsoZ = 0;
+          echoRightArmX = -0.78;
+          echoRightArmY = 0.52;
+          echoRightArmZ = 0.68;
+          echoRightForearmX = -0.68;
+          echoLeftArmX = -0.68;
+          echoLeftArmY = -0.38;
+          echoLeftArmZ = -0.32;
           this.echoRig.parryShieldMaterial.opacity =
             actor.actionState === 'parry_active' ? 0.68 : 0.22;
+          this.echoRig.parryShieldMesh.visible = true;
           break;
         }
         case 'dodging': {
-          this.echoRig.bodyGroup.position.y = -0.12;
-          this.echoRig.bodyGroup.rotation.x = 0.44;
-          this.echoRig.torsoPivot.rotation.set(0.24, 0, 0);
-          this.echoRig.rightArmPivot.rotation.set(0.36, -0.2, 0.18);
-          this.echoRig.rightForearmPivot.rotation.set(-0.4, 0, 0);
+          echoBodyY = -0.12;
+          echoBodyRotX = 0.44;
+          echoTorsoX = 0.24;
+          echoTorsoY = 0;
+          echoTorsoZ = 0;
+          echoRightArmX = 0.36;
+          echoRightArmY = -0.2;
+          echoRightArmZ = 0.18;
+          echoRightForearmX = -0.4;
           break;
         }
-        default: {
-          this.echoRig.bodyGroup.rotation.x = echoMoving ? 0.07 : 0;
-          if (echoPulsecaster) {
-            this.echoRig.leftArmPivot.rotation.set(-0.58 - echoSwing * 0.18, 0.16, -0.14);
-            this.echoRig.leftForearmPivot.rotation.set(-0.44, 0, 0);
-            this.echoRig.rightArmPivot.rotation.set(0.18 + echoSwing * 0.24, -0.12, 0.14);
-            this.echoRig.rightForearmPivot.rotation.set(-0.48, 0, 0);
-          } else {
-            this.echoRig.rightArmPivot.rotation.set(-0.2 + echoSwing * 0.44, 0.14, 0.05);
-            this.echoRig.rightForearmPivot.rotation.set(-0.3, 0, 0);
-            this.echoRig.leftArmPivot.rotation.set(-0.1 - echoSwing * 0.46, -0.06, -0.05);
-            this.echoRig.leftForearmPivot.rotation.set(-0.24, 0, 0);
-          }
+        default:
           break;
-        }
       }
+
+      // Smoothly damp all Chrono Echo joints so playback glides without snapping
+      this.echoRig.bodyGroup.position.y = dampScalar(this.echoRig.bodyGroup.position.y, echoBodyY, echoPoseAlpha);
+      dampEuler(this.echoRig.bodyGroup.rotation, echoBodyRotX, 0, echoBodyRotZ, echoPoseAlpha);
+      dampEuler(this.echoRig.pelvisPivot.rotation, echoPelvisX, echoPelvisY, echoPelvisZ, echoPoseAlpha);
+      this.echoRig.torsoPivot.position.y = 1.02 + (echoMoving ? 0 : echoBreath.chest * 0.012);
+      dampEuler(this.echoRig.torsoPivot.rotation, echoTorsoX, echoTorsoY, echoTorsoZ, echoPoseAlpha);
+      dampEuler(
+        this.echoRig.chronoRigPivot.rotation,
+        -this.echoRig.torsoPivot.rotation.x * 0.3,
+        -this.echoRig.torsoPivot.rotation.y * 0.25,
+        -this.echoRig.bodyGroup.rotation.z * 0.35,
+        echoPoseAlpha
+      );
+      dampEuler(
+        this.echoRig.headGroup.rotation,
+        echoMoving ? -0.05 : echoBreath.chest * 0.025,
+        -this.echoRig.torsoPivot.rotation.y * 0.45 + (echoMoving ? 0 : echoBreath.headScan * 0.08),
+        -this.echoRig.bodyGroup.rotation.z * 0.3,
+        echoPoseAlpha
+      );
+      dampEuler(this.echoRig.rightArmPivot.rotation, echoRightArmX, echoRightArmY, echoRightArmZ, echoPoseAlpha);
+      this.echoRig.rightForearmPivot.rotation.x = dampScalar(
+        this.echoRig.rightForearmPivot.rotation.x,
+        echoRightForearmX,
+        echoPoseAlpha
+      );
+      dampEuler(this.echoRig.leftArmPivot.rotation, echoLeftArmX, echoLeftArmY, echoLeftArmZ, echoPoseAlpha);
+      this.echoRig.leftForearmPivot.rotation.x = dampScalar(
+        this.echoRig.leftForearmPivot.rotation.x,
+        echoLeftForearmX,
+        echoPoseAlpha
+      );
+      dampEuler(this.echoRig.weaponPivot.rotation, echoBreath.weaponFloat * 0.04, 0, 0, echoPoseAlpha);
+      this.echoRig.leftLegPivot.rotation.x = dampScalar(this.echoRig.leftLegPivot.rotation.x, echoLeftLegX, echoPoseAlpha);
+      this.echoRig.rightLegPivot.rotation.x = dampScalar(this.echoRig.rightLegPivot.rotation.x, echoRightLegX, echoPoseAlpha);
+      this.echoRig.leftShinPivot.rotation.x = dampScalar(this.echoRig.leftShinPivot.rotation.x, echoLeftShinX, echoPoseAlpha);
+      this.echoRig.rightShinPivot.rotation.x = dampScalar(this.echoRig.rightShinPivot.rotation.x, echoRightShinX, echoPoseAlpha);
+      this.echoRig.leftFootPivot.rotation.x = dampScalar(this.echoRig.leftFootPivot.rotation.x, echoLeftFootX, echoPoseAlpha);
+      this.echoRig.rightFootPivot.rotation.x = dampScalar(this.echoRig.rightFootPivot.rotation.x, echoRightFootX, echoPoseAlpha);
 
       // Sample Echo pose into circular history buffer every 25ms for Temporal Afterimage Ghosts (skip on Low VFX)
       if (this.particleQuality === 'low') {
@@ -5332,8 +9721,29 @@ export class ArenaSceneRenderer {
           );
           this.echoTetherMat.color.setHex(tetherVis.hex);
           this.echoTetherMat.opacity = tetherVis.opacity;
+          if (this.twinSyncBeamMesh && this.twinSyncBeamMat) {
+            const syncTier = world.twinSync?.tier ?? 0;
+            const syncHex =
+              syncTier >= 3 ? 0xfbbf24 : syncTier === 2 ? 0x818cf8 : 0x22d3ee;
+            const beamRadius = 0.85 + syncTier * 0.28;
+            this.twinSyncBeamMesh.visible = true;
+            this.twinSyncBeamMesh.position.set(
+              (p.x + actor.x) * 0.5,
+              1.12,
+              (p.z + actor.z) * 0.5
+            );
+            this.twinSyncBeamMesh.lookAt(actor.x, 1.12, actor.z);
+            this.twinSyncBeamMesh.scale.set(beamRadius, beamRadius, dist);
+            this.twinSyncBeamMat.uniforms.uColor.value.setHex(syncHex);
+            this.twinSyncBeamMat.uniforms.uTime.value = world.elapsedTime;
+            this.twinSyncBeamMat.uniforms.uIntensity.value =
+              0.42 + syncTier * 0.16;
+          }
         } else {
           this.echoTetherMesh.visible = false;
+          if (this.twinSyncBeamMesh) {
+            this.twinSyncBeamMesh.visible = false;
+          }
         }
       }
     } else {
@@ -5344,6 +9754,9 @@ export class ArenaSceneRenderer {
       if (this.echoTetherMesh) {
         this.echoTetherMesh.visible = false;
       }
+      if (this.twinSyncBeamMesh) {
+        this.twinSyncBeamMesh.visible = false;
+      }
     }
 
     // =========================================================================
@@ -5351,6 +9764,10 @@ export class ArenaSceneRenderer {
     // =========================================================================
     const plate = world.pressurePlate;
     const pr = this.chronoPlateRig;
+    const isPrologueChapter =
+      (world.run?.chapter ?? 'prologue') === 'prologue' &&
+      !(world.expedition?.enabled && world.expedition.phase === 'safe_room');
+    pr.puzzleFixturesGroup.visible = isPrologueChapter;
     const act = plate.active ? 1 : 0;
     const playerOnPlate =
       Math.hypot(p.x - plate.x, p.z - plate.z) <=
@@ -5488,7 +9905,7 @@ export class ArenaSceneRenderer {
         nRig.group.visible = true;
         nRig.group.position.set(nodeState.x, 0, nodeState.z);
         nRig.coreMesh.rotation.y += dt * (nodeState.status === 'inactive' ? 1.4 : 4.2);
-        nRig.coreMesh.position.y = 1.22 + Math.sin(world.elapsedTime * 3.5 + n) * 0.08;
+        nRig.coreMesh.position.y = 2.66 + Math.sin(world.elapsedTime * 3.5 + n) * 0.07;
         nRig.ringMesh.rotation.z += dt * (nodeState.status === 'inactive' ? 1.2 : 3.2);
 
         if (nodeState.status === 'synchronized') {
@@ -5547,9 +9964,21 @@ export class ArenaSceneRenderer {
       this.gravityPinMesh.position.set(world.gravityPin.centerX, 0.05, world.gravityPin.centerZ);
       this.gravityPinMesh.scale.setScalar(world.gravityPin.radius);
       this.gravityPinMesh.rotation.z -= dt * 2.8;
-      this.gravityPinMat.opacity = 0.48 + Math.sin(world.elapsedTime * 8) * 0.14;
+      this.gravityPinMat.opacity = 0.52 + Math.sin(world.elapsedTime * 8) * 0.14;
+      this.gravityMineGroup.visible = true;
+      this.gravityMineGroup.position.set(
+        world.gravityPin.centerX,
+        0.58 + Math.sin(world.elapsedTime * 5.2) * 0.08,
+        world.gravityPin.centerZ
+      );
+      this.gravityMineGroup.rotation.y += dt * 3.1;
+      if (this.singularityGrenadeRig) {
+        this.singularityGrenadeRig.accretionHalo.rotation.z -= dt * 6.5;
+        this.singularityGrenadeRig.armingRing.rotation.z += dt * 4.2;
+      }
     } else {
       this.gravityPinMesh.visible = false;
+      this.gravityMineGroup.visible = false;
     }
 
     const traces = world.curator?.traces ?? [];
@@ -5671,14 +10100,36 @@ export class ArenaSceneRenderer {
         0.4 + progress * world.echoCollapse.blastRadius
       );
       this.echoCollapseWaveMat.opacity = Math.max(0, (1 - progress) * 0.9);
+
+      // Animate ECHO COLLAPSE fractured containment core expanding & spinning at blast epicenter
+      this.echoCollapseCoreGroup.visible = true;
+      this.echoCollapseCoreGroup.position.set(
+        world.echoCollapse.blastX,
+        1.15 + progress * 0.4,
+        world.echoCollapse.blastZ
+      );
+      const coreScale = Math.max(0.01, (1 - progress * 0.55) * 1.35);
+      this.echoCollapseCoreGroup.scale.setScalar(coreScale);
+      this.echoCollapseCoreGroup.rotation.y = progress * 5.2;
+      if (this.echoCollapseGyroA) this.echoCollapseGyroA.rotation.z = progress * 8.0;
+      if (this.echoCollapseGyroB) this.echoCollapseGyroB.rotation.x = -progress * 7.0;
+      for (let ep = 0; ep < this.echoCollapsePetals.length; ep++) {
+        const petal = this.echoCollapsePetals[ep];
+        petal.children.forEach((child) => {
+          child.position.z = 0.78 + progress * 0.85;
+        });
+      }
     } else {
       this.echoCollapseWaveMesh.visible = false;
+      this.echoCollapseCoreGroup.visible = false;
     }
 
     // 3. Pressure Plate mechanical depression, claw lock & holographic sync ring
-    pr.padGroup.position.y = 0.075 - act * 0.042;
+    const mechAlpha = computeDampAlpha(11, dt, this.reducedMotion);
+    const gateAlpha = computeDampAlpha(7.5, dt, this.reducedMotion);
+    pr.padGroup.position.y = dampScalar(pr.padGroup.position.y, 0.075 - act * 0.042, mechAlpha);
     for (let i = 0; i < pr.clawPivots.length; i++) {
-      pr.clawPivots[i].rotation.x = act * 0.46;
+      pr.clawPivots[i].rotation.x = dampScalar(pr.clawPivots[i].rotation.x, act * 0.46, mechAlpha);
     }
 
     if (plate.active) {
@@ -5706,12 +10157,16 @@ export class ArenaSceneRenderer {
       0.16 + act * 0.25 + Math.sin(world.elapsedTime * 5.0) * 0.05 * act;
     pr.syncRingMesh.rotation.z += dt * 1.8;
 
-    // 4. Conduit & Retractable Containment Barrier Column
+    // 4. Conduit & Smooth Hydraulic Containment Barrier Column
     pr.conduitCoreMaterial.color.setHex(plate.active ? 0x22d3ee : 0x0891b2);
     pr.conduitCoreMaterial.opacity = 0.42 + act * 0.52;
 
     const maxRetract = GAME_CONFIG.arena.chronoPlate.receiverHeight - 0.16;
-    pr.barrierColumnGroup.position.y = -act * maxRetract;
+    pr.barrierColumnGroup.position.y = dampScalar(
+      pr.barrierColumnGroup.position.y,
+      -act * maxRetract,
+      gateAlpha
+    );
 
     if (plate.barrierOpen) {
       pr.barrierStripMaterial.color.setHex(0x22d3ee);
@@ -5722,12 +10177,12 @@ export class ArenaSceneRenderer {
     } else {
       pr.barrierStripMaterial.color.setHex(0xf59e0b);
       pr.barrierStripMaterial.emissive.setHex(0xd97706);
-      pr.receiverBeaconMaterial.color.setHex(0xf59e0b);
+      pr.receiverBeaconMaterial.color.setHex(0xd4ad52);
       pr.receiverBeaconMaterial.emissive.setHex(0xd97706);
-      pr.receiverBeaconMaterial.emissiveIntensity = 1.1;
+      pr.receiverBeaconMaterial.emissiveIntensity = 0.65;
     }
-    pr.receiverBeaconMesh.rotation.y += dt * (1.2 + act * 2.8);
-    pr.receiverBeaconMesh.rotation.x = Math.sin(world.elapsedTime * 2.4) * 0.28;
+    pr.receiverBeaconMesh.rotation.z += dt * (1.2 + act * 2.8);
+    pr.receiverBeaconMesh.rotation.x = Math.PI * 0.5 + Math.sin(world.elapsedTime * 2.4) * 0.1;
 
     // 5. Phase 3 Stage 2 (TEST): Kinetic Resonance Receiver 01 & Stage 3 (COMBINE): Pad 02 + Final Barrier
     const puzzle = world.puzzle;
@@ -5769,9 +10224,17 @@ export class ArenaSceneRenderer {
         Math.hypot(p.x - combinePlate.x, p.z - combinePlate.z) <=
         combinePlate.radius + GAME_CONFIG.player.radius * 0.55;
 
-      pr.combinePadGroup.position.y = 0.075 - cpAct * 0.042;
+      pr.combinePadGroup.position.y = dampScalar(
+        pr.combinePadGroup.position.y,
+        0.075 - cpAct * 0.042,
+        mechAlpha
+      );
       for (let i = 0; i < pr.combineClawPivots.length; i++) {
-        pr.combineClawPivots[i].rotation.x = cpAct * 0.46;
+        pr.combineClawPivots[i].rotation.x = dampScalar(
+          pr.combineClawPivots[i].rotation.x,
+          cpAct * 0.46,
+          mechAlpha
+        );
       }
 
       if (combinePlate.active) {
@@ -5802,10 +10265,14 @@ export class ArenaSceneRenderer {
       pr.combinePlateConduitMaterial.color.setHex(combinePlate.active ? 0x22d3ee : 0x0891b2);
       pr.combinePlateConduitMaterial.opacity = combinePlate.active ? 0.94 : 0.42;
 
-      // Stage 3 Final Combine Barrier dual-lock rings & retraction
+      // Stage 3 Final Combine Barrier dual-lock rings & smooth hydraulic retraction
       const fbOpen = finalBarrier.open ? 1 : 0;
       const fbMaxRetract = GAME_CONFIG.arena.chronoPuzzle.finalBarrier.height - 0.16;
-      pr.finalBarrierColumnGroup.position.y = -fbOpen * fbMaxRetract;
+      pr.finalBarrierColumnGroup.position.y = dampScalar(
+        pr.finalBarrierColumnGroup.position.y,
+        -fbOpen * fbMaxRetract,
+        gateAlpha
+      );
 
       if (receiver.charged) {
         pr.finalBarrierReceiverBandMat.color.setHex(0xe0f2fe);
@@ -5873,12 +10340,7 @@ export class ArenaSceneRenderer {
         this.enemyGuardRecoilTimers.set(enemy.id, guardRecoil);
       }
 
-      if (guardRecoil > 0) {
-        const gRatio = Math.min(1, guardRecoil / 0.22);
-        rig.bodyGroup.scale.set(1 + 0.05 * gRatio, 1 - 0.06 * gRatio, 1 + 0.05 * gRatio);
-      } else {
-        rig.bodyGroup.scale.set(1, 1, 1);
-      }
+      // Scale squash-and-stretch is now smoothly damped per-rig below (do not reset to 1,1,1 every frame)
 
       const isBossEnemy = Boolean(world.boss && world.boss.id === enemy.id);
       const isExecutableWindow =
@@ -5954,41 +10416,62 @@ export class ArenaSceneRenderer {
           : enemy.aiState === 'recovery' || enemy.aiState === 'staggered';
         const enemySpeed = Math.hypot(enemy.vx, enemy.vz);
         const isMoving = bState === 'pursue' && enemySpeed > 0.12;
+        const isHoverBoss =
+          rig.archetype === 'choir' ||
+          rig.archetype === 'curator' ||
+          rig.archetype === 'warden_prime';
         const walkCycle = world.elapsedTime * (bPhase === 2 ? 6.2 : 4.5);
+        const bossBreath = computeOrganicBreath(
+          world.elapsedTime,
+          enemy.id.charCodeAt(0) * 0.41,
+          bPhase === 2 ? 2.85 : 2.1,
+          this.reducedMotion
+        );
+        const bossPoseAlpha = computeDampAlpha(
+          bState === 'attack' ? 24 : bState === 'phase_transition' ? 18 : 13.5,
+          animDt,
+          this.reducedMotion
+        );
 
-        // 1. Hydraulic Leg & Shin Stride
+        // 1. Smoothly Damped Hydraulic Leg & Shin Stride
         if (rig.leftLegPivot && rig.rightLegPivot) {
-          const legSwing = isMoving ? Math.sin(walkCycle) * 0.42 : 0;
-          rig.leftLegPivot.rotation.x = legSwing;
-          rig.rightLegPivot.rotation.x = -legSwing;
+          const legSwing = isMoving
+            ? Math.sin(walkCycle) * (isHoverBoss ? 0.2 : 0.44)
+            : isHoverBoss
+              ? bossBreath.sway * 0.08
+              : 0;
+          rig.leftLegPivot.rotation.x = dampScalar(rig.leftLegPivot.rotation.x, legSwing, bossPoseAlpha);
+          rig.rightLegPivot.rotation.x = dampScalar(rig.rightLegPivot.rotation.x, -legSwing, bossPoseAlpha);
           if (rig.leftShinPivot && rig.rightShinPivot) {
-            rig.leftShinPivot.rotation.x = isMoving
-              ? Math.max(0.05, -Math.sin(walkCycle + 0.5)) * 0.48
-              : 0.08;
-            rig.rightShinPivot.rotation.x = isMoving
-              ? Math.max(0.05, Math.sin(walkCycle + 0.5)) * 0.48
-              : 0.08;
+            const targetLShin = isMoving
+              ? Math.max(0.05, -Math.sin(walkCycle + 0.5)) * (isHoverBoss ? 0.25 : 0.5)
+              : 0.08 + bossBreath.chest * 0.02;
+            const targetRShin = isMoving
+              ? Math.max(0.05, Math.sin(walkCycle + 0.5)) * (isHoverBoss ? 0.25 : 0.5)
+              : 0.08 - bossBreath.chest * 0.02;
+            rig.leftShinPivot.rotation.x = dampScalar(rig.leftShinPivot.rotation.x, targetLShin, bossPoseAlpha);
+            rig.rightShinPivot.rotation.x = dampScalar(rig.rightShinPivot.rotation.x, targetRShin, bossPoseAlpha);
           }
         }
 
-        // 2. Helical Containment Cage Counter-Rotation
+        // 2. Helical Containment Cage / Sovereign Halo Counter-Rotation
         const ringRate =
           bState === 'phase_transition' || bState === 'attack'
-            ? 4.6
+            ? 4.8
             : bState === 'telegraph'
-              ? 3.2
+              ? 3.4
               : bState === 'recovery' || bState === 'staggered'
-                ? 0.38
+                ? 0.42
                 : bPhase === 2
-                  ? 2.4
-                  : 1.35;
+                  ? 2.5
+                  : 1.45;
         if (rig.outerHelixRing) {
           rig.outerHelixRing.rotation.z += dt * ringRate;
-          rig.outerHelixRing.rotation.y = Math.sin(world.elapsedTime * 1.8) * 0.22;
+          rig.outerHelixRing.rotation.y = Math.sin(world.elapsedTime * 1.8) * 0.24;
         }
         if (rig.innerHelixRing) {
-          rig.innerHelixRing.rotation.z -= dt * (ringRate * 1.35);
-          rig.innerHelixRing.rotation.x = Math.cos(world.elapsedTime * 2.1) * 0.25;
+          rig.innerHelixRing.rotation.z -= dt * (ringRate * 1.38);
+          rig.innerHelixRing.rotation.x = Math.cos(world.elapsedTime * 2.1) * 0.26;
         }
 
         if (rig.auxiliaryPivots) {
@@ -5999,26 +10482,30 @@ export class ArenaSceneRenderer {
               const restZ = Number(pivot.userData.restZ) || 0;
               const flex =
                 bState === 'telegraph'
-                  ? 0.3
+                  ? 0.34
                   : bState === 'attack'
-                    ? -0.44
+                    ? -0.48
                     : bState === 'recovery' || bState === 'staggered'
-                      ? 0.2
-                      : 0;
-              pivot.rotation.z =
-                restZ + side * flex + Math.sin(world.elapsedTime * 2.4 + a * 1.3) * 0.035;
-              pivot.rotation.x = bState === 'staggered' ? -0.18 : 0;
+                      ? 0.24
+                      : bossBreath.chest * 0.06;
+              const targetAuxZ =
+                restZ + side * flex + Math.sin(world.elapsedTime * 2.8 + a * 1.3) * 0.045;
+              const targetAuxX = bState === 'staggered' ? -0.2 : bossBreath.sway * 0.05;
+              pivot.rotation.z = dampScalar(pivot.rotation.z, targetAuxZ, bossPoseAlpha);
+              pivot.rotation.x = dampScalar(pivot.rotation.x, targetAuxX, bossPoseAlpha);
             } else {
               const baseY = Number(pivot.userData.baseY);
               if (Number.isFinite(baseY)) {
-                const motionScale = bState === 'attack' || bState === 'phase_transition' ? 2.4 : 1;
-                pivot.position.y =
-                  baseY + Math.sin(world.elapsedTime * 2.2 + a * 1.15) * 0.035 * motionScale;
+                const motionScale = bState === 'attack' || bState === 'phase_transition' ? 2.4 : 1.25;
+                const targetAuxY =
+                  baseY + Math.sin(world.elapsedTime * 2.4 + a * 1.15) * 0.045 * motionScale;
+                pivot.position.y = dampScalar(pivot.position.y, targetAuxY, bossPoseAlpha);
               }
               if (rig.archetype === 'curator') {
-                pivot.rotation.y =
+                const targetAuxYRot =
                   (Number(pivot.userData.baseRotY) || 0) +
-                  Math.sin(world.elapsedTime * 1.6 + a) * 0.075;
+                  Math.sin(world.elapsedTime * 1.8 + a) * 0.1;
+                pivot.rotation.y = dampScalar(pivot.rotation.y, targetAuxYRot, bossPoseAlpha);
               }
             }
           }
@@ -6028,14 +10515,10 @@ export class ArenaSceneRenderer {
         const shutterTargetX = bCoreExposed ? 0.34 : 0;
         const shutterTargetRotY = bCoreExposed ? 0.54 : 0;
         if (rig.leftShutterPivot && rig.rightShutterPivot) {
-          rig.leftShutterPivot.position.x +=
-            (-shutterTargetX - rig.leftShutterPivot.position.x) * poseAlpha;
-          rig.rightShutterPivot.position.x +=
-            (shutterTargetX - rig.rightShutterPivot.position.x) * poseAlpha;
-          rig.leftShutterPivot.rotation.y +=
-            (shutterTargetRotY - rig.leftShutterPivot.rotation.y) * poseAlpha;
-          rig.rightShutterPivot.rotation.y +=
-            (-shutterTargetRotY - rig.rightShutterPivot.rotation.y) * poseAlpha;
+          rig.leftShutterPivot.position.x = dampScalar(rig.leftShutterPivot.position.x, -shutterTargetX, bossPoseAlpha);
+          rig.rightShutterPivot.position.x = dampScalar(rig.rightShutterPivot.position.x, shutterTargetX, bossPoseAlpha);
+          rig.leftShutterPivot.rotation.y = dampScalar(rig.leftShutterPivot.rotation.y, shutterTargetRotY, bossPoseAlpha);
+          rig.rightShutterPivot.rotation.y = dampScalar(rig.rightShutterPivot.rotation.y, -shutterTargetRotY, bossPoseAlpha);
         }
 
         // 4. Core & Resonance Illumination
@@ -6070,7 +10553,7 @@ export class ArenaSceneRenderer {
           rig.coreMaterial.emissiveIntensity = bPhase === 2 ? 1.65 : 1.35;
         }
 
-        // 5. State & Attack Choreography + Spatial Floor Telegraphs
+        // 5. Smoothly Damped Boss Choreography, Archetype Poise & Spatial Floor Telegraphs
         rig.telegraphDiscMaterial.opacity = 0;
         rig.telegraphRingMaterial.opacity = 0;
 
@@ -6079,25 +10562,78 @@ export class ArenaSceneRenderer {
             ? Math.max(0, Math.min(1, 1 - enemy.stateTimer / enemy.stateDuration))
             : 0;
 
+        // Archetype baseline breathing / hover cadence
+        let bTargetBodyY = isHoverBoss
+          ? 0.14 + bossBreath.chest * 0.085
+          : isMoving
+            ? Math.pow(Math.abs(Math.sin(walkCycle)), 1.6) * 0.09
+            : bossBreath.chest * 0.028;
+        let bTargetBodyRotX = isMoving ? (isHoverBoss ? 0.12 : 0.085) : 0.02 + bossBreath.chest * 0.016;
+        let bTargetBodyRotZ = isMoving
+          ? Math.cos(walkCycle) * (isHoverBoss ? 0.045 : 0.06)
+          : bossBreath.sway * (isHoverBoss ? 0.055 : 0.024);
+
+        let bTargetTorsoX = isMoving ? 0.065 : bossBreath.chest * 0.035;
+        let bTargetTorsoY = isMoving ? -Math.sin(walkCycle) * 0.17 : bossBreath.sway * 0.075;
+        let bTargetTorsoZ = isMoving ? Math.cos(walkCycle) * 0.04 : -bossBreath.sway * 0.025;
+
+        let bTargetHeadX = -bTargetTorsoX * 0.4 + bossBreath.chest * 0.025;
+        let bTargetHeadY = -bTargetTorsoY * 0.45 + bossBreath.headScan * 0.14;
+        let bTargetHeadZ = bossBreath.headScan * 0.035;
+
+        const guardRatio = guardRecoil / 0.22;
+        const weaponRevJitter =
+          (rig.archetype === 'helix' || rig.archetype === 'matron') &&
+          (bState === 'telegraph' || bState === 'attack') &&
+          !this.reducedMotion
+            ? Math.sin(world.elapsedTime * 46) * 0.045
+            : 0;
+        let bTargetWeaponX =
+          (isMoving ? Math.sin(walkCycle) * 0.2 : -0.1 + bossBreath.weaponFloat * 0.065) -
+          0.18 * guardRatio;
+        let bTargetWeaponY = 0.12 + bossBreath.sway * 0.055;
+        let bTargetWeaponZ = bossBreath.weaponFloat * 0.04;
+
+        let bTargetSecX =
+          (isMoving ? -Math.sin(walkCycle) * 0.2 : -0.12 - bossBreath.weaponFloat * 0.055) -
+          0.18 * guardRatio;
+        let bTargetSecY = -0.16 - bossBreath.sway * 0.055;
+        let bTargetSecZ = -bossBreath.weaponFloat * 0.04;
+
+        let bSquash = 0;
+        let bStretch = 0;
+
         if (bState === 'dormant') {
           const wakeRatio = progress;
-          rig.bodyGroup.position.y = -0.26 * (1 - wakeRatio);
-          rig.bodyGroup.rotation.set(0.24 * (1 - wakeRatio), 0, 0);
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(0.18 * (1 - wakeRatio), 0, 0);
-          }
-          rig.weaponPivot.rotation.set(0.32 * (1 - wakeRatio), 0, 0);
-          rig.secondaryPivot.rotation.set(0.28 * (1 - wakeRatio), 0, 0);
+          bTargetBodyY = -0.26 * (1 - wakeRatio) + bossBreath.chest * 0.02;
+          bTargetBodyRotX = 0.24 * (1 - wakeRatio);
+          bTargetBodyRotZ = 0;
+          bTargetTorsoX = 0.18 * (1 - wakeRatio);
+          bTargetTorsoY = 0;
+          bTargetTorsoZ = 0;
+          bTargetWeaponX = 0.32 * (1 - wakeRatio);
+          bTargetWeaponY = 0;
+          bTargetWeaponZ = 0;
+          bTargetSecX = 0.28 * (1 - wakeRatio);
+          bTargetSecY = 0;
+          bTargetSecZ = 0;
           rig.telegraphRingMaterial.color.setHex(0xf59e0b);
           rig.telegraphRingMaterial.opacity = 0.55 * (1 - wakeRatio * 0.5);
         } else if (bState === 'phase_transition') {
-          rig.bodyGroup.position.y = Math.sin(progress * Math.PI) * 0.16;
-          rig.bodyGroup.rotation.set(-0.22, 0, Math.sin(world.elapsedTime * 22) * 0.06);
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(-0.28, Math.sin(progress * Math.PI * 2) * 0.22, 0);
-          }
-          rig.weaponPivot.rotation.set(-1.15, -0.38, 0.35);
-          rig.secondaryPivot.rotation.set(-1.05, 0.42, -0.35);
+          bTargetBodyY = (isHoverBoss ? 0.28 : 0.16) * Math.sin(progress * Math.PI);
+          bTargetBodyRotX = -0.24;
+          bTargetBodyRotZ = Math.sin(world.elapsedTime * 22) * 0.065;
+          bTargetTorsoX = -0.3;
+          bTargetTorsoY = Math.sin(progress * Math.PI * 2) * 0.24;
+          bTargetTorsoZ = 0;
+          bTargetHeadX = -0.28;
+          bTargetWeaponX = -1.2;
+          bTargetWeaponY = -0.4;
+          bTargetWeaponZ = 0.38;
+          bTargetSecX = -1.1;
+          bTargetSecY = 0.44;
+          bTargetSecZ = -0.38;
+          bStretch = Math.sin(progress * Math.PI) * 0.75;
           rig.telegraphDiscMaterial.color.setHex(0xef4444);
           rig.telegraphDiscMaterial.opacity = 0.32;
           rig.telegraphDisc.scale.setScalar(0.5 + progress * 0.7);
@@ -6109,12 +10645,7 @@ export class ArenaSceneRenderer {
           const teleColor = locked ? 0xef4444 : 0xf59e0b;
 
           if (bAttack === 'vector_ram') {
-            const tv = computeBossTelegraphVisuals(
-              bAttack,
-              progress,
-              locked,
-              this.reducedMotion
-            );
+            const tv = computeBossTelegraphVisuals(bAttack, progress, locked, this.reducedMotion);
             if (rig.ramLaneGroup && rig.ramLaneFillMat && rig.ramLaneBorderMat) {
               rig.ramLaneGroup.visible = true;
               rig.ramLaneGroup.position.set(0, 0.028, 0);
@@ -6132,20 +10663,21 @@ export class ArenaSceneRenderer {
               rig.ramLaneShaderMat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
               (rig.ramLaneShaderMat.uniforms.uColor.value as THREE.Color).setHex(tv.primaryHex);
             }
-            rig.bodyGroup.position.y = -0.1 * progress;
-            rig.bodyGroup.rotation.set(0.24 * progress, 0, 0);
-            if (rig.torsoPivot) {
-              rig.torsoPivot.rotation.set(0.22 * progress, 0.15 * progress, 0);
-            }
-            rig.weaponPivot.rotation.set(0.45 * progress, 0.25 * progress, -0.15 * progress);
-            rig.secondaryPivot.rotation.set(-0.45 * progress, -0.35 * progress, 0.2 * progress);
+            bTargetBodyY = -0.11 * progress;
+            bTargetBodyRotX = 0.26 * progress;
+            bTargetBodyRotZ = weaponRevJitter;
+            bTargetTorsoX = 0.24 * progress;
+            bTargetTorsoY = 0.16 * progress;
+            bTargetTorsoZ = 0;
+            bTargetWeaponX = 0.48 * progress + weaponRevJitter;
+            bTargetWeaponY = 0.25 * progress;
+            bTargetWeaponZ = -0.15 * progress;
+            bTargetSecX = -0.45 * progress;
+            bTargetSecY = -0.35 * progress;
+            bTargetSecZ = 0.2 * progress;
+            bSquash = 0.45 * progress;
           } else if (bAttack === 'helical_sweep') {
-            const tv = computeBossTelegraphVisuals(
-              bAttack,
-              progress,
-              locked,
-              this.reducedMotion
-            );
+            const tv = computeBossTelegraphVisuals(bAttack, progress, locked, this.reducedMotion);
             if (rig.sweepSectorGroup && rig.sweepSectorFillMat && rig.sweepSectorRimMat) {
               rig.sweepSectorGroup.visible = true;
               rig.sweepSectorFillMat.color.setHex(tv.primaryHex);
@@ -6161,19 +10693,20 @@ export class ArenaSceneRenderer {
               rig.sweepSectorShaderMat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
               (rig.sweepSectorShaderMat.uniforms.uColor.value as THREE.Color).setHex(tv.primaryHex);
             }
-            rig.bodyGroup.position.y = -0.06 * progress;
-            rig.bodyGroup.rotation.set(0.08 * progress, 0, -0.08 * progress);
-            if (rig.torsoPivot) {
-              rig.torsoPivot.rotation.set(-0.1 * progress, -0.72 * progress, 0.12 * progress);
-            }
-            rig.weaponPivot.rotation.set(0.25 * progress, 0.2 * progress, 0);
-            rig.secondaryPivot.rotation.set(
-              -0.42 * progress,
-              -1.28 * progress,
-              -0.28 * progress
-            );
+            bTargetBodyY = -0.06 * progress;
+            bTargetBodyRotX = 0.08 * progress;
+            bTargetBodyRotZ = -0.09 * progress;
+            bTargetTorsoX = -0.1 * progress;
+            bTargetTorsoY = -0.76 * progress;
+            bTargetTorsoZ = 0.12 * progress;
+            bTargetWeaponX = 0.25 * progress + weaponRevJitter;
+            bTargetWeaponY = 0.2 * progress;
+            bTargetWeaponZ = 0;
+            bTargetSecX = -0.42 * progress;
+            bTargetSecY = -1.32 * progress;
+            bTargetSecZ = -0.28 * progress;
+            bSquash = 0.3 * progress;
           } else {
-            // anchor_slam telegraph: inner slam disc (base radius = innerRadius 3.4m) + outer shockwave ring preview (base radius = 1.0m)
             rig.telegraphDisc.scale.setScalar(0.25 + progress * 0.75);
             rig.telegraphDiscMaterial.color.setHex(0xef4444);
             rig.telegraphDiscMaterial.opacity = 0.22 + progress * 0.32;
@@ -6192,13 +10725,19 @@ export class ArenaSceneRenderer {
               rig.slamShockwaveMat.opacity = 0.28 + progress * 0.35;
             }
 
-            rig.bodyGroup.position.y = -0.08 * progress;
-            rig.bodyGroup.rotation.set(-0.22 * progress, 0, 0);
-            if (rig.torsoPivot) {
-              rig.torsoPivot.rotation.set(-0.28 * progress, -0.35 * progress, 0.14 * progress);
-            }
-            rig.weaponPivot.rotation.set(-1.58 * progress, -0.28 * progress, 0.24 * progress);
-            rig.secondaryPivot.rotation.set(-0.65 * progress, 0.28 * progress, -0.22 * progress);
+            bTargetBodyY = (isHoverBoss ? 0.28 : 0.06) * progress - 0.06 * progress;
+            bTargetBodyRotX = -0.24 * progress;
+            bTargetBodyRotZ = weaponRevJitter;
+            bTargetTorsoX = -0.3 * progress;
+            bTargetTorsoY = -0.38 * progress;
+            bTargetTorsoZ = 0.15 * progress;
+            bTargetWeaponX = -1.62 * progress + weaponRevJitter;
+            bTargetWeaponY = -0.3 * progress;
+            bTargetWeaponZ = 0.26 * progress;
+            bTargetSecX = -0.68 * progress;
+            bTargetSecY = 0.3 * progress;
+            bTargetSecZ = -0.24 * progress;
+            bStretch = 0.45 * progress;
           }
         } else if (bState === 'attack') {
           if (bAttack === 'vector_ram') {
@@ -6221,13 +10760,19 @@ export class ArenaSceneRenderer {
               rig.ramLaneShaderMat.uniforms.uReducedMotion.value = this.reducedMotion ? 1 : 0;
               (rig.ramLaneShaderMat.uniforms.uColor.value as THREE.Color).setHex(0xef4444);
             }
-            rig.bodyGroup.position.y = -0.06;
-            rig.bodyGroup.rotation.set(0.34, 0, 0);
-            if (rig.torsoPivot) {
-              rig.torsoPivot.rotation.set(0.28, 0.22, 0);
-            }
-            rig.weaponPivot.rotation.set(0.65, 0.35, -0.18);
-            rig.secondaryPivot.rotation.set(0.45, -0.25, 0.15);
+            bTargetBodyY = -0.06;
+            bTargetBodyRotX = 0.36;
+            bTargetBodyRotZ = weaponRevJitter;
+            bTargetTorsoX = 0.3;
+            bTargetTorsoY = 0.24;
+            bTargetTorsoZ = 0;
+            bTargetWeaponX = 0.68 + weaponRevJitter;
+            bTargetWeaponY = 0.35;
+            bTargetWeaponZ = -0.18;
+            bTargetSecX = 0.45;
+            bTargetSecY = -0.25;
+            bTargetSecZ = 0.15;
+            bStretch = 0.55;
           } else if (bAttack === 'helical_sweep') {
             if (rig.sweepSectorGroup && rig.sweepSectorFillMat && rig.sweepSectorRimMat) {
               rig.sweepSectorGroup.visible = true;
@@ -6245,19 +10790,20 @@ export class ArenaSceneRenderer {
               (rig.sweepSectorShaderMat.uniforms.uColor.value as THREE.Color).setHex(0xef4444);
             }
             const sweepRatio = Math.min(1, progress * 1.35);
-            rig.bodyGroup.position.y = -0.04;
-            rig.bodyGroup.rotation.set(0.18, 0, 0.1 * sweepRatio);
-            if (rig.torsoPivot) {
-              rig.torsoPivot.rotation.set(0.16, -0.72 + sweepRatio * 1.58, 0);
-            }
-            rig.weaponPivot.rotation.set(0.38, -0.2, 0.15);
-            rig.secondaryPivot.rotation.set(
-              0.24,
-              -1.28 + sweepRatio * 2.55,
-              0.22
-            );
+            bTargetBodyY = -0.04;
+            bTargetBodyRotX = 0.2;
+            bTargetBodyRotZ = 0.12 * sweepRatio;
+            bTargetTorsoX = 0.18;
+            bTargetTorsoY = -0.74 + sweepRatio * 1.62;
+            bTargetTorsoZ = 0;
+            bTargetWeaponX = 0.4 + weaponRevJitter;
+            bTargetWeaponY = -0.22;
+            bTargetWeaponZ = 0.16;
+            bTargetSecX = 0.24;
+            bTargetSecY = -1.3 + sweepRatio * 2.6;
+            bTargetSecZ = 0.22;
+            bStretch = 0.35;
           } else {
-            // anchor_slam impact + expanding temporal shockwave ring
             rig.telegraphDisc.scale.setScalar(1);
             rig.telegraphDiscMaterial.color.setHex(0xef4444);
             rig.telegraphDiscMaterial.opacity = 0.48 * (1 - progress);
@@ -6272,184 +10818,296 @@ export class ArenaSceneRenderer {
               rig.slamShockwaveMat.opacity = 0.92;
             }
 
-            rig.bodyGroup.position.y = -0.14;
-            rig.bodyGroup.rotation.set(0.32, 0, 0);
-            if (rig.torsoPivot) {
-              rig.torsoPivot.rotation.set(0.38, 0.34, -0.14);
-            }
-            rig.weaponPivot.rotation.set(0.95, 0.22, -0.16);
-            rig.secondaryPivot.rotation.set(0.42, -0.28, 0.18);
+            bTargetBodyY = -0.15;
+            bTargetBodyRotX = 0.34;
+            bTargetBodyRotZ = 0;
+            bTargetTorsoX = 0.4;
+            bTargetTorsoY = 0.36;
+            bTargetTorsoZ = -0.14;
+            bTargetWeaponX = 0.98 + weaponRevJitter;
+            bTargetWeaponY = 0.24;
+            bTargetWeaponZ = -0.16;
+            bTargetSecX = 0.44;
+            bTargetSecY = -0.28;
+            bTargetSecZ = 0.18;
+            bSquash = 0.85 * (1 - progress * 0.55);
           }
         } else if (bState === 'recovery' || bState === 'staggered') {
           const isStagger = bState === 'staggered';
           rig.telegraphRingMaterial.color.setHex(0xffffff);
           rig.telegraphRingMaterial.opacity = 0.48;
-          rig.bodyGroup.position.y = isStagger ? -0.12 : -0.05;
-          rig.bodyGroup.rotation.set(
-            isStagger ? -0.24 : 0.2,
-            0,
-            isStagger ? Math.sin(world.elapsedTime * 18) * 0.08 : 0
-          );
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(
-              isStagger ? -0.2 : 0.22,
-              isStagger ? Math.cos(world.elapsedTime * 14) * 0.14 : 0.18,
-              0
-            );
-          }
-          // Arms drop wide open to expose the unshielded Chrono-Reactor Core
-          rig.weaponPivot.rotation.set(0.52, -0.45, 0.28);
-          rig.secondaryPivot.rotation.set(0.48, 0.45, -0.28);
-        } else {
-          // Pursue / Heavy Stomp
-          const stomp = isMoving
-            ? Math.pow(Math.abs(Math.sin(walkCycle)), 1.6) * 0.085
-            : Math.sin(world.elapsedTime * 2.2) * 0.018;
-          rig.bodyGroup.position.y = stomp;
-          rig.bodyGroup.rotation.set(
-            isMoving ? 0.08 : 0.02,
-            0,
-            isMoving ? Math.cos(walkCycle) * 0.055 : 0
-          );
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(
-              isMoving ? 0.06 : Math.sin(world.elapsedTime * 2.2) * 0.02,
-              isMoving ? -Math.sin(walkCycle) * 0.16 : 0,
-              0
-            );
-          }
-          const guardRatio = guardRecoil / 0.22;
-          rig.weaponPivot.rotation.set(
-            (isMoving ? Math.sin(walkCycle) * 0.18 : -0.1) - 0.18 * guardRatio,
-            0.12,
-            0
-          );
-          rig.secondaryPivot.rotation.set(
-            (isMoving ? -Math.sin(walkCycle) * 0.18 : -0.12) - 0.18 * guardRatio,
-            -0.16,
-            0
-          );
+          bTargetBodyY = (isStagger ? -0.14 : -0.05) + bossBreath.chest * 0.025;
+          bTargetBodyRotX = isStagger ? -0.25 : 0.2;
+          bTargetBodyRotZ = isStagger ? Math.sin(world.elapsedTime * 16) * 0.095 : bossBreath.sway * 0.03;
+          bTargetTorsoX = isStagger ? -0.22 : 0.22;
+          bTargetTorsoY = isStagger ? Math.cos(world.elapsedTime * 13) * 0.16 : 0.18;
+          bTargetTorsoZ = 0;
+          bTargetHeadX = isStagger ? 0.28 : 0.16;
+          bTargetHeadY = isStagger ? Math.sin(world.elapsedTime * 15) * 0.26 : 0;
+          bTargetWeaponX = 0.54;
+          bTargetWeaponY = -0.48;
+          bTargetWeaponZ = 0.3;
+          bTargetSecX = 0.5;
+          bTargetSecY = 0.48;
+          bTargetSecZ = -0.3;
+          bSquash = isStagger ? 0.4 : 0.18;
         }
 
+        if (enemy.aiState === 'staggered' && !this.reducedMotion) {
+          bTargetTorsoZ += Math.sin(world.elapsedTime * 36 + enemy.id.length) * 0.085;
+          bTargetHeadZ -= Math.sin(world.elapsedTime * 28) * 0.07;
+        }
         if (enemy.hitFlashTimer > 0) {
           const hitRatio = Math.min(1, enemy.hitFlashTimer / 0.14);
-          rig.bodyGroup.rotation.x -= 0.18 * hitRatio;
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.x -= 0.16 * hitRatio;
-          }
+          bTargetBodyRotX -= 0.22 * hitRatio;
+          bTargetTorsoX -= 0.21 * hitRatio;
+          bTargetTorsoZ += Math.sin(world.elapsedTime * 55) * 0.06 * hitRatio;
+          bSquash = Math.max(bSquash, 0.56 * hitRatio);
         }
+
+        // Apply smooth damped poses + volume-preserving squash & stretch to Boss rig
+        rig.bodyGroup.position.y = dampScalar(rig.bodyGroup.position.y, bTargetBodyY, bossPoseAlpha);
+        dampEuler(rig.bodyGroup.rotation, bTargetBodyRotX, 0, bTargetBodyRotZ, bossPoseAlpha);
+        const bScale = computeSquashStretch(bSquash, bStretch, this.reducedMotion);
+        rig.bodyGroup.scale.x = dampScalar(rig.bodyGroup.scale.x, bScale.scaleXZ, bossPoseAlpha);
+        rig.bodyGroup.scale.y = dampScalar(rig.bodyGroup.scale.y, bScale.scaleY, bossPoseAlpha);
+        rig.bodyGroup.scale.z = dampScalar(rig.bodyGroup.scale.z, bScale.scaleXZ, bossPoseAlpha);
+
+        if (rig.torsoPivot) {
+          dampEuler(rig.torsoPivot.rotation, bTargetTorsoX, bTargetTorsoY, bTargetTorsoZ, bossPoseAlpha);
+        }
+        if (rig.headPivot) {
+          dampEuler(rig.headPivot.rotation, bTargetHeadX, bTargetHeadY, bTargetHeadZ, bossPoseAlpha);
+        }
+        dampEuler(rig.weaponPivot.rotation, bTargetWeaponX, bTargetWeaponY, bTargetWeaponZ, bossPoseAlpha);
+        dampEuler(rig.secondaryPivot.rotation, bTargetSecX, bTargetSecY, bTargetSecZ, bossPoseAlpha);
         continue;
       }
 
       const enemySpeed = Math.hypot(enemy.vx, enemy.vz);
       const isEnemyMoving =
         (enemy.aiState === 'pursue' || enemy.aiState === 'idle') && enemySpeed > 0.12;
+      const seedOffset = enemy.id.charCodeAt(0) * 0.73 + (enemy.id.charCodeAt(enemy.id.length - 1) || 1) * 0.37;
       const walkCycle =
-        world.elapsedTime * (enemy.archetype === 'scrapper' ? 10.6 : 4.8) +
-        enemy.id.charCodeAt(0);
+        world.elapsedTime *
+          (enemy.archetype === 'scrapper' || enemy.archetype === 'phase_stalker' ? 10.6 : 5.0) +
+        seedOffset;
+      const enemyBreath = computeOrganicBreath(
+        world.elapsedTime,
+        seedOffset,
+        enemy.archetype === 'scrapper' || enemy.archetype === 'phase_stalker' ? 3.2 : 2.25,
+        this.reducedMotion
+      );
+      const enemyPoseAlpha = computeDampAlpha(
+        enemy.aiState === 'attack' ? 24 : enemy.aiState === 'staggered' ? 16 : 14,
+        animDt,
+        this.reducedMotion
+      );
 
-      // Leg & Shin Articulation
+      // 1. Smoothly Damped Leg & Shin Articulation
       if (rig.leftLegPivot && rig.rightLegPivot) {
-        const legAmp = enemy.archetype === 'scrapper' ? 0.54 : 0.38;
-        const legSwing = isEnemyMoving ? Math.sin(walkCycle) * legAmp : 0;
-        rig.leftLegPivot.rotation.x = legSwing;
-        rig.rightLegPivot.rotation.x = -legSwing;
+        const legAmp = enemy.archetype === 'scrapper' || enemy.archetype === 'phase_stalker' ? 0.56 : 0.4;
+        const targetLegSwing = isEnemyMoving ? Math.sin(walkCycle) * legAmp : 0;
+        rig.leftLegPivot.rotation.x = dampScalar(rig.leftLegPivot.rotation.x, targetLegSwing, enemyPoseAlpha);
+        rig.rightLegPivot.rotation.x = dampScalar(rig.rightLegPivot.rotation.x, -targetLegSwing, enemyPoseAlpha);
 
         if (rig.leftShinPivot && rig.rightShinPivot) {
-          if (
-            enemy.archetype === 'bastion' ||
-            enemy.archetype === 'aegis_sentinel'
-          ) {
-            rig.leftShinPivot.rotation.x = isEnemyMoving
-              ? Math.max(0.06, -Math.sin(walkCycle + 0.5)) * 0.48
-              : 0.08;
-            rig.rightShinPivot.rotation.x = isEnemyMoving
-              ? Math.max(0.06, Math.sin(walkCycle + 0.5)) * 0.48
-              : 0.08;
+          let targetLShin = 0.08;
+          let targetRShin = 0.08;
+          if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
+            targetLShin = isEnemyMoving
+              ? Math.max(0.06, -Math.sin(walkCycle + 0.5)) * 0.5
+              : 0.09 + enemyBreath.chest * 0.02;
+            targetRShin = isEnemyMoving
+              ? Math.max(0.06, Math.sin(walkCycle + 0.5)) * 0.5
+              : 0.09 - enemyBreath.chest * 0.02;
           } else {
-            // Scrapper reverse-jointed digitigrade spring knee
-            rig.leftShinPivot.rotation.x = isEnemyMoving
-              ? -0.22 + Math.sin(walkCycle + 0.7) * 0.38
-              : -0.18;
-            rig.rightShinPivot.rotation.x = isEnemyMoving
-              ? -0.22 - Math.sin(walkCycle + 0.7) * 0.38
-              : -0.18;
+            // Digitigrade spring knee
+            targetLShin = isEnemyMoving
+              ? -0.22 + Math.sin(walkCycle + 0.7) * 0.4
+              : -0.18 + enemyBreath.chest * 0.035;
+            targetRShin = isEnemyMoving
+              ? -0.22 - Math.sin(walkCycle + 0.7) * 0.4
+              : -0.18 - enemyBreath.chest * 0.035;
           }
+          rig.leftShinPivot.rotation.x = dampScalar(rig.leftShinPivot.rotation.x, targetLShin, enemyPoseAlpha);
+          rig.rightShinPivot.rotation.x = dampScalar(rig.rightShinPivot.rotation.x, targetRShin, enemyPoseAlpha);
         }
       }
 
-      if (enemy.archetype === 'scout' || enemy.archetype === 'null_weaver') {
-        const hoverPhase = world.elapsedTime * 3.8 + enemy.x * 0.4;
-        rig.bodyGroup.position.y =
-          Math.sin(hoverPhase) * 0.14 + Math.cos(hoverPhase * 1.9) * 0.04;
-        rig.bodyGroup.rotation.x = isEnemyMoving ? 0.14 : Math.sin(hoverPhase * 0.7) * 0.04;
-        rig.bodyGroup.rotation.z = Math.cos(hoverPhase * 0.85) * 0.06;
+      if (rig.eliteCrownMesh && rig.eliteCrownMaterial) {
+        if (enemy.modifier) {
+          rig.eliteCrownMesh.visible = true;
+          rig.eliteCrownMesh.rotation.z = world.elapsedTime * 2.4;
+          const crownColor =
+            enemy.modifier === 'overclocked'
+              ? 0xf59e0b
+              : enemy.modifier === 'phase_shielded'
+                ? 0x38bdf8
+                : 0xef4444;
+          rig.eliteCrownMaterial.color.setHex(crownColor);
+          rig.eliteCrownMaterial.opacity = 0.72 + Math.sin(world.elapsedTime * 6.0) * 0.2;
+        } else {
+          rig.eliteCrownMesh.visible = false;
+        }
+      }
+
+      // 2. Archetype Baseline Locomotion & Organic Idle Breathing Targets
+      let eTargetBodyY = enemyBreath.chest * 0.022;
+      let eTargetBodyRotX = 0.02 + enemyBreath.chest * 0.015;
+      let eTargetBodyRotZ = enemyBreath.sway * 0.022;
+
+      let eTargetTorsoX = enemyBreath.chest * 0.028;
+      let eTargetTorsoY = enemyBreath.sway * 0.07;
+      let eTargetTorsoZ = -enemyBreath.sway * 0.022;
+
+      let eTargetHeadX = -enemyBreath.chest * 0.02;
+      let eTargetHeadY = enemyBreath.headScan * 0.16;
+      let eTargetHeadZ = enemyBreath.headScan * 0.03;
+
+      let eTargetWeaponX = isEnemyMoving ? Math.sin(walkCycle) * 0.18 : enemyBreath.weaponFloat * 0.06;
+      let eTargetWeaponY = enemyBreath.sway * 0.04;
+      let eTargetWeaponZ = enemyBreath.weaponFloat * 0.035;
+
+      let eTargetSecX = 0;
+      let eTargetSecY = 0;
+      let eTargetSecZ = 0;
+      let dampSecondary = false;
+
+      let eTargetLeftArmX = -0.18;
+      let eTargetLeftArmY = 0.16;
+      let eTargetLeftArmZ = -0.1;
+      let eTargetRightArmX = -0.18;
+      let eTargetRightArmY = -0.16;
+      let eTargetRightArmZ = 0.1;
+      let driveDualArms = false;
+
+      let eSquash = 0;
+      let eStretch = 0;
+
+      if (enemy.archetype === 'null_weaver') {
+        const hoverPhase = world.elapsedTime * 3.1 + seedOffset;
+        eTargetBodyY = Math.sin(hoverPhase) * 0.15 + enemyBreath.chest * 0.03;
+        eTargetBodyRotX = isEnemyMoving ? 0.14 : Math.sin(hoverPhase * 0.6) * 0.055;
+        eTargetBodyRotZ = Math.cos(hoverPhase * 0.8) * 0.07;
         const gyroRate =
-          enemy.aiState === 'telegraph' ? 4.8 : enemy.aiState === 'recovery' ? 0.45 : 1.65;
-        rig.secondaryPivot.rotation.y += dt * gyroRate;
-      } else if (
-        enemy.archetype === 'bastion' ||
-        enemy.archetype === 'eraser' ||
-        enemy.archetype === 'aegis_sentinel'
-      ) {
-        // BASTION-09: Heavy, deliberate hydraulic stomp, fortified shield brace, high-mass weight transfer
+          enemy.aiState === 'telegraph' ? 5.2 : enemy.aiState === 'recovery' ? 0.55 : 1.85;
+        if (rig.outerHelixRing) {
+          rig.outerHelixRing.rotation.z += dt * gyroRate;
+          rig.outerHelixRing.rotation.y += dt * gyroRate * 0.65;
+        }
+        if (rig.innerHelixRing) {
+          rig.innerHelixRing.rotation.x -= dt * gyroRate * 1.45;
+          rig.innerHelixRing.rotation.z -= dt * gyroRate * 0.8;
+        }
+      } else if (enemy.archetype === 'siphon') {
+        const hoverPhase = world.elapsedTime * 3.3 + seedOffset;
+        eTargetBodyY = Math.sin(hoverPhase) * 0.15 + enemyBreath.chest * 0.025;
+        eTargetBodyRotX = isEnemyMoving ? 0.2 : 0.05 + enemyBreath.chest * 0.025;
+        eTargetBodyRotZ = Math.cos(hoverPhase * 0.8) * 0.075;
+        rig.secondaryPivot.rotation.y += dt * (enemy.aiState === 'telegraph' ? 3.5 : 1.25);
+      } else if (enemy.archetype === 'aegis_sentinel') {
+        const hoverPhase = world.elapsedTime * 2.8 + seedOffset;
+        eTargetBodyY = Math.sin(hoverPhase) * 0.13 + enemyBreath.chest * 0.025;
+        eTargetBodyRotX = isEnemyMoving ? 0.11 : enemyBreath.chest * 0.02;
+        eTargetBodyRotZ = Math.cos(hoverPhase * 0.7) * 0.05;
+        rig.secondaryPivot.rotation.z += dt * (enemy.aiState === 'telegraph' ? 2.6 : 1.0);
+      } else if (enemy.archetype === 'scout') {
+        const strideWave = Math.sin(walkCycle);
+        eTargetBodyY = isEnemyMoving
+          ? Math.abs(strideWave) * 0.06
+          : enemyBreath.chest * 0.02;
+        eTargetBodyRotX = isEnemyMoving ? 0.13 : 0.03 + enemyBreath.chest * 0.015;
+        eTargetBodyRotZ = isEnemyMoving ? Math.cos(walkCycle) * 0.045 : enemyBreath.sway * 0.02;
+        eTargetTorsoY = isEnemyMoving ? -strideWave * 0.18 : enemyBreath.sway * 0.08;
+        eTargetWeaponX = isEnemyMoving ? Math.sin(walkCycle) * 0.12 : -0.06 + enemyBreath.weaponFloat * 0.05;
+      } else if (enemy.archetype === 'resonance_warden') {
+        const hoverPhase = world.elapsedTime * 2.9 + seedOffset;
+        eTargetBodyY = Math.sin(hoverPhase) * 0.17 + enemyBreath.chest * 0.03;
+        eTargetBodyRotX = isEnemyMoving ? 0.1 : enemyBreath.chest * 0.02;
+        eTargetBodyRotZ = Math.cos(hoverPhase * 0.7) * 0.06;
+        const ringSpin = enemy.tetherTargetId ? 3.1 : 1.5;
+        if (rig.outerHelixRing) {
+          rig.outerHelixRing.rotation.z += dt * ringSpin;
+          rig.outerHelixRing.rotation.x = Math.sin(hoverPhase * 0.8) * 0.28;
+        }
+        if (rig.innerHelixRing) {
+          rig.innerHelixRing.rotation.y -= dt * ringSpin * 1.5;
+          rig.innerHelixRing.rotation.z -= dt * ringSpin * 0.75;
+        }
+      } else if (enemy.archetype === 'chrono_mortar') {
+        eTargetBodyY = isEnemyMoving
+          ? Math.abs(Math.sin(walkCycle)) * 0.05
+          : enemyBreath.chest * 0.015;
+        eTargetBodyRotX = 0;
+        eTargetBodyRotZ = isEnemyMoving ? Math.cos(walkCycle) * 0.04 : enemyBreath.sway * 0.015;
+        eTargetWeaponX = -0.14 + enemyBreath.weaponFloat * 0.04;
+      } else if (enemy.archetype === 'phase_stalker' || enemy.archetype === 'eraser') {
+        const phasePulse = (enemy.phaseShiftTimer ?? 0) > 0 ? 0.14 : 0;
+        const prowlWave = Math.sin(walkCycle * 1.15);
+        eTargetBodyY =
+          (isEnemyMoving ? Math.abs(prowlWave) * 0.085 : enemyBreath.chest * 0.03) +
+          phasePulse;
+        eTargetBodyRotX = isEnemyMoving ? 0.27 : 0.13 + enemyBreath.chest * 0.025;
+        eTargetBodyRotZ = isEnemyMoving ? Math.cos(walkCycle * 1.15) * 0.095 : enemyBreath.sway * 0.035;
+        eTargetTorsoX = isEnemyMoving ? 0.16 : 0.05 + enemyBreath.chest * 0.035;
+        eTargetTorsoY = isEnemyMoving ? -prowlWave * 0.26 : enemyBreath.sway * 0.1;
+        eTargetHeadY = enemyBreath.headScan * 0.22;
+        if (rig.leftArmPivot && rig.rightArmPivot) {
+          driveDualArms = true;
+          const weave = isEnemyMoving ? prowlWave * 0.34 : enemyBreath.weaponFloat * 0.12;
+          eTargetLeftArmX = -0.22 + weave;
+          eTargetRightArmX = -0.22 - weave;
+        }
+      } else if (enemy.archetype === 'bastion') {
         const stompBounce = isEnemyMoving
-          ? Math.pow(Math.abs(Math.sin(walkCycle)), 1.7) * 0.072
-          : Math.sin(world.elapsedTime * 2.1) * 0.014;
-        rig.bodyGroup.position.y = stompBounce;
-        rig.bodyGroup.rotation.z = isEnemyMoving ? Math.cos(walkCycle) * 0.052 : 0;
-        rig.bodyGroup.rotation.x = isEnemyMoving ? 0.07 : 0.02;
+          ? Math.pow(Math.abs(Math.sin(walkCycle)), 1.7) * 0.078
+          : enemyBreath.chest * 0.02;
+        eTargetBodyY = stompBounce;
+        eTargetBodyRotZ = isEnemyMoving ? Math.cos(walkCycle) * 0.056 : enemyBreath.sway * 0.018;
+        eTargetBodyRotX = isEnemyMoving ? 0.075 : 0.025 + enemyBreath.chest * 0.015;
+        eTargetTorsoX = isEnemyMoving ? 0.065 : enemyBreath.chest * 0.024;
+        eTargetTorsoY = isEnemyMoving ? -Math.sin(walkCycle) * 0.15 : 0.1 + enemyBreath.sway * 0.055;
+        eTargetHeadY = isEnemyMoving ? Math.sin(walkCycle) * 0.1 : -0.06 + enemyBreath.headScan * 0.12;
 
-        if (rig.torsoPivot) {
-          rig.torsoPivot.rotation.set(
-            isEnemyMoving ? 0.06 : Math.sin(world.elapsedTime * 2.1) * 0.015,
-            isEnemyMoving ? -Math.sin(walkCycle) * 0.14 : 0.12,
-            0
-          );
-        }
-        if (rig.headPivot) {
-          rig.headPivot.rotation.y = isEnemyMoving ? Math.sin(walkCycle) * 0.08 : -0.08;
-        }
-
-        // Aegis Tower Shield posture: braced forward in guard, swung wide open during recovery/stagger, recoils on blocked hit
+        dampSecondary = true;
         const guardRecoilRatio = guardRecoil / 0.22;
         if (enemy.aiState === 'recovery' || enemy.aiState === 'staggered') {
-          rig.secondaryPivot.rotation.set(0.14, -0.78, -0.18);
+          eTargetSecX = 0.14;
+          eTargetSecY = -0.82;
+          eTargetSecZ = -0.2;
         } else if (enemy.aiState === 'telegraph') {
-          rig.secondaryPivot.rotation.set(-0.08, -0.46, 0);
+          eTargetSecX = -0.08;
+          eTargetSecY = -0.48;
+          eTargetSecZ = 0;
         } else {
-          rig.secondaryPivot.rotation.set(
-            -0.18 * guardRecoilRatio,
-            0.28 - 0.22 * guardRecoilRatio,
-            0.08 * guardRecoilRatio
-          );
+          eTargetSecX = -0.18 * guardRecoilRatio + enemyBreath.chest * 0.025;
+          eTargetSecY = 0.28 - 0.22 * guardRecoilRatio + enemyBreath.sway * 0.03;
+          eTargetSecZ = 0.08 * guardRecoilRatio;
         }
       } else {
         // SCRAPPER-X2: Agile low-slung digitigrade stalk, twitchy head scan, counter-balancing tail whip
         const prowlWave = Math.sin(walkCycle);
         const prowlCos = Math.cos(walkCycle);
-        rig.bodyGroup.rotation.x = isEnemyMoving ? 0.22 : 0.08;
-        rig.bodyGroup.rotation.z = isEnemyMoving ? prowlCos * 0.085 : 0;
-        rig.bodyGroup.position.y = isEnemyMoving
-          ? Math.abs(prowlWave) * 0.075
-          : Math.sin(world.elapsedTime * 4.2) * 0.024;
-        rig.secondaryPivot.rotation.y = isEnemyMoving
-          ? prowlCos * 0.34
-          : Math.sin(world.elapsedTime * 2.8) * 0.16;
-
-        if (rig.torsoPivot) {
-          rig.torsoPivot.rotation.set(
-            isEnemyMoving ? 0.12 : Math.sin(world.elapsedTime * 4.2) * 0.03,
-            isEnemyMoving ? -prowlWave * 0.26 : Math.cos(world.elapsedTime * 2.6) * 0.08,
-            isEnemyMoving ? prowlCos * 0.06 : 0
-          );
-        }
-        if (rig.headPivot) {
-          rig.headPivot.rotation.set(
-            isEnemyMoving ? -0.1 : 0,
-            Math.sin(world.elapsedTime * 5.5 + i) * 0.14,
-            0
-          );
+        eTargetBodyRotX = isEnemyMoving ? 0.23 : 0.09 + enemyBreath.chest * 0.025;
+        eTargetBodyRotZ = isEnemyMoving ? prowlCos * 0.09 : enemyBreath.sway * 0.03;
+        eTargetBodyY = isEnemyMoving
+          ? Math.abs(prowlWave) * 0.08
+          : enemyBreath.chest * 0.03;
+        dampSecondary = true;
+        eTargetSecY = isEnemyMoving
+          ? prowlCos * 0.38
+          : Math.sin(world.elapsedTime * 3.1 + seedOffset) * 0.2;
+        eTargetTorsoX = isEnemyMoving ? 0.13 : enemyBreath.chest * 0.04;
+        eTargetTorsoY = isEnemyMoving ? -prowlWave * 0.28 : enemyBreath.sway * 0.1;
+        eTargetTorsoZ = isEnemyMoving ? prowlCos * 0.065 : -enemyBreath.sway * 0.03;
+        eTargetHeadX = isEnemyMoving ? -0.1 : enemyBreath.chest * 0.03;
+        eTargetHeadY = enemyBreath.headScan * 0.24;
+        if (rig.leftArmPivot && rig.rightArmPivot) {
+          driveDualArms = true;
+          const weave = isEnemyMoving ? prowlWave * 0.34 : enemyBreath.weaponFloat * 0.12;
+          eTargetLeftArmX = -0.18 + weave;
+          eTargetRightArmX = -0.18 - weave;
         }
       }
 
@@ -6492,7 +11150,7 @@ export class ArenaSceneRenderer {
         rig.coreMaterial.emissiveIntensity = 1.28;
       }
 
-      // Telegraph ground rings & archetype-specific weapon windup / strike / recovery poses
+      // 3. Telegraph, Attack, Recovery & Stagger Target Overrides
       if (enemy.aiState === 'telegraph') {
         const progress =
           enemy.stateDuration > 0
@@ -6507,28 +11165,44 @@ export class ArenaSceneRenderer {
         this.syncTelegraphShader(rig, true, progress, shaderHex, 0.72 + progress * 0.25, world.elapsedTime);
 
         if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
-          // Bastion / Sentinel raises heavy shock-maul high overhead while planting legs
-          rig.bodyGroup.position.y = -0.04 * progress;
-          rig.bodyGroup.rotation.x = -0.18 * progress;
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(-0.22 * progress, -0.42 * progress, 0.1 * progress);
-          }
-          rig.weaponPivot.rotation.set(-1.32 * progress, -0.32 * progress, 0.24 * progress);
-        } else if (enemy.archetype === 'scrapper') {
-          // Scrapper coils low and spreads twin mantis blades wide
-          rig.bodyGroup.position.y = -0.14 * progress;
-          rig.bodyGroup.rotation.x = -0.22 * progress;
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(-0.18 * progress, 0, 0);
-          }
+          eTargetBodyY = -0.04 * progress;
+          eTargetBodyRotX = -0.2 * progress;
+          eTargetTorsoX = -0.24 * progress;
+          eTargetTorsoY = -0.45 * progress;
+          eTargetTorsoZ = 0.11 * progress;
+          eTargetWeaponX = -1.36 * progress;
+          eTargetWeaponY = -0.34 * progress;
+          eTargetWeaponZ = 0.26 * progress;
+          eStretch = 0.3 * progress;
+        } else if (
+          enemy.archetype === 'scrapper' ||
+          enemy.archetype === 'phase_stalker' ||
+          enemy.archetype === 'eraser'
+        ) {
+          eTargetBodyY = -0.15 * progress;
+          eTargetBodyRotX = -0.22 * progress;
+          eTargetTorsoX = -0.18 * progress;
+          eTargetTorsoY = 0;
           if (rig.leftArmPivot && rig.rightArmPivot) {
-            rig.leftArmPivot.rotation.set(-0.92 * progress, 0.58 * progress, -0.36 * progress);
-            rig.rightArmPivot.rotation.set(-0.92 * progress, -0.58 * progress, 0.36 * progress);
+            driveDualArms = true;
+            eTargetLeftArmX = -0.96 * progress;
+            eTargetLeftArmY = 0.62 * progress;
+            eTargetLeftArmZ = -0.38 * progress;
+            eTargetRightArmX = -0.96 * progress;
+            eTargetRightArmY = -0.62 * progress;
+            eTargetRightArmZ = 0.38 * progress;
           } else {
-            rig.weaponPivot.rotation.set(-0.85 * progress, 0, 0);
+            eTargetWeaponX = -0.9 * progress;
           }
+          eSquash = 0.55 * progress;
+        } else if (enemy.archetype === 'chrono_mortar') {
+          eTargetBodyY = -0.12 * progress;
+          eTargetWeaponX = -0.46 * progress;
+          eSquash = 0.45 * progress;
         } else {
-          rig.weaponPivot.rotation.set(-0.24 * progress, 0, 0);
+          eTargetBodyRotX = -0.1 * progress;
+          eTargetWeaponX = -0.28 * progress;
+          eStretch = 0.22 * progress;
         }
 
         if (rig.laserSightMaterial) {
@@ -6540,29 +11214,44 @@ export class ArenaSceneRenderer {
         rig.telegraphRingMaterial.opacity = 0.92;
         this.syncTelegraphShader(rig, true, 1, 0xef4444, 0.88, world.elapsedTime);
         if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
-          // Bastion commits to heavy downward ground-slam
-          rig.bodyGroup.position.y = -0.06;
-          rig.bodyGroup.rotation.x = 0.28;
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(0.32, 0.44, -0.12);
-          }
-          rig.weaponPivot.rotation.set(0.88, 0.22, -0.18);
-        } else if (enemy.archetype === 'scrapper') {
-          // Scrapper lunges forward with twin scissor-cross slash
-          rig.bodyGroup.position.y = 0.04;
-          rig.bodyGroup.rotation.x = 0.34;
-          if (rig.torsoPivot) {
-            rig.torsoPivot.rotation.set(0.28, 0, 0);
-          }
+          eTargetBodyY = -0.07;
+          eTargetBodyRotX = 0.3;
+          eTargetTorsoX = 0.34;
+          eTargetTorsoY = 0.46;
+          eTargetTorsoZ = -0.12;
+          eTargetWeaponX = 0.92;
+          eTargetWeaponY = 0.24;
+          eTargetWeaponZ = -0.18;
+          eSquash = 0.68;
+        } else if (
+          enemy.archetype === 'scrapper' ||
+          enemy.archetype === 'phase_stalker' ||
+          enemy.archetype === 'eraser'
+        ) {
+          eTargetBodyY = 0.05;
+          eTargetBodyRotX = 0.36;
+          eTargetTorsoX = 0.3;
+          eTargetTorsoY = 0;
           if (rig.leftArmPivot && rig.rightArmPivot) {
-            rig.leftArmPivot.rotation.set(0.76, -0.64, 0.28);
-            rig.rightArmPivot.rotation.set(0.76, 0.64, -0.28);
+            driveDualArms = true;
+            eTargetLeftArmX = 0.8;
+            eTargetLeftArmY = -0.66;
+            eTargetLeftArmZ = 0.3;
+            eTargetRightArmX = 0.8;
+            eTargetRightArmY = 0.66;
+            eTargetRightArmZ = -0.3;
           } else {
-            rig.weaponPivot.rotation.set(0.74, 0, 0);
+            eTargetWeaponX = 0.78;
           }
+          eStretch = 0.65;
+        } else if (enemy.archetype === 'chrono_mortar') {
+          eTargetBodyY = -0.18;
+          eTargetWeaponX = -0.62;
+          eSquash = 0.82;
         } else {
-          rig.bodyGroup.rotation.x = -0.18;
-          rig.weaponPivot.rotation.set(0.2, 0, 0);
+          eTargetBodyRotX = -0.2;
+          eTargetWeaponX = 0.24;
+          eSquash = 0.35;
         }
         if (rig.laserSightMaterial) {
           rig.laserSightMaterial.opacity = 0.95;
@@ -6573,54 +11262,73 @@ export class ArenaSceneRenderer {
         rig.telegraphRingMaterial.opacity = 0.4;
         rig.telegraphRingMaterial.color.setHex(0xffffff);
         const isStagger = enemy.aiState === 'staggered';
-        rig.bodyGroup.rotation.x = isStagger ? -0.22 : 0.18;
-        rig.bodyGroup.rotation.z = isStagger
-          ? Math.sin(world.elapsedTime * 18) * 0.09
-          : 0;
-        if (rig.torsoPivot) {
-          rig.torsoPivot.rotation.set(
-            isStagger ? -0.18 : 0.22,
-            isStagger ? Math.cos(world.elapsedTime * 14) * 0.14 : 0.24,
-            0
-          );
-        }
-        if (enemy.archetype === 'scrapper' && rig.leftArmPivot && rig.rightArmPivot) {
-          rig.leftArmPivot.rotation.set(0.42, 0.38, -0.25);
-          rig.rightArmPivot.rotation.set(0.42, -0.38, 0.25);
+        eTargetBodyY = (isStagger ? -0.1 : -0.04) + enemyBreath.chest * 0.02;
+        eTargetBodyRotX = isStagger ? -0.24 : 0.18;
+        eTargetBodyRotZ = isStagger ? Math.sin(world.elapsedTime * 16 + seedOffset) * 0.1 : 0;
+        eTargetTorsoX = isStagger ? -0.2 : 0.22;
+        eTargetTorsoY = isStagger ? Math.cos(world.elapsedTime * 13 + seedOffset) * 0.16 : 0.24;
+        eTargetHeadX = isStagger ? 0.26 : 0.15;
+        eTargetHeadY = isStagger ? Math.sin(world.elapsedTime * 15 + seedOffset) * 0.28 : 0;
+        if (rig.leftArmPivot && rig.rightArmPivot && (enemy.archetype === 'scrapper' || enemy.archetype === 'phase_stalker' || enemy.archetype === 'eraser')) {
+          driveDualArms = true;
+          eTargetLeftArmX = 0.44;
+          eTargetLeftArmY = 0.4;
+          eTargetLeftArmZ = -0.28;
+          eTargetRightArmX = 0.44;
+          eTargetRightArmY = -0.4;
+          eTargetRightArmZ = 0.28;
         } else {
-          rig.weaponPivot.rotation.set(0.52, 0.15, 0);
+          eTargetWeaponX = 0.54;
+          eTargetWeaponY = 0.16;
         }
+        eSquash = isStagger ? 0.38 : 0.15;
         if (rig.laserSightMaterial) rig.laserSightMaterial.opacity = 0;
       } else {
         rig.telegraphDiscMaterial.opacity = 0;
         rig.telegraphRingMaterial.opacity = 0;
         rig.telegraphRingMaterial.color.setHex(0xef4444);
-        if (enemy.archetype === 'scrapper' && rig.leftArmPivot && rig.rightArmPivot) {
-          const weave = isEnemyMoving
-            ? Math.sin(walkCycle) * 0.32
-            : Math.sin(world.elapsedTime * 3.8) * 0.08;
-          rig.leftArmPivot.rotation.set(-0.18 + weave, 0.16, -0.1);
-          rig.rightArmPivot.rotation.set(-0.18 - weave, -0.16, 0.1);
-        } else {
-          rig.weaponPivot.rotation.set(
-            isEnemyMoving ? Math.sin(walkCycle) * 0.16 : 0,
-            0,
-            0
-          );
-        }
         if (rig.laserSightMaterial) rig.laserSightMaterial.opacity = 0;
       }
 
-      // Hit-flash & guard recoil jolt on enemy chassis
+      // 4. Hit-flash & guard recoil jolt + volume-preserving squash-and-stretch
       if (guardRecoil > 0) {
-        rig.bodyGroup.rotation.x -= 0.14 * Math.min(1, guardRecoil / 0.22);
+        const gRatio = Math.min(1, guardRecoil / 0.22);
+        eTargetBodyRotX -= 0.15 * gRatio;
+        eSquash = Math.max(eSquash, 0.35 * gRatio);
+      }
+      if (enemy.aiState === 'staggered' && !this.reducedMotion) {
+        eTargetTorsoZ += Math.sin(world.elapsedTime * 38 + enemy.id.length) * 0.09;
+        eTargetHeadZ -= Math.sin(world.elapsedTime * 30) * 0.08;
       }
       if (enemy.hitFlashTimer > 0) {
         const hitRatio = Math.min(1, enemy.hitFlashTimer / 0.14);
-        rig.bodyGroup.rotation.x -= 0.2 * hitRatio;
-        if (rig.torsoPivot) {
-          rig.torsoPivot.rotation.x -= 0.18 * hitRatio;
-        }
+        eTargetBodyRotX -= 0.24 * hitRatio;
+        eTargetTorsoX -= 0.22 * hitRatio;
+        eTargetTorsoZ += Math.sin(world.elapsedTime * 58) * 0.07 * hitRatio;
+        eSquash = Math.max(eSquash, 0.62 * hitRatio);
+      }
+
+      // 5. Apply smooth damped joint transforms to Enemy rig
+      rig.bodyGroup.position.y = dampScalar(rig.bodyGroup.position.y, eTargetBodyY, enemyPoseAlpha);
+      dampEuler(rig.bodyGroup.rotation, eTargetBodyRotX, 0, eTargetBodyRotZ, enemyPoseAlpha);
+      const eScale = computeSquashStretch(eSquash, eStretch, this.reducedMotion);
+      rig.bodyGroup.scale.x = dampScalar(rig.bodyGroup.scale.x, eScale.scaleXZ, enemyPoseAlpha);
+      rig.bodyGroup.scale.y = dampScalar(rig.bodyGroup.scale.y, eScale.scaleY, enemyPoseAlpha);
+      rig.bodyGroup.scale.z = dampScalar(rig.bodyGroup.scale.z, eScale.scaleXZ, enemyPoseAlpha);
+
+      if (rig.torsoPivot) {
+        dampEuler(rig.torsoPivot.rotation, eTargetTorsoX, eTargetTorsoY, eTargetTorsoZ, enemyPoseAlpha);
+      }
+      if (rig.headPivot) {
+        dampEuler(rig.headPivot.rotation, eTargetHeadX, eTargetHeadY, eTargetHeadZ, enemyPoseAlpha);
+      }
+      dampEuler(rig.weaponPivot.rotation, eTargetWeaponX, eTargetWeaponY, eTargetWeaponZ, enemyPoseAlpha);
+      if (dampSecondary) {
+        dampEuler(rig.secondaryPivot.rotation, eTargetSecX, eTargetSecY, eTargetSecZ, enemyPoseAlpha);
+      }
+      if (driveDualArms && rig.leftArmPivot && rig.rightArmPivot) {
+        dampEuler(rig.leftArmPivot.rotation, eTargetLeftArmX, eTargetLeftArmY, eTargetLeftArmZ, enemyPoseAlpha);
+        dampEuler(rig.rightArmPivot.rotation, eTargetRightArmX, eTargetRightArmY, eTargetRightArmZ, enemyPoseAlpha);
       }
     }
 
@@ -6680,6 +11388,56 @@ export class ArenaSceneRenderer {
     if (this.dashGhostSpawnCooldown > 0) {
       this.dashGhostSpawnCooldown = Math.max(0, this.dashGhostSpawnCooldown - dt);
     }
+    if (this.slipTrailSpawnCooldown > 0) {
+      this.slipTrailSpawnCooldown = Math.max(0, this.slipTrailSpawnCooldown - dt);
+    }
+    const slipRemaining = world.player.temporalSlipTimer ?? 0;
+    const slipMax = Math.max(0.01, world.player.temporalSlipMaxDuration || 1.35);
+    if (
+      this.temporalSlipRingGroup &&
+      world.appState === 'playing' &&
+      slipRemaining > 0 &&
+      this.screenEffectsEnabled !== false
+    ) {
+      const slipRatio = Math.max(0, Math.min(1, slipRemaining / slipMax));
+      this.temporalSlipRingGroup.visible = true;
+      this.temporalSlipRingGroup.position.set(world.player.x, 0, world.player.z);
+      const pulseScale = 0.94 + Math.sin(world.elapsedTime * 11) * 0.04;
+      this.temporalSlipRingGroup.scale.setScalar(pulseScale);
+      if (this.temporalSlipOuterRing) {
+        this.temporalSlipOuterRing.rotation.z += dt * 1.4;
+      }
+      if (this.temporalSlipInnerRing) {
+        this.temporalSlipInnerRing.rotation.z -= dt * 2.2;
+      }
+      if (this.temporalSlipTicksMesh) {
+        this.temporalSlipTicksMesh.rotation.y += dt * 0.9;
+      }
+      if (this.temporalSlipOuterMat) {
+        this.temporalSlipOuterMat.opacity = 0.24 + slipRatio * 0.48;
+      }
+      if (this.temporalSlipInnerMat) {
+        this.temporalSlipInnerMat.opacity = 0.2 + slipRatio * 0.42;
+      }
+      if (this.temporalSlipTicksMat) {
+        this.temporalSlipTicksMat.opacity = 0.28 + slipRatio * 0.45;
+      }
+      const pSpeed = Math.hypot(world.player.vx, world.player.vz);
+      if (pSpeed > 1.2 && this.slipTrailSpawnCooldown <= 0) {
+        this.spawnPlayerAfterimage(
+          world.player.x,
+          world.player.z,
+          world.player.rotationY,
+          0xc084fc,
+          0.32,
+          0.34
+        );
+        this.slipTrailSpawnCooldown = 0.14;
+      }
+    } else if (this.temporalSlipRingGroup) {
+      this.temporalSlipRingGroup.visible = false;
+    }
+
     this.updateSlashRibbonsAndGhosts(dt);
     this.updateParticles(dt);
 
@@ -6703,16 +11461,46 @@ export class ArenaSceneRenderer {
     dt: number
   ): void {
     const p = world.player;
+    if (this.photoModeCam?.active) {
+      const yaw = p.rotationY + this.photoModeCam.yawOffset;
+      const pitch = Math.max(-0.32, Math.min(1.15, this.photoModeCam.pitchOffset));
+      const dist = Math.max(2.6, Math.min(14.5, this.photoModeCam.distance));
+      const cosP = Math.cos(pitch);
+      const targetY = 1.45;
+      this.currentCamPos.set(
+        p.x + Math.sin(yaw) * cosP * dist,
+        Math.max(0.55, targetY + Math.sin(pitch) * dist),
+        p.z + Math.cos(yaw) * cosP * dist
+      );
+      this.currentLookAt.set(p.x, targetY, p.z);
+      if (typeof this.camera.updateProjectionMatrix === 'function') {
+        const clampedFov = Math.max(28, Math.min(82, this.photoModeCam.fov));
+        if (Math.abs(this.camera.fov - clampedFov) > 0.05) {
+          this.camera.fov = clampedFov;
+          this.camera.updateProjectionMatrix();
+        }
+      }
+      this.camera.position.copy(this.currentCamPos);
+      this.camera.lookAt(this.currentLookAt);
+      return;
+    }
+
     if (world.appState === 'title') {
       const tourDamp = 1 - Math.exp(-8 * dt);
       if (!this.reducedMotion) this.titleTourAngle += dt * 0.22;
-      const tourX = p.x + Math.sin(this.titleTourAngle) * 5.2 + 2.2;
-      const tourZ = p.z + Math.cos(this.titleTourAngle) * 4.5 + 3.5;
-      _desiredCamPos.set(tourX, 3.6, tourZ);
-      _lookAtTarget.set(p.x - 1.2, 1.45, p.z - 3.5);
+      const tourX = p.x + Math.sin(this.titleTourAngle) * 4.4 + 2.1;
+      const tourZ = p.z + Math.cos(this.titleTourAngle) * 3.8 + 2.85;
+      _desiredCamPos.set(tourX, 2.95, tourZ);
+      _lookAtTarget.set(p.x - 0.9, 1.38, p.z - 2.6);
       this.currentCamPos.lerp(_desiredCamPos, tourDamp);
       this.currentLookAt.lerp(_lookAtTarget, tourDamp);
+      if (this.keyLight) this.keyLight.intensity = 3.15;
+      if (this.rimLight) this.rimLight.intensity = 2.45;
     } else {
+      if (this.keyLight && world.run) {
+        const activeLook = resolveChapterVisualLook(world.run.chapter, world.loom?.selectedEnding ?? null);
+        this.keyLight.intensity = activeLook.keyIntensity;
+      }
       // Smoothly follow Sera's torso anchor while keeping rotation 100% immediate
       _targetAnchor.set(p.x, GAME_CONFIG.camera.anchorHeight, p.z);
       if (this.camAnchor.distanceToSquared(_targetAnchor) > 25) {
@@ -6804,6 +11592,48 @@ export class ArenaSceneRenderer {
     this.camera.lookAt(this.currentLookAt);
   }
 
+  public setPhotoModeCamera(opts: {
+    active: boolean;
+    yawOffset: number;
+    pitchOffset: number;
+    distance: number;
+    fov: number;
+    showDrone: boolean;
+  }): void {
+    this.photoModeCam.active = opts.active;
+    this.photoModeCam.yawOffset = opts.yawOffset;
+    this.photoModeCam.pitchOffset = opts.pitchOffset;
+    this.photoModeCam.distance = opts.distance;
+    this.photoModeCam.fov = opts.fov;
+    this.photoModeCam.showDrone = opts.showDrone;
+  }
+
+  public capturePhotoDataUrl(filterCss = 'none'): string | null {
+    if (!this.renderer || this.webglContextLost) return null;
+    try {
+      // Render synchronously right before reading the WebGL drawing buffer
+      if (this.bloomEnabled && this.composer) {
+        this.composer.render();
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
+      const glCanvas = this.renderer.domElement;
+      if (typeof document === 'undefined' || !filterCss || filterCss === 'none') {
+        return glCanvas.toDataURL('image/png');
+      }
+      const out = document.createElement('canvas');
+      out.width = glCanvas.width;
+      out.height = glCanvas.height;
+      const ctx = out.getContext('2d');
+      if (!ctx) return glCanvas.toDataURL('image/png');
+      ctx.filter = filterCss;
+      ctx.drawImage(glCanvas, 0, 0);
+      return out.toDataURL('image/png');
+    } catch {
+      return null;
+    }
+  }
+
   private syncTelegraphShader(
     rig: EnemyRig,
     visible: boolean,
@@ -6840,15 +11670,6 @@ export class ArenaSceneRenderer {
     this.bloomPass?.resolution.set(width, height);
   }
 
-  private disposePostprocessing(): void {
-    if (this.composer) {
-      for (const pass of this.composer.passes) pass.dispose();
-      this.composer.dispose();
-      this.composer = null;
-    }
-    this.bloomPass = null;
-  }
-
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -6866,7 +11687,7 @@ export class ArenaSceneRenderer {
       this.fallbackEl.remove?.();
       this.fallbackEl = null;
     }
-    disposeMeshResources(this.scene, this.shadowTex);
+    disposeMeshResources(this.scene);
     this.enemyRigs?.clear();
     this.enemyGuardRecoilTimers?.clear();
     this.shadowTex?.dispose?.();
@@ -6875,7 +11696,9 @@ export class ArenaSceneRenderer {
     this.dustMoteTex?.dispose?.();
     this.pmremEnvTarget?.dispose();
     this.pmremEnvTarget = null;
-    this.disposePostprocessing();
+    this.composer?.dispose();
+    this.composer = null;
+    this.bloomPass = null;
     this.renderer?.dispose();
   }
 }

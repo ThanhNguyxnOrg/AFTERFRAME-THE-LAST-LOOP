@@ -147,6 +147,8 @@ Upgrades cost `2` or `3` Memory Fragments each (`18` Fragments total across all 
 | `rail_phase_capacitor` | Null-Point Rail Lance | `2` | `-28%` Rail Dart heat cost (`20 vs 28`), `+35%` thermal cooling rate (`1.35x`), and `+4` bonus Flux per hit |
 | `breaker_seismic_core` | Grav-Breaker Maul | `2` | **`100%` frontal shield penetration** (`1.00x`), `+28%` posture stagger (`1.28x`), and `+0.06s` recovery |
 | `breaker_singularity_coil` | Grav-Breaker Maul | `2` | Expands heavy slam to a **`360°` radial shockwave**, `+0.6m` heavy range (`4.8m`), `+12%` heavy damage, and `1.1s` micro-pin |
+| `scythe_rift_reaper` | Chrono Scythe | `2` | **`+22%` scythe damage**, `+0.55m` polearm reach, and `+18` heavy vortex stagger |
+| `scythe_astral_siphon` | Chrono Scythe | `3` | Restores **`+3 HP` & `+4 Flux` per scythe strike** and reduces Empowered Vortex cost by `-6F` |
 
 ---
 
@@ -333,7 +335,6 @@ Start with the [**Documentation Index (`docs/README.md`)**](docs/README.md) or j
 
 - **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, strict TDD workflow (`RED -> GREEN -> REFACTOR`), and pre-submission quality gates.
 - **Security Policy**: See [`SECURITY.md`](SECURITY.md) for our client-side security posture, Save V2 deserialization bounds (`MAX_SAVE_JSON_BYTES = 262,144`), and vulnerability reporting instructions.
-- **License**: The project's original source code is licensed under the [MIT License](LICENSE). Original game assets and creative content (including art, audio, and story) are excluded, even when embedded in source files. All rights to that content are reserved. Third-party materials retain their own licenses.
 - **Changelog**: See [`CHANGELOG.md`](CHANGELOG.md) for the milestone history from initial vertical slice through final release.
 
 ---

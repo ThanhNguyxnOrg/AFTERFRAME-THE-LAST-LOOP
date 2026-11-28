@@ -45,24 +45,57 @@ const IDLE_INPUT: PlayerInputFrame = {
 
 test('Rig module catalog & normalizeRigProgressionFields enforce 3-slot schema and ownership invariants', () => {
   assert.equal(VALID_RIG_MODULE_SLOTS.length, 3);
-  assert.equal(VALID_RIG_MODULE_IDS.length, 6);
+  assert.equal(VALID_RIG_MODULE_IDS.length, 9);
   for (const id of VALID_RIG_MODULE_IDS) {
     assert.ok(RIG_MODULES[id]);
     assert.ok(RIG_MODULES[id].cost >= 2 && RIG_MODULES[id].cost <= 3);
   }
 
   const normalized = normalizeRigProgressionFields(
-    ['rig_chrono_spool', 'invalid_mod', 'rig_chrono_spool', 'rig_reactive_plating'],
+    [
+      'rig_chrono_spool',
+      'invalid_mod',
+      'rig_chrono_spool',
+      'rig_reactive_plating',
+      'rig_echo_synchronizer',
+      'rig_aegis_bastion_frame',
+      'rig_executioner_bus',
+    ],
     {
-      temporal_core: 'rig_chrono_spool',
+      temporal_core: 'rig_echo_synchronizer',
       defensive_chassis: 'rig_kinetic_dynamo', // Not owned -> cleared
       tactical_harness: 'rig_reactive_plating', // Wrong slot -> cleared
     }
   );
-  assert.deepEqual(normalized.purchasedRigModules, ['rig_chrono_spool', 'rig_reactive_plating']);
-  assert.equal(normalized.equippedRigModules.temporal_core, 'rig_chrono_spool');
+  assert.deepEqual(normalized.purchasedRigModules, [
+    'rig_chrono_spool',
+    'rig_reactive_plating',
+    'rig_echo_synchronizer',
+    'rig_aegis_bastion_frame',
+    'rig_executioner_bus',
+  ]);
+  assert.equal(normalized.equippedRigModules.temporal_core, 'rig_echo_synchronizer');
   assert.equal(normalized.equippedRigModules.defensive_chassis, null);
   assert.equal(normalized.equippedRigModules.tactical_harness, null);
+
+  const newMods = computeEffectiveRigModifiers(
+    {
+      temporal_core: 'rig_echo_synchronizer',
+      defensive_chassis: 'rig_aegis_bastion_frame',
+      tactical_harness: 'rig_executioner_bus',
+    },
+    false
+  );
+  assert.equal(newMods.echoMaxDurationBonus, -1.0);
+  assert.equal(newMods.echoSyncWindowBonus, 0.8);
+  assert.equal(newMods.convergenceFluxRefund, 8);
+  assert.equal(newMods.parryShockwaveStagger, 22);
+  assert.equal(newMods.parryIntegrityHeal, 10);
+  assert.equal(newMods.parryRecoveryDelta, 0.1);
+  assert.equal(newMods.executionDamageMult, 1.25);
+  assert.equal(newMods.executionIntegrityHeal, 14);
+  assert.equal(newMods.executionFluxRefund, 16);
+  assert.equal(newMods.heavyChargeDelayDelta, 0.05);
 });
 
 test('Purchasing & equipping Chrono Rig modules deducts fragments, enforces slot exclusivity, and syncs live stats', () => {

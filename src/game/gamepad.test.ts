@@ -107,3 +107,56 @@ test('computeHapticImpulseForEvents prioritizes finishers/boss beats and clamps 
   assert.ok(reduced.durationMs <= 90);
 });
 
+test('pollGamepadInput detects LB+RB Confluence Burst [9] and LT+RT Stasis Overdrive [`] chords while suppressing single-button edges', () => {
+  // Simultaneous LB (4) + RB (5) press triggers confluenceBurst and suppresses parry/light
+  const lbRbBtns = Array.from({ length: 16 }, () => ({ pressed: false, value: 0 }));
+  lbRbBtns[4] = { pressed: true, value: 1 };
+  lbRbBtns[5] = { pressed: true, value: 1 };
+
+  const f1 = pollGamepadInput(makePad({ buttons: lbRbBtns }), 0, 1.0, false, 1 / 60);
+  assert.equal(f1.justPressed.confluenceBurst, true);
+  assert.equal(f1.justPressed.parry, false);
+  assert.equal(f1.justPressed.light, false);
+  assert.equal(f1.lightHeld, false);
+
+  // Holding LB + RB on frame 2 does NOT re-trigger confluenceBurst
+  const f2 = pollGamepadInput(makePad({ buttons: lbRbBtns }), f1.nextButtonsMask, 1.0, false, 1 / 60);
+  assert.equal(f2.justPressed.confluenceBurst, false);
+
+  // Sequential LT (6) on frame A -> adding RT (7) on frame B triggers overdrive without firing heavy
+  const ltOnly = Array.from({ length: 16 }, () => ({ pressed: false, value: 0 }));
+  ltOnly[6] = { pressed: false, value: 0.85 };
+  const fA = pollGamepadInput(makePad({ buttons: ltOnly }), 0, 1.0, false, 1 / 60);
+  assert.equal(fA.justPressed.echoRelay, true);
+  assert.equal(fA.justPressed.overdrive, false);
+
+  const ltRt = Array.from({ length: 16 }, () => ({ pressed: false, value: 0 }));
+  ltRt[6] = { pressed: false, value: 0.85 };
+  ltRt[7] = { pressed: false, value: 0.9 };
+  const fB = pollGamepadInput(makePad({ buttons: ltRt }), fA.nextButtonsMask, 1.0, false, 1 / 60);
+  assert.equal(fB.justPressed.overdrive, true);
+  assert.equal(fB.justPressed.heavy, false);
+  assert.equal(fB.justPressed.echoRelay, false);
+});
+
+test('computeHapticImpulseForEvents covers Confluence Burst, OMEGA Awakening, Stasis Overdrive, and Nova Pulse priorities', () => {
+  const confluence = computeHapticImpulseForEvents(
+    [{ type: 'confluence_burst_triggered', x: 0, z: 0 }],
+    false
+  );
+  const overdrive = computeHapticImpulseForEvents(
+    [{ type: 'chrono_overdrive_activated', x: 0, z: 0 }],
+    false
+  );
+  const nova = computeHapticImpulseForEvents(
+    [{ type: 'echo_doctrine_nova_pulse', x: 0, z: 0 }],
+    false
+  );
+  assert.ok(confluence !== null && confluence.priority === 6);
+  assert.ok(overdrive !== null && overdrive.priority === 5);
+  assert.ok(nova !== null && nova.priority === 3);
+  assert.ok(confluence.strongMagnitude > overdrive.strongMagnitude);
+  assert.ok(overdrive.strongMagnitude > nova.strongMagnitude);
+});
+
+

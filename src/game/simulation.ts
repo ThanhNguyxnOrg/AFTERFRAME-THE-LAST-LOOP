@@ -13,6 +13,52 @@ import {
   tickPlayerCombatFlowTimers,
 } from './combat-flow.ts';
 import {
+  MASTERY_SEAL_TIERS,
+  MASTERY_TARGETS,
+  TEMPORAL_SLIP_CONFIG,
+  VALID_MASTERY_TARGET_IDS,
+  claimAllReadyMasteryBounties,
+  claimCombatMasteryBounty,
+  cloneCombatMasteryLedger,
+  computeEffectiveHostileTimeScale,
+  computeLiveTacticalRankForecast,
+  computeMasterySealModifiers,
+  isSRankOrAbove,
+  isValidMasteryTargetId,
+  mapBossIdToMasteryTargetId,
+  mapChapterToSectorMasteryId,
+  recordCombatMasteryVictory,
+  sanitizeCombatMasteryLedger,
+  tickTemporalSlipTimers,
+  tryTriggerTemporalSlip,
+  type LiveRankForecast,
+  type MasterySealComputedSummary,
+  type MasteryTargetDefinition,
+} from './combat-mastery.ts';
+export {
+  MASTERY_SEAL_TIERS,
+  MASTERY_TARGETS,
+  TEMPORAL_SLIP_CONFIG,
+  VALID_MASTERY_TARGET_IDS,
+  claimAllReadyMasteryBounties,
+  claimCombatMasteryBounty,
+  cloneCombatMasteryLedger,
+  computeEffectiveHostileTimeScale,
+  computeLiveTacticalRankForecast,
+  computeMasterySealModifiers,
+  isSRankOrAbove,
+  isValidMasteryTargetId,
+  mapBossIdToMasteryTargetId,
+  mapChapterToSectorMasteryId,
+  recordCombatMasteryVictory,
+  sanitizeCombatMasteryLedger,
+  tickTemporalSlipTimers,
+  tryTriggerTemporalSlip,
+  type LiveRankForecast,
+  type MasterySealComputedSummary,
+  type MasteryTargetDefinition,
+};
+import {
   computePeripheralThreats,
   computeTacticalRadarSnapshot,
 } from './tactical-hud.ts';
@@ -40,6 +86,7 @@ import {
   createEmptyEquippedRigModules,
   getAllRigModuleDefinitions,
   getRigModuleDefinition,
+  isRigModuleOverclocked,
   isValidRigModuleId,
   isValidRigModuleSlot,
   normalizeRigProgressionFields,
@@ -52,13 +99,463 @@ export {
   createEmptyEquippedRigModules,
   getAllRigModuleDefinitions,
   getRigModuleDefinition,
+  isRigModuleOverclocked,
   isValidRigModuleId,
   isValidRigModuleSlot,
   normalizeRigProgressionFields,
 };
+import {
+  RIG_OVERCLOCK_COST,
+  SENTINEL_PROTOCOL_SPECS,
+  VALID_SENTINEL_MODES,
+  absorbDamageWithChronoWard,
+  computeMaxChronoWard,
+  computeRigSetSynergy,
+  createInitialChronoAegisState,
+  cycleNextSentinelMode,
+  formatSentinelHudLabel,
+  isValidSentinelMode,
+  normalizeSentinelMode,
+  shouldTriggerPhantomAfterimage,
+  syncChronoAegisMaxWard,
+  tickChronoAegisSystem,
+  type RigSetSynergySummary,
+} from './chrono-aegis.ts';
+export {
+  RIG_OVERCLOCK_COST,
+  SENTINEL_PROTOCOL_SPECS,
+  VALID_SENTINEL_MODES,
+  absorbDamageWithChronoWard,
+  computeMaxChronoWard,
+  computeRigSetSynergy,
+  createInitialChronoAegisState,
+  cycleNextSentinelMode,
+  formatSentinelHudLabel,
+  isValidSentinelMode,
+  normalizeSentinelMode,
+  shouldTriggerPhantomAfterimage,
+  syncChronoAegisMaxWard,
+  tickChronoAegisSystem,
+  type RigSetSynergySummary,
+};
+import {
+  BOSS_CORE_OMEGA_COST,
+  BOSS_ECHO_CORES,
+  COGNATE_CORE_FOR_WEAPON,
+  COGNATE_WEAPON_FOR_CORE,
+  CONFLUENCE_BURST_COOLDOWN_SEC,
+  CONFLUENCE_CHARGE_GAINS,
+  VALID_BOSS_ECHO_CORE_IDS,
+  computeBossCoreModifiers,
+  computeSentinelCoreConfluence,
+  computeWeaponCoreAttunement,
+  createInitialChronoConfluenceState,
+  deriveAutoUnlockedBossCores,
+  formatBossCoreHudBadge,
+  getAllBossEchoCoreSpecs,
+  isBossCoreTranscended,
+  isValidBossEchoCoreId,
+  isWeaponAttunedToBossCore,
+  normalizeBossCoreProgression,
+  type BossEchoCoreSpec,
+  type SentinelCoreConfluenceSummary,
+  type WeaponCoreAttunementSummary,
+} from './boss-echo-cores.ts';
+export {
+  BOSS_CORE_OMEGA_COST,
+  BOSS_ECHO_CORES,
+  COGNATE_CORE_FOR_WEAPON,
+  COGNATE_WEAPON_FOR_CORE,
+  CONFLUENCE_BURST_COOLDOWN_SEC,
+  CONFLUENCE_CHARGE_GAINS,
+  VALID_BOSS_ECHO_CORE_IDS,
+  computeBossCoreModifiers,
+  computeSentinelCoreConfluence,
+  computeWeaponCoreAttunement,
+  createInitialChronoConfluenceState,
+  deriveAutoUnlockedBossCores,
+  formatBossCoreHudBadge,
+  getAllBossEchoCoreSpecs,
+  isBossCoreTranscended,
+  isValidBossEchoCoreId,
+  isWeaponAttunedToBossCore,
+  normalizeBossCoreProgression,
+  type BossEchoCoreSpec,
+  type SentinelCoreConfluenceSummary,
+  type WeaponCoreAttunementSummary,
+};
+import {
+  WEAPON_OVERCLOCK_COST,
+  VALID_NEURAL_PROTOCOL_IDS,
+  NEURAL_PROTOCOLS,
+  isValidNeuralProtocolId,
+  getNeuralProtocolDefinition,
+  getAllNeuralProtocolDefinitions,
+  computeNeuralProtocolModifiers,
+  isUpgradeOverclocked,
+  FRAGMENT_CACHES,
+  buildFragmentCachesForChapter,
+  SECTOR_BEACONS,
+  buildSectorBeaconsForChapter,
+  STORY_ARCS,
+  getStoryArcForChapter,
+  getStoryArcById,
+  buildStoryArcStates,
+  computeChronicleStanceSummary,
+  normalizeResolvedStoryChoices,
+  type NeuralProtocolModifiers,
+} from './chronicle-expansion.ts';
+import {
+  WEAPON_AWAKENING_COST,
+  isUpgradeAwakened,
+  computeEquippedMythicBonus,
+  computeStanceDoctrineModifiers,
+} from './chronicle-awakening.ts';
+export {
+  WEAPON_AWAKENING_COST,
+  isUpgradeAwakened,
+  computeEquippedMythicBonus,
+  computeStanceDoctrineModifiers,
+};
+import {
+  BOSS_GAUNTLET_STAGES,
+  OVERDRIVE_CHARGE_GAINS,
+  activateChronoOverdrive,
+  addOverdriveCharge,
+  advanceBossGauntletStage,
+  canActivateChronoOverdrive,
+  createInitialBossGauntletState,
+  createInitialChronoOverdriveState,
+  getGauntletStageSpec,
+  getOverdriveTimeScales,
+  tickChronoOverdrive,
+} from './chrono-overdrive.ts';
+export {
+  BOSS_GAUNTLET_STAGES,
+  OVERDRIVE_CHARGE_GAINS,
+  canActivateChronoOverdrive,
+  createInitialBossGauntletState,
+  createInitialChronoOverdriveState,
+  getGauntletStageSpec,
+  getOverdriveTimeScales,
+};
+import {
+  EXPEDITION_BREACH_SEAL,
+  EXPEDITION_ENTRY_AIRLOCK,
+  EXPEDITION_SECTORS,
+  EXPEDITION_TRANSIT_AIRLOCK,
+  SAFE_ROOM_STATIONS,
+  buildStationSectorMapNodes,
+  computeExpeditionGuideTarget,
+  computeSectorDiscoveryRatio,
+  createInitialExpeditionState,
+  createSafeRoomState,
+  createSecretVaultForChapter,
+  detectNearbySafeRoomStation,
+  getExpeditionSectorSpec,
+  getNgPlusModifiers,
+  isPlayerInsideBreachSeal,
+  isPlayerInsideTransitAirlock,
+  tickSecretEchoVault,
+} from './expedition-path.ts';
+export {
+  EXPEDITION_BREACH_SEAL,
+  EXPEDITION_ENTRY_AIRLOCK,
+  EXPEDITION_SECTORS,
+  EXPEDITION_TRANSIT_AIRLOCK,
+  SAFE_ROOM_STATIONS,
+  buildStationSectorMapNodes,
+  computeExpeditionGuideTarget,
+  computeSectorDiscoveryRatio,
+  createInitialExpeditionState,
+  createSafeRoomState,
+  createSecretVaultForChapter,
+  detectNearbySafeRoomStation,
+  getExpeditionSectorSpec,
+  getNgPlusModifiers,
+  isPlayerInsideBreachSeal,
+  isPlayerInsideTransitAirlock,
+  tickSecretEchoVault,
+};
+import {
+  VALID_CHRONO_RELIC_IDS,
+  CHRONO_RELICS,
+  isValidChronoRelicId,
+  getAllChronoRelicDefinitions,
+  computeRecursionModifierSummary,
+  getRelicDraftChoices,
+  pickNextRecursionSector,
+  WEAPON_MASTERY_THRESHOLDS,
+  createEmptyWeaponMasteryXpMap,
+  normalizeWeaponMasteryXpMap,
+  computeWeaponMasteryRankInfo,
+  computeTemporalRiftSpawnPosition,
+  type RecursionModifierSummary,
+} from './recursion-mode.ts';
+export {
+  WEAPON_OVERCLOCK_COST,
+  VALID_NEURAL_PROTOCOL_IDS,
+  NEURAL_PROTOCOLS,
+  isValidNeuralProtocolId,
+  getNeuralProtocolDefinition,
+  getAllNeuralProtocolDefinitions,
+  computeNeuralProtocolModifiers,
+  isUpgradeOverclocked,
+  FRAGMENT_CACHES,
+  SECTOR_BEACONS,
+  STORY_ARCS,
+  getStoryArcForChapter,
+  getStoryArcById,
+  buildStoryArcStates,
+  computeChronicleStanceSummary,
+  VALID_CHRONO_RELIC_IDS,
+  CHRONO_RELICS,
+  isValidChronoRelicId,
+  getAllChronoRelicDefinitions,
+  computeRecursionModifierSummary,
+  getRelicDraftChoices,
+  pickNextRecursionSector,
+  WEAPON_MASTERY_THRESHOLDS,
+  createEmptyWeaponMasteryXpMap,
+  normalizeWeaponMasteryXpMap,
+  computeWeaponMasteryRankInfo,
+  computeTemporalRiftSpawnPosition,
+};
+import {
+  CHRONO_ACHIEVEMENTS,
+  CHRONO_MUTATORS,
+  FIELD_FABRICATOR_ITEMS,
+  SERA_RIG_SKINS,
+  absorbIncomingDamageWithAegis,
+  computeMutatorModifiers,
+  createDefaultMutators,
+  createInitialParadoxState,
+  createInitialSpeedrunState,
+  createInitialTacticalLoadout,
+  formatSpeedrunClock,
+  formatSpeedrunDelta,
+  getAchievementDefinition,
+  getFabricatorItem,
+  getSeraRigSkinDefinition,
+  hasAnyActiveMutator,
+  isParadoxRiftEligible,
+  isSeraRigSkinUnlocked,
+  pushDamagePopup,
+  recordSpeedrunSectorSplit,
+  tickCombatDrone,
+  tickDamagePopups,
+} from './paradox-expansion.ts';
+export {
+  CHRONO_ACHIEVEMENTS,
+  CHRONO_MUTATORS,
+  FIELD_FABRICATOR_ITEMS,
+  SERA_RIG_SKINS,
+  absorbIncomingDamageWithAegis,
+  computeMutatorModifiers,
+  createDefaultMutators,
+  createInitialParadoxState,
+  createInitialSpeedrunState,
+  createInitialTacticalLoadout,
+  formatSpeedrunClock,
+  formatSpeedrunDelta,
+  getAchievementDefinition,
+  getFabricatorItem,
+  getSeraRigSkinDefinition,
+  hasAnyActiveMutator,
+  isParadoxRiftEligible,
+  isSeraRigSkinUnlocked,
+  pushDamagePopup,
+  recordSpeedrunSectorSplit,
+  tickCombatDrone,
+  tickDamagePopups,
+};
+import {
+  PHOTO_FILTER_PRESETS,
+  STYLE_RANK_THRESHOLDS,
+  WEAPON_MOD_CHIPS,
+  canTriggerChronoFinisher,
+  computeDailyTrialScore,
+  computeStyleRankTier,
+  createInitialAscensionState,
+  createInitialPhotoModeState,
+  createInitialStyleRankState,
+  generateDailyTrialConfig,
+  getDailyTrialRecord,
+  getPhotoFilterCss,
+  getStyleRankMeta,
+  getTodayDateKey,
+  getWeaponModChipDefinition,
+  loadDailyTrialRecords,
+  penalizeStyleOnHit,
+  recordStyleAction,
+  saveDailyTrialRecord,
+  tickStyleRank,
+} from './ascension-expansion.ts';
+export {
+  PHOTO_FILTER_PRESETS,
+  STYLE_RANK_THRESHOLDS,
+  WEAPON_MOD_CHIPS,
+  canTriggerChronoFinisher,
+  computeDailyTrialScore,
+  computeStyleRankTier,
+  createInitialAscensionState,
+  createInitialPhotoModeState,
+  createInitialStyleRankState,
+  generateDailyTrialConfig,
+  getDailyTrialRecord,
+  getPhotoFilterCss,
+  getStyleRankMeta,
+  getTodayDateKey,
+  getWeaponModChipDefinition,
+  loadDailyTrialRecords,
+  penalizeStyleOnHit,
+  recordStyleAction,
+  saveDailyTrialRecord,
+  tickStyleRank,
+};
+import {
+  armPhantomRiposte,
+  consumeSingularityStrikeMultipliers,
+  createInitialSingularityCombatState,
+  registerSingularityHit,
+  resetSingularityComboOnDamage,
+  tickSingularityCombat,
+  tryTriggerFlashSwap,
+} from './singularity-combat.ts';
+export {
+  armPhantomRiposte,
+  consumeSingularityStrikeMultipliers,
+  createInitialSingularityCombatState,
+  registerSingularityHit,
+  resetSingularityComboOnDamage,
+  tickSingularityCombat,
+  tryTriggerFlashSwap,
+};
+import {
+  OVERCHARGE_GAIN_FLASH_SWAP,
+  OVERCHARGE_GAIN_HEAVY_HIT,
+  OVERCHARGE_GAIN_LIGHT_HIT,
+  OVERCHARGE_GAIN_PARRY,
+  addWeaponKineticCharge,
+  createInitialKineticOverchargeState,
+  getActiveWeaponOverchargeModifiers,
+  tickWeaponKineticOvercharge,
+} from './kinetic-overcharge.ts';
+export {
+  addWeaponKineticCharge,
+  createInitialKineticOverchargeState,
+  getActiveWeaponOverchargeModifiers,
+  tickWeaponKineticOvercharge,
+};
+import {
+  LYSA_HOLO_MEMORIES,
+  VALID_HOLO_MEMORY_IDS,
+  computeHoloMemoryResonanceBonus,
+  getHoloMemoryById,
+  getHoloMemoryForChapter,
+  getDifficultySpec,
+  isValidHoloMemoryId,
+  sanitizeHoloMemoryIds,
+} from './chronicle-narrative.ts';
+export {
+  LYSA_HOLO_MEMORIES,
+  VALID_HOLO_MEMORY_IDS,
+  computeHoloMemoryResonanceBonus,
+  getHoloMemoryById,
+  getHoloMemoryForChapter,
+  getDifficultySpec,
+  isValidHoloMemoryId,
+  sanitizeHoloMemoryIds,
+};
+import {
+  ECHO_DOCTRINE_SPECS,
+  TWIN_SYNC_EXECUTION_BONUS,
+  VALID_ECHO_DOCTRINE_IDS,
+  addTwinSyncBonus,
+  createInitialTwinSyncState,
+  cycleNextEchoDoctrineId,
+  formatEchoDoctrineHudBadge,
+  getEchoDoctrineSpec,
+  getTwinSyncModifiers,
+  isPincerFlankGeometry,
+  isValidEchoDoctrineId,
+  normalizeEchoDoctrineId,
+  registerTwinSyncCombatHit,
+  tickTwinSyncState,
+} from './echo-synergy.ts';
+export {
+  ECHO_DOCTRINE_SPECS,
+  VALID_ECHO_DOCTRINE_IDS,
+  addTwinSyncBonus,
+  createInitialTwinSyncState,
+  cycleNextEchoDoctrineId,
+  formatEchoDoctrineHudBadge,
+  getEchoDoctrineSpec,
+  getTwinSyncModifiers,
+  isPincerFlankGeometry,
+  isValidEchoDoctrineId,
+  normalizeEchoDoctrineId,
+  registerTwinSyncCombatHit,
+  tickTwinSyncState,
+};
+import {
+  createInitialChronoMomentumState,
+  getChronoMomentumModifiers,
+  registerMomentumStreakEvent,
+  tickChronoMomentumState,
+  triggerWeakpointBreakWindow,
+} from './chrono-momentum.ts';
+export {
+  createInitialChronoMomentumState,
+  getChronoMomentumModifiers,
+  registerMomentumStreakEvent,
+  tickChronoMomentumState,
+  triggerWeakpointBreakWindow,
+};
+import {
+  CHRONO_NEXUS_TIER_SPECS,
+  CHRONICLE_LINK_CHAIN,
+  computeChroniclePassiveBonus,
+  createInitialChronoNexusState,
+  evaluateChronoNexusState,
+  getChronoNexusModifiers,
+  resolveChronoNexusTier,
+} from './chrono-nexus.ts';
+export {
+  CHRONO_NEXUS_TIER_SPECS,
+  CHRONICLE_LINK_CHAIN,
+  computeChroniclePassiveBonus,
+  createInitialChronoNexusState,
+  evaluateChronoNexusState,
+  getChronoNexusModifiers,
+  resolveChronoNexusTier,
+};
+import {
+  ORDERED_WEAPON_RESONANCE_IDS,
+  WEAPON_RESONANCE_SPECS,
+  computeGlobalArsenalMasteryBonus,
+  createInitialWeaponResonanceState,
+  getActiveWeaponResonanceModifiers,
+  resolveWeaponSwapResonanceId,
+  tickWeaponResonanceState,
+  triggerWeaponSwapResonance,
+} from './chrono-resonance.ts';
+export {
+  ORDERED_WEAPON_RESONANCE_IDS,
+  WEAPON_RESONANCE_SPECS,
+  computeGlobalArsenalMasteryBonus,
+  createInitialWeaponResonanceState,
+  getActiveWeaponResonanceModifiers,
+  resolveWeaponSwapResonanceId,
+  tickWeaponResonanceState,
+  triggerWeaponSwapResonance,
+};
 import type {
+  ArenaArtilleryZone,
   ArenaBoostPad,
   ArenaFluxPool,
+  ArenaFragmentCacheState,
+  ArenaTemporalRift,
   BossAiState,
   BossAttackType,
   BossCheckpointState,
@@ -69,10 +566,15 @@ import type {
   ChoirState,
   ChronicleLoomEndingId,
   ChronicleLoomState,
+  ChronoAchievementId,
+  ChronoMutatorState,
   ChronoPuzzleState,
   CombatEvent,
   CombineBarrierState,
   CuratorState,
+  FabricatorItemId,
+  ParadoxRuntimeState,
+  SeraRigSkinId,
   EchoClip,
   EchoCollapseState,
   EchoRecordedActionEvent,
@@ -87,11 +589,13 @@ import type {
   EncounterSpawnValidationResult,
   EncounterWaveSpec,
   EnemyArchetype,
+  EnemyModifierId,
   EnemyState,
   GameAppState,
   GravityPinState,
   HarmonicNodeState,
   HeavyReceiverState,
+  HoloMemoryId,
   HudBossSnapshot,
   HudSnapshot,
   MatronState,
@@ -112,6 +616,7 @@ import type {
   MissionObjectiveState,
   MissionRuntimeState,
   NarrativeTransmission,
+  NearbyExpansionPrompt,
   ObjectiveStatus,
   ObstacleCollider,
   PersistedActiveCampaignState,
@@ -172,6 +677,21 @@ import type {
   ChapterWorldIdentityDefinition,
   CampaignSynthesisTier,
   CampaignEndingDiscoverySummary,
+  ChronicleStance,
+  ChronicleStanceSummary,
+  FragmentCacheId,
+  NeuralProtocolDefinition,
+  NeuralProtocolId,
+  SectorBeaconId,
+  SectorTacticalBeaconState,
+  StoryArcDefinition,
+  StoryArcId,
+  StoryArcState,
+  ChronoRelicId,
+  ChronoRelicDefinition,
+  RecursionRunState,
+  WeaponMasteryRankInfo,
+  WeaponMasteryXpMap,
   WorldExplorationState,
   WorldState,
 } from './types.ts';
@@ -229,6 +749,7 @@ export const VALID_WEAPON_IDS: readonly WeaponId[] = [
   'pulsecaster',
   'phase_rail',
   'grav_breaker',
+  'chrono_scythe',
 ];
 
 export function isValidWeaponId(value: unknown): value is WeaponId {
@@ -244,6 +765,7 @@ export const VALID_ENCOUNTER_COMPOSITION_IDS: readonly EncounterCompositionId[] 
   'tactical_crossfire_suppression',
   'tactical_temporal_disruption',
   'tactical_mastery_gauntlet',
+  'tactical_apex_bestiary',
 ];
 
 export function isValidEncounterCompositionId(
@@ -1380,7 +1902,12 @@ export function buildLocalMapSnapshot(
   discoveredRegionIds: readonly SectorRegionId[],
   discoveredSecretIds: readonly SecretAreaId[],
   fluxPools: readonly ArenaFluxPool[] = [],
-  waypoint: TacticalWaypointState | null = null
+  waypoint: TacticalWaypointState | null = null,
+  fragmentCaches: readonly ArenaFragmentCacheState[] = [],
+  sectorBeacons: readonly SectorTacticalBeaconState[] = [],
+  temporalRift: ArenaTemporalRift | null = null,
+  discoveredHoloMemoryIds: readonly HoloMemoryId[] = [],
+  includeHoloProjector = true
 ): LocalMapSnapshot {
   const regionDefs = getAllSectorRegionDefinitionsForChapter(chapter);
   const primaryRegionId = getPrimaryRegionIdForChapter(chapter);
@@ -1471,6 +1998,21 @@ export function buildLocalMapSnapshot(
         radius: fp.radius,
         remainingRatio: Math.max(0, Math.min(1, Number((fp.remainingTime / Math.max(0.1, fp.maxDuration)).toFixed(2)))),
       })),
+    fragmentCaches: fragmentCaches.map((c) => ({ ...c })),
+    sectorBeacons: sectorBeacons.map((b) => ({ ...b })),
+    temporalRift: temporalRift ? { ...temporalRift } : null,
+    holoProjector: includeHoloProjector
+      ? (() => {
+          const holoDef = getHoloMemoryForChapter(chapter);
+          return {
+            id: holoDef.id,
+            label: holoDef.titleEn,
+            x: holoDef.x,
+            z: holoDef.z,
+            discovered: discoveredHoloMemoryIds.includes(holoDef.id),
+          };
+        })()
+      : null,
   };
 }
 
@@ -1576,6 +2118,18 @@ export function createInitialExplorationState(
     completedNarrativeEventIds,
     prologueBarrierOpen: false,
   });
+  const resolvedStoryChoices = normalizeResolvedStoryChoices(
+    persisted?.resolvedStoryChoices
+  );
+  const discoveredHoloMemoryIds = sanitizeHoloMemoryIds(
+    persisted?.discoveredHoloMemoryIds
+  );
+  const storyArcs = buildStoryArcStates(resolvedStoryChoices);
+  const activeChapterStory =
+    storyArcs.find((s) => s.chapter === chapter) ?? null;
+  const stanceSummary = computeChronicleStanceSummary(resolvedStoryChoices);
+  const initialCaches = buildFragmentCachesForChapter(chapter, []);
+  const initialBeacons = buildSectorBeaconsForChapter(chapter);
   const localMap = buildLocalMapSnapshot(
     chapter,
     {
@@ -1588,7 +2142,13 @@ export function createInitialExplorationState(
     hazards,
     secrets,
     discoveredRegionIds,
-    discoveredSecretIds
+    discoveredSecretIds,
+    [],
+    null,
+    initialCaches,
+    initialBeacons,
+    null,
+    discoveredHoloMemoryIds
   );
 
   return {
@@ -1616,6 +2176,13 @@ export function createInitialExplorationState(
     statusBannerText:
       'SECTOR TELEMETRY ONLINE · EXPLORE TERMINALS [I], REROUTE POWER & SURVEY MAP [N]',
     tacticalWaypoint: null,
+    resolvedStoryChoices,
+    storyArcs,
+    activeChapterStory,
+    stanceSummary,
+    discoveredHoloMemoryIds,
+    activeHoloMemoryId: null,
+    activeHoloMemoryTimer: 0,
   };
 }
 
@@ -1644,6 +2211,8 @@ export function clonePersistedExplorationState(
     completedNarrativeEventIds: exp?.completedNarrativeEventIds
       ? exp.completedNarrativeEventIds.filter(isValidNarrativeEventId)
       : [],
+    resolvedStoryChoices: normalizeResolvedStoryChoices(exp?.resolvedStoryChoices),
+    discoveredHoloMemoryIds: sanitizeHoloMemoryIds(exp?.discoveredHoloMemoryIds),
   };
 }
 
@@ -1732,6 +2301,12 @@ export function sanitizePersistedExplorationState(
       }
     }
   }
+  const resolvedStoryChoices = normalizeResolvedStoryChoices(
+    obj.resolvedStoryChoices
+  );
+  const discoveredHoloMemoryIds = sanitizeHoloMemoryIds(
+    obj.discoveredHoloMemoryIds
+  );
   return {
     discoveredCodexIds,
     completedObjectiveIds,
@@ -1740,6 +2315,8 @@ export function sanitizePersistedExplorationState(
     discoveredRegionIds,
     discoveredSecretIds,
     completedNarrativeEventIds,
+    resolvedStoryChoices,
+    discoveredHoloMemoryIds,
   };
 }
 
@@ -1799,6 +2376,24 @@ export function cloneWorldExplorationState(
     completedNarrativeEventIds,
     prologueBarrierOpen: runContext?.prologueBarrierOpen,
   });
+  const resolvedStoryChoices = normalizeResolvedStoryChoices(
+    exp.resolvedStoryChoices
+  );
+  const discoveredHoloMemoryIds = sanitizeHoloMemoryIds(
+    exp.discoveredHoloMemoryIds
+  );
+  const activeHoloMemoryTimer =
+    typeof exp.activeHoloMemoryTimer === 'number' && Number.isFinite(exp.activeHoloMemoryTimer)
+      ? Math.max(0, Number(exp.activeHoloMemoryTimer.toFixed(2)))
+      : 0;
+  const activeHoloMemoryId =
+    activeHoloMemoryTimer > 0 && isValidHoloMemoryId(exp.activeHoloMemoryId)
+      ? exp.activeHoloMemoryId
+      : null;
+  const storyArcs = buildStoryArcStates(resolvedStoryChoices);
+  const activeChapterStory =
+    storyArcs.find((s) => s.chapter === chapter) ?? null;
+  const stanceSummary = computeChronicleStanceSummary(resolvedStoryChoices);
   const localMap = exp.localMap
     ? {
         ...exp.localMap,
@@ -1811,6 +2406,21 @@ export function cloneWorldExplorationState(
         secrets: exp.localMap.secrets.map((s) => ({ ...s })),
         waypoint: exp.localMap.waypoint ? { ...exp.localMap.waypoint } : null,
         fluxPools: exp.localMap.fluxPools ? exp.localMap.fluxPools.map((fp) => ({ ...fp })) : [],
+        fragmentCaches: exp.localMap.fragmentCaches
+          ? exp.localMap.fragmentCaches.map((c) => ({ ...c }))
+          : [],
+        sectorBeacons: exp.localMap.sectorBeacons
+          ? exp.localMap.sectorBeacons.map((b) => ({ ...b }))
+          : [],
+        temporalRift: exp.localMap.temporalRift
+          ? { ...exp.localMap.temporalRift }
+          : null,
+        holoProjector: exp.localMap.holoProjector
+          ? {
+              ...exp.localMap.holoProjector,
+              discovered: discoveredHoloMemoryIds.includes(exp.localMap.holoProjector.id),
+            }
+          : null,
       }
     : buildLocalMapSnapshot(
         chapter,
@@ -1826,7 +2436,11 @@ export function cloneWorldExplorationState(
         discoveredRegionIds,
         discoveredSecretIds,
         [],
-        exp.tacticalWaypoint ?? null
+        exp.tacticalWaypoint ?? null,
+        buildFragmentCachesForChapter(chapter, []),
+        buildSectorBeaconsForChapter(chapter),
+        null,
+        discoveredHoloMemoryIds
       );
 
   return {
@@ -1855,6 +2469,13 @@ export function cloneWorldExplorationState(
     newlyDiscoveredCodexId: exp.newlyDiscoveredCodexId,
     statusBannerText: exp.statusBannerText,
     tacticalWaypoint: exp.tacticalWaypoint ? { ...exp.tacticalWaypoint } : null,
+    resolvedStoryChoices,
+    storyArcs,
+    activeChapterStory,
+    stanceSummary,
+    discoveredHoloMemoryIds,
+    activeHoloMemoryId,
+    activeHoloMemoryTimer,
   };
 }
 
@@ -1891,7 +2512,12 @@ export function setTacticalWaypoint(
     world.exploration.discoveredRegionIds,
     world.exploration.discoveredSecretIds,
     world.fluxPools ?? [],
-    next
+    next,
+    world.fragmentCaches ?? [],
+    world.sectorBeacons ?? [],
+    world.temporalRift ?? null,
+    world.exploration.discoveredHoloMemoryIds ?? [],
+    world.run?.mode !== 'boss_gauntlet'
   );
   if (next) {
     world.exploration.statusBannerText = `WAYPOINT SET · ${next.label.toUpperCase()}`;
@@ -2279,17 +2905,24 @@ function executeInteractableActivation(
     }
   }
 
+  const protocolMods = getPlayerProtocolModifiers(world);
   if (def.fluxRestoreAmount && def.fluxRestoreAmount > 0) {
+    const scaledFlux = Math.round(
+      def.fluxRestoreAmount * protocolMods.salvageYieldMultiplier
+    );
     world.player.flux = Math.min(
       world.player.maxFlux,
-      world.player.flux + def.fluxRestoreAmount
+      world.player.flux + scaledFlux
     );
   }
 
   if (def.integrityRestoreAmount && def.integrityRestoreAmount > 0) {
+    const scaledIntegrity = Math.round(
+      def.integrityRestoreAmount * protocolMods.salvageYieldMultiplier
+    );
     world.player.integrity = Math.min(
       world.player.maxIntegrity,
-      world.player.integrity + def.integrityRestoreAmount
+      world.player.integrity + scaledIntegrity
     );
     world.player.ghostIntegrity = Math.max(
       world.player.ghostIntegrity,
@@ -2354,7 +2987,12 @@ function executeInteractableActivation(
     world.exploration.discoveredRegionIds,
     world.exploration.discoveredSecretIds,
     world.fluxPools ?? [],
-    world.exploration.tacticalWaypoint ?? null
+    world.exploration.tacticalWaypoint ?? null,
+    world.fragmentCaches ?? [],
+    world.sectorBeacons ?? [],
+    world.temporalRift ?? null,
+    world.exploration.discoveredHoloMemoryIds ?? [],
+    world.run?.mode !== 'boss_gauntlet'
   );
 
   const chapterEventDefs = getAllNarrativeEventDefinitionsForChapter(chapter);
@@ -2425,6 +3063,147 @@ export function attemptEnvironmentalInteraction(
   }
 
   if (!targetEval.canInteract || !targetEval.interactableId) {
+    // Fallback: allow [I] interaction with nearest unclaimed Fragment Cache or ready Sector Tactical Beacon
+    if (world.player && world.player.actionState !== 'dead' && canPlayerExecuteInteraction(world)) {
+      const px = world.player.x;
+      const pz = world.player.z;
+      const caches = world.fragmentCaches ?? [];
+      for (let i = 0; i < caches.length; i++) {
+        const cache = caches[i];
+        if (!cache.claimed && Math.hypot(px - cache.x, pz - cache.z) <= cache.radius + 0.9) {
+          if (claimFragmentCache(world, cache.id)) {
+            return {
+              ...targetEval,
+              status: 'ready',
+              canInteract: true,
+              label: cache.label,
+              promptText: `CACHE RECOVERED · ${cache.label}`,
+              success: true,
+            };
+          }
+        }
+      }
+      const beacons = world.sectorBeacons ?? [];
+      for (let i = 0; i < beacons.length; i++) {
+        const beacon = beacons[i];
+        if (beacon.cooldown <= 0 && Math.hypot(px - beacon.x, pz - beacon.z) <= beacon.radius + 0.9) {
+          if (activateSectorBeacon(world, beacon.id)) {
+            return {
+              ...targetEval,
+              status: 'ready',
+              canInteract: true,
+              label: beacon.label,
+              promptText: `BEACON TRIGGERED · ${beacon.label}`,
+              success: true,
+            };
+          }
+        }
+      }
+      const rift = world.temporalRift ?? null;
+      if (rift && Math.hypot(px - rift.x, pz - rift.z) <= rift.radius + 1.25) {
+        if (sealTemporalRift(world)) {
+          return {
+            ...targetEval,
+            status: 'ready',
+            canInteract: true,
+            label: rift.label,
+            promptText: `ANOMALY SEALED · +28 FLUX · +12 INTEGRITY`,
+            success: true,
+          };
+        }
+      }
+      if (world.run?.mode !== 'boss_gauntlet') {
+        const holoDef = getHoloMemoryForChapter(world.run?.chapter ?? 'prologue');
+        if (Math.hypot(px - holoDef.x, pz - holoDef.z) <= holoDef.interactRadius) {
+          if (projectChapterHoloMemory(world)) {
+            return {
+              ...targetEval,
+              status: 'ready',
+              canInteract: true,
+              label: holoDef.titleEn,
+              promptText: `HOLO-MEMORY PROJECTED · ${holoDef.titleEn}`,
+              success: true,
+            };
+          }
+        }
+      }
+      if (
+        world.expedition?.enabled &&
+        world.expedition.phase === 'safe_room' &&
+        world.expedition.safeRoom?.active
+      ) {
+        const sr = world.expedition.safeRoom;
+        const nearStation = detectNearbySafeRoomStation(px, pz, sr);
+        if (nearStation === 'med_bay' && !sr.medBayUsed && useSafeRoomMedBay(world)) {
+          return {
+            ...targetEval,
+            status: 'ready',
+            canInteract: true,
+            label: 'MED-SUPPLY BAY',
+            promptText: 'MED-SUPPLY BAY · INTEGRITY 100% · FLUX 100 · +35% OVERDRIVE',
+            success: true,
+          };
+        }
+        if (
+          nearStation === 'lysa_holo' &&
+          !sr.lysaBriefingClaimed &&
+          claimSafeRoomLysaBriefing(world)
+        ) {
+          return {
+            ...targetEval,
+            status: 'ready',
+            canInteract: true,
+            label: 'LYSA VENN HOLOGRAM',
+            promptText: sr.lysaIntelHeadline,
+            success: true,
+          };
+        }
+      }
+      if (
+        world.expedition?.secretVault &&
+        world.expedition.secretVault.gateOpen &&
+        !world.expedition.secretVault.looted
+      ) {
+        const vault = world.expedition.secretVault;
+        if (Math.hypot(px - vault.vaultPos.x, pz - vault.vaultPos.z) <= vault.vaultPos.radius + 1.0) {
+          if (claimSecretEchoVault(world)) {
+            return {
+              ...targetEval,
+              status: 'ready',
+              canInteract: true,
+              label: vault.label,
+              promptText: `SECRET VAULT CLAIMED · ${vault.label.toUpperCase()}`,
+              success: true,
+            };
+          }
+        }
+      }
+      if (isPlayerInsideBreachSeal(px, pz, world.expedition)) {
+        if (triggerExpeditionBreach(world)) {
+          return {
+            ...targetEval,
+            status: 'ready',
+            canInteract: true,
+            label: 'BREACH SEAL',
+            promptText: `SEAL BREACHED · ENGAGE ${world.expedition?.wardenLabel?.toUpperCase() ?? 'SECTOR HOSTILES'}`,
+            success: true,
+          };
+        }
+      }
+      if (isPlayerInsideTransitAirlock(px, pz, world.expedition)) {
+        if (enterExpeditionTransitAirlock(world)) {
+          return {
+            ...targetEval,
+            status: 'ready',
+            canInteract: true,
+            label: 'NORTH SECTOR AIRLOCK',
+            promptText: `TRANSIT INITIATED · ${world.expedition?.sectorTitle?.toUpperCase() ?? 'NEXT SECTOR'}`,
+            success: true,
+          };
+        }
+      }
+    }
+
     world.exploration.prompt = targetEval;
     if (targetEval.detailText) {
       world.exploration.statusBannerText = targetEval.detailText;
@@ -2462,6 +3241,391 @@ export function attemptEnvironmentalInteraction(
     interactableId: def.id,
     success: true,
   };
+}
+
+export function syncChapterExpansionEntities(
+  world: WorldState,
+  chapter: CampaignChapterId = world.run?.chapter ?? 'prologue'
+): void {
+  if (!world) return;
+  const claimedIds = world.progression?.claimedRewardIds ?? [];
+  const caches = world.fragmentCaches ?? [];
+  if (caches.length === 0 || caches[0].chapter !== chapter) {
+    world.fragmentCaches = buildFragmentCachesForChapter(chapter, claimedIds);
+  } else {
+    for (let i = 0; i < caches.length; i++) {
+      if (claimedIds.includes(caches[i].rewardId)) {
+        caches[i].claimed = true;
+      }
+    }
+  }
+  const beacons = world.sectorBeacons ?? [];
+  if (beacons.length === 0 || beacons[0].chapter !== chapter) {
+    world.sectorBeacons = buildSectorBeaconsForChapter(chapter);
+  }
+}
+
+export function claimFragmentCache(
+  world: WorldState,
+  cacheId: FragmentCacheId | string
+): boolean {
+  if (!world || world.outcome === 'defeat' || world.player?.actionState === 'dead') {
+    return false;
+  }
+  syncChapterExpansionEntities(world, world.run?.chapter ?? 'prologue');
+  const caches = world.fragmentCaches ?? [];
+  const cache = caches.find((c) => c.id === cacheId);
+  if (!cache || cache.claimed) {
+    return false;
+  }
+
+  cache.claimed = true;
+  grantProgressionReward(world, cache.rewardId);
+
+  const protocolMods = getPlayerProtocolModifiers(world);
+  const p = world.player;
+  if (p) {
+    const healAmt = Math.round(14 * protocolMods.salvageYieldMultiplier);
+    const fluxAmt = Math.round(18 * protocolMods.salvageYieldMultiplier);
+    p.integrity = Math.min(p.maxIntegrity, p.integrity + healAmt);
+    p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+    p.flux = Math.min(p.maxFlux, p.flux + fluxAmt);
+    p.surgeTimer = Math.max(
+      p.surgeTimer ?? 0,
+      1.5 * protocolMods.surgeDurationMultiplier
+    );
+  }
+
+  const notice = `${cache.label} · ${cache.crewAuthor} — ${cache.memoryExcerpt}`;
+  if (world.exploration) {
+    world.exploration.statusBannerText = `${cache.label} RECOVERED · +1 MEMORY FRAGMENT`;
+    world.exploration.localMap = buildLocalMapSnapshot(
+      world.run?.chapter ?? 'prologue',
+      {
+        x: p?.x ?? 0,
+        z: p?.z ?? 0,
+        rotationY: p?.rotationY ?? Math.PI,
+      },
+      world.exploration.mission,
+      world.exploration.routes,
+      world.exploration.hazards,
+      world.exploration.secrets,
+      world.exploration.discoveredRegionIds,
+      world.exploration.discoveredSecretIds,
+      world.fluxPools ?? [],
+      world.exploration.tacticalWaypoint ?? null,
+      world.fragmentCaches ?? [],
+      world.sectorBeacons ?? [],
+      world.temporalRift ?? null,
+      world.exploration.discoveredHoloMemoryIds ?? [],
+      world.run?.mode !== 'boss_gauntlet'
+    );
+  }
+  world.run.checkpointNotice = notice;
+  world.run.checkpointNoticeTimer = Math.max(world.run.checkpointNoticeTimer, 5.2);
+  world.events.push({
+    type: 'fragment_cache_claimed',
+    x: cache.x,
+    z: cache.z,
+    rewardId: cache.rewardId,
+    amount: 1,
+  });
+  return true;
+}
+
+export function activateSectorBeacon(
+  world: WorldState,
+  beaconId: SectorBeaconId | string
+): boolean {
+  if (!world || world.outcome !== 'none' || !world.player || world.player.actionState === 'dead') {
+    return false;
+  }
+  syncChapterExpansionEntities(world, world.run?.chapter ?? 'prologue');
+  const beacons = world.sectorBeacons ?? [];
+  const beacon = beacons.find((b) => b.id === beaconId);
+  if (!beacon || beacon.cooldown > 0) {
+    return false;
+  }
+
+  const p = world.player;
+  const protocolMods = getPlayerProtocolModifiers(world);
+  beacon.cooldown = beacon.maxCooldown;
+  beacon.activationCount += 1;
+
+  let effectCount = 0;
+  switch (beacon.id) {
+    case 'beacon_prologue_cryo_vent': {
+      p.weaponHeat = 0;
+      p.weaponOverheated = false;
+      p.weaponOverheatTimer = 0;
+      for (let i = 0; i < world.enemies.length; i++) {
+        const e = world.enemies[i];
+        if (e.hp <= 0 || e.aiState === 'ko') continue;
+        if (Math.hypot(e.x - beacon.x, e.z - beacon.z) <= 7.5 + e.radius) {
+          e.stagger = Math.min(e.maxStagger, e.stagger + 26);
+          e.hitFlashTimer = Math.max(e.hitFlashTimer, 0.18);
+          effectCount += 1;
+        }
+      }
+      break;
+    }
+    case 'beacon_ch1_emp_pylon': {
+      for (let i = 0; i < world.enemies.length; i++) {
+        const e = world.enemies[i];
+        if (e.hp <= 0 || e.aiState === 'ko') continue;
+        if (Math.hypot(e.x - beacon.x, e.z - beacon.z) <= 9.0 + e.radius) {
+          e.stagger = Math.min(e.maxStagger, e.stagger + 35);
+          e.hitFlashTimer = Math.max(e.hitFlashTimer, 0.22);
+          if (world.boss && world.boss.id === e.id) {
+            world.boss.stagger = e.stagger;
+            world.boss.coreExposed = true;
+          }
+          effectCount += 1;
+        }
+      }
+      break;
+    }
+    case 'beacon_ch2_harmonic_bell': {
+      p.flux = Math.min(p.maxFlux, p.flux + 20);
+      if (world.resonance.activeMark) {
+        world.resonance.activeMark.expiresAt += 2.0;
+        world.resonance.activeMark.duration += 2.0;
+        world.resonance.activeMark.remainingTime += 2.0;
+      }
+      if (world.choir?.active) {
+        for (let i = 0; i < world.choir.nodes.length; i++) {
+          const n = world.choir.nodes[i];
+          if (n.status === 'primed') {
+            n.primedRemainingTime += 2.0;
+          }
+        }
+        world.choir.syncTimer += 2.0;
+      }
+      break;
+    }
+    case 'beacon_ch3_purge_scanner': {
+      p.flux = Math.min(p.maxFlux, p.flux + 25);
+      for (let i = 0; i < world.enemies.length; i++) {
+        const e = world.enemies[i];
+        if (e.hp <= 0 || e.aiState === 'ko') continue;
+        if (e.isDecoy || e.archetype === 'curator_decoy') {
+          e.hp = Math.max(0, e.hp - 45);
+          e.hitFlashTimer = 0.22;
+          effectCount += 1;
+          if (e.hp <= 0) {
+            handleEnemyZeroHpDefeat(world, e, 45, true, false, false);
+          }
+        }
+      }
+      break;
+    }
+    case 'beacon_ch4_med_cradle': {
+      p.integrity = Math.min(p.maxIntegrity, p.integrity + 22);
+      p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+      p.fluxDampenedTimer = 0;
+      if (world.matron?.active) {
+        world.matron.echoSuppressedTimer = 0;
+      }
+      break;
+    }
+    case 'beacon_ch5_loom_capacitor': {
+      p.flux = Math.min(p.maxFlux, p.flux + 35);
+      p.surgeTimer = Math.max(
+        p.surgeTimer ?? 0,
+        2.5 * protocolMods.surgeDurationMultiplier
+      );
+      if (world.boss && world.boss.hp > 0) {
+        const b = world.boss;
+        b.stagger = Math.min(b.maxStagger, b.stagger + 40);
+        b.hitFlashTimer = Math.max(b.hitFlashTimer, 0.22);
+        const bossEn = world.enemies.find((e) => e.id === b.id);
+        if (bossEn) {
+          bossEn.stagger = b.stagger;
+          bossEn.hitFlashTimer = b.hitFlashTimer;
+        }
+        effectCount += 1;
+      }
+      break;
+    }
+  }
+
+  if (world.exploration) {
+    world.exploration.statusBannerText = `${beacon.label} ACTIVATED · ${beacon.effectLabel}`;
+    world.exploration.localMap = buildLocalMapSnapshot(
+      world.run?.chapter ?? 'prologue',
+      {
+        x: p.x ?? 0,
+        z: p.z ?? 0,
+        rotationY: p.rotationY ?? Math.PI,
+      },
+      world.exploration.mission,
+      world.exploration.routes,
+      world.exploration.hazards,
+      world.exploration.secrets,
+      world.exploration.discoveredRegionIds,
+      world.exploration.discoveredSecretIds,
+      world.fluxPools ?? [],
+      world.exploration.tacticalWaypoint ?? null,
+      world.fragmentCaches ?? [],
+      world.sectorBeacons ?? [],
+      world.temporalRift ?? null,
+      world.exploration.discoveredHoloMemoryIds ?? [],
+      world.run?.mode !== 'boss_gauntlet'
+    );
+  }
+  world.run.checkpointNotice = `${beacon.label} // ${beacon.effectLabel}`;
+  world.run.checkpointNoticeTimer = Math.max(world.run.checkpointNoticeTimer, 3.8);
+  world.events.push({
+    type: 'sector_beacon_activated',
+    x: beacon.x,
+    z: beacon.z,
+    amount: effectCount,
+  });
+  return true;
+}
+
+export function resolveStoryArcChoice(
+  world: WorldState,
+  arcId: StoryArcId | string,
+  optionId: string
+): boolean {
+  if (!world) return false;
+  const arc = getStoryArcById(arcId as StoryArcId);
+  if (!arc) return false;
+  const option = arc.choices.find((c) => c.id === optionId);
+  if (!option) return false;
+
+  const chapter = world.run?.chapter ?? 'prologue';
+  if (!world.exploration) {
+    world.exploration = createInitialExplorationState(chapter, null);
+  }
+  const resolvedMap = normalizeResolvedStoryChoices(
+    world.exploration.resolvedStoryChoices
+  );
+  if (resolvedMap[arc.id]) {
+    return false;
+  }
+
+  resolvedMap[arc.id] = option.id;
+  world.exploration.resolvedStoryChoices = resolvedMap;
+  world.exploration.storyArcs = buildStoryArcStates(resolvedMap);
+  world.exploration.activeChapterStory =
+    world.exploration.storyArcs.find((s) => s.chapter === chapter) ?? null;
+  world.exploration.stanceSummary = computeChronicleStanceSummary(resolvedMap);
+
+  grantProgressionReward(world, arc.rewardId);
+  syncPlayerRigStats(world);
+
+  const protocolMods = getPlayerProtocolModifiers(world);
+  const p = world.player;
+  world.activeStoryBlessing = option.blessingEffect;
+  if (p) {
+    if (option.blessingEffect === 'flux_surge') {
+      p.flux = Math.min(p.maxFlux, p.flux + 25);
+      p.surgeTimer = Math.max(
+        p.surgeTimer ?? 0,
+        2.5 * protocolMods.surgeDurationMultiplier
+      );
+    } else if (option.blessingEffect === 'integrity_shield') {
+      p.integrity = Math.min(p.maxIntegrity, p.integrity + 25);
+      p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+      p.invulnTimer = Math.max(p.invulnTimer, 1.2);
+    }
+  }
+
+  world.exploration.statusBannerText = `${option.responseLine} · [${option.blessingLabel}]`;
+  world.run.checkpointNotice = `${option.responseLine} · ${option.blessingLabel}`;
+  world.run.checkpointNoticeTimer = Math.max(world.run.checkpointNoticeTimer, 5.0);
+  world.events.push({
+    type: 'story_choice_resolved',
+    x: p?.x ?? 0,
+    z: p?.z ?? 0,
+    rewardId: arc.rewardId,
+  });
+  return true;
+}
+
+export function projectChapterHoloMemory(world: WorldState): boolean {
+  if (
+    !world ||
+    world.outcome === 'defeat' ||
+    world.run?.mode === 'boss_gauntlet' ||
+    !world.player ||
+    world.player.actionState === 'dead'
+  ) {
+    return false;
+  }
+  const chapter = world.run?.chapter ?? 'prologue';
+  if (!world.exploration) {
+    world.exploration = createInitialExplorationState(chapter, null);
+  }
+  const holoDef = getHoloMemoryForChapter(chapter);
+  const discovered = sanitizeHoloMemoryIds(world.exploration.discoveredHoloMemoryIds);
+  const isFirstDiscovery = !discovered.includes(holoDef.id);
+
+  if (isFirstDiscovery) {
+    discovered.push(holoDef.id);
+    world.exploration.discoveredHoloMemoryIds = discovered;
+    syncPlayerRigStats(world);
+
+    const p = world.player;
+    p.flux = Math.min(p.maxFlux, p.flux + 22);
+    p.integrity = Math.min(p.maxIntegrity, p.integrity + 16);
+    p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+    const aegis = ensureChronoAegisState(world);
+    if (aegis.maxWard > 0) {
+      aegis.ward = Math.min(aegis.maxWard, aegis.ward + 12);
+    }
+  }
+
+  world.exploration.activeHoloMemoryId = holoDef.id;
+  world.exploration.activeHoloMemoryTimer = 9.5;
+  world.exploration.statusBannerText = isFirstDiscovery
+    ? `${holoDef.titleEn} · +22 FLUX · +16 INTEGRITY · HOLO RESONANCE ${discovered.length}/${LYSA_HOLO_MEMORIES.length}`
+    : `${holoDef.titleEn} · HOLO-MEMORY REPLAY`;
+  world.exploration.localMap = buildLocalMapSnapshot(
+    chapter,
+    {
+      x: world.player.x,
+      z: world.player.z,
+      rotationY: world.player.rotationY,
+    },
+    world.exploration.mission,
+    world.exploration.routes,
+    world.exploration.hazards,
+    world.exploration.secrets,
+    world.exploration.discoveredRegionIds,
+    world.exploration.discoveredSecretIds,
+    world.fluxPools ?? [],
+    world.exploration.tacticalWaypoint ?? null,
+    world.fragmentCaches ?? [],
+    world.sectorBeacons ?? [],
+    world.temporalRift ?? null,
+    discovered,
+    true
+  );
+
+  if (isFirstDiscovery) {
+    world.run.checkpointNotice = `${holoDef.titleEn} · HOLO RESONANCE ${discovered.length}/${LYSA_HOLO_MEMORIES.length}`;
+    world.run.checkpointNoticeTimer = Math.max(world.run.checkpointNoticeTimer, 4.8);
+  }
+
+  world.events.push({
+    type: 'holo_memory_projected',
+    x: holoDef.x,
+    z: holoDef.z,
+    amount: isFirstDiscovery ? 1 : 0,
+  });
+  return true;
+}
+
+export function dismissActiveHoloMemory(world: WorldState): boolean {
+  if (!world?.exploration || !world.exploration.activeHoloMemoryId) {
+    return false;
+  }
+  world.exploration.activeHoloMemoryId = null;
+  world.exploration.activeHoloMemoryTimer = 0;
+  return true;
 }
 
 export function discoverSecretArea(
@@ -2512,16 +3676,23 @@ export function discoverSecretArea(
     exp.discoveredRegionIds.push(matchingRegion.id);
   }
 
+  const secretProtocolMods = getPlayerProtocolModifiers(world);
   if (def.fluxRestoreAmount > 0 && world.player) {
+    const scaledSecretFlux = Math.round(
+      def.fluxRestoreAmount * secretProtocolMods.salvageYieldMultiplier
+    );
     world.player.flux = Math.min(
       world.player.maxFlux,
-      world.player.flux + def.fluxRestoreAmount
+      world.player.flux + scaledSecretFlux
     );
   }
   if (def.integrityRestoreAmount > 0 && world.player) {
+    const scaledSecretIntegrity = Math.round(
+      def.integrityRestoreAmount * secretProtocolMods.salvageYieldMultiplier
+    );
     world.player.integrity = Math.min(
       world.player.maxIntegrity,
-      world.player.integrity + def.integrityRestoreAmount
+      world.player.integrity + scaledSecretIntegrity
     );
     world.player.ghostIntegrity = Math.max(
       world.player.ghostIntegrity,
@@ -2586,7 +3757,12 @@ export function discoverSecretArea(
     exp.discoveredRegionIds,
     exp.discoveredSecretIds,
     world.fluxPools ?? [],
-    exp.tacticalWaypoint ?? null
+    exp.tacticalWaypoint ?? null,
+    world.fragmentCaches ?? [],
+    world.sectorBeacons ?? [],
+    world.temporalRift ?? null,
+    exp.discoveredHoloMemoryIds ?? [],
+    world.run?.mode !== 'boss_gauntlet'
   );
 
   world.events.push({
@@ -3024,6 +4200,9 @@ export function triggerNarrativeEvent(
 }
 
 export function advanceMissionAndExplorationSystem(world: WorldState): void {
+  if (world.expedition?.enabled && world.expedition.phase === 'safe_room') {
+    return;
+  }
   const chapter = world.run?.chapter ?? 'prologue';
   if (!world.exploration) {
     world.exploration = createInitialExplorationState(chapter, null);
@@ -3287,6 +4466,19 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
     }
   }
 
+  syncChapterExpansionEntities(world, chapter);
+  if (world.player && world.player.actionState !== 'dead') {
+    const px = world.player.x;
+    const pz = world.player.z;
+    const caches = world.fragmentCaches ?? [];
+    for (let i = 0; i < caches.length; i++) {
+      const cache = caches[i];
+      if (!cache.claimed && Math.hypot(px - cache.x, pz - cache.z) <= cache.radius) {
+        claimFragmentCache(world, cache.id);
+      }
+    }
+  }
+
   exp.secrets = buildSecretsForChapter(
     chapter,
     exp.discoveredSecretIds,
@@ -3307,7 +4499,12 @@ export function advanceMissionAndExplorationSystem(world: WorldState): void {
     exp.discoveredRegionIds,
     exp.discoveredSecretIds,
     world.fluxPools ?? [],
-    exp.tacticalWaypoint ?? null
+    exp.tacticalWaypoint ?? null,
+    world.fragmentCaches ?? [],
+    world.sectorBeacons ?? [],
+    world.temporalRift ?? null,
+    exp.discoveredHoloMemoryIds ?? [],
+    world.run?.mode !== 'boss_gauntlet'
   );
 
   exp.prompt = evaluateNearestInteractablePrompt(world);
@@ -3335,6 +4532,9 @@ function spawnWaveUnitsForEncounter(
       isReinforcementWave ? 0.45 + i * 0.25 : i === 0 ? 0 : i === 1 ? 0.3 : -0.3
     );
     enemy.name = spec.name;
+    if (spec.modifier) {
+      applyEnemyModifier(enemy, spec.modifier);
+    }
     const validation = validateEncounterSpawnPoint(
       enemy.x,
       enemy.z,
@@ -3370,6 +4570,8 @@ export const VALID_WEAPON_UPGRADE_IDS: readonly WeaponUpgradeId[] = [
   'rail_phase_capacitor',
   'breaker_seismic_core',
   'breaker_singularity_coil',
+  'scythe_rift_reaper',
+  'scythe_astral_siphon',
 ];
 
 export const VALID_PROGRESSION_REWARD_IDS: readonly WeaponProgressionRewardId[] = [
@@ -3383,6 +4585,20 @@ export const VALID_PROGRESSION_REWARD_IDS: readonly WeaponProgressionRewardId[] 
   'chapter_4_matron_defeated',
   'conduit_ch4_quarantine_override_frag',
   'conduit_ch5_temporal_anchor_frag',
+  'cache_prologue_east',
+  'cache_ch1_marshal_west',
+  'cache_ch2_garden_north',
+  'cache_ch3_vault_east',
+  'cache_ch3_vault_west',
+  'cache_ch4_quarantine_north',
+  'cache_ch5_loom_east',
+  'cache_ch5_loom_west',
+  'story_arc_prologue',
+  'story_arc_ch1',
+  'story_arc_ch2',
+  'story_arc_ch3',
+  'story_arc_ch4',
+  'story_arc_ch5',
 ];
 
 export function isValidWeaponUpgradeId(value: unknown): value is WeaponUpgradeId {
@@ -3431,6 +4647,173 @@ function normalizeUnlockedWeaponIds(rawList: unknown): WeaponId[] {
   return result;
 }
 
+function normalizeSeraRigSkinId(raw: unknown): SeraRigSkinId {
+  if (typeof raw === 'string' && SERA_RIG_SKINS.some((s) => s.id === raw)) {
+    return raw as SeraRigSkinId;
+  }
+  return 'nadir_standard';
+}
+
+function normalizeAchievementIds(raw: unknown): ChronoAchievementId[] {
+  const out: ChronoAchievementId[] = [];
+  if (!Array.isArray(raw)) return out;
+  for (let i = 0; i < Math.min(raw.length, 32); i++) {
+    const id = raw[i];
+    if (
+      typeof id === 'string' &&
+      CHRONO_ACHIEVEMENTS.some((a) => a.id === id) &&
+      !out.includes(id as ChronoAchievementId)
+    ) {
+      out.push(id as ChronoAchievementId);
+    }
+  }
+  return out;
+}
+
+function normalizeChronoMutators(raw: unknown): ChronoMutatorState {
+  if (!raw || typeof raw !== 'object') return createDefaultMutators();
+  const obj = raw as Record<string, unknown>;
+  return {
+    glassCannon: Boolean(obj.glassCannon),
+    zeroEchoCooldown: Boolean(obj.zeroEchoCooldown),
+    hyperSpeed: Boolean(obj.hyperSpeed),
+    ironmanNoHeal: Boolean(obj.ironmanNoHeal),
+  };
+}
+
+function normalizeSpeedrunSplits(
+  raw: unknown
+): Partial<Record<CampaignChapterId, number>> {
+  const out: Partial<Record<CampaignChapterId, number>> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const obj = raw as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (isValidCampaignChapterId(key)) {
+      const val = obj[key];
+      if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+        out[key] = Math.round(Math.min(99999, val) * 10) / 10;
+      }
+    }
+  }
+  return out;
+}
+
+export const DEFAULT_LOADOUT_PRESET_NAMES = ['ALPHA', 'BETA', 'GAMMA'] as const;
+
+function cloneLoadoutPresets(
+  presets?: ReadonlyArray<import('./types.ts').TacticalLoadoutPreset | null> | null
+): Array<import('./types.ts').TacticalLoadoutPreset | null> {
+  const out: Array<import('./types.ts').TacticalLoadoutPreset | null> = [null, null, null];
+  if (!Array.isArray(presets)) return out;
+  for (let i = 0; i < 3; i++) {
+    const p = presets[i];
+    if (!p || typeof p !== 'object') continue;
+    out[i] = {
+      slotIndex: i as import('./types.ts').TacticalLoadoutPresetSlot,
+      name:
+        typeof p.name === 'string' && p.name.trim().length > 0
+          ? p.name.trim().slice(0, 16)
+          : DEFAULT_LOADOUT_PRESET_NAMES[i],
+      weaponId: p.weaponId,
+      equippedUpgrades: {
+        chrono_edge: p.equippedUpgrades?.chrono_edge ?? null,
+        pulsecaster: p.equippedUpgrades?.pulsecaster ?? null,
+        phase_rail: p.equippedUpgrades?.phase_rail ?? null,
+        grav_breaker: p.equippedUpgrades?.grav_breaker ?? null,
+        chrono_scythe: p.equippedUpgrades?.chrono_scythe ?? null,
+      },
+      equippedModChipId: p.equippedModChipId ?? null,
+      equippedRigModules: {
+        temporal_core: p.equippedRigModules?.temporal_core ?? null,
+        defensive_chassis: p.equippedRigModules?.defensive_chassis ?? null,
+        tactical_harness: p.equippedRigModules?.tactical_harness ?? null,
+      },
+      sentinelMode: p.sentinelMode,
+      equippedBossCore: p.equippedBossCore ?? null,
+      echoDoctrine: normalizeEchoDoctrineId(p.echoDoctrine),
+    };
+  }
+  return out;
+}
+
+function normalizeLoadoutPresets(
+  rawPresets: unknown,
+  unlockedWeaponIds: readonly WeaponId[],
+  purchasedUpgrades: readonly WeaponUpgradeId[],
+  purchasedRigModules: readonly RigModuleId[],
+  unlockedModChipIds: readonly import('./types.ts').WeaponModChipId[],
+  unlockedBossCores: readonly import('./types.ts').BossEchoCoreId[]
+): Array<import('./types.ts').TacticalLoadoutPreset | null> {
+  const out: Array<import('./types.ts').TacticalLoadoutPreset | null> = [null, null, null];
+  if (!Array.isArray(rawPresets)) return out;
+  for (let i = 0; i < 3; i++) {
+    const raw = rawPresets[i];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const rec = raw as Record<string, unknown>;
+    const weaponId: WeaponId =
+      isValidWeaponId(rec.weaponId) && unlockedWeaponIds.includes(rec.weaponId)
+        ? rec.weaponId
+        : 'chrono_edge';
+    const equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null> = {
+      chrono_edge: null,
+      pulsecaster: null,
+      phase_rail: null,
+      grav_breaker: null,
+      chrono_scythe: null,
+    };
+    if (rec.equippedUpgrades && typeof rec.equippedUpgrades === 'object' && !Array.isArray(rec.equippedUpgrades)) {
+      const eqObj = rec.equippedUpgrades as Record<string, unknown>;
+      for (let w = 0; w < VALID_WEAPON_IDS.length; w++) {
+        const wId = VALID_WEAPON_IDS[w];
+        const cand = eqObj[wId];
+        if (
+          isValidWeaponUpgradeId(cand) &&
+          purchasedUpgrades.includes(cand) &&
+          getWeaponUpgradeDefinition(cand).weaponId === wId
+        ) {
+          equippedUpgrades[wId] = cand;
+        }
+      }
+    }
+    const rawChip =
+      typeof rec.equippedModChipId === 'string'
+        ? (rec.equippedModChipId as import('./types.ts').WeaponModChipId)
+        : null;
+    const validChipDef = rawChip ? getWeaponModChipDefinition(rawChip) : null;
+    const equippedModChipId =
+      validChipDef && (unlockedModChipIds.includes(validChipDef.id) || validChipDef.cost === 0)
+        ? validChipDef.id
+        : null;
+    const equippedRigModules = normalizeRigProgressionFields(
+      purchasedRigModules,
+      rec.equippedRigModules
+    ).equippedRigModules;
+    const sentinelMode = normalizeSentinelMode(rec.sentinelMode);
+    const equippedBossCore =
+      isValidBossEchoCoreId(rec.equippedBossCore) && unlockedBossCores.includes(rec.equippedBossCore)
+        ? rec.equippedBossCore
+        : null;
+    const echoDoctrine = normalizeEchoDoctrineId(rec.echoDoctrine);
+    const name =
+      typeof rec.name === 'string' && rec.name.trim().length > 0
+        ? rec.name.trim().slice(0, 16)
+        : DEFAULT_LOADOUT_PRESET_NAMES[i];
+
+    out[i] = {
+      slotIndex: i as import('./types.ts').TacticalLoadoutPresetSlot,
+      name,
+      weaponId,
+      equippedUpgrades,
+      equippedModChipId,
+      equippedRigModules,
+      sentinelMode,
+      equippedBossCore,
+      echoDoctrine,
+    };
+  }
+  return out;
+}
+
 export function createInitialWeaponProgressionState(): WeaponProgressionState {
   return {
     memoryFragments: 0,
@@ -3442,9 +4825,41 @@ export function createInitialWeaponProgressionState(): WeaponProgressionState {
       pulsecaster: null,
       phase_rail: null,
       grav_breaker: null,
+      chrono_scythe: null,
     },
+    overclockedUpgrades: [],
+    awakenedUpgrades: [],
     purchasedRigModules: [],
     equippedRigModules: createEmptyEquippedRigModules(),
+    overclockedRigModules: [],
+    sentinelMode: 'off',
+    echoDoctrine: 'standard',
+    unlockedBossCores: [],
+    equippedBossCore: null,
+    transcendedBossCores: [],
+    purchasedNeuralProtocols: [],
+    weaponMasteryXp: createEmptyWeaponMasteryXpMap(),
+    bestRecursionLoop: 0,
+    totalRecursionClears: 0,
+    bestGauntletTimeSec: null,
+    totalGauntletClears: 0,
+    overdriveDifficulty: false,
+    ngPlusCycle: 0,
+    unlockedVaultChapters: [],
+    equippedSkinId: 'nadir_standard',
+    unlockedAchievementIds: [],
+    paradoxEndingUnlocked: false,
+    echoZeroDefeatedCount: 0,
+    lifetimeParries: 0,
+    lifetimeConvergences: 0,
+    mutators: createDefaultMutators(),
+    bestSpeedrunSplits: {},
+    bestSpeedrunFullSec: null,
+    speedrunHudEnabled: false,
+    equippedModChipId: null,
+    unlockedModChipIds: ['mod_volt_arc'],
+    loadoutPresets: [null, null, null],
+    combatMastery: {},
     lastPurchaseOutcome: null,
     lastEquipOutcome: null,
     lastActionMessage: 'UPGRADE BENCH READY · EARN MEMORY FRAGMENTS IN CAMPAIGN MILESTONES',
@@ -3455,8 +4870,39 @@ export function clonePersistedWeaponProgressionState(
   prog: PersistedWeaponProgressionState | undefined | null
 ): PersistedWeaponProgressionState & {
   unlockedWeaponIds: WeaponId[];
+  overclockedUpgrades: WeaponUpgradeId[];
+  awakenedUpgrades: WeaponUpgradeId[];
   purchasedRigModules: RigModuleId[];
   equippedRigModules: Record<RigModuleSlot, RigModuleId | null>;
+  overclockedRigModules: RigModuleId[];
+  sentinelMode: import('./types.ts').SentinelProtocolMode;
+  echoDoctrine: import('./types.ts').EchoDoctrineId;
+  unlockedBossCores: import('./types.ts').BossEchoCoreId[];
+  equippedBossCore: import('./types.ts').BossEchoCoreId | null;
+  transcendedBossCores: import('./types.ts').BossEchoCoreId[];
+  purchasedNeuralProtocols: NeuralProtocolId[];
+  weaponMasteryXp: WeaponMasteryXpMap;
+  bestRecursionLoop: number;
+  totalRecursionClears: number;
+  bestGauntletTimeSec: number | null;
+  totalGauntletClears: number;
+  overdriveDifficulty: boolean;
+  ngPlusCycle: number;
+  unlockedVaultChapters: CampaignChapterId[];
+  equippedSkinId: SeraRigSkinId;
+  unlockedAchievementIds: ChronoAchievementId[];
+  paradoxEndingUnlocked: boolean;
+  echoZeroDefeatedCount: number;
+  lifetimeParries: number;
+  lifetimeConvergences: number;
+  mutators: ChronoMutatorState;
+  bestSpeedrunSplits: Partial<Record<CampaignChapterId, number>>;
+  bestSpeedrunFullSec: number | null;
+  speedrunHudEnabled: boolean;
+  equippedModChipId: import('./types.ts').WeaponModChipId | null;
+  unlockedModChipIds: import('./types.ts').WeaponModChipId[];
+  loadoutPresets: Array<import('./types.ts').TacticalLoadoutPreset | null>;
+  combatMastery: import('./types.ts').CombatMasteryLedgerMap;
 } {
   if (!prog) {
     return {
@@ -3469,28 +4915,175 @@ export function clonePersistedWeaponProgressionState(
         pulsecaster: null,
         phase_rail: null,
         grav_breaker: null,
+        chrono_scythe: null,
       },
+      overclockedUpgrades: [],
+      awakenedUpgrades: [],
       purchasedRigModules: [],
       equippedRigModules: createEmptyEquippedRigModules(),
+      overclockedRigModules: [],
+      sentinelMode: 'off',
+      echoDoctrine: 'standard',
+      unlockedBossCores: [],
+      equippedBossCore: null,
+      transcendedBossCores: [],
+      purchasedNeuralProtocols: [],
+      weaponMasteryXp: createEmptyWeaponMasteryXpMap(),
+      bestRecursionLoop: 0,
+      totalRecursionClears: 0,
+      bestGauntletTimeSec: null,
+      totalGauntletClears: 0,
+      overdriveDifficulty: false,
+      ngPlusCycle: 0,
+      unlockedVaultChapters: [],
+      equippedSkinId: 'nadir_standard',
+      unlockedAchievementIds: [],
+      paradoxEndingUnlocked: false,
+      echoZeroDefeatedCount: 0,
+      lifetimeParries: 0,
+      lifetimeConvergences: 0,
+      mutators: createDefaultMutators(),
+      bestSpeedrunSplits: {},
+      bestSpeedrunFullSec: null,
+      speedrunHudEnabled: false,
+      equippedModChipId: null,
+      unlockedModChipIds: ['mod_volt_arc'],
+      loadoutPresets: [null, null, null],
+      combatMastery: {},
     };
   }
   const rigNormalized = normalizeRigProgressionFields(
     prog.purchasedRigModules,
     prog.equippedRigModules
   );
+  const purchasedUpgrades = [...prog.purchasedUpgrades];
+  const overclockedUpgrades = Array.isArray(prog.overclockedUpgrades)
+    ? prog.overclockedUpgrades.filter(
+        (id) => isValidWeaponUpgradeId(id) && purchasedUpgrades.includes(id)
+      )
+    : [];
+  const awakenedUpgrades = Array.isArray(prog.awakenedUpgrades)
+    ? prog.awakenedUpgrades.filter(
+        (id) =>
+          isValidWeaponUpgradeId(id) &&
+          purchasedUpgrades.includes(id) &&
+          overclockedUpgrades.includes(id)
+      )
+    : [];
+  const purchasedNeuralProtocols = Array.isArray(prog.purchasedNeuralProtocols)
+    ? prog.purchasedNeuralProtocols.filter(isValidNeuralProtocolId)
+    : [];
+  const unlockedVaultChapters: CampaignChapterId[] = [];
+  if (Array.isArray(prog.unlockedVaultChapters)) {
+    for (let i = 0; i < prog.unlockedVaultChapters.length; i++) {
+      const ch = prog.unlockedVaultChapters[i];
+      if (isValidCampaignChapterId(ch) && !unlockedVaultChapters.includes(ch)) {
+        unlockedVaultChapters.push(ch);
+      }
+    }
+  }
+  const unlockedWeaponIdsNorm = normalizeUnlockedWeaponIds(prog.unlockedWeaponIds);
+  const bossCoreNorm = normalizeBossCoreProgression(
+    prog.unlockedBossCores,
+    prog.equippedBossCore,
+    undefined,
+    undefined,
+    prog.transcendedBossCores
+  );
+  const unlockedModChipIdsNorm: import('./types.ts').WeaponModChipId[] =
+    Array.isArray(prog.unlockedModChipIds) && prog.unlockedModChipIds.length > 0
+      ? Array.from(
+          new Set([
+            'mod_volt_arc' as const,
+            ...prog.unlockedModChipIds.filter((id) => Boolean(getWeaponModChipDefinition(id))),
+          ])
+        )
+      : ['mod_volt_arc'];
   return {
     memoryFragments: prog.memoryFragments,
     claimedRewardIds: [...prog.claimedRewardIds],
-    unlockedWeaponIds: normalizeUnlockedWeaponIds(prog.unlockedWeaponIds),
-    purchasedUpgrades: [...prog.purchasedUpgrades],
+    unlockedWeaponIds: unlockedWeaponIdsNorm,
+    purchasedUpgrades,
     equippedUpgrades: {
       chrono_edge: prog.equippedUpgrades?.chrono_edge ?? null,
       pulsecaster: prog.equippedUpgrades?.pulsecaster ?? null,
       phase_rail: prog.equippedUpgrades?.phase_rail ?? null,
       grav_breaker: prog.equippedUpgrades?.grav_breaker ?? null,
+      chrono_scythe: prog.equippedUpgrades?.chrono_scythe ?? null,
     },
+    overclockedUpgrades,
+    awakenedUpgrades,
     purchasedRigModules: rigNormalized.purchasedRigModules,
     equippedRigModules: rigNormalized.equippedRigModules,
+    overclockedRigModules: Array.isArray(prog.overclockedRigModules)
+      ? prog.overclockedRigModules.filter(
+          (id) => isValidRigModuleId(id) && rigNormalized.purchasedRigModules.includes(id)
+        )
+      : [],
+    sentinelMode: normalizeSentinelMode(prog.sentinelMode),
+    echoDoctrine: normalizeEchoDoctrineId(prog.echoDoctrine),
+    ...bossCoreNorm,
+    purchasedNeuralProtocols,
+    weaponMasteryXp: normalizeWeaponMasteryXpMap(prog.weaponMasteryXp),
+    bestRecursionLoop:
+      typeof prog.bestRecursionLoop === 'number' && Number.isFinite(prog.bestRecursionLoop)
+        ? Math.max(0, Math.floor(prog.bestRecursionLoop))
+        : 0,
+    totalRecursionClears:
+      typeof prog.totalRecursionClears === 'number' && Number.isFinite(prog.totalRecursionClears)
+        ? Math.max(0, Math.floor(prog.totalRecursionClears))
+        : 0,
+    bestGauntletTimeSec:
+      typeof prog.bestGauntletTimeSec === 'number' &&
+      Number.isFinite(prog.bestGauntletTimeSec) &&
+      prog.bestGauntletTimeSec > 0
+        ? Number(prog.bestGauntletTimeSec.toFixed(2))
+        : null,
+    totalGauntletClears:
+      typeof prog.totalGauntletClears === 'number' && Number.isFinite(prog.totalGauntletClears)
+        ? Math.max(0, Math.floor(prog.totalGauntletClears))
+        : 0,
+    overdriveDifficulty: Boolean(prog.overdriveDifficulty),
+    ngPlusCycle:
+      typeof prog.ngPlusCycle === 'number' && Number.isFinite(prog.ngPlusCycle)
+        ? Math.max(0, Math.min(99, Math.floor(prog.ngPlusCycle)))
+        : 0,
+    unlockedVaultChapters,
+    equippedSkinId: normalizeSeraRigSkinId(prog.equippedSkinId),
+    unlockedAchievementIds: normalizeAchievementIds(prog.unlockedAchievementIds),
+    paradoxEndingUnlocked: Boolean(prog.paradoxEndingUnlocked),
+    echoZeroDefeatedCount:
+      typeof prog.echoZeroDefeatedCount === 'number' && Number.isFinite(prog.echoZeroDefeatedCount)
+        ? Math.max(0, Math.floor(prog.echoZeroDefeatedCount))
+        : 0,
+    lifetimeParries:
+      typeof prog.lifetimeParries === 'number' && Number.isFinite(prog.lifetimeParries)
+        ? Math.max(0, Math.floor(prog.lifetimeParries))
+        : 0,
+    lifetimeConvergences:
+      typeof prog.lifetimeConvergences === 'number' && Number.isFinite(prog.lifetimeConvergences)
+        ? Math.max(0, Math.floor(prog.lifetimeConvergences))
+        : 0,
+    mutators: normalizeChronoMutators(prog.mutators),
+    bestSpeedrunSplits: normalizeSpeedrunSplits(prog.bestSpeedrunSplits),
+    bestSpeedrunFullSec:
+      typeof prog.bestSpeedrunFullSec === 'number' &&
+      Number.isFinite(prog.bestSpeedrunFullSec) &&
+      prog.bestSpeedrunFullSec > 0
+        ? Math.round(prog.bestSpeedrunFullSec * 10) / 10
+        : null,
+    speedrunHudEnabled: Boolean(prog.speedrunHudEnabled),
+    equippedModChipId: getWeaponModChipDefinition(prog.equippedModChipId)?.id ?? null,
+    unlockedModChipIds: unlockedModChipIdsNorm,
+    loadoutPresets: normalizeLoadoutPresets(
+      prog.loadoutPresets,
+      unlockedWeaponIdsNorm,
+      purchasedUpgrades,
+      rigNormalized.purchasedRigModules,
+      unlockedModChipIdsNorm,
+      bossCoreNorm.unlockedBossCores
+    ),
+    combatMastery: cloneCombatMasteryLedger(prog.combatMastery),
   };
 }
 
@@ -3504,8 +5097,39 @@ export function cloneWeaponProgressionState(
   return {
     ...cloned,
     unlockedWeaponIds: normalizeUnlockedWeaponIds(cloned.unlockedWeaponIds),
+    overclockedUpgrades: [...cloned.overclockedUpgrades],
+    awakenedUpgrades: [...cloned.awakenedUpgrades],
     purchasedRigModules: [...cloned.purchasedRigModules],
     equippedRigModules: { ...cloned.equippedRigModules },
+    overclockedRigModules: [...cloned.overclockedRigModules],
+    sentinelMode: cloned.sentinelMode,
+    echoDoctrine: cloned.echoDoctrine,
+    unlockedBossCores: [...cloned.unlockedBossCores],
+    equippedBossCore: cloned.equippedBossCore,
+    transcendedBossCores: [...cloned.transcendedBossCores],
+    purchasedNeuralProtocols: [...cloned.purchasedNeuralProtocols],
+    weaponMasteryXp: normalizeWeaponMasteryXpMap(cloned.weaponMasteryXp),
+    bestRecursionLoop: cloned.bestRecursionLoop,
+    totalRecursionClears: cloned.totalRecursionClears,
+    bestGauntletTimeSec: cloned.bestGauntletTimeSec,
+    totalGauntletClears: cloned.totalGauntletClears,
+    overdriveDifficulty: cloned.overdriveDifficulty,
+    ngPlusCycle: cloned.ngPlusCycle,
+    unlockedVaultChapters: [...cloned.unlockedVaultChapters],
+    equippedSkinId: cloned.equippedSkinId,
+    unlockedAchievementIds: [...cloned.unlockedAchievementIds],
+    paradoxEndingUnlocked: cloned.paradoxEndingUnlocked,
+    echoZeroDefeatedCount: cloned.echoZeroDefeatedCount,
+    lifetimeParries: cloned.lifetimeParries,
+    lifetimeConvergences: cloned.lifetimeConvergences,
+    mutators: { ...cloned.mutators },
+    bestSpeedrunSplits: { ...cloned.bestSpeedrunSplits },
+    bestSpeedrunFullSec: cloned.bestSpeedrunFullSec,
+    speedrunHudEnabled: cloned.speedrunHudEnabled,
+    equippedModChipId: cloned.equippedModChipId,
+    unlockedModChipIds: [...cloned.unlockedModChipIds],
+    loadoutPresets: cloneLoadoutPresets(cloned.loadoutPresets),
+    combatMastery: cloneCombatMasteryLedger(cloned.combatMastery),
     lastPurchaseOutcome: prog.lastPurchaseOutcome ?? null,
     lastEquipOutcome: prog.lastEquipOutcome ?? null,
     lastActionMessage:
@@ -3571,11 +5195,43 @@ export function sanitizePersistedWeaponProgressionState(
     }
   }
 
+  const overclockedUpgrades: WeaponUpgradeId[] = [];
+  if (Array.isArray(obj.overclockedUpgrades)) {
+    const len = Math.min(obj.overclockedUpgrades.length, MAX_SAVE_ARRAY_SCAN);
+    for (let i = 0; i < len; i++) {
+      const id = obj.overclockedUpgrades[i];
+      if (
+        isValidWeaponUpgradeId(id) &&
+        purchasedUpgrades.includes(id) &&
+        !overclockedUpgrades.includes(id)
+      ) {
+        overclockedUpgrades.push(id);
+      }
+    }
+  }
+
+  const awakenedUpgrades: WeaponUpgradeId[] = [];
+  if (Array.isArray(obj.awakenedUpgrades)) {
+    const len = Math.min(obj.awakenedUpgrades.length, MAX_SAVE_ARRAY_SCAN);
+    for (let i = 0; i < len; i++) {
+      const id = obj.awakenedUpgrades[i];
+      if (
+        isValidWeaponUpgradeId(id) &&
+        purchasedUpgrades.includes(id) &&
+        overclockedUpgrades.includes(id) &&
+        !awakenedUpgrades.includes(id)
+      ) {
+        awakenedUpgrades.push(id);
+      }
+    }
+  }
+
   const equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null> = {
     chrono_edge: null,
     pulsecaster: null,
     phase_rail: null,
     grav_breaker: null,
+    chrono_scythe: null,
   };
   if (
     obj.equippedUpgrades &&
@@ -3600,21 +5256,186 @@ export function sanitizePersistedWeaponProgressionState(
     obj.purchasedRigModules,
     obj.equippedRigModules
   );
+  const overclockedRigModules: RigModuleId[] = [];
+  if (Array.isArray(obj.overclockedRigModules)) {
+    const len = Math.min(obj.overclockedRigModules.length, MAX_SAVE_ARRAY_SCAN);
+    for (let i = 0; i < len; i++) {
+      const id = obj.overclockedRigModules[i];
+      if (
+        isValidRigModuleId(id) &&
+        rigNormalized.purchasedRigModules.includes(id) &&
+        !overclockedRigModules.includes(id)
+      ) {
+        overclockedRigModules.push(id);
+      }
+    }
+  }
+  const sentinelMode = normalizeSentinelMode(obj.sentinelMode);
+  const echoDoctrine = normalizeEchoDoctrineId(obj.echoDoctrine);
+
+  const purchasedNeuralProtocols: NeuralProtocolId[] = [];
+  if (Array.isArray(obj.purchasedNeuralProtocols)) {
+    const len = Math.min(obj.purchasedNeuralProtocols.length, MAX_SAVE_ARRAY_SCAN);
+    for (let i = 0; i < len; i++) {
+      const id = obj.purchasedNeuralProtocols[i];
+      if (isValidNeuralProtocolId(id) && !purchasedNeuralProtocols.includes(id)) {
+        purchasedNeuralProtocols.push(id);
+      }
+    }
+  }
+
+  const weaponMasteryXp = normalizeWeaponMasteryXpMap(
+    obj.weaponMasteryXp && typeof obj.weaponMasteryXp === 'object' && !Array.isArray(obj.weaponMasteryXp)
+      ? (obj.weaponMasteryXp as Partial<Record<WeaponId, number>>)
+      : null
+  );
+  const bestRecursionLoop =
+    typeof obj.bestRecursionLoop === 'number' &&
+    Number.isFinite(obj.bestRecursionLoop) &&
+    obj.bestRecursionLoop >= 0
+      ? Math.min(9999, Math.floor(obj.bestRecursionLoop))
+      : 0;
+  const totalRecursionClears =
+    typeof obj.totalRecursionClears === 'number' &&
+    Number.isFinite(obj.totalRecursionClears) &&
+    obj.totalRecursionClears >= 0
+      ? Math.min(99999, Math.floor(obj.totalRecursionClears))
+      : 0;
+  const bestGauntletTimeSec =
+    typeof obj.bestGauntletTimeSec === 'number' &&
+    Number.isFinite(obj.bestGauntletTimeSec) &&
+    obj.bestGauntletTimeSec > 0
+      ? Number(Math.min(99999, obj.bestGauntletTimeSec).toFixed(2))
+      : null;
+  const totalGauntletClears =
+    typeof obj.totalGauntletClears === 'number' &&
+    Number.isFinite(obj.totalGauntletClears) &&
+    obj.totalGauntletClears >= 0
+      ? Math.min(99999, Math.floor(obj.totalGauntletClears))
+      : 0;
+  const overdriveDifficulty =
+    typeof obj.overdriveDifficulty === 'boolean' ? obj.overdriveDifficulty : false;
+  const ngPlusCycle =
+    typeof obj.ngPlusCycle === 'number' &&
+    Number.isFinite(obj.ngPlusCycle) &&
+    obj.ngPlusCycle >= 0
+      ? Math.min(99, Math.floor(obj.ngPlusCycle))
+      : 0;
+  const unlockedVaultChapters: CampaignChapterId[] = [];
+  if (Array.isArray(obj.unlockedVaultChapters)) {
+    const len = Math.min(obj.unlockedVaultChapters.length, MAX_SAVE_ARRAY_SCAN);
+    for (let i = 0; i < len; i++) {
+      const ch = obj.unlockedVaultChapters[i];
+      if (isValidCampaignChapterId(ch) && !unlockedVaultChapters.includes(ch)) {
+        unlockedVaultChapters.push(ch);
+      }
+    }
+  }
+
+  const normalizedUnlockedWeapons = normalizeUnlockedWeaponIds(unlockedWeaponIds);
+  const bossCoreSanitized = normalizeBossCoreProgression(
+    obj.unlockedBossCores,
+    obj.equippedBossCore,
+    undefined,
+    undefined,
+    obj.transcendedBossCores
+  );
+  const sanitizedUnlockedModChips: import('./types.ts').WeaponModChipId[] = Array.isArray(
+    obj.unlockedModChipIds
+  )
+    ? Array.from(
+        new Set([
+          'mod_volt_arc' as const,
+          ...(obj.unlockedModChipIds as unknown[]).filter(
+            (id): id is import('./types.ts').WeaponModChipId =>
+              typeof id === 'string' &&
+              Boolean(getWeaponModChipDefinition(id as import('./types.ts').WeaponModChipId))
+          ),
+        ])
+      )
+    : ['mod_volt_arc'];
 
   return {
     memoryFragments,
     claimedRewardIds,
-    unlockedWeaponIds: normalizeUnlockedWeaponIds(unlockedWeaponIds),
+    unlockedWeaponIds: normalizedUnlockedWeapons,
     purchasedUpgrades,
     equippedUpgrades,
+    overclockedUpgrades,
+    awakenedUpgrades,
     purchasedRigModules: rigNormalized.purchasedRigModules,
     equippedRigModules: rigNormalized.equippedRigModules,
+    overclockedRigModules,
+    sentinelMode,
+    echoDoctrine,
+    ...bossCoreSanitized,
+    purchasedNeuralProtocols,
+    weaponMasteryXp,
+    bestRecursionLoop,
+    totalRecursionClears,
+    bestGauntletTimeSec,
+    totalGauntletClears,
+    overdriveDifficulty,
+    ngPlusCycle,
+    unlockedVaultChapters,
+    equippedSkinId: normalizeSeraRigSkinId(obj.equippedSkinId),
+    unlockedAchievementIds: normalizeAchievementIds(obj.unlockedAchievementIds),
+    paradoxEndingUnlocked: Boolean(obj.paradoxEndingUnlocked),
+    echoZeroDefeatedCount:
+      typeof obj.echoZeroDefeatedCount === 'number' &&
+      Number.isFinite(obj.echoZeroDefeatedCount) &&
+      obj.echoZeroDefeatedCount >= 0
+        ? Math.min(9999, Math.floor(obj.echoZeroDefeatedCount))
+        : 0,
+    lifetimeParries:
+      typeof obj.lifetimeParries === 'number' &&
+      Number.isFinite(obj.lifetimeParries) &&
+      obj.lifetimeParries >= 0
+        ? Math.min(999999, Math.floor(obj.lifetimeParries))
+        : 0,
+    lifetimeConvergences:
+      typeof obj.lifetimeConvergences === 'number' &&
+      Number.isFinite(obj.lifetimeConvergences) &&
+      obj.lifetimeConvergences >= 0
+        ? Math.min(999999, Math.floor(obj.lifetimeConvergences))
+        : 0,
+    mutators: normalizeChronoMutators(obj.mutators),
+    bestSpeedrunSplits: normalizeSpeedrunSplits(obj.bestSpeedrunSplits),
+    bestSpeedrunFullSec:
+      typeof obj.bestSpeedrunFullSec === 'number' &&
+      Number.isFinite(obj.bestSpeedrunFullSec) &&
+      obj.bestSpeedrunFullSec > 0
+        ? Math.round(Math.min(99999, obj.bestSpeedrunFullSec) * 10) / 10
+        : null,
+    speedrunHudEnabled: Boolean(obj.speedrunHudEnabled),
+    equippedModChipId: getWeaponModChipDefinition(
+      typeof obj.equippedModChipId === 'string'
+        ? (obj.equippedModChipId as import('./types.ts').WeaponModChipId)
+        : null
+    )?.id ?? null,
+    unlockedModChipIds: sanitizedUnlockedModChips,
+    loadoutPresets: normalizeLoadoutPresets(
+      obj.loadoutPresets,
+      normalizedUnlockedWeapons,
+      purchasedUpgrades,
+      rigNormalized.purchasedRigModules,
+      sanitizedUnlockedModChips,
+      bossCoreSanitized.unlockedBossCores
+    ),
+    combatMastery: sanitizeCombatMasteryLedger(obj.combatMastery),
   };
 }
 
 export function getUnlockedWeaponIds(world: WorldState): WeaponId[] {
   if (world.run && world.run.mode !== 'campaign') {
-    return [...VALID_WEAPON_IDS];
+    const base: WeaponId[] = ['chrono_edge', 'pulsecaster', 'phase_rail', 'grav_breaker'];
+    if (
+      world.ascension?.dailyTrialActive ||
+      world.progression?.unlockedWeaponIds?.includes('chrono_scythe')
+    ) {
+      base.push('chrono_scythe');
+    }
+    return base;
   }
   return normalizeUnlockedWeaponIds(world.progression?.unlockedWeaponIds);
 }
@@ -3674,7 +5495,60 @@ export function getEquippedRigModules(
 export function getPlayerRigModifiers(world: WorldState): RigEffectiveModifiers {
   const equipped = getEquippedRigModules(world);
   const isSurging = (world.player?.surgeTimer ?? 0) > 0;
-  return computeEffectiveRigModifiers(equipped, isSurging);
+  return computeEffectiveRigModifiers(
+    equipped,
+    isSurging,
+    world.progression?.overclockedRigModules
+  );
+}
+
+export function getPlayerRigSetSynergy(world: WorldState): RigSetSynergySummary {
+  return computeRigSetSynergy(
+    getEquippedRigModules(world),
+    world.progression?.overclockedRigModules
+  );
+}
+
+export function ensureChronoAegisState(
+  world: WorldState
+): import('./types.ts').ChronoAegisRuntimeState {
+  if (!world.chronoAegis) {
+    world.chronoAegis = createInitialChronoAegisState(
+      normalizeSentinelMode(world.progression?.sentinelMode)
+    );
+  }
+  return world.chronoAegis;
+}
+
+export function ensureChronoConfluenceState(
+  world: WorldState
+): import('./types.ts').ChronoConfluenceState {
+  const sentinelMode = normalizeSentinelMode(world.progression?.sentinelMode);
+  const equippedCore = world.progression?.equippedBossCore ?? null;
+  const transcended = world.progression?.transcendedBossCores ?? [];
+  if (!world.chronoConfluence) {
+    world.chronoConfluence = createInitialChronoConfluenceState(
+      sentinelMode,
+      equippedCore,
+      transcended,
+      35
+    );
+  }
+  const summary = computeSentinelCoreConfluence(sentinelMode, equippedCore, transcended);
+  world.chronoConfluence.doctrineId = summary.doctrineId;
+  world.chronoConfluence.isOmega = summary.isOmega;
+  world.chronoConfluence.ready =
+    summary.active &&
+    world.chronoConfluence.cooldownTimer <= 0 &&
+    world.chronoConfluence.charge >= 100;
+  return world.chronoConfluence;
+}
+
+export function getPlayerProtocolModifiers(world: WorldState): NeuralProtocolModifiers {
+  const purchased = world.progression?.purchasedNeuralProtocols ?? [];
+  const flux = world.player?.flux ?? 0;
+  const isSurging = (world.player?.surgeTimer ?? 0) > 0;
+  return computeNeuralProtocolModifiers(purchased, flux, isSurging);
 }
 
 export function getEffectiveConvergenceFluxCost(world: WorldState): number {
@@ -3689,9 +5563,18 @@ export function getEffectiveConvergenceFluxCost(world: WorldState): number {
 
 export function getEffectiveConvergencePostureBonus(world: WorldState): number {
   const baseBonus = GAME_CONFIG.resonance.postureBonus;
-  if (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor') {
+  const edgeEquipped = getEquippedWeaponUpgrade(world, 'chrono_edge');
+  if (edgeEquipped === 'edge_harmonic_conductor') {
+    const overclockBonus = isUpgradeOverclocked(
+      'edge_harmonic_conductor',
+      world.progression?.overclockedUpgrades
+    )
+      ? 6
+      : 0;
     return (
-      baseBonus + GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.convergencePostureBonus
+      baseBonus +
+      GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.convergencePostureBonus +
+      overclockBonus
     );
   }
   return baseBonus;
@@ -3702,20 +5585,67 @@ export function syncResonanceUpgradeParameters(world: WorldState): void {
   world.resonance.fluxCost = getEffectiveConvergenceFluxCost(world);
   world.resonance.postureBonus = getEffectiveConvergencePostureBonus(world);
   if (!world.resonance.activeMark) {
+    const rigMods = getPlayerRigModifiers(world);
+    const hasHarmonic =
+      getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor';
+    const harmonicOverclock =
+      hasHarmonic &&
+      isUpgradeOverclocked(
+        'edge_harmonic_conductor',
+        world.progression?.overclockedUpgrades
+      )
+        ? 0.5
+        : 0;
     world.resonance.syncWindow =
       GAME_CONFIG.resonance.syncWindow +
-      (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor'
+      rigMods.echoSyncWindowBonus +
+      (hasHarmonic
         ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.syncWindowBonus
-        : 0);
+        : 0) +
+      harmonicOverclock;
   }
+}
+
+export function syncUnlockedBossCoresFromCampaign(world: WorldState): void {
+  if (!world || !world.progression) return;
+  const normalized = normalizeBossCoreProgression(
+    world.progression.unlockedBossCores,
+    world.progression.equippedBossCore,
+    world.run?.completedChapters,
+    world.run?.completedEndings,
+    world.progression.transcendedBossCores
+  );
+  world.progression.unlockedBossCores = normalized.unlockedBossCores;
+  world.progression.equippedBossCore = normalized.equippedBossCore;
+  world.progression.transcendedBossCores = normalized.transcendedBossCores;
 }
 
 export function syncPlayerRigStats(world: WorldState): void {
   if (!world) return;
+  syncUnlockedBossCoresFromCampaign(world);
   const rigMods = getPlayerRigModifiers(world);
+  const rigSynergy = getPlayerRigSetSynergy(world);
+  const bossCoreMods = computeBossCoreModifiers(
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const confluence = computeSentinelCoreConfluence(
+    normalizeSentinelMode(world.progression?.sentinelMode),
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const protocolMods = getPlayerProtocolModifiers(world);
+  const recMods = getActiveRecursionModifiers(world);
+  const stanceMods = computeStanceDoctrineModifiers(
+    world.exploration?.resolvedStoryChoices
+  );
   if (world.player) {
     const prevMax = world.player.maxIntegrity || GAME_CONFIG.player.maxIntegrity;
-    const nextMax = GAME_CONFIG.player.maxIntegrity + rigMods.maxIntegrityBonus;
+    const nextMax =
+      GAME_CONFIG.player.maxIntegrity +
+      rigMods.maxIntegrityBonus +
+      recMods.maxIntegrityBonus +
+      stanceMods.maxIntegrityBonus;
     world.player.maxIntegrity = nextMax;
     if (nextMax > prevMax && world.player.actionState !== 'dead' && world.player.integrity > 0) {
       const gained = nextMax - prevMax;
@@ -3725,18 +5655,897 @@ export function syncPlayerRigStats(world: WorldState): void {
       world.player.integrity = nextMax;
       world.player.ghostIntegrity = Math.min(world.player.ghostIntegrity, nextMax);
     }
+
+    const nextMaxFlux = GAME_CONFIG.player.maxFlux + protocolMods.maxFluxBonus;
+    world.player.maxFlux = nextMaxFlux;
+    if (world.player.flux > nextMaxFlux) {
+      world.player.flux = nextMaxFlux;
+    }
   }
   if (world.echo) {
     world.echo.maxDuration = GAME_CONFIG.echo.maxDuration + rigMods.echoMaxDurationBonus;
   }
+  const combinedSkillFluxMult =
+    rigSynergy.skillFluxCostMultiplier * confluence.skillFluxCostMultiplier;
   if (world.relay) {
-    world.relay.fluxCost = Math.max(0, GAME_CONFIG.relay.fluxCost + rigMods.relayFluxCostDelta);
+    world.relay.fluxCost = Math.max(
+      0,
+      Math.round(
+        (GAME_CONFIG.relay.fluxCost + rigMods.relayFluxCostDelta) * combinedSkillFluxMult
+      )
+    );
     world.relay.maxCooldown = Math.max(
       0.2,
       Number((GAME_CONFIG.relay.cooldown + rigMods.relayCooldownDelta).toFixed(3))
     );
   }
+  if (world.gravityPin) {
+    world.gravityPin.fluxCost = Math.max(
+      0,
+      Math.round(GAME_CONFIG.curator.gravityPin.fluxCost * combinedSkillFluxMult)
+    );
+  }
+  if (world.echoCollapse) {
+    world.echoCollapse.fluxCost = Math.max(
+      0,
+      Math.round(GAME_CONFIG.matron.echoCollapse.fluxCost * combinedSkillFluxMult)
+    );
+  }
+  const holoResonance = computeHoloMemoryResonanceBonus(
+    world.exploration?.discoveredHoloMemoryIds
+  );
+  const masterySeal = computeMasterySealModifiers(world.progression?.combatMastery);
+  const aegis = ensureChronoAegisState(world);
+  syncChronoAegisMaxWard(
+    aegis,
+    normalizeSentinelMode(world.progression?.sentinelMode),
+    rigSynergy,
+    true,
+    bossCoreMods.bonusWard +
+      confluence.bonusWard +
+      holoResonance.bonusMaxWard +
+      masterySeal.bonusMaxWard
+  );
+  ensureChronoConfluenceState(world);
   syncResonanceUpgradeParameters(world);
+}
+
+export function claimMasteryBountyInWorld(
+  world: WorldState,
+  targetId: import('./types.ts').MasteryTargetId,
+  kind: import('./types.ts').MasteryBountyKind
+): boolean {
+  if (!world) return false;
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const res = claimCombatMasteryBounty(world.progression.combatMastery, targetId, kind);
+  if (!res.claimed || res.fragmentsAwarded <= 0) {
+    return false;
+  }
+  world.progression.combatMastery = res.ledger;
+  world.progression.memoryFragments = Math.min(
+    999,
+    world.progression.memoryFragments + res.fragmentsAwarded
+  );
+  const seal = computeMasterySealModifiers(world.progression.combatMastery);
+  world.progression.lastActionMessage = `MASTERY BOUNTY CLAIMED · +${res.fragmentsAwarded} MEMORY FRAGMENT · ${seal.titleEn}`;
+  syncPlayerRigStats(world);
+  if (world.player) {
+    world.events.push({
+      type: 'mastery_bounty_claimed',
+      x: world.player.x,
+      z: world.player.z,
+      amount: res.fragmentsAwarded,
+    });
+  }
+  return true;
+}
+
+export function claimAllMasteryBountiesInWorld(world: WorldState): number {
+  if (!world) return 0;
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const res = claimAllReadyMasteryBounties(world.progression.combatMastery);
+  if (res.claimedCount <= 0 || res.fragmentsAwarded <= 0) {
+    return 0;
+  }
+  world.progression.combatMastery = res.ledger;
+  world.progression.memoryFragments = Math.min(
+    999,
+    world.progression.memoryFragments + res.fragmentsAwarded
+  );
+  const seal = computeMasterySealModifiers(world.progression.combatMastery);
+  world.progression.lastActionMessage = `CLAIMED ${res.claimedCount} MASTERY BOUNTIES · +${res.fragmentsAwarded} MEMORY FRAGMENTS · ${seal.titleEn}`;
+  syncPlayerRigStats(world);
+  if (world.player) {
+    world.events.push({
+      type: 'mastery_bounty_claimed',
+      x: world.player.x,
+      z: world.player.z,
+      amount: res.fragmentsAwarded,
+    });
+  }
+  return res.claimedCount;
+}
+
+function recordWorldCombatMasteryOnVictory(
+  world: WorldState,
+  targetIds: readonly import('./types.ts').MasteryTargetId[]
+): void {
+  if (!world || targetIds.length === 0) return;
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const baseSummary = buildRunSummary(world);
+  const cp = world.run?.bossCheckpoint;
+  const isBossSegment = world.encounterMode === 'boss' && Boolean(cp);
+  const segmentSummary: RunSummary = {
+    ...baseSummary,
+    outcome: 'victory',
+    elapsedTime: isBossSegment
+      ? Math.max(0, world.elapsedTime - (cp?.elapsedTimeAtCheckpoint ?? 0))
+      : baseSummary.elapsedTime,
+    damageTaken: isBossSegment
+      ? Math.max(0, Math.round(world.stats.damageTaken - (cp?.statsAtCheckpoint.damageTaken ?? 0)))
+      : baseSummary.damageTaken,
+    parriesLanded: isBossSegment
+      ? Math.max(0, world.stats.parriesLanded - (cp?.statsAtCheckpoint.parriesLanded ?? 0))
+      : baseSummary.parriesLanded,
+    vulnerableHits: isBossSegment
+      ? Math.max(0, world.stats.vulnerableHits - (cp?.statsAtCheckpoint.vulnerableHits ?? 0))
+      : baseSummary.vulnerableHits,
+    convergencesTriggered: isBossSegment
+      ? Math.max(
+          0,
+          world.resonance.convergenceCount - (cp?.statsAtCheckpoint.convergencesTriggered ?? 0)
+        )
+      : baseSummary.convergencesTriggered,
+    relaysUsed: isBossSegment
+      ? Math.max(0, world.relay.activationCount - (cp?.statsAtCheckpoint.relaysUsed ?? 0))
+      : baseSummary.relaysUsed,
+  };
+  const outcome = recordCombatMasteryVictory(
+    world.progression.combatMastery,
+    targetIds,
+    segmentSummary
+  );
+  world.progression.combatMastery = outcome.ledger;
+}
+
+export function createInitialRecursionState(
+  bestLoopReached = 0,
+  totalClears = 0
+): RecursionRunState {
+  return {
+    active: true,
+    loopIndex: 1,
+    bestLoopReached: Math.max(0, Math.floor(bestLoopReached)),
+    totalClears: Math.max(0, Math.floor(totalClears)),
+    awaitingRelicDraft: false,
+    draftOptions: [],
+    relicStacks: {},
+    enemiesPerLoopTotal: 0,
+    isWardenSurge: false,
+  };
+}
+
+export function getActiveRecursionModifiers(world: WorldState): RecursionModifierSummary {
+  if (world?.run?.mode === 'recursion' && world.recursion?.active) {
+    return computeRecursionModifierSummary(world.recursion.relicStacks);
+  }
+  return computeRecursionModifierSummary(null);
+}
+
+export function getActiveWeaponMasteryInfo(
+  world: WorldState,
+  weaponId?: WeaponId
+): WeaponMasteryRankInfo {
+  const id = weaponId ?? world?.player?.equippedWeaponId ?? 'chrono_edge';
+  const xp = world?.progression?.weaponMasteryXp?.[id] ?? 0;
+  return computeWeaponMasteryRankInfo(xp);
+}
+
+export function awardWeaponMasteryXp(
+  world: WorldState,
+  weaponId: WeaponId,
+  amount: number
+): WeaponMasteryRankInfo {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const map = normalizeWeaponMasteryXpMap(world.progression.weaponMasteryXp);
+  const gain = Math.max(0, Math.floor(amount));
+  if (gain > 0) {
+    map[weaponId] = Math.min(999999, (map[weaponId] ?? 0) + gain);
+  }
+  world.progression.weaponMasteryXp = map;
+  return computeWeaponMasteryRankInfo(map[weaponId] ?? 0);
+}
+
+export function setDifficultyTier(
+  world: WorldState,
+  tier: import('./types.ts').DifficultyTierId
+): import('./types.ts').DifficultyTierId {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  world.progression.difficultyTier = tier;
+  world.progression.overdriveDifficulty = tier === 'singularity';
+  const spec = getDifficultySpec(tier);
+  world.progression.lastActionMessage = `DIFFICULTY: ${spec.labelEn} · ${spec.subtitleEn}`;
+  return tier;
+}
+
+export function setOverdriveDifficulty(world: WorldState, enabled: boolean): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  world.progression.overdriveDifficulty = Boolean(enabled);
+  world.progression.difficultyTier = enabled ? 'singularity' : 'standard';
+  world.progression.lastActionMessage = world.progression.overdriveDifficulty
+    ? 'OVERDRIVE PROTOCOL ENGAGED · +30% HOSTILE HP + BOSS PHASE II ESCORT'
+    : 'OVERDRIVE PROTOCOL DISENGAGED · STANDARD CONTAINMENT SCALING';
+  return world.progression.overdriveDifficulty;
+}
+
+export function applyOverdriveToEnemies(
+  world: WorldState,
+  enemies: EnemyState[],
+  boss?: BossState | null
+): void {
+  const diffTier = world?.progression?.difficultyTier;
+  const diffHpMult = diffTier
+    ? getDifficultySpec(diffTier).enemyHpMult
+    : world?.progression?.overdriveDifficulty
+      ? 1.3
+      : 1;
+  const ngPlusMult = getNgPlusModifiers(world?.progression?.ngPlusCycle ?? 0).enemyHpMultiplier;
+  const totalMult = diffHpMult * ngPlusMult;
+  if (totalMult <= 1) return;
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (e.maxHp > 0) {
+      e.maxHp = Math.round(e.maxHp * totalMult);
+      e.hp = Math.round(e.hp * totalMult);
+      e.ghostHp = e.hp;
+    }
+  }
+  if (boss && boss.maxHp > 0) {
+    boss.maxHp = Math.round(boss.maxHp * totalMult);
+    boss.hp = Math.round(boss.hp * totalMult);
+    boss.ghostHp = boss.hp;
+  }
+}
+
+export function sealTemporalRift(world: WorldState): boolean {
+  const rift = world?.temporalRift;
+  const p = world?.player;
+  if (!rift || !p || p.actionState === 'dead') {
+    return false;
+  }
+  const protocolMods = getPlayerProtocolModifiers(world);
+  p.flux = Math.min(p.maxFlux, p.flux + 28);
+  p.integrity = Math.min(p.maxIntegrity, p.integrity + 12);
+  p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+  p.surgeTimer = Math.max(p.surgeTimer ?? 0, 2.0 * protocolMods.surgeDurationMultiplier);
+
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
+    if (e.hp <= 0 || e.aiState === 'ko') continue;
+    if (Math.hypot(e.x - rift.x, e.z - rift.z) <= 5.5 + e.radius) {
+      e.stagger = Math.min(e.maxStagger, e.stagger + 22);
+      e.hitFlashTimer = Math.max(e.hitFlashTimer, 0.22);
+      if (world.boss && world.boss.id === e.id) {
+        world.boss.stagger = e.stagger;
+        world.boss.hitFlashTimer = e.hitFlashTimer;
+      }
+    }
+  }
+
+  world.events.push({
+    type: 'temporal_rift_sealed',
+    x: rift.x,
+    z: rift.z,
+    amount: 28,
+  });
+
+  world.temporalRift = null;
+  world.riftCooldownTimer = 22.0;
+  if (world.run) {
+    world.run.checkpointNotice = 'TEMPORAL RIFT SEALED · +28 FLUX · +12 INTEGRITY · 2.0s SURGE';
+    world.run.checkpointNoticeTimer = Math.max(world.run.checkpointNoticeTimer, 3.6);
+  }
+  return true;
+}
+
+export function advanceTemporalRiftSystem(world: WorldState, dt: number): void {
+  if (!world || world.appState !== 'playing' || world.outcome !== 'none') return;
+  if (world.recursion?.awaitingRelicDraft) return;
+  if (world.run?.chapter === 'chapter_5_loom' && world.run?.stage === 'chronicle_loom') {
+    return;
+  }
+
+  const p = world.player;
+  const rift = world.temporalRift ?? null;
+  if (rift) {
+    if (p && p.actionState !== 'dead') {
+      const dist = Math.hypot(p.x - rift.x, p.z - rift.z);
+      if (dist <= rift.radius) {
+        sealTemporalRift(world);
+        return;
+      }
+    }
+    rift.remainingTimer = Math.max(0, rift.remainingTimer - dt);
+    if (rift.remainingTimer <= 0) {
+      for (let i = 0; i < world.enemies.length; i++) {
+        const e = world.enemies[i];
+        if (e.hp <= 0 || e.aiState === 'ko' || e.isDecoy) continue;
+        e.hp = Math.min(e.maxHp, e.hp + 18);
+        e.ghostHp = Math.max(e.ghostHp, e.hp);
+        e.stagger = Math.max(0, e.stagger - 15);
+        if (world.boss && world.boss.id === e.id) {
+          world.boss.hp = e.hp;
+          world.boss.ghostHp = e.ghostHp;
+          world.boss.stagger = e.stagger;
+        }
+      }
+      world.events.push({
+        type: 'temporal_rift_ruptured',
+        x: rift.x,
+        z: rift.z,
+        amount: 18,
+      });
+      world.temporalRift = null;
+      world.riftCooldownTimer = 22.0;
+      if (world.run) {
+        world.run.checkpointNotice = 'TEMPORAL RIFT RUPTURED · HOSTILE INTEGRITY SURGE (+18 HP)';
+        world.run.checkpointNoticeTimer = Math.max(world.run.checkpointNoticeTimer, 3.6);
+      }
+    }
+    return;
+  }
+
+  const nextCooldown = (world.riftCooldownTimer ?? 7.5) - dt;
+  if (nextCooldown > 0) {
+    world.riftCooldownTimer = nextCooldown;
+    return;
+  }
+
+  const seq = world.riftSpawnSeq ?? 1;
+  world.riftSpawnSeq = seq + 1;
+  world.riftCooldownTimer = 22.0;
+  const pos = computeTemporalRiftSpawnPosition(
+    world.run?.chapter ?? 'prologue',
+    seq,
+    p?.x ?? 0,
+    p?.z ?? 0,
+    world.obstacles ?? []
+  );
+  world.temporalRift = {
+    id: `rift-${seq}`,
+    x: pos.x,
+    z: pos.z,
+    radius: 2.4,
+    remainingTimer: 12.0,
+    maxDuration: 12.0,
+    label: 'TEMPORAL ANOMALY RIFT',
+  };
+  world.events.push({
+    type: 'temporal_rift_spawned',
+    x: pos.x,
+    z: pos.z,
+  });
+}
+
+function spawnRecursionLoopArena(world: WorldState, loopIndex: number): void {
+  const sector = pickNextRecursionSector(loopIndex);
+  const isWardenSurge = loopIndex % 3 === 0;
+  const hpScale = 1 + Math.max(0, loopIndex - 1) * 0.12;
+  const obstacles = buildObstaclesForChapter(sector, isWardenSurge);
+
+  world.projectiles = [];
+  world.fluxPools = [];
+  world.artilleryZones = [];
+  world.temporalRift = null;
+  world.riftCooldownTimer = 7.5;
+  world.obstacles = obstacles;
+  world.boostPads = createInitialBoostPads();
+  world.fragmentCaches = buildFragmentCachesForChapter(
+    sector,
+    world.progression?.claimedRewardIds ?? []
+  );
+  world.sectorBeacons = buildSectorBeaconsForChapter(sector);
+  world.resonance.activeMark = null;
+  if (world.resonance.status === 'primed') {
+    world.resonance.status = 'idle';
+  }
+
+  world.player.x = 0;
+  world.player.z = 5.2;
+  world.player.vx = 0;
+  world.player.vz = 0;
+  world.player.rotationY = Math.PI;
+  world.run.chapter = sector;
+  world.gravityPin = createInitialGravityPinState(true);
+  world.echoCollapse = createInitialEchoCollapseState(true);
+  world.loom = createInitialChronicleLoomState(false);
+
+  const enemies: EnemyState[] = [];
+  if (isWardenSurge) {
+    const surgeBosses: readonly BossId[] = [
+      'helix-04',
+      'the-choir',
+      'the-curator',
+      'matron-v',
+      'warden-prime',
+    ];
+    const bossId = surgeBosses[(Math.floor(loopIndex / 3) - 1) % surgeBosses.length];
+    const boss = createBossStateForId(bossId, true);
+    boss.maxHp = Math.round(boss.maxHp * hpScale);
+    boss.hp = boss.maxHp;
+    boss.ghostHp = boss.maxHp;
+    const archetypeForBoss: EnemyArchetype =
+      bossId === 'the-choir'
+        ? 'choir'
+        : bossId === 'the-curator'
+          ? 'curator'
+          : bossId === 'matron-v'
+            ? 'matron'
+            : bossId === 'warden-prime'
+              ? 'warden_prime'
+              : 'helix';
+    const bossEnemy = createEnemy(boss.id, archetypeForBoss, boss.x, boss.z, boss.rotationY);
+    bossEnemy.hp = boss.hp;
+    bossEnemy.maxHp = boss.maxHp;
+    bossEnemy.ghostHp = boss.maxHp;
+    bossEnemy.stagger = 0;
+    bossEnemy.maxStagger = boss.maxStagger;
+    bossEnemy.radius = boss.radius;
+    bossEnemy.aiState = 'pursue';
+    bossEnemy.cooldownTimer = boss.cooldownTimer;
+    enemies.push(bossEnemy);
+
+    world.choir = createInitialChoirState(bossId === 'the-choir');
+    world.curator = createInitialCuratorState(bossId === 'the-curator' || bossId === 'warden-prime');
+    world.matron = createInitialMatronState(bossId === 'matron-v' || bossId === 'warden-prime');
+    if (bossId === 'the-curator') {
+      for (let i = 0; i < GAME_CONFIG.curator.decoySpawnPositions.length; i++) {
+        const sp = GAME_CONFIG.curator.decoySpawnPositions[i];
+        const decoyId = `curator-decoy-${i + 1}`;
+        const decoy = createEnemy(decoyId, 'curator_decoy', sp.x, sp.z, 0);
+        decoy.isDecoy = true;
+        decoy.decoySignature = sp.signature;
+        decoy.cooldownTimer = 0.8 + i * 0.35;
+        decoy.maxHp = Math.round(decoy.maxHp * hpScale);
+        decoy.hp = decoy.maxHp;
+        decoy.ghostHp = decoy.maxHp;
+        enemies.push(decoy);
+        world.curator.decoyIds.push(decoyId);
+      }
+    } else if (bossId === 'matron-v') {
+      const siphon = createEnemy(`rec-siphon-${loopIndex}`, 'siphon', -4.8, -1.6, 0.25);
+      siphon.maxHp = Math.round(siphon.maxHp * hpScale);
+      siphon.hp = siphon.maxHp;
+      siphon.ghostHp = siphon.maxHp;
+      enemies.push(siphon);
+    }
+    world.boss = boss;
+    world.encounterMode = 'boss';
+    world.run.stage = 'boss_fight';
+  } else {
+    world.boss = null;
+    world.choir = createInitialChoirState(false);
+    world.curator = createInitialCuratorState(false);
+    world.matron = createInitialMatronState(false);
+    world.encounterMode = 'standard';
+    world.run.stage = 'calibration';
+
+    const pool: readonly EnemyArchetype[] = [
+      'bastion',
+      'scrapper',
+      'scout',
+      'null_weaver',
+      'aegis_sentinel',
+      'siphon',
+      'eraser',
+      'phase_stalker',
+      'chrono_mortar',
+      'resonance_warden',
+    ];
+    const eliteAffixes: readonly EnemyModifierId[] = [
+      'overclocked',
+      'phase_shielded',
+      'volatile',
+    ];
+    const count = 2 + Math.min(3, Math.floor((loopIndex + 1) / 2));
+    for (let i = 0; i < count; i++) {
+      const arch = pool[(loopIndex * 2 + i * 3) % pool.length];
+      const spread = (i - (count - 1) * 0.5) * 4.2;
+      const sx = Math.max(-10, Math.min(10, spread));
+      const sz = -4.2 + (i % 2) * 2.2;
+      const enemy = createEnemy(`rec-loop-${loopIndex}-unit-${i + 1}`, arch, sx, sz, i % 2 === 0 ? 0.2 : -0.2);
+      enemy.maxHp = Math.round(enemy.maxHp * hpScale);
+      enemy.hp = enemy.maxHp;
+      enemy.ghostHp = enemy.maxHp;
+      if (loopIndex >= 2 && i < (loopIndex >= 4 ? 2 : 1)) {
+        const affix = eliteAffixes[(loopIndex + i) % eliteAffixes.length];
+        applyEnemyModifier(enemy, affix);
+      }
+      const validation = validateEncounterSpawnPoint(
+        enemy.x,
+        enemy.z,
+        enemy.radius,
+        obstacles,
+        GAME_CONFIG.arena.radius,
+        world.player.x,
+        world.player.z,
+        GAME_CONFIG.player.radius
+      );
+      if (!validation.valid) {
+        resolveCircleObstacleCollisions(enemy, obstacles, GAME_CONFIG.arena.radius - 0.8);
+      }
+      enemies.push(enemy);
+    }
+  }
+
+  world.enemies = enemies;
+  applyOverdriveToEnemies(world, world.enemies, world.boss);
+  if (world.recursion) {
+    world.recursion.isWardenSurge = isWardenSurge;
+    world.recursion.enemiesPerLoopTotal = world.enemies.length;
+  }
+
+  world.exploration = createInitialExplorationState(sector, null);
+  syncUnlockedRoutesToObstacles(world);
+  syncPlayerRigStats(world);
+
+  world.run.checkpointNotice = isWardenSurge
+    ? `RECURSION LOOP ${loopIndex} · WARDEN BOSS SURGE (${world.boss?.name ?? 'WARDEN'})`
+    : `RECURSION LOOP ${loopIndex} · ${world.enemies.length} HOSTILES DEPLOYED`;
+  world.run.checkpointNoticeTimer = 4.5;
+}
+
+export function startRecursionProtocol(world: WorldState, startLoop = 1): void {
+  const preserveTutorialEnabled = world.tutorial ? world.tutorial.enabled : true;
+  const savedSnap = captureSavedCampaignSnapshotIfNeeded(world);
+  const preservedUnlocked = world.run?.unlockedChapters
+    ? [...world.run.unlockedChapters]
+    : (['prologue'] as CampaignChapterId[]);
+  const preservedCompleted = world.run?.completedChapters
+    ? [...world.run.completedChapters]
+    : ([] as CampaignChapterId[]);
+  const preservedRecoveredLogs = world.run?.recoveredLogs ? [...world.run.recoveredLogs] : [];
+  const preservedCompletedEndings = world.run?.completedEndings
+    ? [...world.run.completedEndings]
+    : [];
+  const preservedProgression = cloneWeaponProgressionState(world.progression);
+  const preservedWeaponId: WeaponId =
+    world.player && isValidWeaponId(world.player.equippedWeaponId)
+      ? world.player.equippedWeaponId
+      : GAME_CONFIG.weapons.defaultWeaponId;
+
+  const fresh = createInitialWorld('playing');
+  world.appState = 'playing';
+  world.outcome = 'none';
+  world.outcomeDelayTimer = 0;
+  world.elapsedTime = 0;
+  world.hitstopTimer = 0;
+  world.cameraTrauma = 0;
+  world.player = fresh.player;
+  world.player.equippedWeaponId = preservedWeaponId;
+  world.echo = fresh.echo;
+  world.relay = fresh.relay;
+  world.resonance = fresh.resonance;
+  world.pressurePlate = fresh.pressurePlate;
+  world.puzzle = fresh.puzzle;
+  world.comms = createInitialNarrativeCommsState();
+  world.progression = preservedProgression;
+  world.activeStoryBlessing = null;
+  world.expedition = createInitialExpeditionState('prologue', false, 'combat');
+  world.run = {
+    ...createInitialRunState('recursion', 'calibration', pickNextRecursionSector(startLoop)),
+    unlockedChapters: preservedUnlocked,
+    completedChapters: preservedCompleted,
+    recoveredLogs: preservedRecoveredLogs,
+    completedEndings: preservedCompletedEndings,
+    savedCampaignSnapshot: savedSnap,
+  };
+  world.tutorial = createInitialTutorialState(preserveTutorialEnabled, 'boss_counterplay');
+  world.recursion = {
+    ...createInitialRecursionState(
+      preservedProgression.bestRecursionLoop ?? 0,
+      preservedProgression.totalRecursionClears ?? 0
+    ),
+    loopIndex: Math.max(1, Math.floor(startLoop)),
+  };
+  world.overdrive = createInitialChronoOverdriveState(30);
+  world.gauntlet = null;
+  world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
+  world.stats = fresh.stats;
+  world.frozenSummary = null;
+  world.events = [];
+
+  spawnRecursionLoopArena(world, world.recursion.loopIndex);
+  advanceMissionAndExplorationSystem(world);
+}
+
+export function grantOverdriveCharge(world: WorldState, amount: number): boolean {
+  if (!world || !Number.isFinite(amount) || amount <= 0) return false;
+  if (!world.overdrive) {
+    world.overdrive = createInitialChronoOverdriveState(25);
+  }
+  const prev = world.overdrive.charge;
+  world.overdrive = addOverdriveCharge(world.overdrive, amount);
+  return world.overdrive.charge !== prev;
+}
+
+export function attemptActivateChronoOverdrive(world: WorldState): boolean {
+  if (!world || !world.player) return false;
+  if (!world.overdrive) {
+    world.overdrive = createInitialChronoOverdriveState(25);
+  }
+  const res = activateChronoOverdrive(
+    world.overdrive,
+    world.player.actionState === 'dead' || world.player.integrity <= 0
+  );
+  world.overdrive = res.state;
+  if (!res.activated) return false;
+
+  // Immediate tactile burst: brief invulnerability, purge weapon overheat, camera shock
+  world.player.invulnTimer = Math.max(world.player.invulnTimer, 0.35);
+  world.player.weaponHeat = 0;
+  world.player.weaponOverheated = false;
+  world.player.weaponOverheatTimer = 0;
+  world.hitstopTimer = Math.max(world.hitstopTimer, 0.055);
+  world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.52);
+  world.events.push({
+    type: 'chrono_overdrive_activated',
+    x: world.player.x,
+    z: world.player.z,
+    amount: world.overdrive.maxDuration,
+  });
+  const odCoreSpec = computeBossCoreModifiers(
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  ).spec;
+  if (odCoreSpec && odCoreSpec.overdriveNovaRadius > 0) {
+    applyBossCoreRadialPulse(
+      world,
+      world.player.x,
+      world.player.z,
+      odCoreSpec.overdriveNovaRadius,
+      odCoreSpec.overdriveNovaDamage,
+      odCoreSpec.overdriveNovaStagger
+    );
+  }
+  return true;
+}
+
+export function startBossGauntletRun(
+  world: WorldState,
+  skipIntro = false
+): void {
+  const preservedBest = world.progression?.bestGauntletTimeSec ?? null;
+  const preservedClears = world.progression?.totalGauntletClears ?? 0;
+  const firstStage = getGauntletStageSpec(0);
+
+  startBossEncounter(world, skipIntro, firstStage.bossId);
+  world.run.mode = 'boss_gauntlet';
+  world.run.chapter = firstStage.chapter;
+  world.gauntlet = createInitialBossGauntletState(preservedBest, preservedClears);
+  world.overdrive = createInitialChronoOverdriveState(50);
+
+  // Full Chrono Rig combat suite unlocked for the 5-Boss Sovereign Trial (all 5 weapons)
+  world.gravityPin.unlocked = true;
+  world.echoCollapse.unlocked = true;
+  if (world.progression && !world.progression.unlockedWeaponIds.includes('chrono_scythe')) {
+    world.progression.unlockedWeaponIds = [
+      ...world.progression.unlockedWeaponIds,
+      'chrono_scythe',
+    ];
+  }
+  world.run.checkpointNotice =
+    'SOVEREIGN GAUNTLET INITIATED // DISMANTLE ALL 5 WARDENS IN SEQUENCE';
+  world.run.checkpointNoticeTimer = 4.5;
+  advanceMissionAndExplorationSystem(world);
+}
+
+function advanceBossGauntletAfterDefeat(
+  world: WorldState,
+  defeatedBossX: number,
+  defeatedBossZ: number,
+  bossPhase: 1 | 2
+): void {
+  const g = world.gauntlet;
+  if (!g || !g.active) return;
+
+  const res = advanceBossGauntletStage(g, world.elapsedTime);
+  world.gauntlet = res.state;
+
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  world.progression.memoryFragments += res.refitRewards.memoryFragments;
+
+  if (res.completedAll || !res.nextStage) {
+    world.progression.totalGauntletClears = res.state.totalGauntletClears;
+    world.progression.bestGauntletTimeSec = res.state.bestClearTimeSec;
+    unlockChronoAchievement(world, 'gauntlet_champion');
+    if (hasAnyActiveMutator(world.paradox?.mutators)) {
+      unlockChronoAchievement(world, 'mutator_daredevil');
+    }
+    world.outcome = 'victory';
+    world.run.stage = 'completed';
+    world.outcomeDelayTimer = 0.5;
+    world.run.checkpointNotice = res.state.refitBannerText;
+    world.run.checkpointNoticeTimer = 5.5;
+    advanceMissionAndExplorationSystem(world);
+    world.frozenSummary = buildRunSummary(world);
+    clearEchoState(world, 'outcome');
+    world.events.push({
+      type: 'boss_defeated',
+      x: defeatedBossX,
+      z: defeatedBossZ,
+      enemyId: g.currentBossId,
+      bossPhase,
+    });
+    world.events.push({
+      type: 'gauntlet_victory',
+      x: world.player.x,
+      z: world.player.z,
+      amount: res.state.totalElapsedTime,
+    });
+    world.events.push({
+      type: 'encounter_victory',
+      x: world.player.x,
+      z: world.player.z,
+    });
+    return;
+  }
+
+  // Carry over cumulative run state + Field Refit into the next Boss Sector
+  const nextStage = res.nextStage;
+  const carriedElapsed = world.elapsedTime;
+  const carriedStats = { ...world.stats };
+  const carriedWeapon = world.player.equippedWeaponId;
+  const carriedIntegrity = Math.min(
+    world.player.maxIntegrity,
+    Math.max(1, world.player.integrity) + res.refitRewards.integrityHeal
+  );
+  const carriedFlux = Math.min(
+    world.player.maxFlux,
+    world.player.flux + res.refitRewards.fluxGain
+  );
+  const carriedOverdrive = addOverdriveCharge(
+    {
+      ...world.overdrive,
+      active: false,
+      remainingTimer: 0,
+    },
+    res.refitRewards.overdriveCharge
+  );
+  const nextGauntletState = res.state;
+
+  startBossEncounter(world, true, nextStage.bossId);
+  world.run.mode = 'boss_gauntlet';
+  world.run.chapter = nextStage.chapter;
+  world.elapsedTime = carriedElapsed;
+  world.stats = carriedStats;
+  world.gauntlet = nextGauntletState;
+  world.overdrive = carriedOverdrive;
+  world.player.equippedWeaponId = carriedWeapon;
+  world.player.integrity = Math.min(world.player.maxIntegrity, carriedIntegrity);
+  world.player.ghostIntegrity = world.player.integrity;
+  world.player.flux = Math.min(world.player.maxFlux, carriedFlux);
+  world.gravityPin.unlocked = true;
+  world.echoCollapse.unlocked = true;
+  world.run.checkpointNotice = nextGauntletState.refitBannerText;
+  world.run.checkpointNoticeTimer = 4.2;
+  advanceMissionAndExplorationSystem(world);
+
+  world.events.push({
+    type: 'boss_defeated',
+    x: defeatedBossX,
+    z: defeatedBossZ,
+    enemyId: g.currentBossId,
+    bossPhase,
+  });
+  world.events.push({
+    type: 'gauntlet_stage_cleared',
+    x: world.player.x,
+    z: world.player.z,
+    amount: nextStage.index,
+  });
+}
+
+export function completeRecursionLoopAndOpenDraft(world: WorldState): boolean {
+  if (!world || world.run?.mode !== 'recursion' || !world.recursion?.active) {
+    return false;
+  }
+  const rec = world.recursion;
+  if (rec.awaitingRelicDraft) {
+    return false;
+  }
+
+  rec.totalClears += 1;
+  rec.bestLoopReached = Math.max(rec.bestLoopReached, rec.loopIndex);
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  world.progression.totalRecursionClears = (world.progression.totalRecursionClears ?? 0) + 1;
+  world.progression.bestRecursionLoop = Math.max(
+    world.progression.bestRecursionLoop ?? 0,
+    rec.loopIndex
+  );
+  if (rec.loopIndex % 2 === 0) {
+    world.progression.memoryFragments += 1;
+  }
+
+  world.projectiles = [];
+  world.temporalRift = null;
+  world.resonance.activeMark = null;
+  if (world.resonance.status === 'primed') {
+    world.resonance.status = 'idle';
+  }
+  clearEchoState(world, 'outcome');
+
+  if (world.player && world.player.actionState !== 'dead') {
+    world.player.integrity = Math.min(world.player.maxIntegrity, world.player.integrity + 15);
+    world.player.ghostIntegrity = Math.max(world.player.ghostIntegrity, world.player.integrity);
+    world.player.flux = Math.min(world.player.maxFlux, world.player.flux + 20);
+  }
+
+  rec.awaitingRelicDraft = true;
+  rec.draftOptions = getRelicDraftChoices(rec.loopIndex, rec.relicStacks);
+  world.run.checkpointNotice =
+    rec.loopIndex % 2 === 0
+      ? `LOOP ${rec.loopIndex} CLEARED · +1 MEMORY FRAGMENT · DRAFT CHRONO RELIC`
+      : `LOOP ${rec.loopIndex} CLEARED · SELECT 1 CHRONO RELIC TO ADVANCE`;
+  world.run.checkpointNoticeTimer = 5.5;
+
+  world.events.push({
+    type: 'recursion_loop_cleared',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: rec.loopIndex,
+  });
+  return true;
+}
+
+export function selectRecursionRelic(
+  world: WorldState,
+  relicId: ChronoRelicId | string
+): boolean {
+  if (!world || world.run?.mode !== 'recursion' || !world.recursion?.awaitingRelicDraft) {
+    return false;
+  }
+  if (!isValidChronoRelicId(relicId)) {
+    return false;
+  }
+  const rec = world.recursion;
+  rec.relicStacks[relicId] = (rec.relicStacks[relicId] ?? 0) + 1;
+  rec.awaitingRelicDraft = false;
+  rec.draftOptions = [];
+  rec.loopIndex += 1;
+
+  syncPlayerRigStats(world);
+  if (relicId === 'relic_aegis_capacitor' && world.player && world.player.actionState !== 'dead') {
+    world.player.integrity = Math.min(world.player.maxIntegrity, world.player.integrity + 18);
+    world.player.ghostIntegrity = Math.max(world.player.ghostIntegrity, world.player.integrity);
+  }
+
+  world.events.push({
+    type: 'recursion_relic_picked',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: rec.loopIndex,
+  });
+
+  spawnRecursionLoopArena(world, rec.loopIndex);
+  advanceMissionAndExplorationSystem(world);
+  return true;
 }
 
 export function canModifyWeaponUpgrades(world: WorldState): boolean {
@@ -3746,6 +6555,11 @@ export function canModifyWeaponUpgrades(world: WorldState): boolean {
   }
   if (world.run?.chapter === 'chapter_5_loom' && world.run?.stage === 'chronicle_loom') {
     return false;
+  }
+  // After winning a match, the simulation freezes player.actionState on the finishing blow;
+  // never block post-match Upgrade Bench purchases or equips on the Victory screen.
+  if (world.outcome === 'victory') {
+    return true;
   }
   const st = world.player.actionState;
   const isCommittedAction =
@@ -4136,6 +6950,568 @@ export function equipRigModule(
   return { success: true, outcome: 'equipped' };
 }
 
+export function overclockRigModule(
+  world: WorldState,
+  moduleId: unknown
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!prog.purchasedRigModules) prog.purchasedRigModules = [];
+  if (!prog.overclockedRigModules) prog.overclockedRigModules = [];
+
+  if (!isValidRigModuleId(moduleId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID RIG MODULE FOR MK.II OVERCLOCKING';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT OVERCLOCK RIG MODULES DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  const def = getRigModuleDefinition(moduleId);
+  if (!prog.purchasedRigModules.includes(moduleId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = `UNLOCK ${def.name} BEFORE MK.II OVERCLOCKING`;
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (prog.overclockedRigModules.includes(moduleId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${def.name} ALREADY MK.II OVERCLOCKED`;
+    return { success: false, outcome: 'already_owned' };
+  }
+
+  if (prog.memoryFragments < RIG_OVERCLOCK_COST) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${RIG_OVERCLOCK_COST} REQUIRED FOR MK.II)`;
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+
+  prog.memoryFragments -= RIG_OVERCLOCK_COST;
+  prog.overclockedRigModules.push(moduleId);
+  prog.lastPurchaseOutcome = 'purchased';
+  prog.lastActionMessage = `OVERCLOCKED ${def.name} TO MK.II (-${RIG_OVERCLOCK_COST} FRAGMENT)`;
+  syncPlayerRigStats(world);
+
+  world.events.push({
+    type: 'rig_module_overclocked',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: RIG_OVERCLOCK_COST,
+  });
+
+  return { success: true, outcome: 'purchased' };
+}
+
+export function setSentinelProtocol(
+  world: WorldState,
+  mode: unknown
+): { success: boolean; mode: import('./types.ts').SentinelProtocolMode } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!isValidSentinelMode(mode)) {
+    return { success: false, mode: normalizeSentinelMode(prog.sentinelMode) };
+  }
+  if (world.outcome !== 'none' || world.player?.actionState === 'dead') {
+    return { success: false, mode: normalizeSentinelMode(prog.sentinelMode) };
+  }
+  prog.sentinelMode = mode;
+  const spec = SENTINEL_PROTOCOL_SPECS[mode];
+  prog.lastActionMessage = `SENTINEL PROTOCOL · ${spec.titleEn}`;
+  syncPlayerRigStats(world);
+  world.events.push({
+    type: 'sentinel_mode_switched',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: spec.baseWard,
+  });
+  return { success: true, mode };
+}
+
+export function cycleSentinelProtocol(
+  world: WorldState
+): { success: boolean; mode: import('./types.ts').SentinelProtocolMode } {
+  const current = normalizeSentinelMode(world.progression?.sentinelMode);
+  return setSentinelProtocol(world, cycleNextSentinelMode(current));
+}
+
+export function setEchoDoctrine(
+  world: WorldState,
+  doctrineId: unknown
+): { success: boolean; doctrineId: import('./types.ts').EchoDoctrineId } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!isValidEchoDoctrineId(doctrineId)) {
+    return { success: false, doctrineId: normalizeEchoDoctrineId(prog.echoDoctrine) };
+  }
+  if (world.outcome !== 'none' || world.player?.actionState === 'dead') {
+    return { success: false, doctrineId: normalizeEchoDoctrineId(prog.echoDoctrine) };
+  }
+  prog.echoDoctrine = doctrineId;
+  const spec = ECHO_DOCTRINE_SPECS[doctrineId];
+  prog.lastActionMessage = `ECHO DOCTRINE · ${spec.titleEn}`;
+  const docIdx = VALID_ECHO_DOCTRINE_IDS.indexOf(doctrineId);
+  world.events.push({
+    type: 'echo_doctrine_switched',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: Math.max(0, docIdx),
+  });
+  return { success: true, doctrineId };
+}
+
+export function cycleEchoDoctrine(
+  world: WorldState
+): { success: boolean; doctrineId: import('./types.ts').EchoDoctrineId } {
+  const current = normalizeEchoDoctrineId(world.progression?.echoDoctrine);
+  return setEchoDoctrine(world, cycleNextEchoDoctrineId(current));
+}
+
+export function unlockBossEchoCore(
+  world: WorldState,
+  coreId: unknown,
+  autoEquip = true
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  syncUnlockedBossCoresFromCampaign(world);
+  const prog = world.progression;
+  if (!isValidBossEchoCoreId(coreId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID BOSS ECHO CORE IMPRINT';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT SYNTHESIZE BOSS CORES DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+  const spec = BOSS_ECHO_CORES[coreId];
+  if (prog.unlockedBossCores.includes(coreId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${spec.titleEn} ALREADY HARVESTED`;
+    return { success: false, outcome: 'already_owned' };
+  }
+  if (prog.memoryFragments < spec.synthesisCost) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${spec.synthesisCost} REQUIRED FOR ${spec.titleEn})`;
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+  prog.memoryFragments -= spec.synthesisCost;
+  prog.unlockedBossCores.push(coreId);
+  if (autoEquip) {
+    prog.equippedBossCore = coreId;
+  }
+  prog.lastPurchaseOutcome = 'purchased';
+  prog.lastActionMessage = `SYNTHESIZED ${spec.titleEn} (-${spec.synthesisCost} FRAGMENTS)`;
+  syncPlayerRigStats(world);
+  world.events.push({
+    type: 'boss_core_unlocked',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: spec.synthesisCost,
+  });
+  return { success: true, outcome: 'purchased' };
+}
+
+export function equipBossEchoCore(
+  world: WorldState,
+  coreId: unknown
+): {
+  success: boolean;
+  outcome: UpgradeEquipOutcome;
+  equipped: import('./types.ts').BossEchoCoreId | null;
+} {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  syncUnlockedBossCoresFromCampaign(world);
+  const prog = world.progression;
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastEquipOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT RE-SOCKET BOSS CORES DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked', equipped: prog.equippedBossCore };
+  }
+  if (coreId === null) {
+    prog.equippedBossCore = null;
+    prog.lastEquipOutcome = 'unequipped';
+    prog.lastActionMessage = 'BOSS ECHO CORE UNEQUIPPED';
+    syncPlayerRigStats(world);
+    world.events.push({
+      type: 'boss_core_equipped',
+      x: world.player?.x ?? 0,
+      z: world.player?.z ?? 0,
+      amount: 0,
+    });
+    return { success: true, outcome: 'unequipped', equipped: null };
+  }
+  if (!isValidBossEchoCoreId(coreId) || !prog.unlockedBossCores.includes(coreId)) {
+    prog.lastEquipOutcome = 'not_owned';
+    prog.lastActionMessage = 'HARVEST OR SYNTHESIZE THIS BOSS ECHO CORE FIRST';
+    return { success: false, outcome: 'not_owned', equipped: prog.equippedBossCore };
+  }
+  const spec = BOSS_ECHO_CORES[coreId];
+  const effectiveCoreMods = computeBossCoreModifiers(coreId, prog.transcendedBossCores);
+  prog.equippedBossCore = coreId;
+  prog.lastEquipOutcome = 'equipped';
+  prog.lastActionMessage = `EQUIPPED ${spec.titleEn}${effectiveCoreMods.isOmega ? ' Ω' : ''}`;
+  syncPlayerRigStats(world);
+  world.events.push({
+    type: 'boss_core_equipped',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: effectiveCoreMods.bonusWard,
+  });
+  return { success: true, outcome: 'equipped', equipped: coreId };
+}
+
+export function saveLoadoutPreset(
+  world: WorldState,
+  slotIndex: number
+): {
+  success: boolean;
+  slotIndex: import('./types.ts').TacticalLoadoutPresetSlot;
+  preset: import('./types.ts').TacticalLoadoutPreset | null;
+} {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  syncUnlockedBossCoresFromCampaign(world);
+  const prog = world.progression;
+  if (!Array.isArray(prog.loadoutPresets) || prog.loadoutPresets.length < 3) {
+    prog.loadoutPresets = cloneLoadoutPresets(prog.loadoutPresets);
+  }
+  if (slotIndex !== 0 && slotIndex !== 1 && slotIndex !== 2) {
+    return { success: false, slotIndex: 0, preset: null };
+  }
+  const slot = slotIndex as import('./types.ts').TacticalLoadoutPresetSlot;
+  const presetName = prog.loadoutPresets[slot]?.name || DEFAULT_LOADOUT_PRESET_NAMES[slot];
+  const preset: import('./types.ts').TacticalLoadoutPreset = {
+    slotIndex: slot,
+    name: presetName,
+    weaponId: world.player?.equippedWeaponId ?? 'chrono_edge',
+    equippedUpgrades: {
+      chrono_edge: prog.equippedUpgrades?.chrono_edge ?? null,
+      pulsecaster: prog.equippedUpgrades?.pulsecaster ?? null,
+      phase_rail: prog.equippedUpgrades?.phase_rail ?? null,
+      grav_breaker: prog.equippedUpgrades?.grav_breaker ?? null,
+      chrono_scythe: prog.equippedUpgrades?.chrono_scythe ?? null,
+    },
+    equippedModChipId: prog.equippedModChipId ?? null,
+    equippedRigModules: {
+      temporal_core: prog.equippedRigModules?.temporal_core ?? null,
+      defensive_chassis: prog.equippedRigModules?.defensive_chassis ?? null,
+      tactical_harness: prog.equippedRigModules?.tactical_harness ?? null,
+    },
+    sentinelMode: normalizeSentinelMode(prog.sentinelMode),
+    equippedBossCore: prog.equippedBossCore ?? null,
+    echoDoctrine: normalizeEchoDoctrineId(prog.echoDoctrine),
+  };
+  prog.loadoutPresets[slot] = preset;
+  prog.lastActionMessage = `SAVED LOADOUT PRESET · ${preset.name}`;
+  return { success: true, slotIndex: slot, preset };
+}
+
+export function applyLoadoutPreset(
+  world: WorldState,
+  slotIndex: number
+): {
+  success: boolean;
+  outcome: UpgradeEquipOutcome | 'empty_slot';
+  preset: import('./types.ts').TacticalLoadoutPreset | null;
+} {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  syncUnlockedBossCoresFromCampaign(world);
+  const prog = world.progression;
+  if (!Array.isArray(prog.loadoutPresets) || prog.loadoutPresets.length < 3) {
+    prog.loadoutPresets = cloneLoadoutPresets(prog.loadoutPresets);
+  }
+  if (slotIndex !== 0 && slotIndex !== 1 && slotIndex !== 2) {
+    return { success: false, outcome: 'empty_slot', preset: null };
+  }
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastEquipOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT LOAD PRESET DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked', preset: null };
+  }
+  const rawPreset = prog.loadoutPresets[slotIndex];
+  if (!rawPreset) {
+    prog.lastActionMessage = 'LOADOUT PRESET SLOT IS EMPTY';
+    return { success: false, outcome: 'empty_slot', preset: null };
+  }
+
+  const availableWeapons = getUnlockedWeaponIds(world);
+  const normalizedList = normalizeLoadoutPresets(
+    [rawPreset, null, null],
+    availableWeapons,
+    prog.purchasedUpgrades,
+    prog.purchasedRigModules,
+    prog.unlockedModChipIds ?? ['mod_volt_arc'],
+    prog.unlockedBossCores ?? []
+  );
+  const safePreset = normalizedList[0];
+  if (!safePreset) {
+    return { success: false, outcome: 'empty_slot', preset: null };
+  }
+
+  if (world.player) {
+    world.player.equippedWeaponId = safePreset.weaponId;
+    world.player.weaponSwitchCooldownTimer = 0;
+  }
+  prog.equippedUpgrades = { ...safePreset.equippedUpgrades };
+  prog.equippedModChipId = safePreset.equippedModChipId;
+  prog.equippedRigModules = { ...safePreset.equippedRigModules };
+  prog.sentinelMode = safePreset.sentinelMode;
+  prog.equippedBossCore = safePreset.equippedBossCore;
+  prog.echoDoctrine = normalizeEchoDoctrineId(safePreset.echoDoctrine);
+  prog.lastEquipOutcome = 'equipped';
+  prog.lastActionMessage = `LOADED LOADOUT PRESET · ${safePreset.name}`;
+  syncPlayerRigStats(world);
+
+  world.events.push({
+    type: 'weapon_switched',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    weaponId: safePreset.weaponId,
+  });
+  return { success: true, outcome: 'equipped', preset: safePreset };
+}
+
+export function transcendBossEchoCore(
+  world: WorldState,
+  coreId: unknown
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  syncUnlockedBossCoresFromCampaign(world);
+  const prog = world.progression;
+  if (!prog.transcendedBossCores) {
+    prog.transcendedBossCores = [];
+  }
+  if (!isValidBossEchoCoreId(coreId) || !prog.unlockedBossCores.includes(coreId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'HARVEST OR SYNTHESIZE THIS BOSS ECHO CORE BEFORE OMEGA TRANSCENDENCE';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT AWAKEN BOSS CORE OMEGA DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+  const spec = BOSS_ECHO_CORES[coreId];
+  if (prog.transcendedBossCores.includes(coreId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${spec.titleEn} ALREADY TRANSCENDED TO OMEGA`;
+    return { success: false, outcome: 'already_owned' };
+  }
+  if (prog.memoryFragments < BOSS_CORE_OMEGA_COST) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${BOSS_CORE_OMEGA_COST} REQUIRED FOR ${spec.titleEn} OMEGA)`;
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+  prog.memoryFragments -= BOSS_CORE_OMEGA_COST;
+  prog.transcendedBossCores.push(coreId);
+  if (!prog.equippedBossCore) {
+    prog.equippedBossCore = coreId;
+  }
+  prog.lastPurchaseOutcome = 'purchased';
+  prog.lastActionMessage = `OMEGA AWAKENED · ${spec.titleEn} Ω (-${BOSS_CORE_OMEGA_COST} FRAGMENTS)`;
+  syncPlayerRigStats(world);
+  world.events.push({
+    type: 'boss_core_omega_awakened',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: BOSS_CORE_OMEGA_COST,
+  });
+  return { success: true, outcome: 'purchased' };
+}
+
+export function overclockWeaponUpgrade(
+  world: WorldState,
+  upgradeId: unknown
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!prog.overclockedUpgrades) prog.overclockedUpgrades = [];
+
+  if (!isValidWeaponUpgradeId(upgradeId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID WEAPON UPGRADE FOR OVERCLOCKING';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT OVERCLOCK MODULES DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  const def = getWeaponUpgradeDefinition(upgradeId);
+
+  if (!prog.purchasedUpgrades.includes(upgradeId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = `UNLOCK ${def.name} BEFORE OVERCLOCKING MK.II`;
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (prog.overclockedUpgrades.includes(upgradeId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${def.name} IS ALREADY OVERCLOCKED (MK.II)`;
+    return { success: false, outcome: 'already_owned' };
+  }
+
+  if (prog.memoryFragments < WEAPON_OVERCLOCK_COST) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${WEAPON_OVERCLOCK_COST} REQUIRED FOR MK.II)`;
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+
+  prog.memoryFragments -= WEAPON_OVERCLOCK_COST;
+  prog.overclockedUpgrades.push(upgradeId);
+  prog.lastPurchaseOutcome = 'purchased';
+  prog.lastActionMessage = `OVERCLOCKED ${def.name} MK.II (-${WEAPON_OVERCLOCK_COST} FRAGMENT)`;
+  syncPlayerRigStats(world);
+
+  world.events.push({
+    type: 'weapon_upgrade_overclocked',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: WEAPON_OVERCLOCK_COST,
+    weaponId: def.weaponId,
+    upgradeId,
+  });
+
+  return { success: true, outcome: 'purchased' };
+}
+
+export function awakenWeaponUpgrade(
+  world: WorldState,
+  upgradeId: unknown
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!prog.overclockedUpgrades) prog.overclockedUpgrades = [];
+  if (!prog.awakenedUpgrades) prog.awakenedUpgrades = [];
+
+  if (!isValidWeaponUpgradeId(upgradeId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID WEAPON UPGRADE FOR MK.III AWAKENING';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT AWAKEN MODULES DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  const def = getWeaponUpgradeDefinition(upgradeId);
+
+  if (!prog.purchasedUpgrades.includes(upgradeId) || !prog.overclockedUpgrades.includes(upgradeId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = `OVERCLOCK ${def.name} TO MK.II BEFORE MYTHIC AWAKENING`;
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (prog.awakenedUpgrades.includes(upgradeId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${def.name} IS ALREADY MYTHIC AWAKENED (MK.III)`;
+    return { success: false, outcome: 'already_owned' };
+  }
+
+  if (prog.memoryFragments < WEAPON_AWAKENING_COST) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${WEAPON_AWAKENING_COST} REQUIRED FOR MK.III)`;
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+
+  prog.memoryFragments -= WEAPON_AWAKENING_COST;
+  prog.awakenedUpgrades.push(upgradeId);
+  prog.lastPurchaseOutcome = 'purchased';
+  prog.lastActionMessage = `MYTHIC AWAKENED ${def.name} MK.III (-${WEAPON_AWAKENING_COST} FRAGMENTS)`;
+  syncPlayerRigStats(world);
+
+  world.events.push({
+    type: 'weapon_mythic_awakened',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: WEAPON_AWAKENING_COST,
+    weaponId: def.weaponId,
+    upgradeId,
+  });
+
+  return { success: true, outcome: 'purchased' };
+}
+
+export function purchaseNeuralProtocol(
+  world: WorldState,
+  protocolId: unknown
+): { success: boolean; outcome: UpgradePurchaseOutcome } {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const prog = world.progression;
+  if (!prog.purchasedNeuralProtocols) prog.purchasedNeuralProtocols = [];
+
+  if (!isValidNeuralProtocolId(protocolId)) {
+    prog.lastPurchaseOutcome = 'invalid_upgrade';
+    prog.lastActionMessage = 'INVALID NEURAL PROTOCOL ID';
+    return { success: false, outcome: 'invalid_upgrade' };
+  }
+
+  if (!canModifyWeaponUpgrades(world)) {
+    prog.lastPurchaseOutcome = 'action_locked';
+    prog.lastActionMessage = 'CANNOT INSTALL NEURAL PROTOCOLS DURING COMMITTED COMBAT OR DEFEAT';
+    return { success: false, outcome: 'action_locked' };
+  }
+
+  const def = getNeuralProtocolDefinition(protocolId);
+
+  if (prog.purchasedNeuralProtocols.includes(protocolId)) {
+    prog.lastPurchaseOutcome = 'already_owned';
+    prog.lastActionMessage = `${def.name} IS ALREADY ACTIVE`;
+    return { success: false, outcome: 'already_owned' };
+  }
+
+  if (prog.memoryFragments < def.cost) {
+    prog.lastPurchaseOutcome = 'insufficient_fragments';
+    prog.lastActionMessage = `INSUFFICIENT MEMORY FRAGMENTS (${prog.memoryFragments}/${def.cost} REQUIRED)`;
+    return { success: false, outcome: 'insufficient_fragments' };
+  }
+
+  prog.memoryFragments -= def.cost;
+  prog.purchasedNeuralProtocols.push(protocolId);
+  prog.lastPurchaseOutcome = 'purchased';
+  prog.lastActionMessage = `NEURAL PROTOCOL INSTALLED · ${def.name} (-${def.cost} FRAGMENTS)`;
+  syncPlayerRigStats(world);
+
+  world.events.push({
+    type: 'neural_protocol_purchased',
+    x: world.player?.x ?? 0,
+    z: world.player?.z ?? 0,
+    amount: def.cost,
+  });
+
+  return { success: true, outcome: 'purchased' };
+}
+
 export function wrapAngle(angle: number): number {
   let a = angle;
   while (a > Math.PI) a -= Math.PI * 2;
@@ -4217,6 +7593,9 @@ export function createInitialPlayer(): PlayerState {
     activeVentEmpoweredShots: 0,
     lockOnTargetId: null,
     surgeTimer: 0,
+    temporalSlipTimer: 0,
+    temporalSlipMaxDuration: 0,
+    temporalSlipCooldown: 0,
   };
 }
 
@@ -4235,6 +7614,7 @@ export function createInitialEchoState(): EchoSystemState {
     recordingEvents: [],
     activeActor: null,
     statusMessage: 'PRESS [T] TO RECORD ECHO SEQUENCE',
+    novaPulseCooldownTimer: 0,
   };
 }
 
@@ -4688,6 +8068,7 @@ export function attemptEchoRelay(world: WorldState): boolean {
   });
 
   updatePressurePlate(world, 0);
+  triggerEchoDoctrineNovaPulse(world, evaluation.landingX, evaluation.landingZ);
   world.relay.preview = evaluateRelayTarget(world);
   return true;
 }
@@ -4827,6 +8208,10 @@ export function createEnemy(
     targetZ: z + 3,
     evadeTimer: 0,
     evadeCooldownTimer: 0,
+    modifier: null,
+    blinkCooldownTimer: archetype === 'phase_stalker' ? 1.8 : 0,
+    phaseShiftTimer: 0,
+    tetherTargetId: null,
   };
 }
 
@@ -4880,6 +8265,15 @@ export function createBossStateForId(
     radius = GAME_CONFIG.enemies.warden_prime.radius;
     statusP1 = 'PHASE I · SOVEREIGN LOOM DIRECTIVE';
     statusIntro = 'SOVEREIGN ARCHITECT ONLINE · WARDEN PRIME';
+  } else if (bossId === 'echo-zero') {
+    id = 'echo-zero';
+    name = 'ECHO-ZERO';
+    subtitle = 'PARADOX MIRROR · SERA PROTOTYPE';
+    maxHp = 920;
+    maxStagger = 120;
+    radius = 0.95;
+    statusP1 = 'PHASE I · PARADOX MIRROR PROTOCOL';
+    statusIntro = 'PARADOX RIFT BREACHED · ECHO-ZERO AWAKENING';
   }
 
   return {
@@ -5316,6 +8710,7 @@ export function buildObstaclesForChapter(
   const plateCfg = GAME_CONFIG.arena.chronoPlate;
   const finalBarrierCfg = GAME_CONFIG.arena.chronoPuzzle.finalBarrier;
   const chapterProps = GAME_CONFIG.arena.chapterObstacles[chapter] ?? [];
+  const isPrologue = chapter === 'prologue';
   return [
     ...GAME_CONFIG.arena.obstacles.map((o) => ({
       ...o,
@@ -5330,7 +8725,7 @@ export function buildObstaclesForChapter(
       height: plateCfg.receiverHeight,
       label: plateCfg.receiverLabel,
       kind: 'barrier' as const,
-      disabled: false,
+      disabled: !isPrologue,
     },
     {
       id: finalBarrierCfg.id,
@@ -5340,7 +8735,7 @@ export function buildObstaclesForChapter(
       height: finalBarrierCfg.height,
       label: finalBarrierCfg.label,
       kind: 'barrier' as const,
-      disabled: false,
+      disabled: !isPrologue,
     },
     ...chapterProps.map((prop) => ({
       ...prop,
@@ -5391,6 +8786,17 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
     obstacles,
     boostPads,
     fluxPools: [],
+    artilleryZones: [],
+    temporalRift: null,
+    riftCooldownTimer: 7.5,
+    riftSpawnSeq: 1,
+    recursion: null,
+    overdrive: createInitialChronoOverdriveState(25),
+    gauntlet: null,
+    expedition: createInitialExpeditionState('prologue', false, 'combat'),
+    fragmentCaches: buildFragmentCachesForChapter('prologue', []),
+    sectorBeacons: buildSectorBeaconsForChapter('prologue'),
+    activeStoryBlessing: null,
     echo: createInitialEchoState(),
     relay: createInitialRelayState(),
     resonance: createInitialResonanceState(),
@@ -5404,6 +8810,16 @@ export function createInitialWorld(initialAppState: GameAppState = 'title'): Wor
     loom: createInitialChronicleLoomState(false),
     comms: createInitialNarrativeCommsState(),
     progression: createInitialWeaponProgressionState(),
+    paradox: createInitialParadoxState(),
+    ascension: createInitialAscensionState(),
+    singularity: createInitialSingularityCombatState(),
+    kineticOvercharge: createInitialKineticOverchargeState(),
+    twinSync: createInitialTwinSyncState(),
+    momentum: createInitialChronoMomentumState(),
+    nexus: createInitialChronoNexusState(),
+    weaponResonance: createInitialWeaponResonanceState(),
+    chronoAegis: createInitialChronoAegisState('off'),
+    chronoConfluence: createInitialChronoConfluenceState('off', null, [], 35),
     encounter: createInitialEncounterRuntimeState('prologue_calibration_bay'),
     exploration: createInitialExplorationState('prologue', null),
     events: [],
@@ -5426,6 +8842,7 @@ export function getChapterForBossId(bossId: BossId): CampaignChapterId {
     case 'matron-v':
       return 'chapter_4_matron';
     case 'warden-prime':
+    case 'echo-zero':
       return 'chapter_5_loom';
     case 'helix-04':
     default:
@@ -5789,6 +9206,20 @@ export function startBossEncounter(
   world.obstacles = buildObstaclesForChapter(chapter, true);
   world.boostPads = createInitialBoostPads();
   world.fluxPools = [];
+  world.artilleryZones = [];
+  world.temporalRift = null;
+  world.riftCooldownTimer = 7.5;
+  world.riftSpawnSeq = 1;
+  world.recursion = null;
+  world.overdrive = createInitialChronoOverdriveState(25);
+  world.gauntlet = null;
+  world.expedition = createInitialExpeditionState(chapter, false, 'combat');
+  world.fragmentCaches = buildFragmentCachesForChapter(
+    chapter,
+    world.progression?.claimedRewardIds ?? []
+  );
+  world.sectorBeacons = buildSectorBeaconsForChapter(chapter);
+  world.activeStoryBlessing = null;
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -5802,6 +9233,28 @@ export function startBossEncounter(
   world.loom = loomState;
   world.comms = createInitialNarrativeCommsState();
   world.progression = cloneWeaponProgressionState(world.progression);
+  const prevParadox = world.paradox;
+  world.paradox = createInitialParadoxState({
+    mutators: world.progression.mutators,
+    speedrunEnabled: world.progression.speedrunHudEnabled,
+    bestSplits: world.progression.bestSpeedrunSplits,
+    bestFullRunSec: world.progression.bestSpeedrunFullSec,
+    droneTier: prevParadox?.loadout.combatDroneTier ?? 0,
+    paradoxRiftUnlocked: isParadoxRiftEligible(
+      world.progression.unlockedVaultChapters,
+      world.progression.ngPlusCycle,
+      world.progression.echoZeroDefeatedCount
+    ),
+  });
+  if (prevParadox) {
+    world.paradox.loadout.aegisShieldHp = prevParadox.loadout.aegisShieldHp;
+    world.paradox.loadout.overclockCoreActive = prevParadox.loadout.overclockCoreActive;
+    world.paradox.loadout.naniteInjectors = Math.max(
+      2,
+      prevParadox.loadout.naniteInjectors
+    );
+  }
+  applyOverdriveToEnemies(world, world.enemies, world.boss);
   world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
   world.exploration = createInitialExplorationState(chapter, null);
   syncResonanceUpgradeParameters(world);
@@ -5850,9 +9303,23 @@ export function startCampaignRun(
   const preservedCompletedEndings = world.run?.completedEndings
     ? [...world.run.completedEndings]
     : [];
+  const prevMeta = world.progression;
   const preservedProgression = preserveProgression
     ? cloneWeaponProgressionState(world.progression)
-    : createInitialWeaponProgressionState();
+    : {
+        ...createInitialWeaponProgressionState(),
+        overdriveDifficulty: Boolean(prevMeta?.overdriveDifficulty),
+        equippedSkinId: normalizeSeraRigSkinId(prevMeta?.equippedSkinId),
+        unlockedAchievementIds: normalizeAchievementIds(prevMeta?.unlockedAchievementIds),
+        paradoxEndingUnlocked: Boolean(prevMeta?.paradoxEndingUnlocked),
+        echoZeroDefeatedCount: prevMeta?.echoZeroDefeatedCount ?? 0,
+        lifetimeParries: prevMeta?.lifetimeParries ?? 0,
+        lifetimeConvergences: prevMeta?.lifetimeConvergences ?? 0,
+        mutators: normalizeChronoMutators(prevMeta?.mutators),
+        bestSpeedrunSplits: normalizeSpeedrunSplits(prevMeta?.bestSpeedrunSplits),
+        bestSpeedrunFullSec: prevMeta?.bestSpeedrunFullSec ?? null,
+        speedrunHudEnabled: Boolean(prevMeta?.speedrunHudEnabled),
+      };
   const preservedExploration = preserveProgression
     ? clonePersistedExplorationState(world.exploration)
     : null;
@@ -5895,6 +9362,20 @@ export function startCampaignRun(
   world.obstacles = fresh.obstacles;
   world.boostPads = fresh.boostPads;
   world.fluxPools = [];
+  world.artilleryZones = [];
+  world.temporalRift = null;
+  world.riftCooldownTimer = 7.5;
+  world.riftSpawnSeq = 1;
+  world.recursion = null;
+  world.overdrive = createInitialChronoOverdriveState(25);
+  world.gauntlet = null;
+  world.expedition = createInitialExpeditionState('prologue', false, 'combat');
+  world.fragmentCaches = buildFragmentCachesForChapter(
+    'prologue',
+    preservedProgression.claimedRewardIds ?? []
+  );
+  world.sectorBeacons = buildSectorBeaconsForChapter('prologue');
+  world.activeStoryBlessing = null;
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -5908,6 +9389,7 @@ export function startCampaignRun(
   world.loom = fresh.loom;
   world.comms = createInitialNarrativeCommsState();
   world.progression = preservedProgression;
+  applyOverdriveToEnemies(world, world.enemies, null);
   world.encounter = createInitialEncounterRuntimeState('prologue_calibration_bay');
   world.exploration = createInitialExplorationState('prologue', preservedExploration);
   syncUnlockedRoutesToObstacles(world);
@@ -5918,6 +9400,2133 @@ export function startCampaignRun(
   advanceMissionAndExplorationSystem(world);
   world.stats = fresh.stats;
   world.frozenSummary = null;
+  const prevPx = world.paradox;
+  world.paradox = createInitialParadoxState({
+    mutators: world.progression.mutators,
+    speedrunEnabled: world.progression.speedrunHudEnabled,
+    bestSplits: world.progression.bestSpeedrunSplits,
+    bestFullRunSec: world.progression.bestSpeedrunFullSec,
+    droneTier: preserveProgression ? (prevPx?.loadout.combatDroneTier ?? 0) : 0,
+    paradoxRiftUnlocked: isParadoxRiftEligible(
+      world.progression.unlockedVaultChapters,
+      world.progression.ngPlusCycle,
+      world.progression.echoZeroDefeatedCount
+    ),
+  });
+}
+
+export function syncExpeditionState(world: WorldState, dt = 0): void {
+  const chapter = world.run?.chapter ?? 'prologue';
+  const ngCycle = world.progression?.ngPlusCycle ?? 0;
+  if (!world.expedition) {
+    world.expedition = createInitialExpeditionState(chapter, false, 'combat', false, ngCycle);
+  }
+  const exp = world.expedition;
+  const spec = getExpeditionSectorSpec(chapter);
+  exp.sectorIndex = spec.index;
+  exp.totalSectors = EXPEDITION_SECTORS.length;
+  exp.sectorCode = spec.code;
+  exp.sectorTitle = spec.title;
+  exp.wardenLabel = spec.wardenLabel;
+  exp.ngPlusCycle = ngCycle;
+  if (exp.phase !== 'safe_room') {
+    exp.nextChapter = spec.nextChapter;
+  } else if (exp.safeRoom?.nextChapter) {
+    exp.nextChapter = exp.safeRoom.nextChapter;
+  }
+  if (exp.transitBannerTimer > 0 && dt > 0) {
+    exp.transitBannerTimer = Math.max(0, exp.transitBannerTimer - dt);
+  }
+
+  const caches = world.fragmentCaches ?? [];
+  const unclaimedCaches: Array<{ x: number; z: number; label: string }> = [];
+  let cachesFound = 0;
+  for (let i = 0; i < caches.length; i++) {
+    const c = caches[i];
+    if (c.claimed) {
+      cachesFound++;
+    } else {
+      unclaimedCaches.push({ x: c.x, z: c.z, label: c.label });
+    }
+  }
+  exp.cachesTotal = caches.length;
+  exp.cachesFound = cachesFound;
+
+  const interactables = world.exploration?.interactables ?? [];
+  const unscannedTerminals: Array<{ x: number; z: number; label: string }> = [];
+  let terminalsScanned = 0;
+  for (let i = 0; i < interactables.length; i++) {
+    const item = interactables[i];
+    if (item.status === 'activated' || item.activationCount > 0) {
+      terminalsScanned++;
+    } else {
+      unscannedTerminals.push({ x: item.x, z: item.z, label: item.label });
+    }
+  }
+  exp.terminalsTotal = interactables.length;
+  exp.terminalsScanned = terminalsScanned;
+
+  const beacons = world.sectorBeacons ?? [];
+  const inactiveBeacons: Array<{ x: number; z: number; label: string }> = [];
+  let beaconsActive = 0;
+  for (let i = 0; i < beacons.length; i++) {
+    const b = beacons[i];
+    if (b.activationCount > 0) {
+      beaconsActive++;
+    } else {
+      inactiveBeacons.push({ x: b.x, z: b.z, label: b.label });
+    }
+  }
+  exp.beaconsTotal = beacons.length;
+  exp.beaconsActive = beaconsActive;
+
+  // Update Safe-Room station proximity
+  if (exp.phase === 'safe_room' && exp.safeRoom?.active) {
+    exp.safeRoom.nearbyStation = detectNearbySafeRoomStation(
+      world.player.x,
+      world.player.z,
+      exp.safeRoom
+    );
+  }
+
+  // Update Secret Echo Vault laser switch & auto-claim when open
+  if (exp.enabled && exp.phase !== 'safe_room' && exp.secretVault) {
+    const echoActive =
+      world.echo.state === 'playback' && Boolean(world.echo.activeActor);
+    const echoX = world.echo.activeActor?.x ?? 0;
+    const echoZ = world.echo.activeActor?.z ?? 0;
+    const tickRes = tickSecretEchoVault(
+      exp.secretVault,
+      world.player.x,
+      world.player.z,
+      echoActive,
+      echoX,
+      echoZ,
+      dt
+    );
+    if (tickRes.justOpened) {
+      exp.transitBannerTimer = 4.5;
+      exp.transitBannerText = `ECHO VAULT LASER GATE OPEN · CLAIM ${exp.secretVault.label.toUpperCase()} [I]`;
+      world.events.push({
+        type: 'secret_vault_unlocked',
+        x: exp.secretVault.vaultPos.x,
+        z: exp.secretVault.vaultPos.z,
+      });
+    }
+    if (
+      exp.secretVault.gateOpen &&
+      !exp.secretVault.looted &&
+      Math.hypot(
+        world.player.x - exp.secretVault.vaultPos.x,
+        world.player.z - exp.secretVault.vaultPos.z
+      ) <= 1.85
+    ) {
+      claimSecretEchoVault(world);
+      return;
+    }
+  }
+
+  const activeHostiles: Array<{ x: number; z: number; label: string; isBoss?: boolean }> = [];
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
+    if (e.hp > 0 && e.aiState !== 'ko') {
+      activeHostiles.push({
+        x: e.x,
+        z: e.z,
+        label: e.name,
+        isBoss: Boolean(world.boss && world.boss.id === e.id),
+      });
+    }
+  }
+
+  // If the player strikes any stasis-sealed enemy directly during Explore phase, break the seal automatically
+  if (exp.enabled && exp.phase === 'explore') {
+    const hostileDamaged = world.enemies.some((e) => e.hp < e.maxHp);
+    if (hostileDamaged) {
+      triggerExpeditionBreach(world);
+      return;
+    }
+  }
+
+  exp.playerInsideBreachSeal = isPlayerInsideBreachSeal(
+    world.player.x,
+    world.player.z,
+    exp
+  );
+  exp.playerInsideTransitGate = isPlayerInsideTransitAirlock(
+    world.player.x,
+    world.player.z,
+    exp
+  );
+
+  const targetNextChapter =
+    exp.phase === 'safe_room'
+      ? exp.safeRoom?.nextChapter ?? exp.nextChapter
+      : exp.nextChapter;
+  const nextSpec = targetNextChapter ? getExpeditionSectorSpec(targetNextChapter) : null;
+  exp.guideTarget = computeExpeditionGuideTarget({
+    enabled: exp.enabled,
+    phase: exp.phase,
+    playerX: world.player.x,
+    playerZ: world.player.z,
+    breachSealPos: exp.breachSealPos,
+    transitGatePos: exp.transitGatePos,
+    nextSectorTitle: nextSpec ? nextSpec.title : null,
+    wardenLabel: exp.wardenLabel,
+    unclaimedCaches,
+    unscannedTerminals,
+    inactiveBeacons,
+    activeHostiles,
+    safeRoom: exp.safeRoom ?? null,
+    secretVault: exp.secretVault ?? null,
+  });
+
+  // Auto-transit when Sera physically walks into the unlocked North Sector Airlock
+  if (exp.playerInsideTransitGate) {
+    enterExpeditionTransitAirlock(world);
+  }
+}
+
+export function startExpeditionJourneyRun(
+  world: WorldState,
+  startChapter: CampaignChapterId = 'prologue',
+  preserveProgression = false
+): void {
+  if (startChapter === 'prologue') {
+    startCampaignRun(world, true, preserveProgression);
+  } else if (startChapter === 'chapter_5_loom') {
+    if (!world.run) {
+      startCampaignRun(world, true, preserveProgression);
+    }
+    world.run.mode = 'campaign';
+    enterChronicleLoomChapter(world, false);
+  } else {
+    if (!world.run || world.run.mode !== 'campaign') {
+      startCampaignRun(world, true, preserveProgression);
+    }
+    transitionCampaignToBoss(world, true, startChapter);
+  }
+
+  const initialPhase = startChapter === 'chapter_5_loom' ? 'combat' : 'explore';
+  const spec = getExpeditionSectorSpec(startChapter);
+  const alreadyLootedVault = Boolean(
+    world.progression?.unlockedVaultChapters?.includes(startChapter)
+  );
+  const ngCycle = world.progression?.ngPlusCycle ?? 0;
+  world.expedition = createInitialExpeditionState(
+    startChapter,
+    true,
+    initialPhase,
+    alreadyLootedVault,
+    ngCycle
+  );
+  world.expedition.transitBannerTimer = 5.5;
+  world.expedition.transitBannerText =
+    initialPhase === 'explore'
+      ? `SECTOR ${spec.code} · ${spec.title.toUpperCase()} — EXPLORE OR BREACH SEAL [I]`
+      : `SECTOR ${spec.code} · ${spec.title.toUpperCase()} — APPROACH CHRONICLE LOOM`;
+
+  // Spawn Sera cleanly inside the South Entry Boarding Airlock runway facing North
+  world.player.x = 0;
+  world.player.z = startChapter === 'chapter_5_loom' ? 9.5 : 10.6;
+  world.player.rotationY = Math.PI;
+  world.player.vx = 0;
+  world.player.vz = 0;
+
+  syncExpeditionState(world, 0);
+}
+
+export function startNewGamePlusRun(world: WorldState): number {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const nextCycle = Math.min(99, (world.progression.ngPlusCycle ?? 0) + 1);
+  world.progression.ngPlusCycle = nextCycle;
+  world.progression.unlockedWeaponIds = [
+    'chrono_edge',
+    'pulsecaster',
+    'phase_rail',
+    'grav_breaker',
+  ];
+  world.progression.lastActionMessage = `NEW GAME+ CYCLE ${nextCycle} ACTIVE · ALL 4 WEAPONS UNLOCKED`;
+
+  startExpeditionJourneyRun(world, 'prologue', true);
+  if (world.expedition) {
+    world.expedition.ngPlusCycle = nextCycle;
+    world.expedition.transitBannerTimer = 6.5;
+    world.expedition.transitBannerText = `NEW GAME+ ${nextCycle} · ALL 4 WEAPONS PRESERVED · HOSTILES +${nextCycle * 35}% HP`;
+  }
+  world.events.push({
+    type: 'ng_plus_started',
+    x: world.player.x,
+    z: world.player.z,
+    amount: nextCycle,
+  });
+  const px = ensureParadoxState(world);
+  px.paradoxRiftUnlocked = true;
+  if (px.loadout.combatDroneTier < 1) {
+    px.loadout.combatDroneTier = 1;
+    unlockChronoAchievement(world, 'drone_commander');
+  }
+  unlockChronoAchievement(world, 'ng_plus_initiate');
+  return nextCycle;
+}
+
+export function triggerExpeditionBreach(world: WorldState): boolean {
+  const exp = world.expedition;
+  if (!exp || !exp.enabled || exp.phase !== 'explore') {
+    return false;
+  }
+  exp.phase = 'combat';
+  exp.playerInsideBreachSeal = false;
+  exp.transitBannerTimer = 4.0;
+  exp.transitBannerText = `BREACH SEAL SHATTERED · ENGAGE ${exp.wardenLabel.toUpperCase()}`;
+
+  if (world.boss && world.boss.aiState === 'dormant') {
+    world.boss.stateTimer = Math.min(world.boss.stateTimer, 0.3);
+  }
+  world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.28);
+  world.events.push({
+    type: 'expedition_breach_triggered',
+    x: exp.breachSealPos.x,
+    z: exp.breachSealPos.z,
+  });
+  unlockChronoAchievement(world, 'first_breach');
+  syncExpeditionState(world, 0);
+  return true;
+}
+
+export function unlockExpeditionTransitAirlock(
+  world: WorldState,
+  nextChapter: CampaignChapterId
+): void {
+  const currentChapter = world.run?.chapter ?? 'prologue';
+  const ngCycle = world.progression?.ngPlusCycle ?? 0;
+  if (!world.expedition) {
+    world.expedition = createInitialExpeditionState(
+      currentChapter,
+      true,
+      'airlock_open',
+      Boolean(world.progression?.unlockedVaultChapters?.includes(currentChapter)),
+      ngCycle
+    );
+  }
+  const exp = world.expedition;
+  const nextSpec = getExpeditionSectorSpec(nextChapter);
+  exp.enabled = true;
+  exp.phase = 'airlock_open';
+  exp.airlockUnlocked = true;
+  exp.nextChapter = nextChapter;
+  exp.transitBannerTimer = 6.5;
+  exp.transitBannerText = `SECTOR CLEARED · NORTH AIRLOCK OPEN → TRANSIT HUB (${nextSpec.code} ${nextSpec.shortName})`;
+
+  world.run.pendingNextChapter = nextChapter;
+  world.outcome = 'none';
+  world.outcomeDelayTimer = 0;
+  world.appState = 'playing';
+  world.projectiles = [];
+  clearEchoState(world, 'outcome');
+
+  world.events.push({
+    type: 'expedition_airlock_unlocked',
+    x: exp.transitGatePos.x,
+    z: exp.transitGatePos.z,
+  });
+  syncExpeditionState(world, 0);
+}
+
+export function enterExpeditionSafeRoom(
+  world: WorldState,
+  fromChapter: CampaignChapterId,
+  nextChapter: CampaignChapterId
+): boolean {
+  const nextSpec = getExpeditionSectorSpec(nextChapter);
+  const ngCycle = world.progression?.ngPlusCycle ?? 0;
+
+  // Clear active combat entities, cover silos, and sector clutter for a calm open Sanctuary
+  world.enemies = [];
+  world.boss = null;
+  world.projectiles = [];
+  world.fluxPools = [];
+  world.artilleryZones = [];
+  world.temporalRift = null;
+  world.fragmentCaches = [];
+  world.sectorBeacons = [];
+  world.boostPads = [];
+  if (world.exploration) {
+    world.exploration.interactables = [];
+    world.exploration.hazards = [];
+    world.exploration.secrets = [];
+    if (world.exploration.prompt) {
+      world.exploration.prompt.interactableId = null;
+      world.exploration.prompt.canInteract = false;
+      world.exploration.prompt.promptText = '';
+      world.exploration.prompt.detailText = '';
+    }
+    world.exploration.nearbyExpansionPrompt = null;
+  }
+  if (world.ascension?.style) {
+    world.ascension.style.points = 0;
+    world.ascension.style.tier = 'D';
+    world.ascension.style.finisherReady = false;
+    world.ascension.style.lastActionLabel = '';
+  }
+  if (world.comms) {
+    world.comms.active = null;
+    world.comms.queue = [];
+  }
+  world.run.checkpointNotice = null;
+  world.run.checkpointNoticeTimer = 0;
+  const safeRoom = createSafeRoomState(fromChapter, nextChapter);
+  world.expedition = {
+    ...createInitialExpeditionState(fromChapter, true, 'safe_room', true, ngCycle),
+    phase: 'safe_room',
+    nextChapter,
+    airlockUnlocked: true,
+    safeRoom,
+    secretVault: null,
+    transitBannerTimer: 5.0,
+    transitBannerText: `SANCTUARY HUB · RESUPPLY & REFIT BEFORE SECTOR ${nextSpec.code} (${nextSpec.shortName})`,
+  };
+
+  world.outcome = 'none';
+  world.outcomeDelayTimer = 0;
+  world.appState = 'playing';
+  world.run.pendingNextChapter = nextChapter;
+  clearEchoState(world, 'outcome');
+
+  if (Array.isArray(world.obstacles)) {
+    for (let i = 0; i < world.obstacles.length; i++) {
+      const obs = world.obstacles[i];
+      if (obs && obs.id !== 'loom-pylon') {
+        obs.disabled = true;
+      }
+    }
+  }
+
+  world.player.x = 0;
+  world.player.z = 10.6;
+  world.player.rotationY = Math.PI;
+  world.player.vx = 0;
+  world.player.vz = 0;
+
+  world.events.push({
+    type: 'safe_room_entered',
+    x: world.player.x,
+    z: world.player.z,
+  });
+  syncExpeditionState(world, 0);
+  return true;
+}
+
+export function useSafeRoomMedBay(world: WorldState): boolean {
+  const exp = world.expedition;
+  if (!exp || !exp.enabled || exp.phase !== 'safe_room' || !exp.safeRoom?.active) {
+    return false;
+  }
+  if (exp.safeRoom.medBayUsed) {
+    return false;
+  }
+  const mutMods = computeMutatorModifiers(world.paradox?.mutators ?? world.progression?.mutators);
+  if (!mutMods.allowHealing) {
+    exp.transitBannerTimer = 3.5;
+    exp.transitBannerText = 'IRONMAN PROTOCOL ACTIVE · MED-SUPPLY HEALING LOCKED';
+    return false;
+  }
+  const p = world.player;
+  p.integrity = p.maxIntegrity;
+  p.ghostIntegrity = p.maxIntegrity;
+  p.flux = p.maxFlux;
+  if (!world.overdrive) {
+    world.overdrive = createInitialChronoOverdriveState(25);
+  }
+  world.overdrive = addOverdriveCharge(world.overdrive, 35);
+  exp.safeRoom.medBayUsed = true;
+  exp.transitBannerTimer = 4.5;
+  exp.transitBannerText = 'MED-SUPPLY BAY · INTEGRITY 100% · FLUX 100 · +35% OVERDRIVE';
+
+  world.events.push({
+    type: 'safe_room_med_used',
+    x: exp.safeRoom.medBayPos.x,
+    z: exp.safeRoom.medBayPos.z,
+    amount: 35,
+  });
+  unlockChronoAchievement(world, 'safe_room_engineer');
+  syncExpeditionState(world, 0);
+  return true;
+}
+
+export function claimSafeRoomLysaBriefing(world: WorldState): boolean {
+  const exp = world.expedition;
+  if (!exp || !exp.enabled || exp.phase !== 'safe_room' || !exp.safeRoom?.active) {
+    return false;
+  }
+  if (exp.safeRoom.lysaBriefingClaimed) {
+    return false;
+  }
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const ngMods = getNgPlusModifiers(world.progression.ngPlusCycle ?? 0);
+  const bonusFrags = Math.max(1, Math.round(1 * ngMods.fragmentBonusMultiplier));
+  world.progression.memoryFragments = Math.min(
+    999,
+    world.progression.memoryFragments + bonusFrags
+  );
+  world.progression.lastActionMessage = `${exp.safeRoom.lysaIntelHeadline} (+${bonusFrags} FRAG)`;
+  exp.safeRoom.lysaBriefingClaimed = true;
+  exp.transitBannerTimer = 6.0;
+  exp.transitBannerText = `${exp.safeRoom.lysaIntelHeadline} · +${bonusFrags} MEMORY FRAGMENT`;
+
+  world.events.push({
+    type: 'safe_room_lysa_briefing',
+    x: exp.safeRoom.lysaPos.x,
+    z: exp.safeRoom.lysaPos.z,
+    amount: bonusFrags,
+  });
+  syncExpeditionState(world, 0);
+  return true;
+}
+
+export function claimSecretEchoVault(world: WorldState): boolean {
+  const vault = world.expedition?.secretVault;
+  if (!vault || !vault.gateOpen || vault.looted) {
+    return false;
+  }
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  vault.looted = true;
+  vault.gateOpen = true;
+  if (!world.progression.unlockedVaultChapters.includes(vault.chapter)) {
+    world.progression.unlockedVaultChapters.push(vault.chapter);
+  }
+  const ngMods = getNgPlusModifiers(world.progression.ngPlusCycle ?? 0);
+  const reward = Math.max(
+    1,
+    Math.round(vault.rewardFragments * ngMods.fragmentBonusMultiplier)
+  );
+  world.progression.memoryFragments = Math.min(
+    999,
+    world.progression.memoryFragments + reward
+  );
+  world.progression.lastActionMessage = `SECRET VAULT CLAIMED · ${vault.label.toUpperCase()} (+${reward} FRAG)`;
+
+  world.player.integrity = Math.min(
+    world.player.maxIntegrity,
+    world.player.integrity + 25
+  );
+  world.player.ghostIntegrity = Math.max(
+    world.player.ghostIntegrity,
+    world.player.integrity
+  );
+  if (!world.overdrive) {
+    world.overdrive = createInitialChronoOverdriveState(25);
+  }
+  world.overdrive = addOverdriveCharge(world.overdrive, 25);
+
+  if (world.expedition) {
+    world.expedition.transitBannerTimer = 5.0;
+    world.expedition.transitBannerText = `SECRET VAULT CLAIMED · +${reward} FRAGMENTS · +25% OVERDRIVE · +25 INTEGRITY`;
+  }
+
+  world.events.push({
+    type: 'secret_vault_looted',
+    x: vault.vaultPos.x,
+    z: vault.vaultPos.z,
+    amount: reward,
+  });
+  unlockChronoAchievement(world, 'vault_raider');
+  if (world.progression.unlockedVaultChapters.length >= 5) {
+    unlockChronoAchievement(world, 'all_vaults');
+  }
+  const pxVault = ensureParadoxState(world);
+  pxVault.paradoxRiftUnlocked = isParadoxRiftEligible(
+    world.progression.unlockedVaultChapters,
+    world.progression.ngPlusCycle,
+    world.progression.echoZeroDefeatedCount
+  );
+  syncExpeditionState(world, 0);
+  return true;
+}
+
+export function enterExpeditionTransitAirlock(world: WorldState): boolean {
+  const exp = world.expedition;
+  if (
+    !exp ||
+    !exp.enabled ||
+    !exp.airlockUnlocked ||
+    (exp.phase !== 'airlock_open' && exp.phase !== 'safe_room')
+  ) {
+    return false;
+  }
+
+  // Step 1: From a cleared sector's North Airlock -> Enter the Pressurized Safe-Room Hub first
+  if (exp.phase === 'airlock_open') {
+    const nextChapter = exp.nextChapter ?? world.run?.pendingNextChapter ?? null;
+    if (!nextChapter) {
+      return false;
+    }
+    return enterExpeditionSafeRoom(world, world.run?.chapter ?? 'prologue', nextChapter);
+  }
+
+  // Step 2: From Safe-Room North Departure Airlock -> Launch the upcoming Sector!
+  const nextChapter =
+    exp.safeRoom?.nextChapter ?? exp.nextChapter ?? world.run?.pendingNextChapter ?? null;
+  if (!nextChapter) {
+    return false;
+  }
+
+  world.run.pendingNextChapter = nextChapter;
+  const advanced = advanceCampaignChapter(world, true);
+  if (!advanced) {
+    return false;
+  }
+
+  const nextPhase = nextChapter === 'chapter_5_loom' ? 'combat' : 'explore';
+  const nextSpec = getExpeditionSectorSpec(nextChapter);
+  const alreadyLootedVault = Boolean(
+    world.progression?.unlockedVaultChapters?.includes(nextChapter)
+  );
+  const ngCycle = world.progression?.ngPlusCycle ?? 0;
+  world.expedition = createInitialExpeditionState(
+    nextChapter,
+    true,
+    nextPhase,
+    alreadyLootedVault,
+    ngCycle
+  );
+  world.expedition.transitBannerTimer = 5.5;
+  world.expedition.transitBannerText =
+    nextPhase === 'explore'
+      ? `SECTOR ${nextSpec.code} ARRIVAL · ${nextSpec.title.toUpperCase()} — EXPLORE OR BREACH SEAL [I]`
+      : `FINAL SECTOR ${nextSpec.code} · ${nextSpec.title.toUpperCase()} — CONFRONT CHRONICLE LOOM`;
+
+  world.player.x = 0;
+  world.player.z = nextChapter === 'chapter_5_loom' ? 9.5 : 10.6;
+  world.player.rotationY = Math.PI;
+  world.player.vx = 0;
+  world.player.vz = 0;
+
+  const pxTransit = ensureParadoxState(world);
+  const completedChap = world.run?.chapter ?? 'prologue';
+  const splitRes = recordSpeedrunSectorSplit(pxTransit.speedrun, completedChap);
+  if (world.progression) {
+    world.progression.bestSpeedrunSplits = { ...pxTransit.speedrun.bestSplits };
+    world.progression.bestSpeedrunFullSec = pxTransit.speedrun.bestFullRunSec;
+  }
+  pxTransit.loadout.overclockCoreActive = false;
+  if (splitRes.isNewBest && pxTransit.speedrun.enabled) {
+    world.expedition.transitBannerText += ` · SPLIT ${formatSpeedrunClock(splitRes.splitSec)} (${formatSpeedrunDelta(splitRes.deltaSec)})`;
+  }
+
+  world.events.push({
+    type: 'expedition_sector_transit',
+    x: world.player.x,
+    z: world.player.z,
+  });
+  syncExpeditionState(world, 0);
+  return true;
+}
+
+export function ensureParadoxState(world: WorldState): ParadoxRuntimeState {
+  if (!world.paradox) {
+    world.paradox = createInitialParadoxState({
+      mutators: world.progression?.mutators,
+      speedrunEnabled: world.progression?.speedrunHudEnabled,
+      bestSplits: world.progression?.bestSpeedrunSplits,
+      bestFullRunSec: world.progression?.bestSpeedrunFullSec,
+      paradoxRiftUnlocked: isParadoxRiftEligible(
+        world.progression?.unlockedVaultChapters ?? [],
+        world.progression?.ngPlusCycle ?? 0,
+        world.progression?.echoZeroDefeatedCount ?? 0
+      ),
+    });
+  }
+  return world.paradox;
+}
+
+function getParadoxOutgoingDamageMult(world: WorldState): number {
+  const px = world.paradox;
+  const mutMods = computeMutatorModifiers(px?.mutators ?? world.progression?.mutators);
+  const ocMult = px?.loadout?.overclockCoreActive ? 1.25 : 1.0;
+  const bossCoreMods = computeBossCoreModifiers(
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const confluence = computeSentinelCoreConfluence(
+    normalizeSentinelMode(world.progression?.sentinelMode),
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const holoResonance = computeHoloMemoryResonanceBonus(
+    world.exploration?.discoveredHoloMemoryIds
+  );
+  const masterySeal = computeMasterySealModifiers(world.progression?.combatMastery);
+  return (
+    mutMods.playerDamageMult *
+    ocMult *
+    bossCoreMods.allDamageMultiplier *
+    confluence.allDamageMultiplier *
+    holoResonance.allDamageMult *
+    masterySeal.allDamageMult
+  );
+}
+
+function applyBossCoreRadialPulse(
+  world: WorldState,
+  centerX: number,
+  centerZ: number,
+  radius: number,
+  baseDamage: number,
+  staggerAmount: number
+): number {
+  if (radius <= 0 || baseDamage <= 0) return 0;
+  const scaledDmg = Math.max(1, Math.round(baseDamage * getParadoxOutgoingDamageMult(world)));
+  const px = ensureParadoxState(world);
+  let hits = 0;
+  for (let i = 0; i < world.enemies.length; i++) {
+    const cand = world.enemies[i];
+    if (cand.hp <= 0 || cand.aiState === 'ko') continue;
+    if (Math.hypot(cand.x - centerX, cand.z - centerZ) <= radius + cand.radius) {
+      hits += 1;
+      cand.hp = Math.max(0, cand.hp - scaledDmg);
+      cand.hitFlashTimer = Math.max(cand.hitFlashTimer, 0.18);
+      world.stats.damageDealt += scaledDmg;
+      const isBossCand = world.boss !== null && world.boss.id === cand.id;
+      const bossStagImmune =
+        isBossCand &&
+        world.boss !== null &&
+        (world.boss.staggerCooldownTimer > 0 || world.boss.aiState === 'phase_transition');
+      if (!bossStagImmune && cand.aiState !== 'staggered') {
+        cand.stagger = Math.min(cand.maxStagger, cand.stagger + staggerAmount);
+      }
+      if (isBossCand && world.boss) {
+        world.boss.hp = cand.hp;
+        if (!bossStagImmune && world.boss.aiState !== 'staggered') {
+          world.boss.stagger = Math.min(world.boss.maxStagger, world.boss.stagger + staggerAmount);
+        }
+      }
+      pushDamagePopup(px, scaledDmg, cand.x, isBossCand ? 2.55 : 2.05, cand.z, 'convergence');
+      if (cand.hp <= 0) {
+        handleEnemyZeroHpDefeat(world, cand, scaledDmg, true, false, false);
+      }
+    }
+  }
+  world.events.push({
+    type: 'boss_core_pulse',
+    x: centerX,
+    z: centerZ,
+    amount: scaledDmg,
+  });
+  return hits;
+}
+
+function triggerEchoDoctrineNovaPulse(
+  world: WorldState,
+  centerX: number,
+  centerZ: number
+): number {
+  const docSpec = getEchoDoctrineSpec(world.progression?.echoDoctrine);
+  if (
+    docSpec.novaPulseRadius <= 0 ||
+    docSpec.novaPulseDamage <= 0 ||
+    (world.echo.novaPulseCooldownTimer ?? 0) > 0 ||
+    world.outcome !== 'none' ||
+    world.player?.actionState === 'dead'
+  ) {
+    return 0;
+  }
+  world.echo.novaPulseCooldownTimer = docSpec.novaCooldownSec;
+  const scaledDmg = Math.max(
+    1,
+    Math.round(
+      docSpec.novaPulseDamage *
+        docSpec.echoDamageMultiplier *
+        getActiveRecursionModifiers(world).echoDamageMultiplier *
+        getParadoxOutgoingDamageMult(world)
+    )
+  );
+  const scaledStagger = Math.round(
+    docSpec.novaPulseStagger *
+      docSpec.echoStaggerMultiplier *
+      getActiveRecursionModifiers(world).echoStaggerMultiplier
+  );
+  const px = ensureParadoxState(world);
+  let hits = 0;
+  for (let i = 0; i < world.enemies.length; i++) {
+    const cand = world.enemies[i];
+    if (cand.hp <= 0 || cand.aiState === 'ko') continue;
+    const dist = Math.hypot(cand.x - centerX, cand.z - centerZ);
+    if (dist <= docSpec.novaPulseRadius + cand.radius) {
+      hits += 1;
+      cand.hp = Math.max(0, cand.hp - scaledDmg);
+      cand.hitFlashTimer = Math.max(cand.hitFlashTimer, 0.2);
+      world.stats.damageDealt += scaledDmg;
+      const isBossCand = world.boss !== null && world.boss.id === cand.id;
+      if (docSpec.novaPullDistance > 0 && dist > 1.2 && !isBossCand) {
+        const pull = Math.min(docSpec.novaPullDistance, dist - 1.2);
+        cand.x += ((centerX - cand.x) / dist) * pull;
+        cand.z += ((centerZ - cand.z) / dist) * pull;
+      }
+      const bossStagImmune =
+        isBossCand &&
+        world.boss !== null &&
+        (world.boss.staggerCooldownTimer > 0 || world.boss.aiState === 'phase_transition');
+      if (!bossStagImmune && cand.aiState !== 'staggered') {
+        cand.stagger = Math.min(cand.maxStagger, cand.stagger + scaledStagger);
+      }
+      if (isBossCand && world.boss) {
+        world.boss.hp = cand.hp;
+        if (!bossStagImmune && world.boss.aiState !== 'staggered') {
+          world.boss.stagger = Math.min(world.boss.maxStagger, world.boss.stagger + scaledStagger);
+        }
+      }
+      pushDamagePopup(px, scaledDmg, cand.x, isBossCand ? 2.55 : 2.05, cand.z, 'convergence');
+      if (cand.hp <= 0) {
+        handleEnemyZeroHpDefeat(world, cand, scaledDmg, true, false, false);
+      }
+    }
+  }
+  world.events.push({
+    type: 'echo_doctrine_nova_pulse',
+    x: centerX,
+    z: centerZ,
+    amount: scaledDmg,
+  });
+  return hits;
+}
+
+export const SOVEREIGN_ASTRAL_PULSE_CONFIG = {
+  radius: 5.8,
+  damagePerTier: 18,
+  staggerPerTier: 8,
+} as const;
+
+export function applySovereignAstralPulse(world: WorldState, sealTier: number): number {
+  const clampedTier = Math.max(0, Math.min(4, Math.floor(sealTier)));
+  if (
+    clampedTier <= 0 ||
+    !world ||
+    !world.player ||
+    world.player.actionState === 'dead' ||
+    world.outcome !== 'none'
+  ) {
+    return 0;
+  }
+  const centerX = world.player.x;
+  const centerZ = world.player.z;
+  const pulseDmg = SOVEREIGN_ASTRAL_PULSE_CONFIG.damagePerTier * clampedTier;
+  const pulseStagger = SOVEREIGN_ASTRAL_PULSE_CONFIG.staggerPerTier * clampedTier;
+  const px = ensureParadoxState(world);
+  let hits = 0;
+
+  for (let i = 0; i < world.enemies.length; i += 1) {
+    const cand = world.enemies[i];
+    if (cand.hp <= 0 || cand.aiState === 'ko') continue;
+    const dist = Math.hypot(cand.x - centerX, cand.z - centerZ);
+    if (dist <= SOVEREIGN_ASTRAL_PULSE_CONFIG.radius + cand.radius) {
+      hits += 1;
+      cand.hp = Math.max(0, cand.hp - pulseDmg);
+      cand.hitFlashTimer = Math.max(cand.hitFlashTimer, 0.22);
+      world.stats.damageDealt += pulseDmg;
+      const isBossCand = world.boss !== null && world.boss.id === cand.id;
+      const bossStagImmune =
+        isBossCand &&
+        world.boss !== null &&
+        (world.boss.staggerCooldownTimer > 0 || world.boss.aiState === 'phase_transition');
+      if (!bossStagImmune && cand.aiState !== 'staggered') {
+        cand.stagger = Math.min(cand.maxStagger, cand.stagger + pulseStagger);
+      }
+      if (isBossCand && world.boss) {
+        world.boss.hp = cand.hp;
+        if (!bossStagImmune && world.boss.aiState !== 'staggered') {
+          world.boss.stagger = Math.min(world.boss.maxStagger, world.boss.stagger + pulseStagger);
+        }
+      }
+      pushDamagePopup(px, pulseDmg, cand.x, isBossCand ? 2.55 : 2.05, cand.z, 'convergence');
+      if (cand.hp <= 0) {
+        handleEnemyZeroHpDefeat(world, cand, pulseDmg, true, false, false);
+      }
+    }
+  }
+
+  world.events.push({
+    type: 'sovereign_astral_pulse',
+    x: centerX,
+    z: centerZ,
+    amount: pulseDmg,
+  });
+  return hits;
+}
+
+export function grantConfluenceCharge(world: WorldState, amount: number): number {
+  const conf = ensureChronoConfluenceState(world);
+  if (amount <= 0 || conf.doctrineId === 'none') return conf.charge;
+  const masterySeal = computeMasterySealModifiers(world.progression?.combatMastery);
+  const scaledAmount = amount * masterySeal.overdriveChargeMult;
+  if (conf.cooldownTimer <= 0) {
+    conf.charge = Math.max(0, Math.min(100, conf.charge + scaledAmount));
+  }
+  conf.ready = conf.cooldownTimer <= 0 && conf.charge >= 100;
+  return conf.charge;
+}
+
+export function triggerConfluenceBurst(world: WorldState): boolean {
+  if (!world || !world.player || world.player.actionState === 'dead') return false;
+  const conf = ensureChronoConfluenceState(world);
+  const summary = computeSentinelCoreConfluence(
+    normalizeSentinelMode(world.progression?.sentinelMode),
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  if (!summary.active || conf.cooldownTimer > 0 || conf.charge < 100) {
+    return false;
+  }
+
+  const recConfMult = getActiveRecursionModifiers(world).confluenceCooldownMultiplier;
+  const effectiveConfluenceCooldown = Number(
+    (CONFLUENCE_BURST_COOLDOWN_SEC * recConfMult).toFixed(2)
+  );
+  conf.charge = 0;
+  conf.cooldownTimer = effectiveConfluenceCooldown;
+  conf.maxCooldown = effectiveConfluenceCooldown;
+  conf.ready = false;
+  conf.totalBursts += 1;
+
+  const p = world.player;
+  const aegis = ensureChronoAegisState(world);
+  const px = ensureParadoxState(world);
+  const scaledDmg = Math.max(
+    1,
+    Math.round(
+      summary.burstDamage *
+        getPlayerRigSetSynergy(world).damageMultiplier *
+        getParadoxOutgoingDamageMult(world)
+    )
+  );
+
+  if (summary.burstWardRestoreRatio > 0 && aegis.maxWard > 0) {
+    const wardGain = Math.round(aegis.maxWard * summary.burstWardRestoreRatio);
+    aegis.ward = Math.min(aegis.maxWard, aegis.ward + wardGain);
+    aegis.rechargeDelayTimer = 0;
+  }
+  if (summary.burstHeatRelief > 0) {
+    p.weaponHeat = Math.max(0, (p.weaponHeat ?? 0) - summary.burstHeatRelief);
+    p.weaponOverheatTimer = 0;
+  }
+  if (summary.burstFluxRestore > 0) {
+    p.flux = Math.min(p.maxFlux, p.flux + summary.burstFluxRestore);
+  }
+  if (summary.burstTwinSyncBonus > 0 && world.twinSync) {
+    addTwinSyncBonus(
+      world.twinSync,
+      summary.burstTwinSyncBonus,
+      world.echo.state === 'recording' || world.echo.state === 'playback'
+    );
+  }
+
+  if (summary.burstTargetCap > 0) {
+    const candidates = world.enemies
+      .filter(
+        (cand) =>
+          cand.hp > 0 &&
+          cand.aiState !== 'ko' &&
+          Math.hypot(cand.x - p.x, cand.z - p.z) <= summary.burstRadius + cand.radius
+      )
+      .sort(
+        (a, b) =>
+          Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)
+      )
+      .slice(0, summary.burstTargetCap);
+
+    for (let i = 0; i < candidates.length; i++) {
+      const cand = candidates[i];
+      cand.hp = Math.max(0, cand.hp - scaledDmg);
+      cand.hitFlashTimer = Math.max(cand.hitFlashTimer, 0.2);
+      world.stats.damageDealt += scaledDmg;
+      const isBossCand = world.boss !== null && world.boss.id === cand.id;
+      const bossStagImmune =
+        isBossCand &&
+        world.boss !== null &&
+        (world.boss.staggerCooldownTimer > 0 || world.boss.aiState === 'phase_transition');
+      if (!bossStagImmune && cand.aiState !== 'staggered') {
+        cand.stagger = Math.min(cand.maxStagger, cand.stagger + summary.burstStagger);
+      }
+      if (isBossCand && world.boss) {
+        world.boss.hp = cand.hp;
+        if (!bossStagImmune && world.boss.aiState !== 'staggered') {
+          world.boss.stagger = Math.min(
+            world.boss.maxStagger,
+            world.boss.stagger + summary.burstStagger
+          );
+        }
+      }
+      pushDamagePopup(px, scaledDmg, cand.x, isBossCand ? 2.6 : 2.1, cand.z, 'convergence');
+      world.events.push({
+        type: 'combat_drone_fired',
+        x: cand.x,
+        z: cand.z,
+        originX: aegis.droneX || p.x,
+        originZ: aegis.droneZ || p.z,
+        amount: scaledDmg,
+        enemyId: cand.id,
+      });
+      if (cand.hp <= 0) {
+        handleEnemyZeroHpDefeat(world, cand, scaledDmg, true, false, false);
+      }
+    }
+  } else if (summary.burstRadius > 0) {
+    applyBossCoreRadialPulse(
+      world,
+      p.x,
+      p.z,
+      summary.burstRadius,
+      summary.burstDamage,
+      summary.burstStagger
+    );
+  }
+
+  world.hitstopTimer = Math.max(world.hitstopTimer, 0.045);
+  world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.42);
+  world.events.push({
+    type: 'confluence_burst_triggered',
+    x: p.x,
+    z: p.z,
+    amount: scaledDmg,
+  });
+  return true;
+}
+
+function triggerCuratorGravityVortex(
+  world: WorldState,
+  centerX: number,
+  centerZ: number
+): void {
+  const spec = computeBossCoreModifiers(
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  ).spec;
+  if (!spec || spec.heavyPullRadius <= 0) return;
+  let pulledCount = 0;
+  for (let i = 0; i < world.enemies.length; i++) {
+    const cand = world.enemies[i];
+    if (cand.hp <= 0 || cand.aiState === 'ko') continue;
+    const dx = centerX - cand.x;
+    const dz = centerZ - cand.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 0.25 && dist <= spec.heavyPullRadius + cand.radius) {
+      const pullScale = world.boss && world.boss.id === cand.id ? 0.35 : 1.0;
+      const step = Math.min(dist * 0.65, spec.heavyPullStep * pullScale);
+      cand.x += (dx / dist) * step;
+      cand.z += (dz / dist) * step;
+      pulledCount += 1;
+    }
+  }
+  if (world.momentum && world.momentum.weakpointTimer > 0 && spec.weakpointExtendSec > 0) {
+    world.momentum.weakpointTimer = Math.min(
+      5.5,
+      world.momentum.weakpointTimer + spec.weakpointExtendSec
+    );
+  }
+  if (pulledCount > 0 || (world.momentum?.weakpointTimer ?? 0) > 0) {
+    world.events.push({
+      type: 'boss_core_pulse',
+      x: centerX,
+      z: centerZ,
+      amount: pulledCount,
+    });
+  }
+}
+
+export function ensureAscensionState(
+  world: WorldState
+): import('./types.ts').AscensionRuntimeState {
+  if (!world.ascension) {
+    world.ascension = createInitialAscensionState();
+  }
+  return world.ascension;
+}
+
+export function ensureSingularityState(
+  world: WorldState
+): import('./types.ts').SingularityCombatState {
+  if (!world.singularity) {
+    world.singularity = createInitialSingularityCombatState();
+  }
+  return world.singularity;
+}
+
+export function ensureKineticOverchargeState(
+  world: WorldState
+): import('./types.ts').KineticOverchargeState {
+  if (!world.kineticOvercharge) {
+    world.kineticOvercharge = createInitialKineticOverchargeState();
+  }
+  return world.kineticOvercharge;
+}
+
+export function ensureTwinSyncState(
+  world: WorldState
+): import('./types.ts').TwinSyncState {
+  if (!world.twinSync) {
+    world.twinSync = createInitialTwinSyncState();
+  }
+  return world.twinSync;
+}
+
+export function ensureChronoMomentumState(
+  world: WorldState
+): import('./types.ts').ChronoMomentumState {
+  if (!world.momentum) {
+    world.momentum = createInitialChronoMomentumState();
+  }
+  return world.momentum;
+}
+
+export function ensureChronoNexusState(
+  world: WorldState
+): import('./types.ts').ChronoNexusState {
+  if (!world.nexus) {
+    world.nexus = createInitialChronoNexusState();
+  }
+  return world.nexus;
+}
+
+export function ensureWeaponResonanceState(
+  world: WorldState
+): import('./types.ts').WeaponResonanceState {
+  if (!world.weaponResonance) {
+    world.weaponResonance = createInitialWeaponResonanceState();
+  }
+  return world.weaponResonance;
+}
+
+export function unlockChronoScythe(world: WorldState): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  unlockPlayerWeapon(world, 'chrono_scythe');
+  world.player.equippedWeaponId = 'chrono_scythe';
+  world.progression.lastActionMessage = 'CHRONO SCYTHE UNLOCKED & EQUIPPED [5]';
+  world.events.push({
+    type: 'weapon_unlocked',
+    x: world.player.x,
+    z: world.player.z,
+    weaponId: 'chrono_scythe',
+  });
+  return true;
+}
+
+export function purchaseAndEquipWeaponModChip(
+  world: WorldState,
+  chipId: import('./types.ts').WeaponModChipId | null
+): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  if (!Array.isArray(world.progression.unlockedModChipIds)) {
+    world.progression.unlockedModChipIds = ['mod_volt_arc'];
+  }
+  if (chipId === null) {
+    world.progression.equippedModChipId = null;
+    world.progression.lastActionMessage = 'MOD SOCKET CLEARED';
+    return true;
+  }
+  const def = getWeaponModChipDefinition(chipId);
+  if (!def) return false;
+
+  if (!world.progression.unlockedModChipIds.includes(chipId)) {
+    if (world.progression.memoryFragments < def.cost) {
+      world.progression.lastActionMessage = `NEED ${def.cost}F MEMORY FRAGMENTS FOR ${def.name}`;
+      return false;
+    }
+    world.progression.memoryFragments -= def.cost;
+    world.progression.unlockedModChipIds.push(chipId);
+  }
+  world.progression.equippedModChipId = chipId;
+  world.progression.lastActionMessage = `${def.name} SOCKETED`;
+  world.events.push({
+    type: 'weapon_upgrade_equipped',
+    x: world.player.x,
+    z: world.player.z,
+  });
+  return true;
+}
+
+export function triggerChronoFinisher(world: WorldState): boolean {
+  const asc = ensureAscensionState(world);
+  const p = world.player;
+  if (world.appState !== 'playing' || world.outcome !== 'none' || p.actionState === 'dead') {
+    return false;
+  }
+
+  let hasNearbyStaggered = false;
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
+    if (e.hp > 0 && e.aiState === 'staggered' && Math.hypot(e.x - p.x, e.z - p.z) <= 6.0) {
+      hasNearbyStaggered = true;
+      break;
+    }
+  }
+
+  if (!canTriggerChronoFinisher(asc.style, hasNearbyStaggered)) {
+    return false;
+  }
+
+  const px = ensureParadoxState(world);
+  const finisherRadius = 5.6;
+  const finisherDamage = Math.round(95 * getParadoxOutgoingDamageMult(world));
+  const finisherStagger = 48;
+
+  asc.style.finisherCooldown = 8.0;
+  asc.style.finisherActiveTimer = 0.65;
+  asc.style.finisherReady = false;
+  asc.style.totalFinishersUsed += 1;
+  asc.finisherRiftTimer = 1.45;
+  asc.finisherRiftX = p.x;
+  asc.finisherRiftZ = p.z;
+  recordStyleAction(asc.style, 'finisher', 42, 'CHRONO FINISHER');
+
+  p.invulnTimer = Math.max(p.invulnTimer, 0.85);
+  p.integrity = Math.min(p.maxIntegrity, p.integrity + 12);
+  p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+  p.flux = Math.min(p.maxFlux, p.flux + 20);
+  world.hitstopTimer = Math.max(world.hitstopTimer, 0.12);
+  world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.62);
+
+  world.events.push({
+    type: 'chrono_finisher_triggered',
+    x: p.x,
+    z: p.z,
+    amount: finisherDamage,
+    isHeavy: true,
+    isCriticalOrVulnerable: true,
+    weaponId: p.equippedWeaponId,
+  });
+
+  for (let i = 0; i < world.enemies.length; i++) {
+    const enemy = world.enemies[i];
+    if (enemy.hp <= 0 || enemy.aiState === 'ko') continue;
+    const dist = Math.hypot(enemy.x - p.x, enemy.z - p.z);
+    if (dist > finisherRadius + enemy.radius) continue;
+
+    enemy.hp = Math.max(0, enemy.hp - finisherDamage);
+    enemy.stagger = Math.min(enemy.maxStagger, enemy.stagger + finisherStagger);
+    enemy.hitFlashTimer = 0.28;
+    world.stats.damageDealt += finisherDamage;
+    pushDamagePopup(px, finisherDamage, enemy.x, 2.6, enemy.z, 'convergence');
+
+    const bossState = world.boss && world.boss.id === enemy.id ? world.boss : null;
+    if (bossState) {
+      bossState.hp = enemy.hp;
+      bossState.stagger = Math.min(bossState.maxStagger, bossState.stagger + finisherStagger);
+      bossState.hitFlashTimer = 0.28;
+      if (enemy.hp <= 0) {
+        handleEnemyZeroHpDefeat(world, enemy, finisherDamage, true, true, false);
+      } else {
+        checkAndTriggerBossPhase2(world, bossState, enemy);
+      }
+    } else if (enemy.hp <= 0) {
+      handleEnemyZeroHpDefeat(world, enemy, finisherDamage, true, true, false);
+    }
+  }
+
+  return true;
+}
+
+export function startDailyChronoTrialRun(
+  world: WorldState,
+  skipIntro = true,
+  dateKey: string = getTodayDateKey()
+): import('./types.ts').DailyTrialConfig {
+  const cfg = generateDailyTrialConfig(dateKey);
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  unlockPlayerWeapon(world, 'chrono_scythe');
+  if (!world.progression.unlockedModChipIds?.includes('mod_volt_arc')) {
+    world.progression.unlockedModChipIds = ['mod_volt_arc'];
+  }
+  if (!world.progression.equippedModChipId) {
+    world.progression.equippedModChipId = 'mod_volt_arc';
+  }
+
+  // Launch the Daily Trial's deterministic boss encounter
+  startBossEncounter(
+    world,
+    skipIntro,
+    cfg.bossId as import('./types.ts').BossEncounterId
+  );
+
+  const px = ensureParadoxState(world);
+  px.mutators = {
+    glassCannon: cfg.mutatorKeys.includes('glassCannon'),
+    zeroEchoCooldown: cfg.mutatorKeys.includes('zeroEchoCooldown'),
+    hyperSpeed: cfg.mutatorKeys.includes('hyperSpeed'),
+    ironmanNoHeal: cfg.mutatorKeys.includes('ironmanNoHeal'),
+  };
+
+  const asc = ensureAscensionState(world);
+  asc.style = createInitialStyleRankState();
+  asc.dailyTrialActive = true;
+  asc.dailyTrialConfig = cfg;
+  asc.dailyTrialElapsedSec = 0;
+  asc.dailyTrialScore = 0;
+  asc.dailyTrialCompleted = false;
+  asc.lastDailyRecord = getDailyTrialRecord(cfg.dateKey);
+  asc.finisherRiftTimer = 0;
+
+  world.player.equippedWeaponId = 'chrono_scythe';
+  world.events.push({
+    type: 'daily_trial_started',
+    x: world.player.x,
+    z: world.player.z,
+  });
+  return cfg;
+}
+
+function stepAscensionSystems(
+  world: WorldState,
+  dt: number,
+  eventIndexBeforeSlice: number
+): void {
+  const asc = ensureAscensionState(world);
+  const sing = ensureSingularityState(world);
+  const ko = ensureKineticOverchargeState(world);
+  const twinSync = ensureTwinSyncState(world);
+  const momentum = ensureChronoMomentumState(world);
+  const nexus = ensureChronoNexusState(world);
+  const px = ensureParadoxState(world);
+  const p = world.player;
+
+  if (asc.finisherRiftTimer > 0) {
+    asc.finisherRiftTimer = Math.max(0, asc.finisherRiftTimer - dt);
+  }
+
+  let hasNearbyStaggered = false;
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
+    if (e.hp > 0 && e.aiState === 'staggered' && Math.hypot(e.x - p.x, e.z - p.z) <= 6.0) {
+      hasNearbyStaggered = true;
+      break;
+    }
+  }
+  tickStyleRank(asc.style, dt, hasNearbyStaggered);
+  tickSingularityCombat(sing, dt);
+  tickChronoMomentumState(momentum, dt);
+  tickWeaponResonanceState(ensureWeaponResonanceState(world), dt);
+  const echoActor = world.echo.activeActor;
+  const echoLiveForSync = world.echo.state === 'playback' && Boolean(echoActor);
+  const syncDist =
+    echoLiveForSync && echoActor
+      ? Math.hypot(echoActor.x - p.x, echoActor.z - p.z)
+      : 99;
+  const activeDocId = normalizeEchoDoctrineId(world.progression?.echoDoctrine);
+  const activeDocSpec = getEchoDoctrineSpec(activeDocId);
+  tickTwinSyncState(twinSync, dt, echoLiveForSync, syncDist, activeDocId);
+  if (echoLiveForSync && activeDocSpec.tetherRadius > 0 && syncDist <= activeDocSpec.tetherRadius) {
+    if (activeDocSpec.tetherFluxRegenPerSec > 0 && p.flux < p.maxFlux) {
+      p.flux = Math.min(p.maxFlux, p.flux + activeDocSpec.tetherFluxRegenPerSec * dt);
+    }
+    if (
+      activeDocSpec.tetherWardRegenPerSec > 0 &&
+      world.chronoAegis &&
+      world.chronoAegis.maxWard > 0 &&
+      world.chronoAegis.ward < world.chronoAegis.maxWard
+    ) {
+      world.chronoAegis.ward = Math.min(
+        world.chronoAegis.maxWard,
+        world.chronoAegis.ward + activeDocSpec.tetherWardRegenPerSec * dt
+      );
+    }
+  }
+  const koTick = tickWeaponKineticOvercharge(ko, dt);
+  if (koTick.expired && koTick.expiredWeaponId) {
+    world.events.push({
+      type: 'weapon_overcharge_ended',
+      x: p.x,
+      z: p.z,
+      weaponId: koTick.expiredWeaponId,
+    });
+  }
+
+  if (asc.dailyTrialActive && world.outcome === 'none') {
+    asc.dailyTrialElapsedSec += dt;
+  }
+
+  const equippedChip = world.progression?.equippedModChipId ?? null;
+  const endIdx = world.events.length;
+
+  const awardHitCombo = (hits: number, hx: number, hz: number) => {
+    const out = registerSingularityHit(sing, hits);
+    if (out.milestoneHit !== null) {
+      p.flux = Math.min(p.maxFlux, p.flux + out.bonusFlux);
+      recordStyleAction(asc.style, 'convergence', out.bonusStyle, `CHAIN ×${out.milestoneHit}`);
+      world.events.push({
+        type: 'chrono_chain_milestone',
+        x: hx,
+        z: hz,
+        amount: out.milestoneHit,
+      });
+    }
+  };
+
+  const awardWeaponOvercharge = (weaponId: WeaponId, amount: number, ox: number, oz: number) => {
+    const res = addWeaponKineticCharge(ko, weaponId, amount);
+    if (res.triggered) {
+      recordStyleAction(asc.style, 'convergence', 24, 'KINETIC OVERCHARGE');
+      world.events.push({
+        type: 'weapon_overcharge_ready',
+        x: ox,
+        z: oz,
+        weaponId,
+        amount: 100,
+      });
+    }
+  };
+
+  let breakProcessedThisSlice = false;
+  for (let ei = eventIndexBeforeSlice; ei < endIdx; ei++) {
+    const ev = world.events[ei];
+    let rankRes: { tierChanged: boolean; newTier: import('./types.ts').StyleRankTier } | null =
+      null;
+
+    if (ev.type === 'player_hit_enemy') {
+      awardHitCombo(1, ev.x, ev.z);
+      const hitWeapon = ev.weaponId ?? p.equippedWeaponId;
+      awardWeaponOvercharge(
+        hitWeapon,
+        ev.isHeavy ? OVERCHARGE_GAIN_HEAVY_HIT : OVERCHARGE_GAIN_LIGHT_HIT,
+        p.x,
+        p.z
+      );
+      if (echoLiveForSync && echoActor) {
+        const isPincer = isPincerFlankGeometry(
+          p.x,
+          p.z,
+          echoActor.x,
+          echoActor.z,
+          ev.x,
+          ev.z
+        );
+        const syncRes = registerTwinSyncCombatHit(
+          twinSync,
+          'player',
+          world.elapsedTime,
+          true,
+          isPincer,
+          activeDocId
+        );
+        if (world.chronoAegis?.mode === 'harmonic') {
+          addTwinSyncBonus(twinSync, 5, true);
+        }
+        if (syncRes.pincerTriggered) {
+          recordStyleAction(asc.style, 'convergence', 20, 'TWIN PINCER');
+          world.events.push({
+            type: 'twin_sync_pincer',
+            x: ev.x,
+            z: ev.z,
+            amount: syncRes.newTier,
+          });
+        }
+        if (syncRes.tierUp) {
+          world.events.push({
+            type: 'twin_sync_tier_up',
+            x: p.x,
+            z: p.z,
+            amount: syncRes.newTier,
+          });
+        }
+      }
+      // v2.7.0 Chrono Scythe Astral Siphon Core upgrade leech on hit
+      if (
+        hitWeapon === 'chrono_scythe' &&
+        getEquippedWeaponUpgrade(world, 'chrono_scythe') === 'scythe_astral_siphon'
+      ) {
+        const sipCfg = GAME_CONFIG.weapons.upgrades.scythe_astral_siphon;
+        const ocBonus = isUpgradeOverclocked(
+          'scythe_astral_siphon',
+          world.progression?.overclockedUpgrades
+        )
+          ? 2
+          : 0;
+        p.integrity = Math.min(p.maxIntegrity, p.integrity + sipCfg.healOnHit + ocBonus);
+        p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+        p.flux = Math.min(p.maxFlux, p.flux + sipCfg.fluxBonusOnHit + ocBonus);
+      }
+      rankRes = recordStyleAction(
+        asc.style,
+        ev.isHeavy ? 'heavy_hit' : 'light_hit',
+        ev.isHeavy ? 26 : 15,
+        ev.isHeavy ? 'HEAVY STRIKE' : 'STRIKE'
+      );
+
+      // Apply equipped Weapon Mod Socket Chip effects on player hits
+      if (equippedChip === 'mod_volt_arc') {
+        let bestArcTarget: EnemyState | null = null;
+        let bestArcDist = 4.2;
+        for (let j = 0; j < world.enemies.length; j++) {
+          const cand = world.enemies[j];
+          if (cand.hp <= 0 || cand.aiState === 'ko' || cand.id === ev.enemyId) continue;
+          const d = Math.hypot(cand.x - ev.x, cand.z - ev.z);
+          if (d < bestArcDist) {
+            bestArcDist = d;
+            bestArcTarget = cand;
+          }
+        }
+        if (bestArcTarget) {
+          const arcDmg = 12;
+          bestArcTarget.hp = Math.max(0, bestArcTarget.hp - arcDmg);
+          bestArcTarget.hitFlashTimer = 0.16;
+          world.stats.damageDealt += arcDmg;
+          pushDamagePopup(px, arcDmg, bestArcTarget.x, 2.3, bestArcTarget.z, 'drone');
+          world.events.push({
+            type: 'mod_volt_arc_chain',
+            x: bestArcTarget.x,
+            z: bestArcTarget.z,
+            originX: ev.x,
+            originZ: ev.z,
+            amount: arcDmg,
+            enemyId: bestArcTarget.id,
+          });
+          if (world.boss && world.boss.id === bestArcTarget.id) {
+            world.boss.hp = bestArcTarget.hp;
+          }
+          if (bestArcTarget.hp <= 0) {
+            handleEnemyZeroHpDefeat(world, bestArcTarget, arcDmg, false, false, false);
+          }
+        }
+      } else if (equippedChip === 'mod_siphon_leech') {
+        const healAmt = ev.isHeavy ? 8 : 3;
+        p.integrity = Math.min(p.maxIntegrity, p.integrity + healAmt);
+        p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+        world.events.push({
+          type: 'mod_siphon_leech_heal',
+          x: p.x,
+          z: p.z,
+          amount: healAmt,
+        });
+      } else if (equippedChip === 'mod_chrono_nova' && ev.isHeavy) {
+        const novaDmg = 18;
+        const novaStag = 10;
+        world.events.push({
+          type: 'mod_chrono_nova_burst',
+          x: ev.x,
+          z: ev.z,
+          amount: novaDmg,
+        });
+        for (let j = 0; j < world.enemies.length; j++) {
+          const cand = world.enemies[j];
+          if (cand.hp <= 0 || cand.aiState === 'ko') continue;
+          if (Math.hypot(cand.x - ev.x, cand.z - ev.z) <= 2.9 + cand.radius) {
+            cand.hp = Math.max(0, cand.hp - novaDmg);
+            cand.stagger = Math.min(cand.maxStagger, cand.stagger + novaStag);
+            world.stats.damageDealt += novaDmg;
+            if (world.boss && world.boss.id === cand.id) {
+              world.boss.hp = cand.hp;
+              world.boss.stagger = Math.min(world.boss.maxStagger, world.boss.stagger + novaStag);
+            }
+            if (cand.hp <= 0) {
+              handleEnemyZeroHpDefeat(world, cand, novaDmg, true, false, false);
+            }
+          }
+        }
+      }
+      // v3.4.0/v3.5.0/v3.6.0 Matron Siphon Core + Phase Rail Surgical Aperture Siphon (with ICD)
+      const hitCoreSpec = computeBossCoreModifiers(
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      ).spec;
+      const hitAttunement = computeWeaponCoreAttunement(
+        hitWeapon,
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      );
+      const railUnconditionalTrigger = Boolean(
+        ev.isHeavy && hitWeapon === 'phase_rail' && hitAttunement.railUnconditionalSiphon
+      );
+      if (
+        (hitCoreSpec &&
+          hitCoreSpec.siphonHp > 0 &&
+          (ev.isCriticalOrVulnerable || (momentum.weakpointTimer ?? 0) > 0)) ||
+        railUnconditionalTrigger
+      ) {
+        const aegis = ensureChronoAegisState(world);
+        if ((aegis.bossCoreSiphonCooldown ?? 0) <= 0) {
+          const siphonHp =
+            hitCoreSpec && hitCoreSpec.siphonHp > 0 ? hitCoreSpec.siphonHp : 6;
+          const siphonWard =
+            hitCoreSpec && hitCoreSpec.siphonWard > 0 ? hitCoreSpec.siphonWard : 6;
+          const siphonCd =
+            hitCoreSpec && hitCoreSpec.siphonCooldownSec > 0
+              ? hitCoreSpec.siphonCooldownSec
+              : 1.2;
+          aegis.bossCoreSiphonCooldown = siphonCd;
+          p.integrity = Math.min(p.maxIntegrity, p.integrity + siphonHp);
+          p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+          if (aegis.maxWard > 0) {
+            aegis.ward = Math.min(aegis.maxWard, aegis.ward + siphonWard);
+          }
+          world.events.push({
+            type: 'boss_core_pulse',
+            x: p.x,
+            z: p.z,
+            amount: siphonHp,
+          });
+        }
+      }
+    } else if (ev.type === 'player_parry_success') {
+      awardHitCombo(1, p.x, p.z);
+      awardWeaponOvercharge(p.equippedWeaponId, OVERCHARGE_GAIN_PARRY, p.x, p.z);
+      // v3.0.0 Cross-Link: Perfect Parry extends active Momentum window & energizes Echo Twin-Sync
+      if (momentum.streakTimer > 0) {
+        momentum.streakTimer = Math.min(7.0, momentum.streakTimer + 1.5);
+      }
+      if (echoLiveForSync) {
+        const parrySync = addTwinSyncBonus(twinSync, 14, true);
+        if (parrySync.tierUp) {
+          world.events.push({
+            type: 'twin_sync_tier_up',
+            x: p.x,
+            z: p.z,
+            amount: parrySync.newTier,
+          });
+        }
+      }
+      // v3.4.0/v3.5.0 Helix Bastion Core: Helical Counter-Lance + Ward restore on Perfect Parry
+      const parryCoreSpec = computeBossCoreModifiers(
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      ).spec;
+      if (parryCoreSpec && parryCoreSpec.parryLanceRadius > 0) {
+        const aegis = ensureChronoAegisState(world);
+        if (aegis.maxWard > 0 && parryCoreSpec.parryWardRestore > 0) {
+          aegis.ward = Math.min(aegis.maxWard, aegis.ward + parryCoreSpec.parryWardRestore);
+        }
+        applyBossCoreRadialPulse(
+          world,
+          p.x,
+          p.z,
+          parryCoreSpec.parryLanceRadius,
+          parryCoreSpec.parryLanceDamage,
+          parryCoreSpec.parryLanceStagger
+        );
+      }
+      // v3.6.0 Chrono Edge × Helix Bastion Attunement: Aegis Riposte
+      const parryAttunement = computeWeaponCoreAttunement(
+        p.equippedWeaponId,
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      );
+      if (parryAttunement.parryConfluenceBonus > 0) {
+        grantConfluenceCharge(world, parryAttunement.parryConfluenceBonus);
+      }
+      if (parryAttunement.parryResetSwitchCooldown) {
+        p.weaponSwitchCooldownTimer = 0;
+      }
+      if (parryAttunement.parryFluxBonus > 0) {
+        p.flux = Math.min(p.maxFlux, p.flux + parryAttunement.parryFluxBonus);
+      }
+      rankRes = recordStyleAction(asc.style, 'parry', 42, 'PERFECT PARRY');
+    } else if (ev.type === 'flash_swap_triggered') {
+      awardWeaponOvercharge(ev.weaponId ?? p.equippedWeaponId, OVERCHARGE_GAIN_FLASH_SWAP, p.x, p.z);
+      // v3.0.0 Cross-Link: Flash Swap extends active Weakpoint Break window for chained weapon bursts
+      if (momentum.weakpointTimer > 0) {
+        momentum.weakpointTimer = Math.min(4.5, momentum.weakpointTimer + 1.2);
+      }
+    } else if (ev.type === 'player_perfect_dodge') {
+      armPhantomRiposte(sing);
+      rankRes = recordStyleAction(asc.style, 'perfect_dodge', 34, 'CHRONO SLIP');
+    } else if (ev.type === 'echo_playback_started') {
+      rankRes = recordStyleAction(asc.style, 'echo_deploy', 22, 'ECHO DEPLOY');
+      const choirDeploySpec = computeBossCoreModifiers(
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      ).spec;
+      if (choirDeploySpec && choirDeploySpec.echoPulseRadius > 0) {
+        addTwinSyncBonus(twinSync, choirDeploySpec.echoPulseTwinSync, true);
+        applyBossCoreRadialPulse(
+          world,
+          echoActor?.x ?? ev.x,
+          echoActor?.z ?? ev.z,
+          choirDeploySpec.echoPulseRadius,
+          choirDeploySpec.echoPulseDamage,
+          choirDeploySpec.echoPulseStagger
+        );
+      }
+    } else if (ev.type === 'resonance_convergence') {
+      awardHitCombo(2, ev.x, ev.z);
+      rankRes = recordStyleAction(asc.style, 'convergence', 48, 'CONVERGENCE');
+      if (equippedChip === 'mod_siphon_leech') {
+        p.integrity = Math.min(p.maxIntegrity, p.integrity + 8);
+        p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+      }
+      const choirConvSpec = computeBossCoreModifiers(
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      ).spec;
+      if (choirConvSpec && choirConvSpec.echoPulseRadius > 0) {
+        addTwinSyncBonus(twinSync, choirConvSpec.echoPulseTwinSync, true);
+        applyBossCoreRadialPulse(
+          world,
+          ev.x,
+          ev.z,
+          choirConvSpec.echoPulseRadius,
+          choirConvSpec.echoPulseDamage,
+          choirConvSpec.echoPulseStagger
+        );
+      }
+    } else if (ev.type === 'scythe_vortex_pull') {
+      awardHitCombo(1, ev.x, ev.z);
+      rankRes = recordStyleAction(asc.style, 'scythe_vortex', 32, 'VORTEX PULL');
+    } else if (ev.type === 'combat_drone_fired') {
+      awardHitCombo(1, ev.x, ev.z);
+      rankRes = recordStyleAction(asc.style, 'drone_hit', 10, 'DRONE ASSIST');
+    } else if (ev.type === 'echo_resonance_primed') {
+      if (echoLiveForSync && echoActor) {
+        const isPincer = isPincerFlankGeometry(
+          p.x,
+          p.z,
+          echoActor.x,
+          echoActor.z,
+          ev.x,
+          ev.z
+        );
+        const syncRes = registerTwinSyncCombatHit(
+          twinSync,
+          'echo',
+          world.elapsedTime,
+          true,
+          isPincer,
+          activeDocId
+        );
+        if (world.chronoAegis?.mode === 'harmonic') {
+          addTwinSyncBonus(twinSync, 5, true);
+        }
+        if (syncRes.pincerTriggered) {
+          recordStyleAction(asc.style, 'convergence', 20, 'TWIN PINCER');
+          world.events.push({
+            type: 'twin_sync_pincer',
+            x: ev.x,
+            z: ev.z,
+            amount: syncRes.newTier,
+          });
+        }
+        if (syncRes.tierUp) {
+          world.events.push({
+            type: 'twin_sync_tier_up',
+            x: p.x,
+            z: p.z,
+            amount: syncRes.newTier,
+          });
+        }
+      }
+    } else if (
+      (ev.type === 'enemy_staggered' || ev.type === 'boss_staggered') &&
+      !breakProcessedThisSlice
+    ) {
+      breakProcessedThisSlice = true;
+      const brk = triggerWeakpointBreakWindow(momentum);
+      if (ev.type === 'enemy_staggered' && !(world.boss && ev.enemyId === world.boss.id)) {
+        awardWeaponOvercharge(p.equippedWeaponId, 16, ev.x, ev.z);
+        rankRes = recordStyleAction(asc.style, 'convergence', 18, 'WEAKPOINT BREAK');
+        if (echoLiveForSync) {
+          const syncRes = addTwinSyncBonus(twinSync, 18, true);
+          if (syncRes.tierUp) {
+            world.events.push({
+              type: 'twin_sync_tier_up',
+              x: p.x,
+              z: p.z,
+              amount: syncRes.newTier,
+            });
+          }
+        }
+      }
+      if (brk.newlyOpened) {
+        world.events.push({
+          type: 'weakpoint_break_triggered',
+          x: ev.x,
+          z: ev.z,
+          amount: brk.newTier,
+        });
+      }
+      if (brk.tierUp) {
+        world.events.push({
+          type: 'chrono_momentum_tier_up',
+          x: p.x,
+          z: p.z,
+          amount: brk.newTier,
+        });
+      }
+    } else if (ev.type === 'chrono_execution_finisher') {
+      awardWeaponOvercharge(p.equippedWeaponId, 35, p.x, p.z);
+      const execMom = registerMomentumStreakEvent(momentum, 1);
+      if (execMom.awardBonusFragment && world.progression) {
+        world.progression.memoryFragments += 1;
+      }
+      if (execMom.tierUp) {
+        world.events.push({
+          type: 'chrono_momentum_tier_up',
+          x: p.x,
+          z: p.z,
+          amount: execMom.newTier,
+        });
+      }
+      if (echoLiveForSync) {
+        const syncRes = addTwinSyncBonus(twinSync, TWIN_SYNC_EXECUTION_BONUS, true);
+        if (syncRes.tierUp) {
+          world.events.push({
+            type: 'twin_sync_tier_up',
+            x: p.x,
+            z: p.z,
+            amount: syncRes.newTier,
+          });
+        }
+      }
+      // v3.0.0 Cross-Link: Execution Finisher feeds Stasis Overdrive & Weapon Mastery XP
+      if (world.overdrive && !world.overdrive.active) {
+        const chronPassive = computeChroniclePassiveBonus(
+          world.run?.recoveredLogs,
+          world.run?.completedChapters
+        );
+        world.overdrive.charge = Math.min(
+          100,
+          world.overdrive.charge + Math.round(18 * chronPassive.overdriveChargeMult)
+        );
+      }
+      if (world.progression?.weaponMasteryXp) {
+        const nxMasteryMult = getChronoNexusModifiers(nexus).masteryXpMult;
+        world.progression.weaponMasteryXp[p.equippedWeaponId] =
+          (world.progression.weaponMasteryXp[p.equippedWeaponId] ?? 0) +
+          Math.round(15 * nxMasteryMult);
+      }
+      // v3.4.0/v3.5.0 Matron Siphon Core: Execution Finisher siphons HP & Ward unconditionally
+      const execCoreSpec = computeBossCoreModifiers(
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      ).spec;
+      if (execCoreSpec && execCoreSpec.siphonHp > 0) {
+        const aegis = ensureChronoAegisState(world);
+        p.integrity = Math.min(p.maxIntegrity, p.integrity + execCoreSpec.siphonHp);
+        p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+        if (aegis.maxWard > 0) {
+          aegis.ward = Math.min(aegis.maxWard, aegis.ward + execCoreSpec.siphonWard);
+        }
+        world.events.push({
+          type: 'boss_core_pulse',
+          x: p.x,
+          z: p.z,
+          amount: execCoreSpec.siphonHp,
+        });
+      }
+      rankRes = recordStyleAction(asc.style, 'convergence', 42, 'CHRONO EXECUTION');
+    } else if (ev.type === 'enemy_killed') {
+      const killMom = registerMomentumStreakEvent(momentum, 1);
+      if (killMom.awardBonusFragment && world.progression) {
+        world.progression.memoryFragments += 1;
+      }
+      if (killMom.tierUp) {
+        world.events.push({
+          type: 'chrono_momentum_tier_up',
+          x: p.x,
+          z: p.z,
+          amount: killMom.newTier,
+        });
+      }
+      rankRes = recordStyleAction(asc.style, 'kill', 30, 'HOSTILE CLEARED');
+    } else if (ev.type === 'player_damaged') {
+      penalizeStyleOnHit(asc.style);
+      resetSingularityComboOnDamage(sing);
+    }
+
+    if (rankRes && rankRes.tierChanged) {
+      world.events.push({
+        type: 'style_rank_up',
+        x: p.x,
+        z: p.z,
+      });
+    }
+  }
+
+  // v3.0.0 Unified Chrono Nexus Synergy Evaluation (Links Overcharge + Twin-Sync + Momentum + Flash/Riposte)
+  const nxRes = evaluateChronoNexusState(
+    nexus,
+    {
+      overchargeActive: ko.activeWeaponId === p.equippedWeaponId && ko.activeTimer > 0,
+      twinSyncActive: twinSync.linkActive && twinSync.tier >= 1,
+      momentumActive: momentum.tier >= 1 || momentum.weakpointTimer > 0,
+      flashOrRiposteActive: sing.flashSwapAmpTimer > 0 || sing.phantomRiposteTimer > 0,
+    },
+    dt
+  );
+  if (nxRes.tierUp) {
+    world.events.push({
+      type: 'chrono_nexus_linked',
+      x: p.x,
+      z: p.z,
+      amount: nxRes.newTier,
+    });
+    if (nxRes.newTier === 4 && world.overdrive && !world.overdrive.active) {
+      world.overdrive.charge = Math.min(100, world.overdrive.charge + 12);
+    }
+  }
+  if (nxRes.pulseReady) {
+    world.events.push({
+      type: 'chrono_nexus_pulse',
+      x: p.x,
+      z: p.z,
+      amount: nexus.tier,
+    });
+    for (let ni = 0; ni < world.enemies.length; ni++) {
+      const ne = world.enemies[ni];
+      if (ne.hp <= 0 || ne.aiState === 'ko') continue;
+      if (Math.hypot(ne.x - p.x, ne.z - p.z) <= 4.8 + ne.radius) {
+        ne.stagger = Math.min(ne.maxStagger, ne.stagger + 15);
+        if (world.boss && world.boss.id === ne.id) {
+          world.boss.stagger = Math.min(world.boss.maxStagger, world.boss.stagger + 15);
+        }
+      }
+    }
+  }
+
+  // Record Daily Chrono Trial completion once victory occurs
+  if (
+    asc.dailyTrialActive &&
+    asc.dailyTrialConfig &&
+    !asc.dailyTrialCompleted &&
+    world.outcome === 'victory'
+  ) {
+    asc.dailyTrialCompleted = true;
+    const score = computeDailyTrialScore(
+      asc.dailyTrialElapsedSec,
+      asc.style.peakPoints,
+      world.stats.damageTaken,
+      asc.dailyTrialConfig.parTimeSec
+    );
+    asc.dailyTrialScore = score;
+    asc.lastDailyRecord = saveDailyTrialRecord({
+      dateKey: asc.dailyTrialConfig.dateKey,
+      seedCode: asc.dailyTrialConfig.seedCode,
+      bestScore: score,
+      bestTimeSec: Number(asc.dailyTrialElapsedSec.toFixed(2)),
+      peakRank: asc.style.peakTier,
+      completedCount: 1,
+      updatedAtIso: new Date().toISOString(),
+    });
+    world.events.push({
+      type: 'daily_trial_completed',
+      x: p.x,
+      z: p.z,
+      amount: score,
+    });
+  }
+}
+
+export function unlockChronoAchievement(
+  world: WorldState,
+  id: ChronoAchievementId
+): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  if (!Array.isArray(world.progression.unlockedAchievementIds)) {
+    world.progression.unlockedAchievementIds = [];
+  }
+  if (world.progression.unlockedAchievementIds.includes(id)) {
+    return false;
+  }
+  world.progression.unlockedAchievementIds.push(id);
+  const def = getAchievementDefinition(id);
+  const px = ensureParadoxState(world);
+  px.activeToast = {
+    id,
+    title: def.title,
+    description: def.description,
+    remaining: 4.5,
+  };
+  world.events.push({
+    type: 'achievement_unlocked',
+    x: world.player.x,
+    z: world.player.z,
+    achievementId: id,
+  });
+  return true;
+}
+
+export function equipSeraRigSkin(world: WorldState, skinId: SeraRigSkinId): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const unlocked = isSeraRigSkinUnlocked(
+    skinId,
+    world.progression.unlockedAchievementIds ?? [],
+    world.progression.echoZeroDefeatedCount ?? 0
+  );
+  if (!unlocked) {
+    return false;
+  }
+  world.progression.equippedSkinId = skinId;
+  const def = getSeraRigSkinDefinition(skinId);
+  world.progression.lastActionMessage = `CHASSIS REFIT · ${def.name} EQUIPPED`;
+  world.events.push({
+    type: 'skin_equipped',
+    x: world.player.x,
+    z: world.player.z,
+    skinId,
+  });
+  return true;
+}
+
+export function toggleChronoMutator(
+  world: WorldState,
+  key: keyof ChronoMutatorState
+): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const px = ensureParadoxState(world);
+  const nextVal = !Boolean(px.mutators[key]);
+  px.mutators[key] = nextVal;
+  world.progression.mutators = { ...px.mutators };
+  const def = CHRONO_MUTATORS.find((m) => m.key === key);
+  world.progression.lastActionMessage = `MUTATOR ${def?.label ?? key.toUpperCase()} ${nextVal ? 'ENGAGED' : 'DISABLED'}`;
+  return nextVal;
+}
+
+export function toggleSpeedrunHud(world: WorldState, explicit?: boolean): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const px = ensureParadoxState(world);
+  const nextVal = typeof explicit === 'boolean' ? explicit : !px.speedrun.enabled;
+  px.speedrun.enabled = nextVal;
+  world.progression.speedrunHudEnabled = nextVal;
+  return nextVal;
+}
+
+export function useMedNaniteInjector(world: WorldState): boolean {
+  const px = ensureParadoxState(world);
+  const loadout = px.loadout;
+  const p = world.player;
+  if (p.actionState === 'dead' || p.integrity <= 0) return false;
+  const mutMods = computeMutatorModifiers(px.mutators);
+  if (!mutMods.allowHealing) {
+    if (world.expedition) {
+      world.expedition.transitBannerTimer = 2.6;
+      world.expedition.transitBannerText = 'IRONMAN PROTOCOL · MED-NANITE INJECTOR DISABLED';
+    }
+    return false;
+  }
+  if (loadout.naniteInjectors <= 0 || loadout.naniteCooldown > 0) return false;
+  if (p.integrity >= p.maxIntegrity && p.flux >= p.maxFlux) return false;
+
+  loadout.naniteInjectors = Math.max(0, loadout.naniteInjectors - 1);
+  loadout.naniteCooldown = 3.5;
+  const bossCoreMods = computeBossCoreModifiers(
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const maxHealAmt = Math.round(42 * bossCoreMods.naniteHealMultiplier);
+  const healed = Math.min(maxHealAmt, p.maxIntegrity - p.integrity);
+  p.integrity = Math.min(p.maxIntegrity, p.integrity + maxHealAmt);
+  p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+  p.flux = Math.min(p.maxFlux, p.flux + 18);
+  world.events.push({
+    type: 'nanite_injector_used',
+    x: p.x,
+    z: p.z,
+    amount: Math.round(healed),
+  });
+  return true;
+}
+
+export function purchaseFabricatorItem(
+  world: WorldState,
+  itemId: FabricatorItemId
+): boolean {
+  if (!world.progression) {
+    world.progression = createInitialWeaponProgressionState();
+  }
+  const px = ensureParadoxState(world);
+  const item = getFabricatorItem(itemId);
+  if (world.progression.memoryFragments < item.cost) {
+    world.progression.lastActionMessage = `INSUFFICIENT FRAGMENTS FOR ${item.name} (${item.cost} REQUIRED)`;
+    return false;
+  }
+
+  const loadout = px.loadout;
+  if (itemId === 'nanite_pack') {
+    if (loadout.naniteInjectors >= loadout.maxNaniteInjectors) {
+      world.progression.lastActionMessage = 'MED-NANITE INJECTORS ALREADY AT MAX (3/3)';
+      return false;
+    }
+    loadout.naniteInjectors = Math.min(
+      loadout.maxNaniteInjectors,
+      loadout.naniteInjectors + 1
+    );
+  } else if (itemId === 'aegis_shield') {
+    if (loadout.aegisShieldHp >= loadout.maxAegisShieldHp) {
+      world.progression.lastActionMessage = 'AEGIS SHIELD ALREADY AT FULL CAPACITY';
+      return false;
+    }
+    loadout.aegisShieldHp = Math.min(loadout.maxAegisShieldHp, loadout.aegisShieldHp + 40);
+  } else if (itemId === 'overclock_core') {
+    if (loadout.overclockCoreActive) {
+      world.progression.lastActionMessage = 'OVERCLOCK CORE ALREADY ARMED (+25% DMG)';
+      return false;
+    }
+    loadout.overclockCoreActive = true;
+  } else if (itemId === 'drone_mk1') {
+    if (loadout.combatDroneTier >= 1) {
+      world.progression.lastActionMessage = 'COMBAT DRONE ALREADY DEPLOYED';
+      return false;
+    }
+    loadout.combatDroneTier = 1;
+    loadout.droneX = world.player.x - 1.5;
+    loadout.droneZ = world.player.z - 0.5;
+    unlockChronoAchievement(world, 'drone_commander');
+  } else if (itemId === 'drone_mk2') {
+    if (loadout.combatDroneTier >= 2) {
+      world.progression.lastActionMessage = 'COMBAT DRONE MK.II ALREADY ACTIVE';
+      return false;
+    }
+    loadout.combatDroneTier = 2;
+    loadout.droneX = world.player.x - 1.5;
+    loadout.droneZ = world.player.z - 0.5;
+    unlockChronoAchievement(world, 'drone_commander');
+  }
+
+  world.progression.memoryFragments -= item.cost;
+  world.progression.lastActionMessage = `FABRICATED · ${item.name} (-${item.cost} FRAG)`;
+  if (world.expedition?.safeRoom?.active) {
+    world.expedition.transitBannerTimer = 3.8;
+    world.expedition.transitBannerText = `FIELD FABRICATOR · ${item.name} INSTALLED`;
+  }
+  unlockChronoAchievement(world, 'safe_room_engineer');
+  world.events.push({
+    type: 'fabricator_purchased',
+    x: world.player.x,
+    z: world.player.z,
+    fabricatorItemId: itemId,
+    amount: item.cost,
+  });
+  return true;
+}
+
+export function startEchoZeroParadoxEncounter(
+  world: WorldState,
+  skipIntro = false
+): boolean {
+  const px = ensureParadoxState(world);
+  px.paradoxRiftUnlocked = true;
+  startBossEncounter(world, skipIntro, 'echo-zero');
+  world.events.push({
+    type: 'paradox_rift_entered',
+    x: world.player.x,
+    z: world.player.z,
+  });
+  return true;
 }
 
 export function startAuthoredEncounter(
@@ -5974,6 +11583,19 @@ export function startAuthoredEncounter(
   world.obstacles = buildObstaclesForChapter(def.chapterContext, false);
   world.boostPads = createInitialBoostPads();
   world.fluxPools = [];
+  world.artilleryZones = [];
+  world.temporalRift = null;
+  world.riftCooldownTimer = 7.5;
+  world.riftSpawnSeq = 1;
+  world.recursion = null;
+  world.overdrive = createInitialChronoOverdriveState(25);
+  world.gauntlet = null;
+  world.fragmentCaches = buildFragmentCachesForChapter(
+    def.chapterContext,
+    world.progression?.claimedRewardIds ?? []
+  );
+  world.sectorBeacons = buildSectorBeaconsForChapter(def.chapterContext);
+  world.activeStoryBlessing = null;
   world.enemies = spawnWaveUnitsForEncounter(
     def.id,
     1,
@@ -5993,12 +11615,14 @@ export function startAuthoredEncounter(
   world.matron = fresh.matron;
   const unlockAdvancedModules =
     encounterId === 'tactical_temporal_disruption' ||
-    encounterId === 'tactical_mastery_gauntlet';
+    encounterId === 'tactical_mastery_gauntlet' ||
+    encounterId === 'tactical_apex_bestiary';
   world.gravityPin = createInitialGravityPinState(unlockAdvancedModules);
   world.echoCollapse = createInitialEchoCollapseState(unlockAdvancedModules);
   world.loom = fresh.loom;
   world.comms = createInitialNarrativeCommsState();
   world.progression = cloneWeaponProgressionState(world.progression);
+  applyOverdriveToEnemies(world, world.enemies, null);
   world.encounter = createInitialEncounterRuntimeState(def.id);
   world.exploration = createInitialExplorationState(def.chapterContext, null);
   syncUnlockedRoutesToObstacles(world);
@@ -6060,6 +11684,7 @@ export function advanceEncounterWaveIfReady(world: WorldState): boolean {
       world.player.z,
       true
     );
+    applyOverdriveToEnemies(world, reinforcementUnits, null);
     world.enemies.push(...reinforcementUnits);
     world.run.checkpointNotice = `${nextWave.label} DEPLOYED · ${nextWave.tacticalDirective}`;
     world.run.checkpointNoticeTimer = 4.2;
@@ -6115,7 +11740,13 @@ export function captureBossCheckpointFromWorld(
     0,
     Math.min(world.player.maxFlux, Math.floor(world.player.flux))
   );
-  const syncedFlux = Math.max(GAME_CONFIG.verticalSlice.bossCheckpointMinFluxFloor, rawFlux);
+  const hasFluxReservoir = (
+    world.progression?.purchasedNeuralProtocols ?? []
+  ).includes('proto_flux_reservoir');
+  const minFluxFloor =
+    GAME_CONFIG.verticalSlice.bossCheckpointMinFluxFloor +
+    (hasFluxReservoir ? 15 : 0);
+  const syncedFlux = Math.max(minFluxFloor, rawFlux);
 
   const unlockedForCheckpoint =
     world.run?.mode === 'campaign'
@@ -6214,6 +11845,7 @@ export function beginCampaignBossTransition(world: WorldState): void {
       world.run.completedChapters,
       'prologue'
     );
+    recordWorldCombatMasteryOnVictory(world, ['sector_prologue']);
     world.run.unlockedChapters = addUniqueChapter(
       world.run.unlockedChapters,
       'chapter_1_helix'
@@ -6302,6 +11934,9 @@ export function transitionCampaignToBoss(
     : clonePersistedExplorationState(world.exploration);
 
   startBossEncounter(world, skipBossIntro, bossId);
+  if (targetChapter !== getChapterForBossId(bossId)) {
+    world.obstacles = buildObstaclesForChapter(targetChapter, true);
+  }
   if (!isReplay) {
     if (
       targetChapter === 'chapter_1_helix' ||
@@ -6325,6 +11960,7 @@ export function transitionCampaignToBoss(
     targetChapter,
     preservedExploration
   );
+  syncChapterExpansionEntities(world, targetChapter);
   syncUnlockedRoutesToObstacles(world);
   syncPlayerRigStats(world);
 
@@ -6440,6 +12076,16 @@ export function enterChronicleLoomChapter(
   world.obstacles = buildObstaclesForChapter('chapter_5_loom', false);
   world.boostPads = createInitialBoostPads();
   world.fluxPools = [];
+  world.artilleryZones = [];
+  world.temporalRift = null;
+  world.riftCooldownTimer = 7.5;
+  world.recursion = null;
+  world.fragmentCaches = buildFragmentCachesForChapter(
+    'chapter_5_loom',
+    world.progression?.claimedRewardIds ?? []
+  );
+  world.sectorBeacons = buildSectorBeaconsForChapter('chapter_5_loom');
+  world.activeStoryBlessing = null;
   world.echo = fresh.echo;
   world.relay = fresh.relay;
   world.resonance = fresh.resonance;
@@ -6545,6 +12191,7 @@ export function engageWardenPrimeInLoom(
     'chapter_5_loom',
     preservedExploration
   );
+  syncChapterExpansionEntities(world, 'chapter_5_loom');
   syncUnlockedRoutesToObstacles(world);
   syncResonanceUpgradeParameters(world);
   syncPlayerRigStats(world);
@@ -6985,6 +12632,96 @@ function extractPersistedProgressionForSave(
   world: WorldState
 ): PersistedWeaponProgressionState {
   const snap = world.run?.savedCampaignSnapshot;
+  if (world.run?.mode === 'recursion' || world.run?.mode === 'boss_gauntlet') {
+    const liveProg = sanitizePersistedWeaponProgressionState(world.progression);
+    const baseSnap = snap?.progression
+      ? sanitizePersistedWeaponProgressionState(snap.progression)
+      : liveProg;
+    const mergedXp = normalizeWeaponMasteryXpMap(baseSnap.weaponMasteryXp);
+    for (let i = 0; i < VALID_WEAPON_IDS.length; i++) {
+      const wId = VALID_WEAPON_IDS[i];
+      mergedXp[wId] = Math.max(mergedXp[wId] ?? 0, liveProg.weaponMasteryXp?.[wId] ?? 0);
+    }
+    const baseBestG = baseSnap.bestGauntletTimeSec ?? null;
+    const liveBestG = liveProg.bestGauntletTimeSec ?? null;
+    const mergedBestGauntlet =
+      baseBestG === null
+        ? liveBestG
+        : liveBestG === null
+          ? baseBestG
+          : Math.min(baseBestG, liveBestG);
+    return {
+      ...baseSnap,
+      memoryFragments: Math.max(baseSnap.memoryFragments, liveProg.memoryFragments),
+      weaponMasteryXp: mergedXp,
+      bestRecursionLoop: Math.max(
+        baseSnap.bestRecursionLoop ?? 0,
+        liveProg.bestRecursionLoop ?? 0
+      ),
+      totalRecursionClears: Math.max(
+        baseSnap.totalRecursionClears ?? 0,
+        liveProg.totalRecursionClears ?? 0
+      ),
+      bestGauntletTimeSec: mergedBestGauntlet,
+      totalGauntletClears: Math.max(
+        baseSnap.totalGauntletClears ?? 0,
+        liveProg.totalGauntletClears ?? 0
+      ),
+      overdriveDifficulty: Boolean(liveProg.overdriveDifficulty),
+      ngPlusCycle: Math.max(baseSnap.ngPlusCycle ?? 0, liveProg.ngPlusCycle ?? 0),
+      unlockedVaultChapters: Array.from(
+        new Set([
+          ...(baseSnap.unlockedVaultChapters ?? []),
+          ...(liveProg.unlockedVaultChapters ?? []),
+        ])
+      ),
+      equippedSkinId: liveProg.equippedSkinId ?? baseSnap.equippedSkinId ?? 'nadir_standard',
+      unlockedAchievementIds: Array.from(
+        new Set([
+          ...(baseSnap.unlockedAchievementIds ?? []),
+          ...(liveProg.unlockedAchievementIds ?? []),
+        ])
+      ),
+      paradoxEndingUnlocked: Boolean(
+        baseSnap.paradoxEndingUnlocked || liveProg.paradoxEndingUnlocked
+      ),
+      echoZeroDefeatedCount: Math.max(
+        baseSnap.echoZeroDefeatedCount ?? 0,
+        liveProg.echoZeroDefeatedCount ?? 0
+      ),
+      lifetimeParries: Math.max(baseSnap.lifetimeParries ?? 0, liveProg.lifetimeParries ?? 0),
+      lifetimeConvergences: Math.max(
+        baseSnap.lifetimeConvergences ?? 0,
+        liveProg.lifetimeConvergences ?? 0
+      ),
+      mutators: { ...(liveProg.mutators ?? createDefaultMutators()) },
+      unlockedBossCores: Array.from(
+        new Set([
+          ...(baseSnap.unlockedBossCores ?? []),
+          ...(liveProg.unlockedBossCores ?? []),
+        ])
+      ),
+      equippedBossCore: liveProg.equippedBossCore ?? baseSnap.equippedBossCore ?? null,
+      transcendedBossCores: Array.from(
+        new Set([
+          ...(baseSnap.transcendedBossCores ?? []),
+          ...(liveProg.transcendedBossCores ?? []),
+        ])
+      ),
+      bestSpeedrunSplits: {
+        ...(baseSnap.bestSpeedrunSplits ?? {}),
+        ...(liveProg.bestSpeedrunSplits ?? {}),
+      },
+      bestSpeedrunFullSec:
+        baseSnap.bestSpeedrunFullSec !== null &&
+        baseSnap.bestSpeedrunFullSec !== undefined &&
+        liveProg.bestSpeedrunFullSec !== null &&
+        liveProg.bestSpeedrunFullSec !== undefined
+          ? Math.min(baseSnap.bestSpeedrunFullSec, liveProg.bestSpeedrunFullSec)
+          : (liveProg.bestSpeedrunFullSec ?? baseSnap.bestSpeedrunFullSec ?? null),
+      speedrunHudEnabled: Boolean(liveProg.speedrunHudEnabled),
+    };
+  }
   if (
     (world.run?.mode !== 'campaign' || world.run?.isChapterReplay) &&
     snap?.progression
@@ -7144,10 +12881,13 @@ export function parseAndApplyCampaignProgress(
       lastActionMessage:
         'CAMPAIGN PROGRESSION RESTORED · UPGRADE BENCH SYNCHRONIZED',
     };
+    syncUnlockedBossCoresFromCampaign(world);
     syncResonanceUpgradeParameters(world);
     syncPlayerRigStats(world);
   } else {
     inferLegacyWeaponUnlocksFromChapters();
+    syncUnlockedBossCoresFromCampaign(world);
+    syncPlayerRigStats(world);
   }
 
   const topLevelExploration =
@@ -7160,6 +12900,7 @@ export function parseAndApplyCampaignProgress(
       world.run.chapter,
       topLevelExploration
     );
+    syncChapterExpansionEntities(world, world.run.chapter);
     syncUnlockedRoutesToObstacles(world);
     advanceMissionAndExplorationSystem(world);
   }
@@ -7351,14 +13092,14 @@ export function loadCampaignProgressFromStorage(
   world: WorldState,
   storage?: Pick<Storage, 'getItem'> | null
 ): boolean {
+  const targetStorage =
+    storage !== undefined
+      ? storage
+      : typeof window !== 'undefined'
+        ? window.localStorage
+        : null;
+  if (!targetStorage) return false;
   try {
-    const targetStorage =
-      storage !== undefined
-        ? storage
-        : typeof window !== 'undefined'
-          ? window.localStorage
-          : null;
-    if (!targetStorage) return false;
     const raw = targetStorage.getItem(CAMPAIGN_STORAGE_KEY);
     return parseAndApplyCampaignProgress(world, raw);
   } catch {
@@ -7366,36 +13107,29 @@ export function loadCampaignProgressFromStorage(
   }
 }
 
-export interface CampaignSaveResult {
-  written: boolean;
-  /** True when storage exists but rejected the write (quota exceeded, access blocked). */
-  failed: boolean;
-  json: string;
-}
-
 export function saveCampaignProgressToStorage(
   world: WorldState,
   storage?: Pick<Storage, 'setItem'> | null,
   previousJson: string | null = null
-): CampaignSaveResult {
+): { written: boolean; json: string } {
   const serialized = serializeCampaignProgress(world);
   if (serialized === previousJson) {
-    return { written: false, failed: false, json: serialized };
+    return { written: false, json: serialized };
+  }
+  const targetStorage =
+    storage !== undefined
+      ? storage
+      : typeof window !== 'undefined'
+        ? window.localStorage
+        : null;
+  if (!targetStorage) {
+    return { written: false, json: serialized };
   }
   try {
-    const targetStorage =
-      storage !== undefined
-        ? storage
-        : typeof window !== 'undefined'
-          ? window.localStorage
-          : null;
-    if (!targetStorage) {
-      return { written: false, failed: false, json: serialized };
-    }
     targetStorage.setItem(CAMPAIGN_STORAGE_KEY, serialized);
-    return { written: true, failed: false, json: serialized };
+    return { written: true, json: serialized };
   } catch {
-    return { written: false, failed: true, json: serialized };
+    return { written: false, json: serialized };
   }
 }
 
@@ -7627,6 +13361,7 @@ export function restoreSavedCampaignProgress(world: WorldState): boolean {
     targetChapter,
     restoredExploration
   );
+  syncChapterExpansionEntities(world, targetChapter);
   syncUnlockedRoutesToObstacles(world);
   advanceMissionAndExplorationSystem(world);
 
@@ -7711,12 +13446,14 @@ export function selectChronicleLoomEnding(
     );
     world.run.savedCampaignSnapshot = null;
   }
+  syncUnlockedBossCoresFromCampaign(world);
   world.outcome = 'victory';
   world.run.stage = 'completed';
   world.outcomeDelayTimer = 0;
   completeMissionObjective(world, 'obj_ch5_select_loom_directive');
   advanceMissionAndExplorationSystem(world);
   clearEchoState(world, 'outcome');
+  recordWorldCombatMasteryOnVictory(world, ['sector_ch5_loom']);
   world.frozenSummary = buildRunSummary(world);
   world.appState = 'gameover';
 
@@ -7815,6 +13552,14 @@ export function retryBossFromCheckpoint(world: WorldState, skipBossIntro = false
 }
 
 export function resetWorldForPlaying(world: WorldState): void {
+  if (world.run?.mode === 'boss_gauntlet') {
+    startBossGauntletRun(world, false);
+    return;
+  }
+  if (world.run?.mode === 'recursion') {
+    startRecursionProtocol(world, 1);
+    return;
+  }
   if (world.run?.mode === 'campaign' && world.run.chapter === 'chapter_5_loom') {
     enterChronicleLoomChapter(world, world.run.isChapterReplay);
     return;
@@ -7880,17 +13625,147 @@ export function createEmptyInput(aimYaw = Math.PI): PlayerInputFrame {
     gravityPinJustPressed: false,
     echoCollapseJustPressed: false,
     interactJustPressed: false,
+    overdriveJustPressed: false,
+    confluenceBurstJustPressed: false,
   };
+}
+
+const _solidPropCollidersCache = new Map<CampaignChapterId, readonly ObstacleCollider[]>();
+
+export function getArenaSolidPropColliders(
+  chapter: CampaignChapterId
+): readonly ObstacleCollider[] {
+  const cached = _solidPropCollidersCache.get(chapter);
+  if (cached) return cached;
+
+  const list: ObstacleCollider[] = [];
+  const pushSolid = (id: string, x: number, z: number, radius: number, height: number, label: string) => {
+    list.push({ id, x, z, radius, height, label, kind: 'pillar', disabled: false });
+  };
+
+  // 1. Chapter Interactables (Lore Terminals, Power Nodes, Gate Controls, Echo Conduits)
+  const interactables = getAllInteractableDefinitionsForChapter(chapter);
+  for (let i = 0; i < interactables.length; i++) {
+    const def = interactables[i];
+    pushSolid(`prop_col_${def.id}`, def.x, def.z, 0.68, 2.2, def.label);
+  }
+
+  // 2. Fragment Cache Pedestals (solid core; 0.72 + 0.55 player radius = 1.27m < 1.50m auto-claim aura)
+  const caches = buildFragmentCachesForChapter(chapter, []);
+  for (let i = 0; i < caches.length; i++) {
+    const cache = caches[i];
+    pushSolid(`prop_col_${cache.id}`, cache.x, cache.z, 0.72, 1.8, cache.label);
+  }
+
+  // 3. Sector Tactical Beacons (solid spire; 0.72 + 0.55 = 1.27m < 2.40m activation range)
+  const beacons = buildSectorBeaconsForChapter(chapter);
+  for (let i = 0; i < beacons.length; i++) {
+    const beacon = beacons[i];
+    pushSolid(`prop_col_${beacon.id}`, beacon.x, beacon.z, 0.72, 2.6, beacon.label);
+  }
+
+  // 4. Prologue Chrono Receiver twin pedestals (leave central kinetic target gap open for melee strike!)
+  if (chapter === 'prologue') {
+    const hrCfg = GAME_CONFIG.arena.chronoPuzzle.heavyReceiver;
+    pushSolid('prop_col_chrono_rx_w', hrCfg.targetX - 1.44, hrCfg.targetZ, 0.58, 2.2, 'Chrono Receiver W');
+    pushSolid('prop_col_chrono_rx_e', hrCfg.targetX + 1.44, hrCfg.targetZ, 0.58, 2.2, 'Chrono Receiver E');
+  }
+
+  // 5. Chapter-Specific Floor-Mounted Sanctum Landmarks (1:1 synced with GAME_CONFIG.arena.sanctumLandmarks & models.ts)
+  const landmarks = GAME_CONFIG.arena.sanctumLandmarks;
+  if (chapter === 'prologue') {
+    landmarks.prologue.calibrationGates.forEach((gate, idx) => {
+      const cosR = Math.cos(gate.rotY);
+      const sinR = Math.sin(gate.rotY);
+      for (const side of [-1, 1] as const) {
+        const px = gate.x + side * 1.72 * cosR;
+        const pz = gate.z - side * 1.72 * sinR;
+        pushSolid(`prop_col_cal_gate_${idx}_${side > 0 ? 'r' : 'l'}`, px, pz, 0.52, 4.4, 'Calibration Gate Column');
+      }
+    });
+    const dp = landmarks.prologue.diagPylon;
+    pushSolid('prop_col_prologue_diag_pylon', dp.x, dp.z, dp.radius, 3.2, 'Diagnostic Pylon');
+    const pHolo = landmarks.prologue.tacticalHoloTable;
+    pushSolid('prop_col_prologue_holo_table', pHolo.x, pHolo.z, pHolo.radius, 1.35, 'Tactical Holo-Table');
+  } else if (chapter === 'chapter_1_helix') {
+    landmarks.chapter_1_helix.vaultBulkheads.forEach((bh, idx) => {
+      for (const ox of [-1.55, 0, 1.55]) {
+        pushSolid(`prop_col_bulkhead_${idx}_${ox}`, bh.x + ox, bh.z, 0.92, 6.0, 'Vault Bulkhead');
+      }
+    });
+    landmarks.chapter_1_helix.containmentPylons.forEach((p, idx) => {
+      pushSolid(`prop_col_containment_pylon_${idx}`, p.x, p.z, p.radius, 4.0, 'Containment Pylon');
+    });
+    const lb = landmarks.chapter_1_helix.lockdownBeacon;
+    pushSolid('prop_col_lockdown_beacon', lb.x, lb.z, lb.radius, 3.6, 'Lockdown Beacon');
+    const odc = landmarks.chapter_1_helix.overdriveConduit;
+    pushSolid('prop_col_overdrive_conduit', odc.x, odc.z, odc.radius, 2.8, 'Overdrive Conduit');
+  } else if (chapter === 'chapter_2_choir') {
+    landmarks.chapter_2_choir.harmonicOrgans.forEach((org, idx) => {
+      const cosR = Math.cos(org.rotY);
+      const sinR = Math.sin(org.rotY);
+      for (const ox of [-0.95, 0.95]) {
+        pushSolid(
+          `prop_col_harmonic_organ_${idx}_${ox > 0 ? 'r' : 'l'}`,
+          org.x + ox * cosR,
+          org.z - ox * sinR,
+          1.05,
+          5.5,
+          'Harmonic Organ'
+        );
+      }
+    });
+  } else if (chapter === 'chapter_3_curator') {
+    landmarks.chapter_3_curator.archiveMonoliths.forEach((m, idx) => {
+      pushSolid(`prop_col_archive_monolith_${idx}`, m.x, m.z, m.radius, 5.2, 'Archive Monolith');
+    });
+    const hs = landmarks.chapter_3_curator.heroMemorySlab;
+    pushSolid('prop_col_hero_memory_slab', hs.x, hs.z, hs.radius, 4.2, 'Memory Slab Monument');
+    const c3Holo = landmarks.chapter_3_curator.tacticalHoloTable;
+    pushSolid('prop_col_ch3_holo_table', c3Holo.x, c3Holo.z, c3Holo.radius, 1.35, 'Tactical Holo-Table');
+  } else if (chapter === 'chapter_4_matron') {
+    landmarks.chapter_4_matron.stasisPods.forEach((pod, idx) => {
+      pushSolid(`prop_col_stasis_pod_${idx}`, pod.x, pod.z, pod.radius, 4.2, 'Stasis Pod');
+    });
+    landmarks.chapter_4_matron.cryoMedTables.forEach((tbl, idx) => {
+      pushSolid(`prop_col_cryo_med_table_${idx}`, tbl.x, tbl.z, tbl.radius, 1.85, 'Cryo Med-Table');
+    });
+  } else if (chapter === 'chapter_5_loom') {
+    landmarks.chapter_5_loom.sovereignSeals.forEach((seal, idx) => {
+      pushSolid(`prop_col_sovereign_seal_${idx}`, seal.x, seal.z, seal.radius, 5.5, 'Sovereign Seal');
+    });
+    landmarks.chapter_5_loom.convergencePillars.forEach((cp, idx) => {
+      pushSolid(`prop_col_convergence_pillar_${idx}`, cp.x, cp.z, cp.radius, 4.6, 'Convergence Pillar');
+    });
+    const dc = landmarks.chapter_5_loom.directiveCore;
+    pushSolid('prop_col_directive_core', dc.x, dc.z, dc.radius, 3.6, 'Directive Core Altar');
+  }
+
+  // 6. Perimeter Data Console Command Desks (i % 4 === 3 around 16-segment observation ring)
+  const numSegments = 16;
+  const wallDist = GAME_CONFIG.arena.radius + 0.35;
+  for (let i = 3; i < numSegments; i += 4) {
+    const angle = (i / numSegments) * Math.PI * 2;
+    const sinA = Math.sin(angle);
+    const cosA = Math.cos(angle);
+    const wx = sinA * (wallDist - 1.08) + 0.35 * cosA;
+    const wz = cosA * (wallDist - 1.08) - 0.35 * sinA;
+    pushSolid(`prop_col_data_console_${i}`, wx, wz, 1.15, 1.4, 'Perimeter Data Console');
+  }
+
+  _solidPropCollidersCache.set(chapter, list);
+  return list;
 }
 
 function resolveCircleObstacleCollisions(
   entity: { x: number; z: number; radius: number },
-  obstacles: ObstacleCollider[],
-  arenaRadius: number
+  obstacles: readonly ObstacleCollider[],
+  arenaRadius: number,
+  extraColliders?: readonly ObstacleCollider[]
 ): void {
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < obstacles.length; i++) {
-      const obs = obstacles[i];
+  const resolveList = (list: readonly ObstacleCollider[]) => {
+    for (let i = 0; i < list.length; i++) {
+      const obs = list[i];
       if (obs.disabled) continue;
       const dx = entity.x - obs.x;
       const dz = entity.z - obs.z;
@@ -7906,6 +13781,13 @@ function resolveCircleObstacleCollisions(
           entity.z += (dz / dist) * overlap;
         }
       }
+    }
+  };
+
+  for (let pass = 0; pass < 2; pass++) {
+    resolveList(obstacles);
+    if (extraColliders && extraColliders.length > 0) {
+      resolveList(extraColliders);
     }
   }
 
@@ -7967,19 +13849,35 @@ function resolveActorSeparation(player: PlayerState, enemies: EnemyState[]): voi
   }
 }
 
-function capturePlayerEchoSample(
+function getEffectivePlayerHeavyChargeThreshold(
   world: WorldState,
-  player: PlayerState,
-  t: number
-): EchoSample {
-  const chargeThresh =
+  player: PlayerState
+): number {
+  const baseThresh =
     player.equippedWeaponId === 'pulsecaster'
       ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
       : player.equippedWeaponId === 'phase_rail'
         ? GAME_CONFIG.weapons.phase_rail.heavyShot.chargeThreshold
         : player.equippedWeaponId === 'grav_breaker'
           ? GAME_CONFIG.weapons.grav_breaker.heavySlam.chargeThreshold
-          : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+          : player.equippedWeaponId === 'chrono_scythe'
+            ? GAME_CONFIG.weapons.chrono_scythe.heavyVortex.chargeThreshold
+            : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+  const attunement = computeWeaponCoreAttunement(
+    player.equippedWeaponId,
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const rigDelay = getPlayerRigModifiers(world).heavyChargeDelayDelta;
+  return Math.max(0.18, baseThresh * attunement.chargeThresholdMultiplier + rigDelay);
+}
+
+function capturePlayerEchoSample(
+  world: WorldState,
+  player: PlayerState,
+  t: number
+): EchoSample {
+  const chargeThresh = getEffectivePlayerHeavyChargeThreshold(world, player);
   return {
     t,
     x: player.x,
@@ -8261,6 +14159,17 @@ function spawnEchoPulsecasterProjectile(
     world.projectiles.shift();
   }
 
+  const echoProtos = world.progression?.purchasedNeuralProtocols ?? [];
+  const hasEchoMatrix = echoProtos.includes('proto_echo_harmonics');
+  const echoProtoMods = computeNeuralProtocolModifiers(echoProtos);
+  const echoDocSpec = getEchoDoctrineSpec(world.progression?.echoDoctrine);
+  const echoChipDmg = hasEchoMatrix
+    ? Math.round(5 * echoProtoMods.echoDamageMultiplier * echoDocSpec.echoDamageMultiplier)
+    : 0;
+  const echoChipStagger = hasEchoMatrix
+    ? Math.round(7 * echoProtoMods.echoStaggerMultiplier * echoDocSpec.echoStaggerMultiplier)
+    : 0;
+
   const projId = `proj-echo-${world.nextProjectileId++}`;
   world.projectiles.push({
     id: projId,
@@ -8282,8 +14191,8 @@ function spawnEchoPulsecasterProjectile(
     vz: dirZ * cfg.projectileSpeed,
     rotationY: ev.rotationY,
     radius: cfg.projectileRadius,
-    damage: 0,
-    staggerDamage: 0,
+    damage: echoChipDmg,
+    staggerDamage: echoChipStagger,
     isHeavy,
     isEmpowered: Boolean(ev.isEmpoweredHeavy),
     maxRange: cfg.maxRange,
@@ -8363,6 +14272,7 @@ function startEchoPlayback(world: WorldState): boolean {
     x: pose0.x,
     z: pose0.z,
   });
+  triggerEchoDoctrineNovaPulse(world, pose0.x, pose0.z);
 
   // Fire any action events recorded at t === 0
   while (
@@ -8901,14 +14811,25 @@ function evaluateDueEchoResonanceContacts(
     const target = query.target;
     res.markCounter += 1;
     res.primedCount += 1;
+    const echoRigMods = getPlayerRigModifiers(world);
     const hasHarmonicEdge =
       ev.equippedUpgradeId === 'edge_harmonic_conductor' ||
       getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_harmonic_conductor';
+    const harmonicOverclock =
+      hasHarmonicEdge &&
+      isUpgradeOverclocked(
+        'edge_harmonic_conductor',
+        world.progression?.overclockedUpgrades
+      )
+        ? 0.5
+        : 0;
     const syncWindow =
       GAME_CONFIG.resonance.syncWindow +
+      echoRigMods.echoSyncWindowBonus +
       (hasHarmonicEdge
         ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.syncWindowBonus
-        : 0);
+        : 0) +
+      harmonicOverclock;
     res.syncWindow = syncWindow;
     const mark: ResonanceMarkState = {
       markId: res.markCounter,
@@ -9002,6 +14923,9 @@ function advanceResonanceSystem(world: WorldState, dt: number): void {
 
 function advanceEchoSystem(world: WorldState, dt: number): void {
   const echo = world.echo;
+  if ((echo.novaPulseCooldownTimer ?? 0) > 0) {
+    echo.novaPulseCooldownTimer = Math.max(0, (echo.novaPulseCooldownTimer ?? 0) - dt);
+  }
 
   if (echo.state === 'recording') {
     echo.recordingTime += dt;
@@ -9169,6 +15093,9 @@ function evaluateSinglePressurePlate(
 }
 
 function updatePressurePlate(world: WorldState, dt = 0): void {
+  if (world.expedition?.enabled && world.expedition.phase === 'safe_room') {
+    return;
+  }
   const plate = world.pressurePlate;
   evaluateSinglePressurePlate(world, plate, true);
 
@@ -9382,6 +15309,7 @@ function startLightAttack(
 ): void {
   const p = world.player;
   const isBreaker = p.equippedWeaponId === 'grav_breaker';
+  const isScythe = p.equippedWeaponId === 'chrono_scythe';
   const cfg = GAME_CONFIG.player.lightAttack;
 
   if (p.comboWindowTimer > 0 && p.comboIndex < 2) {
@@ -9391,19 +15319,21 @@ function startLightAttack(
   }
   p.comboWindowTimer = 0;
 
-  p.rotationY = resolveCombatAimAngle(world, input, moveVec, 4.6);
+  p.rotationY = resolveCombatAimAngle(world, input, moveVec, isScythe ? 5.2 : 4.6);
 
   const flow = consumeAttackFlowMultipliers(p);
   const baseWindup = isBreaker
     ? (GAME_CONFIG.weapons.grav_breaker.lightSlam.windup[p.comboIndex] ?? 0.16)
-    : (cfg.windup[p.comboIndex] ?? 0.09);
+    : isScythe
+      ? (GAME_CONFIG.weapons.chrono_scythe.lightSweep.windup[p.comboIndex] ?? 0.12)
+      : (cfg.windup[p.comboIndex] ?? 0.09);
   p.actionState = 'light_windup';
   p.stateTimer = Math.max(0.035, baseWindup * flow.windupMult);
   p.attackHitIds = [];
   p.currentAttackStartedAt = world.elapsedTime;
   p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
-  p.squashX = isBreaker ? 0.86 : 0.9;
-  p.squashY = isBreaker ? 1.14 : 1.1;
+  p.squashX = isBreaker ? 0.86 : isScythe ? 0.92 : 0.9;
+  p.squashY = isBreaker ? 1.14 : isScythe ? 1.08 : 1.1;
 
   if (flow.triggeredRiposte) {
     world.events.push({
@@ -9465,7 +15395,8 @@ function performChronoExecutionFinisher(
   resolveCircleObstacleCollisions(
     _scratchExecPos,
     world.obstacles,
-    GAME_CONFIG.arena.radius
+    GAME_CONFIG.arena.radius,
+    getArenaSolidPropColliders(world.run?.chapter ?? 'prologue')
   );
   p.x = _scratchExecPos.x;
   p.z = _scratchExecPos.z;
@@ -9480,13 +15411,15 @@ function performChronoExecutionFinisher(
   p.squashY = 0.76;
 
   // Armor-bypassing execution burst
+  const execRigMods = getPlayerRigModifiers(world);
   const baseHeavyDmg = GAME_CONFIG.player.heavyAttack.baseDamage;
-  const execDamage = bossState
+  const rawExecDamage = bossState
     ? Math.max(
         Math.round(baseHeavyDmg * 2.4),
         Math.round(bossState.maxHp * CHRONO_EXECUTION_CONFIG.bossPercentHpBurst)
       )
     : Math.round(baseHeavyDmg * CHRONO_EXECUTION_CONFIG.mobDamageMult);
+  const execDamage = Math.round(rawExecDamage * execRigMods.executionDamageMult);
 
   enemy.hp = Math.max(0, enemy.hp - execDamage);
   enemy.hitFlashTimer = 0.28;
@@ -9499,8 +15432,15 @@ function performChronoExecutionFinisher(
   }
 
   // Reward Flux, Integrity, Adrenaline, and cinematic impact feel
-  p.flux = Math.min(p.maxFlux, p.flux + CHRONO_EXECUTION_CONFIG.fluxGain);
-  p.integrity = Math.min(p.maxIntegrity, p.integrity + CHRONO_EXECUTION_CONFIG.integrityHeal);
+  p.flux = Math.min(
+    p.maxFlux,
+    p.flux + CHRONO_EXECUTION_CONFIG.fluxGain + execRigMods.executionFluxRefund
+  );
+  p.integrity = Math.min(
+    p.maxIntegrity,
+    p.integrity + CHRONO_EXECUTION_CONFIG.integrityHeal + execRigMods.executionIntegrityHeal
+  );
+  p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
   const execAdr = applyAdrenalineDelta(p, CHRONO_EXECUTION_CONFIG.adrenalineGain);
   if (execAdr.tierDelta !== 0) {
     world.events.push({
@@ -9559,31 +15499,47 @@ function startHeavyWindup(
 ): void {
   const p = world.player;
   const isBreaker = p.equippedWeaponId === 'grav_breaker';
+  const isScythe = p.equippedWeaponId === 'chrono_scythe';
   const cfg = isBreaker
     ? GAME_CONFIG.weapons.grav_breaker.heavySlam
-    : GAME_CONFIG.player.heavyAttack;
+    : isScythe
+      ? GAME_CONFIG.weapons.chrono_scythe.heavyVortex
+      : GAME_CONFIG.player.heavyAttack;
 
   if (p.actionState !== 'charging_heavy') {
     p.currentAttackStartedAt = world.elapsedTime;
     p.currentAttackMarkId = world.resonance.activeMark?.markId ?? null;
   }
 
-  p.rotationY = resolveCombatAimAngle(world, input, moveVec, 5.2);
+  p.rotationY = resolveCombatAimAngle(world, input, moveVec, isScythe ? 5.8 : 5.2);
 
   // When a Resonance mark is active, reserve Flux for Convergence impact rather than spending upfront
   const hasActiveResonanceMark =
     world.resonance.activeMark !== null && world.resonance.cooldownTimer <= 0;
   const edgeUpgrade = getEquippedWeaponUpgrade(world, 'chrono_edge');
   const breakerUpgrade = getEquippedWeaponUpgrade(world, 'grav_breaker');
+  const scytheUpgrade = getEquippedWeaponUpgrade(world, 'chrono_scythe');
+  const koHeavyMods = getActiveWeaponOverchargeModifiers(
+    world.kineticOvercharge,
+    p.equippedWeaponId
+  );
   const empowerFluxCost = isBreaker
     ? GAME_CONFIG.weapons.grav_breaker.heavySlam.fluxCostForEmpower +
       (breakerUpgrade === 'breaker_singularity_coil'
         ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.empoweredFluxCostDelta
         : 0)
-    : GAME_CONFIG.player.heavyAttack.fluxCostForEmpower +
-      (edgeUpgrade === 'edge_harmonic_conductor'
-        ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.empoweredFluxCostDelta
-        : 0);
+    : isScythe
+      ? Math.max(
+          10,
+          GAME_CONFIG.weapons.chrono_scythe.heavyVortex.fluxCostForEmpower +
+            (scytheUpgrade === 'scythe_astral_siphon'
+              ? GAME_CONFIG.weapons.upgrades.scythe_astral_siphon.empoweredFluxCostDelta
+              : 0)
+        )
+      : GAME_CONFIG.player.heavyAttack.fluxCostForEmpower +
+        (edgeUpgrade === 'edge_harmonic_conductor'
+          ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.empoweredFluxCostDelta
+          : 0);
   p.isEmpoweredHeavy = !hasActiveResonanceMark && p.flux >= empowerFluxCost;
   if (p.isEmpoweredHeavy) {
     p.flux = Math.max(0, p.flux - empowerFluxCost);
@@ -9591,7 +15547,10 @@ function startHeavyWindup(
 
   const flow = consumeAttackFlowMultipliers(p);
   p.actionState = 'heavy_windup';
-  p.stateTimer = Math.max(0.04, cfg.windup * flow.windupMult);
+  p.stateTimer = Math.max(
+    0.04,
+    (cfg.windup * flow.windupMult) / Math.max(1, koHeavyMods.attackSpeedMult)
+  );
   p.chargeTime = 0;
   p.comboWindowTimer = 0;
   p.attackHitIds = [];
@@ -9805,6 +15764,7 @@ export function switchPlayerWeapon(world: WorldState, targetWeaponId?: WeaponId)
   p.weaponSwitchBufferTimer = 0;
   p.comboWindowTimer = 0;
   p.comboIndex = 0;
+  const prevWeaponId = p.equippedWeaponId;
   p.equippedWeaponId = nextWeaponId;
   p.weaponSwitchCooldownTimer = getWeaponDefinition(nextWeaponId).switchCooldown;
   grantQuickDrawWindow(p);
@@ -9815,6 +15775,79 @@ export function switchPlayerWeapon(world: WorldState, targetWeaponId?: WeaponId)
     z: p.z,
     weaponId: nextWeaponId,
   });
+
+  // v2.6.0 Chrono Singularity: Mid-combo Flash Swap recovery cancel & amp
+  const sing = ensureSingularityState(world);
+  const swapRes = tryTriggerFlashSwap(sing);
+  if (swapRes.triggered) {
+    if (
+      p.actionState === 'light_recovery' ||
+      p.actionState === 'heavy_recovery' ||
+      p.actionState === 'parry_recovery'
+    ) {
+      p.actionState = 'idle';
+      p.stateTimer = 0;
+    }
+    p.flux = Math.min(p.maxFlux, p.flux + swapRes.bonusFlux);
+    const asc = ensureAscensionState(world);
+    recordStyleAction(asc.style, 'flash_swap', swapRes.bonusStyle, 'FLASH SWAP');
+    world.events.push({
+      type: 'flash_swap_triggered',
+      x: p.x,
+      z: p.z,
+      weaponId: nextWeaponId,
+      amount: swapRes.bonusFlux,
+    });
+
+    // v3.1.0 Chrono Resonance Forge: Dual-Weapon Flash Swap Synergy Pairing
+    const resSpec = triggerWeaponSwapResonance(
+      ensureWeaponResonanceState(world),
+      prevWeaponId,
+      nextWeaponId
+    );
+    if (resSpec) {
+      if (resSpec.fluxBurst > 0) {
+        p.flux = Math.min(p.maxFlux, p.flux + resSpec.fluxBurst);
+      }
+      if (resSpec.heatVentAmount > 0) {
+        p.weaponHeat = Math.max(0, p.weaponHeat - resSpec.heatVentAmount);
+        if (p.weaponHeat < p.maxWeaponHeat * 0.5) {
+          p.weaponOverheated = false;
+          p.weaponOverheatTimer = 0;
+        }
+      }
+      if (resSpec.shockwaveRadius > 0) {
+        for (let si = 0; si < world.enemies.length; si++) {
+          const se = world.enemies[si];
+          if (se.hp <= 0 || se.aiState === 'ko') continue;
+          const dx = p.x - se.x;
+          const dz = p.z - se.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist <= resSpec.shockwaveRadius + se.radius) {
+            se.stagger = Math.min(se.maxStagger, se.stagger + resSpec.shockwaveStagger);
+            if (dist > 1.2) {
+              const pull = Math.min(1.15, dist - 1.1);
+              se.x += (dx / dist) * pull;
+              se.z += (dz / dist) * pull;
+            }
+            if (world.boss && world.boss.id === se.id) {
+              world.boss.stagger = Math.min(
+                world.boss.maxStagger,
+                world.boss.stagger + resSpec.shockwaveStagger
+              );
+            }
+          }
+        }
+      }
+      world.events.push({
+        type: 'weapon_swap_resonance',
+        x: p.x,
+        z: p.z,
+        weaponId: nextWeaponId,
+        amount: resSpec.accentHex,
+      });
+    }
+  }
 
   return true;
 }
@@ -10038,31 +16071,75 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     : GAME_CONFIG.weapons.pulsecaster;
   const shotCfg = isHeavy ? rangedCfg.heavyShot : rangedCfg.lightShot;
   const equippedUpgrade = getEquippedWeaponUpgrade(world, p.equippedWeaponId);
+  const isOverclocked = isUpgradeOverclocked(
+    equippedUpgrade,
+    world.progression?.overclockedUpgrades
+  );
 
   let heatCost: number = shotCfg.heatCost;
   let cooldown: number = shotCfg.cooldown;
   if (!isRail && !isHeavy && equippedUpgrade === 'pulse_thermal_sink') {
-    heatCost = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightHeatCost;
+    heatCost =
+      GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightHeatCost -
+      (isOverclocked ? 2 : 0);
   } else if (!isRail && isHeavy && equippedUpgrade === 'pulse_overcharge_condenser') {
-    heatCost = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyHeatCost;
-    cooldown = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyCooldown;
+    heatCost =
+      GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyHeatCost -
+      (isOverclocked ? 6 : 0);
+    cooldown =
+      GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyCooldown -
+      (isOverclocked ? 0.04 : 0);
   } else if (isRail && !isHeavy && equippedUpgrade === 'rail_phase_capacitor') {
-    heatCost = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightHeatCost;
+    heatCost =
+      GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightHeatCost -
+      (isOverclocked ? 3 : 0);
   } else if (isRail && isHeavy && equippedUpgrade === 'rail_null_aperture') {
     heatCost = GAME_CONFIG.weapons.upgrades.rail_null_aperture.heavyHeatCost;
   } else if (isRail && isHeavy && equippedUpgrade === 'rail_phase_capacitor') {
-    cooldown = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.heavyCooldown;
+    cooldown =
+      GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.heavyCooldown -
+      (isOverclocked ? 0.08 : 0);
   }
 
   const rigMods = getPlayerRigModifiers(world);
+  const projProtocolMods = getPlayerProtocolModifiers(world);
+  const projMasteryInfo = getActiveWeaponMasteryInfo(world, p.equippedWeaponId);
+  const projRecMods = getActiveRecursionModifiers(world);
+  const projStanceMods = computeStanceDoctrineModifiers(
+    world.exploration?.resolvedStoryChoices
+  );
+  const projMythicBonus = computeEquippedMythicBonus(
+    equippedUpgrade,
+    world.progression?.awakenedUpgrades
+  );
+  const projAttunement = computeWeaponCoreAttunement(
+    p.equippedWeaponId,
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const combinedHeatMult =
+    projRecMods.heatMultiplier *
+    projStanceMods.heatCostMult *
+    projAttunement.heatCostMultiplier;
+  const effectiveHeatCost = Math.max(
+    1,
+    (combinedHeatMult !== 1 ? Math.round(heatCost * combinedHeatMult) : heatCost) -
+      projMythicBonus.heatRelief
+  );
 
   // Apply heat cost & check overheat threshold
   p.weaponHeat = Math.min(
     p.maxWeaponHeat,
-    p.weaponHeat + heatCost + rigMods.surgeRangedHeatPenalty
+    p.weaponHeat +
+      effectiveHeatCost +
+      rigMods.surgeRangedHeatPenalty +
+      projProtocolMods.nonSurgeHeatPenalty
   );
   p.weaponShotCooldownTimer = cooldown;
   p.lastWeaponShotOutcome = 'fired';
+  if (isHeavy && projAttunement.heavyFluxRestore > 0) {
+    p.flux = Math.min(p.maxFlux, p.flux + projAttunement.heavyFluxRestore);
+  }
 
   if (p.weaponHeat >= p.maxWeaponHeat) {
     p.weaponHeat = p.maxWeaponHeat;
@@ -10100,15 +16177,28 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
     : rangedCfg.lightShot.staggerDamage;
 
   if (!isRail && !isHeavy && equippedUpgrade === 'pulse_thermal_sink') {
-    damage = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightDamage;
-    staggerDamage = GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightStagger;
+    damage =
+      GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightDamage +
+      (isOverclocked ? 2 : 0);
+    staggerDamage =
+      GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.lightStagger +
+      (isOverclocked ? 1 : 0);
   } else if (!isRail && isHeavy && equippedUpgrade === 'pulse_overcharge_condenser') {
     const condCfg = GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser;
-    damage = isEmpowered ? condCfg.heavyEmpoweredDamage : condCfg.heavyBaseDamage;
-    staggerDamage = isEmpowered ? condCfg.heavyEmpoweredStagger : condCfg.heavyStagger;
+    const ocMult = isOverclocked ? 1.18 : 1.0;
+    damage = Math.round(
+      (isEmpowered ? condCfg.heavyEmpoweredDamage : condCfg.heavyBaseDamage) * ocMult
+    );
+    staggerDamage = Math.round(
+      (isEmpowered ? condCfg.heavyEmpoweredStagger : condCfg.heavyStagger) * ocMult
+    );
   } else if (isRail && !isHeavy && equippedUpgrade === 'rail_phase_capacitor') {
-    damage = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightDamage;
-    staggerDamage = GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightStagger;
+    damage =
+      GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightDamage +
+      (isOverclocked ? 2 : 0);
+    staggerDamage =
+      GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.lightStagger +
+      (isOverclocked ? 2 : 0);
   } else if (isRail && isHeavy && equippedUpgrade === 'rail_null_aperture') {
     const nullCfg = GAME_CONFIG.weapons.upgrades.rail_null_aperture;
     damage = isEmpowered ? nullCfg.heavyEmpoweredDamage : nullCfg.heavyBaseDamage;
@@ -10122,6 +16212,68 @@ function firePlayerPulsecasterProjectile(world: WorldState, isHeavy: boolean): v
   }
   if (rigMods.surgeDamageMultiplier !== 1) {
     damage = Math.max(1, Math.round(damage * rigMods.surgeDamageMultiplier));
+  }
+  const projDmgMult =
+    projMasteryInfo.damageMultiplier *
+    projRecMods.damageMultiplier *
+    (isHeavy ? projRecMods.heavyRangedDamageMultiplier : 1);
+  if (projDmgMult !== 1) {
+    damage = Math.max(1, Math.round(damage * projDmgMult));
+  }
+  const projStagMult = projMasteryInfo.staggerMultiplier * projRecMods.staggerMultiplier;
+  if (projStagMult !== 1) {
+    staggerDamage = Math.round(staggerDamage * projStagMult);
+  }
+  const singProjBoost = consumeSingularityStrikeMultipliers(
+    ensureSingularityState(world),
+    false
+  );
+  const koProjMods = getActiveWeaponOverchargeModifiers(
+    world.kineticOvercharge,
+    p.equippedWeaponId
+  );
+  const tsProjMods = getTwinSyncModifiers(world.twinSync);
+  const momProjMods =
+    (world.momentum?.tier ?? 0) >= 1
+      ? getChronoMomentumModifiers(world.momentum)
+      : { damageMult: 1.0, styleBonusMult: 1.0, weakpointActive: false };
+  const nxProjMods = getChronoNexusModifiers(world.nexus);
+  const chronProjMods = computeChroniclePassiveBonus(
+    world.run?.recoveredLogs,
+    world.run?.completedChapters
+  );
+  const wResProjMods = getActiveWeaponResonanceModifiers(world.weaponResonance);
+  const globalMasteryProj = computeGlobalArsenalMasteryBonus(
+    world.progression?.weaponMasteryXp
+  );
+  const projRigSynergy = getPlayerRigSetSynergy(world);
+  const totalProjDmgBoost =
+    singProjBoost.damageMult *
+    koProjMods.damageMult *
+    tsProjMods.damageMult *
+    momProjMods.damageMult *
+    nxProjMods.damageMult *
+    chronProjMods.damageMult *
+    wResProjMods.damageMult *
+    globalMasteryProj.damageMult *
+    projStanceMods.damageMult *
+    projMythicBonus.damageMult *
+    projRigSynergy.damageMultiplier *
+    projAttunement.damageMultiplier;
+  const totalProjStagBoost =
+    singProjBoost.staggerMult *
+    koProjMods.staggerMult *
+    tsProjMods.staggerMult *
+    wResProjMods.staggerMult *
+    globalMasteryProj.staggerMult *
+    projStanceMods.staggerMult *
+    projMythicBonus.staggerMult *
+    projAttunement.staggerMultiplier;
+  if (totalProjDmgBoost !== 1) {
+    damage = Math.max(1, Math.round(damage * totalProjDmgBoost));
+  }
+  if (totalProjStagBoost !== 1) {
+    staggerDamage = Math.round(staggerDamage * totalProjStagBoost);
   }
 
   world.projectiles.push({
@@ -10577,9 +16729,13 @@ export function attemptEchoCollapse(world: WorldState): boolean {
   const echoX = world.echo.activeActor.x;
   const echoZ = world.echo.activeActor.z;
 
+  const ecDocSpec = getEchoDoctrineSpec(world.progression?.echoDoctrine);
+  const ecRecMods = getActiveRecursionModifiers(world);
   // Consume Flux, start cooldown, and consume the active Echo playback (preserving the recorded clip for future replay)
   p.flux = Math.max(0, p.flux - ec.fluxCost);
-  ec.cooldownTimer = ec.maxCooldown;
+  ec.cooldownTimer = Number(
+    (ec.maxCooldown * ecDocSpec.collapseCooldownMultiplier * ecRecMods.confluenceCooldownMultiplier).toFixed(2)
+  );
   ec.blastTimer = GAME_CONFIG.matron.echoCollapse.blastVisualDuration;
   ec.blastX = echoX;
   ec.blastZ = echoZ;
@@ -10592,23 +16748,39 @@ export function attemptEchoCollapse(world: WorldState): boolean {
   world.echo.nextEventIndex = 0;
   world.echo.statusMessage = 'ECHO COLLAPSED // TEMPORAL DETONATION TRIGGERED';
 
+  const ecProtoMods = getPlayerProtocolModifiers(world);
+  const effectiveBlastRadius = ec.blastRadius + ecDocSpec.collapseRadiusBonus;
   let hitCount = 0;
   for (let i = 0; i < world.enemies.length; i++) {
     const enemy = world.enemies[i];
     if (enemy.hp <= 0 || enemy.aiState === 'ko') continue;
     const dist = Math.hypot(enemy.x - echoX, enemy.z - echoZ);
-    if (dist > ec.blastRadius + enemy.radius) continue;
+    if (dist > effectiveBlastRadius + enemy.radius) continue;
 
     hitCount += 1;
     const isBoss = world.boss !== null && world.boss.id === enemy.id;
-    const dmg = ec.damage;
+    const dmg = Math.round(
+      ec.damage *
+        ecProtoMods.echoDamageMultiplier *
+        ecDocSpec.echoDamageMultiplier *
+        ecRecMods.echoDamageMultiplier
+    );
 
     enemy.hp = Math.max(0, enemy.hp - dmg);
     enemy.hitFlashTimer = 0.24;
     world.stats.damageDealt += dmg;
 
     if (enemy.hp > 0) {
-      enemy.stagger = Math.min(enemy.maxStagger, enemy.stagger + ec.postureDamage);
+      enemy.stagger = Math.min(
+        enemy.maxStagger,
+        enemy.stagger +
+          Math.round(
+            ec.postureDamage *
+              ecProtoMods.echoStaggerMultiplier *
+              ecDocSpec.echoStaggerMultiplier *
+              ecRecMods.echoStaggerMultiplier
+          )
+      );
       if (isBoss && world.boss) {
         const b = world.boss;
         b.hp = enemy.hp;
@@ -10862,12 +17034,33 @@ function advanceMatronSystem(world: WorldState, dt: number): void {
   }
 }
 
-function getBossPhase2Threshold(bossId: string): number {
-  if (bossId === 'the-choir') return GAME_CONFIG.choir.phase2HpThreshold;
-  if (bossId === 'the-curator') return GAME_CONFIG.curator.phase2HpThreshold;
-  if (bossId === 'matron-v') return GAME_CONFIG.matron.phase2HpThreshold;
-  if (bossId === 'warden-prime') return GAME_CONFIG.wardenPrime.phase2HpThreshold;
-  return GAME_CONFIG.boss.phase2HpThreshold;
+function getBossBaseMaxHp(bossId: string): number {
+  if (bossId === 'the-choir') return GAME_CONFIG.choir.maxHp;
+  if (bossId === 'the-curator') return GAME_CONFIG.curator.maxHp;
+  if (bossId === 'matron-v') return GAME_CONFIG.matron.maxHp;
+  if (bossId === 'warden-prime') return GAME_CONFIG.wardenPrime.maxHp;
+  if (bossId === 'echo-zero') return 920;
+  return GAME_CONFIG.boss.maxHp;
+}
+
+function getBossPhase2Threshold(bossId: string, bossMaxHp?: number): number {
+  const baseThreshold =
+    bossId === 'the-choir'
+      ? GAME_CONFIG.choir.phase2HpThreshold
+      : bossId === 'the-curator'
+        ? GAME_CONFIG.curator.phase2HpThreshold
+        : bossId === 'matron-v'
+          ? GAME_CONFIG.matron.phase2HpThreshold
+          : bossId === 'warden-prime'
+            ? GAME_CONFIG.wardenPrime.phase2HpThreshold
+            : bossId === 'echo-zero'
+              ? 460
+              : GAME_CONFIG.boss.phase2HpThreshold;
+  const baseMaxHp = getBossBaseMaxHp(bossId);
+  if (bossMaxHp && baseMaxHp > 0 && bossMaxHp !== baseMaxHp) {
+    return Math.round(baseThreshold * (bossMaxHp / baseMaxHp));
+  }
+  return baseThreshold;
 }
 
 function checkAndTriggerBossPhase2(
@@ -10875,7 +17068,7 @@ function checkAndTriggerBossPhase2(
   bossState: BossState,
   enemy: EnemyState
 ): void {
-  const threshold = getBossPhase2Threshold(bossState.id);
+  const threshold = getBossPhase2Threshold(bossState.id, bossState.maxHp);
   if (
     enemy.hp > 0 &&
     enemy.hp <= threshold &&
@@ -10907,6 +17100,20 @@ function checkAndTriggerBossPhase2(
             : bossState.id === 'warden-prime'
               ? 'PHASE II · SOVEREIGN CHRONICLE OVERDRIVE'
               : 'PHASE II · HELIX OVERLOAD INITIATED';
+
+    if (world.progression?.overdriveDifficulty) {
+      const escortId = `enemy-overdrive-escort-${bossState.id}-${world.enemies.length}`;
+      const escort = createEnemy(escortId, 'scrapper', 0, -2.5, 0);
+      escort.hitFlashTimer = 0.25;
+      resolveCircleObstacleCollisions(
+        escort,
+        world.obstacles ?? [],
+        GAME_CONFIG.arena.radius - 0.8,
+        getArenaSolidPropColliders(world.run?.chapter ?? 'prologue')
+      );
+      applyOverdriveToEnemies(world, [escort], null);
+      world.enemies.push(escort);
+    }
 
     const res = world.resonance;
     if (res.activeMark && res.activeMark.enemyId === enemy.id) {
@@ -10982,8 +17189,30 @@ function handleEnemyZeroHpDefeat(
     });
   }
 
+  if (enemy.archetype === 'resonance_warden') {
+    severConductorTether(world, enemy);
+  }
+
+  if (enemy.modifier === 'volatile') {
+    if (!world.artilleryZones) {
+      world.artilleryZones = [];
+    }
+    world.artilleryZones.push({
+      id: `volatile-${enemy.id}-${Math.round(world.elapsedTime * 100)}`,
+      x: enemy.x,
+      z: enemy.z,
+      radius: 3.4,
+      remainingTimer: 1.0,
+      maxDuration: 1.0,
+      damage: 24,
+      sourceEnemyId: enemy.id,
+      kind: 'volatile_core',
+    });
+  }
+
   const bossState =
     world.boss && world.boss.id === enemy.id ? world.boss : null;
+  awardWeaponMasteryXp(world, world.player.equippedWeaponId, bossState ? 12 : 4);
   if (bossState && !bossState.defeatTriggered) {
     bossState.defeatTriggered = true;
     bossState.hp = 0;
@@ -11005,7 +17234,46 @@ function handleEnemyZeroHpDefeat(
             ? 'MATRON-V NEUTRALIZED · CHRONICLE LOOM ACCESS UNLOCKED'
             : bossState.id === 'warden-prime'
               ? 'WARDEN PRIME SUBDUED · SOVEREIGN LOOM MATRIX EXPOSED'
-              : 'HELIX-04 NEUTRALIZED · CONTAINMENT CORE OFFLINE';
+              : bossState.id === 'echo-zero'
+                ? 'ECHO-ZERO SHATTERED · PARADOX BREAK ENDING UNLOCKED'
+                : 'HELIX-04 NEUTRALIZED · CONTAINMENT CORE OFFLINE';
+
+    const pxDefeat = ensureParadoxState(world);
+    pxDefeat.killCamTimer = 1.2;
+    world.events.push({
+      type: 'boss_killcam_triggered',
+      x: enemy.x,
+      z: enemy.z,
+      enemyId: bossState.id,
+    });
+    if (!pxDefeat.bossTookDamageThisFight) {
+      unlockChronoAchievement(world, 'untouchable_warden');
+    }
+    if (hasAnyActiveMutator(pxDefeat.mutators)) {
+      unlockChronoAchievement(world, 'mutator_daredevil');
+    }
+    if (bossState.id === 'echo-zero') {
+      if (!world.progression) {
+        world.progression = createInitialWeaponProgressionState();
+      }
+      world.progression.paradoxEndingUnlocked = true;
+      world.progression.echoZeroDefeatedCount =
+        (world.progression.echoZeroDefeatedCount ?? 0) + 1;
+      world.progression.memoryFragments = Math.min(
+        999,
+        world.progression.memoryFragments + 5
+      );
+      world.progression.lastActionMessage =
+        'PARADOX BREAK UNLOCKED · +5 MEMORY FRAGMENTS · PARADOX PRISM SKIN READY';
+      unlockChronoAchievement(world, 'paradox_breaker');
+      world.events.push({
+        type: 'echo_zero_defeated',
+        x: enemy.x,
+        z: enemy.z,
+        enemyId: bossState.id,
+        amount: 5,
+      });
+    }
 
     for (let k = 0; k < world.enemies.length; k++) {
       const other = world.enemies[k];
@@ -11027,115 +17295,167 @@ function handleEnemyZeroHpDefeat(
       world.matron.chronoSeverActive = false;
     }
 
-    const defeatCommKey: NarrativeCommKey =
-      bossState.id === 'the-choir'
-        ? 'chapter2_defeat'
-        : bossState.id === 'the-curator'
-          ? 'chapter3_defeat'
-          : bossState.id === 'matron-v'
-            ? 'chapter4_defeat'
-            : bossState.id === 'warden-prime'
-              ? 'warden_prime_defeat'
-              : 'chapter1_defeat';
-    triggerNarrativeTransmission(world, defeatCommKey, true);
+    const defeatedBossMasteryId = mapBossIdToMasteryTargetId(bossState.id);
+    const masteryTargetsForDefeat: import('./types.ts').MasteryTargetId[] = [];
+    if (defeatedBossMasteryId) {
+      masteryTargetsForDefeat.push(defeatedBossMasteryId);
+    }
+    if (world.run.mode === 'campaign' && bossState.id !== 'echo-zero') {
+      masteryTargetsForDefeat.push(
+        mapChapterToSectorMasteryId(getChapterForBossId(bossState.id as BossId))
+      );
+    }
+    if (world.run.mode !== 'recursion' && masteryTargetsForDefeat.length > 0) {
+      recordWorldCombatMasteryOnVictory(world, masteryTargetsForDefeat);
+    }
 
-    if (world.run.mode === 'campaign') {
-      const bossChapter = getChapterForBossId(bossState.id as BossId);
-      world.run.chapter = bossChapter;
-      if (!world.run.isChapterReplay) {
-        if (bossChapter === 'chapter_1_helix') {
-          world.run.completedChapters = addUniqueChapter(
-            world.run.completedChapters,
-            'prologue'
-          );
+    if (world.run.mode === 'boss_gauntlet' && world.gauntlet?.active) {
+      advanceBossGauntletAfterDefeat(world, enemy.x, enemy.z, bossState.phase);
+    } else if (world.run.mode === 'recursion') {
+      world.events.push({
+        type: 'boss_defeated',
+        x: enemy.x,
+        z: enemy.z,
+        enemyId: enemy.id,
+        bossPhase: bossState.phase,
+      });
+      completeRecursionLoopAndOpenDraft(world);
+    } else {
+      const defeatCommKey: NarrativeCommKey =
+        bossState.id === 'the-choir'
+          ? 'chapter2_defeat'
+          : bossState.id === 'the-curator'
+            ? 'chapter3_defeat'
+            : bossState.id === 'matron-v'
+              ? 'chapter4_defeat'
+              : bossState.id === 'warden-prime'
+                ? 'warden_prime_defeat'
+                : 'chapter1_defeat';
+      triggerNarrativeTransmission(world, defeatCommKey, true);
+
+      if (world.run.mode === 'campaign') {
+        const bossChapter = getChapterForBossId(bossState.id as BossId);
+        world.run.chapter = bossChapter;
+        if (!world.run.isChapterReplay) {
+          if (bossChapter === 'chapter_1_helix') {
+            world.run.completedChapters = addUniqueChapter(
+              world.run.completedChapters,
+              'prologue'
+            );
+            world.run.recoveredLogs = addUniqueString(
+              world.run.recoveredLogs ?? [],
+              'LOG-00'
+            );
+          }
+          if (bossState.id !== 'warden-prime') {
+            world.run.completedChapters = addUniqueChapter(
+              world.run.completedChapters,
+              bossChapter
+            );
+          }
+          const recoveredLogId =
+            bossState.id === 'the-choir'
+              ? 'LOG-02'
+              : bossState.id === 'the-curator'
+                ? 'LOG-03'
+                : bossState.id === 'matron-v' || bossState.id === 'warden-prime'
+                  ? 'LOG-04'
+                  : 'LOG-01';
           world.run.recoveredLogs = addUniqueString(
             world.run.recoveredLogs ?? [],
-            'LOG-00'
+            recoveredLogId
           );
-        }
-        if (bossState.id !== 'warden-prime') {
-          world.run.completedChapters = addUniqueChapter(
-            world.run.completedChapters,
-            bossChapter
-          );
-        }
-        const recoveredLogId =
-          bossState.id === 'the-choir'
-            ? 'LOG-02'
-            : bossState.id === 'the-curator'
-              ? 'LOG-03'
-              : bossState.id === 'matron-v' || bossState.id === 'warden-prime'
-                ? 'LOG-04'
-                : 'LOG-01';
-        world.run.recoveredLogs = addUniqueString(
-          world.run.recoveredLogs ?? [],
-          recoveredLogId
-        );
-        let nextChap: CampaignChapterId | null = null;
-        if (bossState.id === 'helix-04') {
-          nextChap = 'chapter_2_choir';
-          grantProgressionReward(world, 'chapter_1_helix_defeated');
-          unlockPlayerWeapon(world, 'grav_breaker');
-        } else if (bossState.id === 'the-choir') {
-          nextChap = 'chapter_3_curator';
-          grantProgressionReward(world, 'chapter_2_choir_defeated');
-        } else if (bossState.id === 'the-curator') {
-          nextChap = 'chapter_4_matron';
-          grantProgressionReward(world, 'chapter_3_curator_defeated');
-        } else if (bossState.id === 'matron-v') {
-          nextChap = 'chapter_5_loom';
-          grantProgressionReward(world, 'chapter_4_matron_defeated');
-        }
-        if (nextChap) {
-          world.run.pendingNextChapter = nextChap;
-          world.run.unlockedChapters = addUniqueChapter(
-            world.run.unlockedChapters,
-            nextChap
-          );
+          let nextChap: CampaignChapterId | null = null;
+          if (bossState.id === 'helix-04') {
+            nextChap = 'chapter_2_choir';
+            grantProgressionReward(world, 'chapter_1_helix_defeated');
+            unlockPlayerWeapon(world, 'grav_breaker');
+          } else if (bossState.id === 'the-choir') {
+            nextChap = 'chapter_3_curator';
+            grantProgressionReward(world, 'chapter_2_choir_defeated');
+          } else if (bossState.id === 'the-curator') {
+            nextChap = 'chapter_4_matron';
+            grantProgressionReward(world, 'chapter_3_curator_defeated');
+          } else if (bossState.id === 'matron-v') {
+            nextChap = 'chapter_5_loom';
+            grantProgressionReward(world, 'chapter_4_matron_defeated');
+          }
+          if (nextChap) {
+            world.run.pendingNextChapter = nextChap;
+            world.run.unlockedChapters = addUniqueChapter(
+              world.run.unlockedChapters,
+              nextChap
+            );
+          }
+          const prevCoreCount = world.progression?.unlockedBossCores?.length ?? 0;
+          syncUnlockedBossCoresFromCampaign(world);
+          if ((world.progression?.unlockedBossCores?.length ?? 0) > prevCoreCount) {
+            world.events.push({
+              type: 'boss_core_unlocked',
+              x: enemy.x,
+              z: enemy.z,
+              amount: 0,
+            });
+          }
+        } else {
+          world.run.pendingNextChapter = null;
         }
       } else {
         world.run.pendingNextChapter = null;
       }
-    } else {
-      world.run.pendingNextChapter = null;
-    }
 
-    if (bossState.id === 'warden-prime' && world.run.mode === 'campaign') {
-      world.loom = createInitialChronicleLoomState(true);
-      world.encounterMode = 'standard';
-      world.run.stage = 'chronicle_loom';
-      world.run.checkpointNotice =
-        'WARDEN PRIME SUBDUED // SELECT FINAL DIRECTIVE: [1] SILENCE · [2] WITNESS · [3] CONTINUITY';
-      world.run.checkpointNoticeTimer = 6.0;
-      advanceMissionAndExplorationSystem(world);
-      clearEchoState(world, 'outcome');
-      world.events.push({
-        type: 'boss_defeated',
-        x: enemy.x,
-        z: enemy.z,
-        enemyId: enemy.id,
-        bossPhase: bossState.phase,
-      });
-    } else {
-      world.outcome = 'victory';
-      world.run.stage = 'completed';
-      world.outcomeDelayTimer = 0.5;
-      advanceMissionAndExplorationSystem(world);
-      world.frozenSummary = buildRunSummary(world);
-      clearEchoState(world, 'outcome');
+      if (bossState.id === 'warden-prime' && world.run.mode === 'campaign') {
+        world.loom = createInitialChronicleLoomState(true);
+        world.encounterMode = 'standard';
+        world.run.stage = 'chronicle_loom';
+        world.run.checkpointNotice =
+          'WARDEN PRIME SUBDUED // SELECT FINAL DIRECTIVE: [1] SILENCE · [2] WITNESS · [3] CONTINUITY';
+        world.run.checkpointNoticeTimer = 6.0;
+        advanceMissionAndExplorationSystem(world);
+        clearEchoState(world, 'outcome');
+        world.events.push({
+          type: 'boss_defeated',
+          x: enemy.x,
+          z: enemy.z,
+          enemyId: enemy.id,
+          bossPhase: bossState.phase,
+        });
+      } else if (
+        world.expedition?.enabled &&
+        world.run.mode === 'campaign' &&
+        !world.run.isChapterReplay &&
+        world.run.pendingNextChapter
+      ) {
+        advanceMissionAndExplorationSystem(world);
+        world.events.push({
+          type: 'boss_defeated',
+          x: enemy.x,
+          z: enemy.z,
+          enemyId: enemy.id,
+          bossPhase: bossState.phase,
+        });
+        unlockExpeditionTransitAirlock(world, world.run.pendingNextChapter);
+      } else {
+        world.outcome = 'victory';
+        world.run.stage = 'completed';
+        world.outcomeDelayTimer = 0.5;
+        advanceMissionAndExplorationSystem(world);
+        world.frozenSummary = buildRunSummary(world);
+        clearEchoState(world, 'outcome');
 
-      world.events.push({
-        type: 'boss_defeated',
-        x: enemy.x,
-        z: enemy.z,
-        enemyId: enemy.id,
-        bossPhase: bossState.phase,
-      });
-      world.events.push({
-        type: 'encounter_victory',
-        x: world.player.x,
-        z: world.player.z,
-      });
+        world.events.push({
+          type: 'boss_defeated',
+          x: enemy.x,
+          z: enemy.z,
+          enemyId: enemy.id,
+          bossPhase: bossState.phase,
+        });
+        world.events.push({
+          type: 'encounter_victory',
+          x: world.player.x,
+          z: world.player.z,
+        });
+      }
     }
   }
 
@@ -11154,10 +17474,32 @@ function handleEnemyZeroHpDefeat(
 
   if (world.player.integrity > 0 && world.player.actionState !== 'dead') {
     const adrMods = getAdrenalineModifiers(world.player.adrenalineScore);
-    if (adrMods.siphonOnKillHp > 0) {
+    const defeatRecMods = getActiveRecursionModifiers(world);
+    const killHealTotal = adrMods.siphonOnKillHp + defeatRecMods.killHealBonus;
+    if (killHealTotal > 0) {
       world.player.integrity = Math.min(
         world.player.maxIntegrity,
-        world.player.integrity + adrMods.siphonOnKillHp
+        world.player.integrity + killHealTotal
+      );
+      world.player.ghostIntegrity = Math.max(
+        world.player.ghostIntegrity,
+        world.player.integrity
+      );
+    }
+    if (defeatRecMods.killFluxBonus > 0) {
+      world.player.flux = Math.min(
+        world.player.maxFlux,
+        world.player.flux + defeatRecMods.killFluxBonus
+      );
+    }
+    if (
+      defeatRecMods.killWardBonus > 0 &&
+      world.chronoAegis &&
+      world.chronoAegis.maxWard > 0
+    ) {
+      world.chronoAegis.ward = Math.min(
+        world.chronoAegis.maxWard,
+        world.chronoAegis.ward + defeatRecMods.killWardBonus
       );
     }
     const koAdr = applyAdrenalineDelta(world.player, ADRENALINE_GAINS.enemyKo);
@@ -11308,6 +17650,7 @@ export function advanceArenaBoostPads(world: WorldState, dt: number): void {
     return;
   }
   const rigMods = getPlayerRigModifiers(world);
+  const padProtoMods = getPlayerProtocolModifiers(world);
   for (let i = 0; i < world.boostPads.length; i++) {
     const pad = world.boostPads[i];
     pad.cooldown = Math.max(0, pad.cooldown - dt);
@@ -11317,7 +17660,10 @@ export function advanceArenaBoostPads(world: WorldState, dt: number): void {
       Math.hypot(p.x - pad.x, p.z - pad.z) <= pad.radius
     ) {
       pad.cooldown = pad.maxCooldown;
-      p.surgeTimer = Math.max(p.surgeTimer ?? 0, 1.6);
+      p.surgeTimer = Math.max(
+        p.surgeTimer ?? 0,
+        1.6 * padProtoMods.surgeDurationMultiplier
+      );
       p.dodgeCooldownTimer = Math.max(0, p.dodgeCooldownTimer - 0.5);
       p.flux = Math.min(p.maxFlux, p.flux + 8);
       if (rigMods.boostPadIntegrityBonus > 0) {
@@ -11373,43 +17719,309 @@ export function advanceArenaFluxPools(world: WorldState, dt: number): void {
   world.fluxPools.length = writeIdx;
 }
 
+export function applyEnemyModifier(
+  enemy: EnemyState,
+  modifier: EnemyModifierId | null
+): void {
+  enemy.modifier = modifier;
+  if (modifier === 'phase_shielded') {
+    enemy.maxStagger = Math.round(enemy.maxStagger * 1.25);
+  }
+}
+
+export function isEnemyProtectedByConductor(
+  world: WorldState,
+  enemyId: string
+): boolean {
+  for (let i = 0; i < world.enemies.length; i++) {
+    const e = world.enemies[i];
+    if (
+      e.archetype === 'resonance_warden' &&
+      e.hp > 0 &&
+      e.aiState !== 'ko' &&
+      e.aiState !== 'staggered' &&
+      e.tetherTargetId === enemyId
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function severConductorTether(
+  world: WorldState,
+  conductor: EnemyState
+): boolean {
+  const targetId = conductor.tetherTargetId;
+  if (!targetId) return false;
+  conductor.tetherTargetId = null;
+
+  const linked = world.enemies.find(
+    (e) => e.id === targetId && e.hp > 0 && e.aiState !== 'ko'
+  );
+  if (!linked) return false;
+
+  const breakStagger = GAME_CONFIG.enemies.resonance_warden.tetherBreakStagger;
+  linked.stagger = Math.min(linked.maxStagger, linked.stagger + breakStagger);
+  linked.hitFlashTimer = Math.max(linked.hitFlashTimer, 0.2);
+
+  if (
+    linked.stagger >= linked.maxStagger &&
+    linked.aiState !== 'staggered' &&
+    !isBossArchetype(linked.archetype)
+  ) {
+    const linkedCfg = GAME_CONFIG.enemies[linked.archetype];
+    linked.aiState = 'staggered';
+    linked.stateDuration = linkedCfg.staggeredDuration;
+    linked.stateTimer = linkedCfg.staggeredDuration;
+    linked.stagger = 0;
+    linked.vx = 0;
+    linked.vz = 0;
+    linked.telegraphLocked = false;
+  }
+
+  world.events.push({
+    type: 'conductor_tether_severed',
+    x: linked.x,
+    z: linked.z,
+    originX: conductor.x,
+    originZ: conductor.z,
+    enemyId: linked.id,
+    amount: breakStagger,
+  });
+  return true;
+}
+
+export function advanceConductorTethers(world: WorldState, dt: number): void {
+  if (dt <= 0 || world.enemies.length === 0) return;
+  const cfg = GAME_CONFIG.enemies.resonance_warden;
+
+  for (let i = 0; i < world.enemies.length; i++) {
+    const conductor = world.enemies[i];
+    if (conductor.archetype !== 'resonance_warden') continue;
+
+    if (
+      conductor.hp <= 0 ||
+      conductor.aiState === 'ko' ||
+      conductor.aiState === 'staggered' ||
+      (conductor.pinnedTimer ?? 0) > 0
+    ) {
+      if (conductor.tetherTargetId) {
+        severConductorTether(world, conductor);
+      }
+      continue;
+    }
+
+    // Validate existing target or choose best alive non-conductor ally in range
+    let chosen: EnemyState | null = null;
+    if (conductor.tetherTargetId) {
+      const existing = world.enemies.find(
+        (e) =>
+          e.id === conductor.tetherTargetId &&
+          e.hp > 0 &&
+          e.aiState !== 'ko' &&
+          e.archetype !== 'resonance_warden'
+      );
+      if (
+        existing &&
+        Math.hypot(existing.x - conductor.x, existing.z - conductor.z) <=
+          cfg.tetherRange + 1.0
+      ) {
+        chosen = existing;
+      }
+    }
+
+    if (!chosen) {
+      let bestScore = Infinity;
+      for (let j = 0; j < world.enemies.length; j++) {
+        const ally = world.enemies[j];
+        if (
+          ally.id === conductor.id ||
+          ally.archetype === 'resonance_warden' ||
+          ally.hp <= 0 ||
+          ally.aiState === 'ko'
+        ) {
+          continue;
+        }
+        const dist = Math.hypot(ally.x - conductor.x, ally.z - conductor.z);
+        if (dist <= cfg.tetherRange) {
+          const hpRatio = ally.hp / Math.max(1, ally.maxHp);
+          const score = hpRatio * 6 + dist * 0.4;
+          if (score < bestScore) {
+            bestScore = score;
+            chosen = ally;
+          }
+        }
+      }
+    }
+
+    conductor.tetherTargetId = chosen ? chosen.id : null;
+    if (chosen && chosen.hp < chosen.maxHp) {
+      chosen.hp = Math.min(chosen.maxHp, chosen.hp + cfg.tetherHealPerSec * dt);
+      chosen.ghostHp = Math.max(chosen.ghostHp, chosen.hp);
+    }
+  }
+}
+
+export function advanceArtilleryZones(world: WorldState, dt: number): void {
+  if (!world.artilleryZones || world.artilleryZones.length === 0 || dt <= 0) {
+    return;
+  }
+  const p = world.player;
+  const zones = world.artilleryZones;
+  let writeIdx = 0;
+
+  for (let i = 0; i < zones.length; i++) {
+    const zone = zones[i];
+    zone.remainingTimer = Math.max(0, zone.remainingTimer - dt);
+    if (zone.remainingTimer > 0) {
+      zones[writeIdx++] = zone;
+      continue;
+    }
+
+    // Detonate!
+    const distToPlayer = Math.hypot(p.x - zone.x, p.z - zone.z);
+    if (
+      p.actionState !== 'dead' &&
+      distToPlayer <= zone.radius + GAME_CONFIG.player.radius
+    ) {
+      applyDamageToPlayer(world, zone.damage, undefined);
+    }
+
+    if (zone.kind === 'volatile_core') {
+      // Friendly-fire shockwave rewards positioning volatile enemies near allies!
+      for (let j = 0; j < world.enemies.length; j++) {
+        const other = world.enemies[j];
+        if (
+          other.id === zone.sourceEnemyId ||
+          other.hp <= 0 ||
+          other.aiState === 'ko'
+        ) {
+          continue;
+        }
+        const distEnemy = Math.hypot(other.x - zone.x, other.z - zone.z);
+        if (distEnemy <= zone.radius + other.radius) {
+          const blastDmg = 28;
+          other.hp = Math.max(0, other.hp - blastDmg);
+          other.hitFlashTimer = 0.22;
+          other.stagger = Math.min(other.maxStagger, other.stagger + 30);
+          world.stats.damageDealt += blastDmg;
+          if (other.hp <= 0) {
+            handleEnemyZeroHpDefeat(world, other, blastDmg, false, true, false);
+          } else if (
+            other.stagger >= other.maxStagger &&
+            other.aiState !== 'staggered' &&
+            !isBossArchetype(other.archetype)
+          ) {
+            const otherCfg = GAME_CONFIG.enemies[other.archetype];
+            other.aiState = 'staggered';
+            other.stateDuration = otherCfg.staggeredDuration;
+            other.stateTimer = otherCfg.staggeredDuration;
+            other.stagger = 0;
+            other.vx = 0;
+            other.vz = 0;
+            if (other.archetype === 'resonance_warden') {
+              severConductorTether(world, other);
+            }
+          }
+        }
+      }
+      world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.34);
+      world.events.push({
+        type: 'volatile_core_detonated',
+        x: zone.x,
+        z: zone.z,
+        enemyId: zone.sourceEnemyId,
+        amount: zone.damage,
+      });
+    } else {
+      world.cameraTrauma = Math.min(1, world.cameraTrauma + 0.24);
+      world.events.push({
+        type: 'chrono_mortar_detonated',
+        x: zone.x,
+        z: zone.z,
+        enemyId: zone.sourceEnemyId,
+        amount: zone.damage,
+      });
+    }
+  }
+
+  zones.length = writeIdx;
+}
+
 function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
   const p = world.player;
   const isBreaker = p.equippedWeaponId === 'grav_breaker';
+  const isScythe = p.equippedWeaponId === 'chrono_scythe';
   const breakerCfg = GAME_CONFIG.weapons.grav_breaker;
+  const scytheCfg = GAME_CONFIG.weapons.chrono_scythe;
   const breakerUpgrade = getEquippedWeaponUpgrade(world, 'grav_breaker');
+  const isBreakerOverclocked = isUpgradeOverclocked(
+    breakerUpgrade,
+    world.progression?.overclockedUpgrades
+  );
+  const scytheUpgrade = getEquippedWeaponUpgrade(world, 'chrono_scythe');
+  const isScytheOverclocked = isUpgradeOverclocked(
+    scytheUpgrade,
+    world.progression?.overclockedUpgrades
+  );
+  const koMeleeMods = getActiveWeaponOverchargeModifiers(
+    world.kineticOvercharge,
+    p.equippedWeaponId
+  );
   const range = isBreaker
     ? isHeavy
       ? breakerCfg.heavySlam.range +
         (breakerUpgrade === 'breaker_singularity_coil'
-          ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.heavyRangeBonus
+          ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.heavyRangeBonus +
+            (isBreakerOverclocked ? 0.9 : 0)
           : 0)
       : breakerCfg.lightSlam.range
-    : isHeavy
-      ? GAME_CONFIG.player.heavyAttack.range
-      : GAME_CONFIG.player.lightAttack.range;
+    : isScythe
+      ? (isHeavy ? scytheCfg.heavyVortex.range : scytheCfg.lightSweep.range) +
+        (scytheUpgrade === 'scythe_rift_reaper'
+          ? GAME_CONFIG.weapons.upgrades.scythe_rift_reaper.extraRange +
+            (isScytheOverclocked ? 0.35 : 0)
+          : 0)
+      : isHeavy
+        ? GAME_CONFIG.player.heavyAttack.range
+        : GAME_CONFIG.player.lightAttack.range;
   const arcRadians = isBreaker
     ? isHeavy
       ? breakerUpgrade === 'breaker_singularity_coil'
         ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.fullRadialArc
         : breakerCfg.heavySlam.arcRadians
       : breakerCfg.lightSlam.arcRadians
-    : isHeavy
-      ? GAME_CONFIG.player.heavyAttack.arcRadians
-      : GAME_CONFIG.player.lightAttack.arcRadians;
+    : isScythe
+      ? isHeavy
+        ? scytheCfg.heavyVortex.arcRadians
+        : scytheCfg.lightSweep.arcRadians
+      : isHeavy
+        ? GAME_CONFIG.player.heavyAttack.arcRadians
+        : GAME_CONFIG.player.lightAttack.arcRadians;
 
   const edgeUpgrade = getEquippedWeaponUpgrade(world, 'chrono_edge');
+  const isEdgeOverclocked = isUpgradeOverclocked(
+    edgeUpgrade,
+    world.progression?.overclockedUpgrades
+  );
   let baseDamage = isBreaker
     ? isHeavy
       ? p.isEmpoweredHeavy
         ? breakerCfg.heavySlam.empoweredDamage
         : breakerCfg.heavySlam.baseDamage
       : (breakerCfg.lightSlam.damage[p.comboIndex] ?? 26)
-    : isHeavy
-      ? p.isEmpoweredHeavy
-        ? GAME_CONFIG.player.heavyAttack.empoweredDamage
-        : GAME_CONFIG.player.heavyAttack.baseDamage
-      : (GAME_CONFIG.player.lightAttack.damage[p.comboIndex] ?? 16);
+    : isScythe
+      ? isHeavy
+        ? p.isEmpoweredHeavy
+          ? scytheCfg.heavyVortex.empoweredDamage
+          : scytheCfg.heavyVortex.baseDamage
+        : (scytheCfg.lightSweep.damage[p.comboIndex] ?? 22)
+      : isHeavy
+        ? p.isEmpoweredHeavy
+          ? GAME_CONFIG.player.heavyAttack.empoweredDamage
+          : GAME_CONFIG.player.heavyAttack.baseDamage
+        : (GAME_CONFIG.player.lightAttack.damage[p.comboIndex] ?? 16);
 
   let staggerAmount = isBreaker
     ? isHeavy
@@ -11417,25 +18029,183 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
         ? breakerCfg.heavySlam.empoweredStagger
         : breakerCfg.heavySlam.stagger
       : (breakerCfg.lightSlam.stagger[p.comboIndex] ?? 26)
-    : isHeavy
-      ? p.isEmpoweredHeavy
-        ? GAME_CONFIG.player.heavyAttack.empoweredStagger
-        : GAME_CONFIG.player.heavyAttack.stagger
-      : (GAME_CONFIG.player.lightAttack.stagger[p.comboIndex] ?? 12);
+    : isScythe
+      ? isHeavy
+        ? p.isEmpoweredHeavy
+          ? scytheCfg.heavyVortex.empoweredStagger
+          : scytheCfg.heavyVortex.stagger
+        : (scytheCfg.lightSweep.stagger[p.comboIndex] ?? 18)
+      : isHeavy
+        ? p.isEmpoweredHeavy
+          ? GAME_CONFIG.player.heavyAttack.empoweredStagger
+          : GAME_CONFIG.player.heavyAttack.stagger
+        : (GAME_CONFIG.player.lightAttack.stagger[p.comboIndex] ?? 12);
+
+  // Apply Style Rank + Echo Twin-Sync + Chrono Momentum + Chrono Nexus + Chronicle bonuses on melee hits
+  const styleMult = getStyleRankMeta(world.ascension?.style?.tier ?? 'D').damageBonusMult;
+  const tsMeleeMods = getTwinSyncModifiers(world.twinSync);
+  const momMeleeMods =
+    (world.momentum?.tier ?? 0) >= 1
+      ? getChronoMomentumModifiers(world.momentum)
+      : { damageMult: 1.0, styleBonusMult: 1.0, weakpointActive: false };
+  const nxMeleeMods = getChronoNexusModifiers(world.nexus);
+  const chronMeleeMods = computeChroniclePassiveBonus(
+    world.run?.recoveredLogs,
+    world.run?.completedChapters
+  );
+  const wResMeleeMods = getActiveWeaponResonanceModifiers(world.weaponResonance);
+  const globalMasteryMelee = computeGlobalArsenalMasteryBonus(
+    world.progression?.weaponMasteryXp
+  );
+  const meleeStanceMods = computeStanceDoctrineModifiers(
+    world.exploration?.resolvedStoryChoices
+  );
+  const meleeMythicBonus = computeEquippedMythicBonus(
+    getEquippedWeaponUpgrade(world, p.equippedWeaponId),
+    world.progression?.awakenedUpgrades
+  );
+  const meleeRigSynergy = getPlayerRigSetSynergy(world);
+  const meleeAttunement = computeWeaponCoreAttunement(
+    p.equippedWeaponId,
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const meleeSynergyDmgMult =
+    styleMult *
+    tsMeleeMods.damageMult *
+    momMeleeMods.damageMult *
+    nxMeleeMods.damageMult *
+    chronMeleeMods.damageMult *
+    wResMeleeMods.damageMult *
+    globalMasteryMelee.damageMult *
+    meleeStanceMods.damageMult *
+    meleeMythicBonus.damageMult *
+    meleeRigSynergy.damageMultiplier *
+    meleeAttunement.damageMultiplier;
+  if (meleeSynergyDmgMult > 1) {
+    baseDamage = Math.max(1, Math.round(baseDamage * meleeSynergyDmgMult));
+  }
+  const meleeSynergyStagMult =
+    tsMeleeMods.staggerMult *
+    wResMeleeMods.staggerMult *
+    globalMasteryMelee.staggerMult *
+    meleeStanceMods.staggerMult *
+    meleeMythicBonus.staggerMult *
+    meleeAttunement.staggerMultiplier;
+  if (meleeSynergyStagMult > 1) {
+    staggerAmount = Math.round(staggerAmount * meleeSynergyStagMult);
+  }
+
+  // Chrono Scythe Heavy Temporal Vortex Pull (+ v3.6.0 Sovereign Reaper Wave)
+  if (isScythe && isHeavy && !p.attackHitIds.includes('__scythe_sovereign_wave__')) {
+    p.attackHitIds.push('__scythe_sovereign_wave__');
+    let pulledAny = false;
+    const pullRadius =
+      scytheCfg.heavyVortex.vortexPullRadius + koMeleeMods.vortexPullBonus;
+    const pullStrength =
+      scytheCfg.heavyVortex.vortexPullStrength + (koMeleeMods.isActive ? 1.1 : 0);
+    for (let vi = 0; vi < world.enemies.length; vi++) {
+      const target = world.enemies[vi];
+      if (target.hp <= 0 || target.aiState === 'ko') continue;
+      if (world.boss && world.boss.id === target.id) continue;
+      const vdx = p.x - target.x;
+      const vdz = p.z - target.z;
+      const vDist = Math.hypot(vdx, vdz);
+      if (vDist > 1.8 && vDist <= pullRadius) {
+        const pull = Math.min(pullStrength, vDist - 1.5);
+        target.x += (vdx / vDist) * pull;
+        target.z += (vdz / vDist) * pull;
+        pulledAny = true;
+      }
+    }
+    if (pulledAny) {
+      world.events.push({
+        type: 'scythe_vortex_pull',
+        x: p.x,
+        z: p.z,
+        weaponId: 'chrono_scythe',
+      });
+    }
+    if (meleeAttunement.scytheWaveRadius > 0) {
+      applyBossCoreRadialPulse(
+        world,
+        p.x,
+        p.z,
+        meleeAttunement.scytheWaveRadius,
+        meleeAttunement.scytheWaveDamage,
+        meleeAttunement.scytheWaveStagger
+      );
+    }
+  }
+
+  // v3.6.0 Grav-Breaker × Curator Singularity Maul: 3rd Light Slam & Heavy Slam pull + [9] Charge
+  if (
+    isBreaker &&
+    (isHeavy || p.comboIndex >= 2) &&
+    meleeAttunement.slamPullRadius > 0 &&
+    !p.attackHitIds.includes('__breaker_slam_once__')
+  ) {
+    p.attackHitIds.push('__breaker_slam_once__');
+    let pulledSlamCount = 0;
+    for (let bi = 0; bi < world.enemies.length; bi++) {
+      const cand = world.enemies[bi];
+      if (cand.hp <= 0 || cand.aiState === 'ko') continue;
+      const bdx = p.x - cand.x;
+      const bdz = p.z - cand.z;
+      const bDist = Math.hypot(bdx, bdz);
+      if (bDist > 0.35 && bDist <= meleeAttunement.slamPullRadius + cand.radius) {
+        const pullScale = world.boss && world.boss.id === cand.id ? 0.35 : 1.0;
+        const step = Math.min(bDist * 0.65, 1.45 * pullScale);
+        cand.x += (bdx / bDist) * step;
+        cand.z += (bdz / bDist) * step;
+        pulledSlamCount += 1;
+      }
+    }
+    if (meleeAttunement.slamConfluenceBonus > 0) {
+      grantConfluenceCharge(world, meleeAttunement.slamConfluenceBonus);
+    }
+    if (pulledSlamCount > 0) {
+      world.events.push({
+        type: 'boss_core_pulse',
+        x: p.x,
+        z: p.z,
+        amount: pulledSlamCount,
+      });
+    }
+  }
 
   if (isBreaker) {
     if (breakerUpgrade === 'breaker_seismic_core') {
       const seisCfg = GAME_CONFIG.weapons.upgrades.breaker_seismic_core;
-      baseDamage = Math.max(1, Math.round(baseDamage * seisCfg.damageMultiplier));
-      staggerAmount = Math.round(staggerAmount * seisCfg.staggerMultiplier);
+      const ocDmgMult = isBreakerOverclocked ? 1.16 : 1.0;
+      const ocStagMult = isBreakerOverclocked ? 1.16 : 1.0;
+      baseDamage = Math.max(1, Math.round(baseDamage * seisCfg.damageMultiplier * ocDmgMult));
+      staggerAmount = Math.round(staggerAmount * seisCfg.staggerMultiplier * ocStagMult);
     } else if (breakerUpgrade === 'breaker_singularity_coil' && isHeavy) {
       const coilCfg = GAME_CONFIG.weapons.upgrades.breaker_singularity_coil;
-      baseDamage = Math.max(1, Math.round(baseDamage * coilCfg.heavyDamageMultiplier));
+      const ocDmgMult = isBreakerOverclocked ? 1.18 : 1.0;
+      baseDamage = Math.max(
+        1,
+        Math.round(baseDamage * coilCfg.heavyDamageMultiplier * ocDmgMult)
+      );
+    }
+  } else if (isScythe) {
+    if (scytheUpgrade === 'scythe_rift_reaper') {
+      const reapCfg = GAME_CONFIG.weapons.upgrades.scythe_rift_reaper;
+      const ocMult = isScytheOverclocked ? 1.14 : 1.0;
+      baseDamage = Math.max(1, Math.round(baseDamage * reapCfg.damageMultiplier * ocMult));
+      if (isHeavy) {
+        staggerAmount += reapCfg.heavyStaggerBonus + (isScytheOverclocked ? 8 : 0);
+      }
+    } else if (scytheUpgrade === 'scythe_astral_siphon' && !isHeavy) {
+      const sipCfg = GAME_CONFIG.weapons.upgrades.scythe_astral_siphon;
+      baseDamage = Math.max(1, Math.round(baseDamage * sipCfg.lightDamageMultiplier));
     }
   } else if (edgeUpgrade === 'edge_breaker_cleave') {
     const cleaveCfg = GAME_CONFIG.weapons.upgrades.edge_breaker_cleave;
+    const ocStagMult = isEdgeOverclocked ? 1.18 : 1.0;
     baseDamage = Math.max(1, Math.round(baseDamage * cleaveCfg.damageMultiplier));
-    staggerAmount = Math.round(staggerAmount * cleaveCfg.staggerMultiplier);
+    staggerAmount = Math.round(staggerAmount * cleaveCfg.staggerMultiplier * ocStagMult);
   } else if (
     edgeUpgrade === 'edge_harmonic_conductor' &&
     isHeavy &&
@@ -11451,6 +18221,9 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
   const flowDmgMult = p.activeStrikeFlowDamageMult ?? 1;
   const flowStagMult = p.activeStrikeFlowStaggerMult ?? 1;
   const meleeRigMods = getPlayerRigModifiers(world);
+  const meleeProtoMods = getPlayerProtocolModifiers(world);
+  const meleeMasteryInfo = getActiveWeaponMasteryInfo(world, p.equippedWeaponId);
+  const meleeRecMods = getActiveRecursionModifiers(world);
   if (flowDmgMult !== 1) {
     baseDamage = Math.max(1, Math.round(baseDamage * flowDmgMult));
   }
@@ -11460,8 +18233,34 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
       Math.round(baseDamage * meleeRigMods.surgeDamageMultiplier)
     );
   }
+  const combinedMeleeDmgMult =
+    meleeMasteryInfo.damageMultiplier * meleeRecMods.damageMultiplier;
+  if (combinedMeleeDmgMult !== 1) {
+    baseDamage = Math.max(1, Math.round(baseDamage * combinedMeleeDmgMult));
+  }
   if (flowStagMult !== 1) {
     staggerAmount = Math.round(staggerAmount * flowStagMult);
+  }
+  if (world.activeStoryBlessing === 'posture_edge') {
+    staggerAmount = Math.round(staggerAmount * 1.18);
+  }
+  const combinedMeleeStagMult =
+    meleeMasteryInfo.staggerMultiplier * meleeRecMods.staggerMultiplier;
+  if (combinedMeleeStagMult !== 1) {
+    staggerAmount = Math.round(staggerAmount * combinedMeleeStagMult);
+  }
+  const singMeleeBoost = consumeSingularityStrikeMultipliers(
+    ensureSingularityState(world),
+    true
+  );
+  const totalMeleeDmgBoost = singMeleeBoost.damageMult * koMeleeMods.damageMult;
+  const totalMeleeStagBoost = singMeleeBoost.staggerMult * koMeleeMods.staggerMult;
+  if (totalMeleeDmgBoost !== 1) {
+    baseDamage = Math.max(1, Math.round(baseDamage * totalMeleeDmgBoost));
+  }
+  if (totalMeleeStagBoost !== 1 || singMeleeBoost.bonusFlatStagger > 0) {
+    staggerAmount =
+      Math.round(staggerAmount * totalMeleeStagBoost) + singMeleeBoost.bonusFlatStagger;
   }
 
   evaluateLivePlayerStrikeOnChoirNodes(world, isHeavy);
@@ -11618,32 +18417,38 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     }
 
     const vulnMult = isVulnerable
-      ? isBossArchetype(enemy.archetype)
-        ? enemy.aiState === 'staggered'
-          ? GAME_CONFIG.boss.staggeredDamageMult
-          : GAME_CONFIG.boss.exposedCoreDamageMult
-        : GAME_CONFIG.player.vulnerableDamageMultiplier
+      ? (isBossArchetype(enemy.archetype)
+          ? enemy.aiState === 'staggered'
+            ? GAME_CONFIG.boss.staggeredDamageMult
+            : GAME_CONFIG.boss.exposedCoreDamageMult
+          : GAME_CONFIG.player.vulnerableDamageMultiplier) +
+        meleeMasteryInfo.vulnerableBonus
       : 1.0;
     const vulnStaggerMult =
       isVulnerable && bossState !== null
         ? GAME_CONFIG.boss.exposedCoreStaggerMult
         : 1.0;
     const guardDmgMult = isGuarded
-      ? isBreaker
-        ? breakerUpgrade === 'breaker_seismic_core'
-          ? GAME_CONFIG.weapons.upgrades.breaker_seismic_core.frontalGuardPenetration
-          : isHeavy
-            ? breakerCfg.heavySlam.guardPenetrationMultiplier
-            : breakerCfg.lightSlam.guardPenetrationMultiplier
-        : enemy.archetype === 'helix'
-          ? GAME_CONFIG.boss.frontalArmorDamageMult
-          : enemy.archetype === 'warden_prime'
-            ? GAME_CONFIG.wardenPrime.frontalArmorDamageMult
-            : enemy.archetype === 'choir'
-              ? GAME_CONFIG.choir.unharmonizedDamageMult
-              : enemy.archetype === 'aegis_sentinel'
-                ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightDamageMult
-                : GAME_CONFIG.enemies.bastion.frontGuardLightDamageMult
+      ? Math.max(
+          0.04,
+          (isBreaker
+            ? breakerUpgrade === 'breaker_seismic_core'
+              ? GAME_CONFIG.weapons.upgrades.breaker_seismic_core.frontalGuardPenetration +
+                (isBreakerOverclocked ? 0.1 : 0)
+              : isHeavy
+                ? breakerCfg.heavySlam.guardPenetrationMultiplier
+                : breakerCfg.lightSlam.guardPenetrationMultiplier
+            : enemy.archetype === 'helix'
+              ? GAME_CONFIG.boss.frontalArmorDamageMult
+              : enemy.archetype === 'warden_prime'
+                ? GAME_CONFIG.wardenPrime.frontalArmorDamageMult
+                : enemy.archetype === 'choir'
+                  ? GAME_CONFIG.choir.unharmonizedDamageMult
+                  : enemy.archetype === 'aegis_sentinel'
+                    ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightDamageMult
+                    : GAME_CONFIG.enemies.bastion.frontGuardLightDamageMult) +
+            meleeProtoMods.guardPenetrationDelta
+        )
       : 1.0;
     let guardStaggerMult = isGuarded
       ? isBreaker
@@ -11669,22 +18474,71 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     const convergencePostureBonus = triggeredConvergence ? effectiveConvPostureBonus : 0;
 
     const meleeAdrMods = getAdrenalineModifiers(p.adrenalineScore);
+    const meleeOdScales = getOverdriveTimeScales(world.overdrive);
     const convergenceBonusDmg = triggeredConvergence
       ? meleeRigMods.convergenceBonusDamage
       : 0;
+    const meleeBossCoreMods = computeBossCoreModifiers(
+      world.progression?.equippedBossCore,
+      world.progression?.transcendedBossCores
+    );
+    const meleeCuratorBreakMult =
+      isVulnerable || (world.momentum?.weakpointTimer ?? 0) > 0
+        ? meleeBossCoreMods.weakpointDamageMultiplier
+        : 1.0;
+    const harmonicEchoAmp = world.chronoAegis?.mode === 'harmonic' ? 1.2 : 1.0;
+    const meleeDocSpec = getEchoDoctrineSpec(world.progression?.echoDoctrine);
+    const echoDmgScale = triggeredConvergence
+      ? meleeRecMods.echoDamageMultiplier *
+        harmonicEchoAmp *
+        meleeBossCoreMods.echoConvergenceMultiplier *
+        meleeDocSpec.echoDamageMultiplier
+      : 1;
+    const echoStagScale = triggeredConvergence
+      ? meleeRecMods.echoStaggerMultiplier * meleeDocSpec.echoStaggerMultiplier
+      : 1;
+    const tetherDrMult = isEnemyProtectedByConductor(world, enemy.id)
+      ? 1 - GAME_CONFIG.enemies.resonance_warden.tetherDamageReduction
+      : 1;
+    const sovereignExposedMult =
+      isVulnerable && bossState !== null ? meleeStanceMods.bossExposedBonusMult : 1.0;
     const finalDamage = Math.max(
       1,
-      Math.round(baseDamage * vulnMult * guardDmgMult * meleeAdrMods.damageMult) +
-        convergenceBonusDmg
+      Math.round(
+        baseDamage *
+          vulnMult *
+          meleeCuratorBreakMult *
+          sovereignExposedMult *
+          guardDmgMult *
+          tetherDrMult *
+          meleeAdrMods.damageMult *
+          meleeOdScales.damageMult *
+          echoDmgScale *
+          getParadoxOutgoingDamageMult(world)
+      ) + convergenceBonusDmg
     );
-    const effectiveStagger =
-      Math.round(staggerAmount * vulnStaggerMult * guardStaggerMult * meleeAdrMods.staggerMult) +
-      convergencePostureBonus;
+    let effectiveStagger =
+      Math.round(
+        (staggerAmount *
+          vulnStaggerMult *
+          guardStaggerMult *
+          meleeAdrMods.staggerMult *
+          meleeOdScales.staggerMult +
+          convergencePostureBonus) *
+          echoStagScale
+      );
 
     if (triggeredConvergence) {
-      p.flux = Math.max(0, p.flux - effectiveConvFluxCost);
+      p.flux = Math.max(
+        0,
+        Math.min(
+          p.maxFlux,
+          p.flux - effectiveConvFluxCost + meleeRigMods.convergenceFluxRefund
+        )
+      );
       res.activeMark = null;
-      res.cooldownTimer = res.maxCooldown;
+      res.cooldownTimer =
+        res.maxCooldown + meleeProtoMods.convergenceCooldownDelta;
       res.status = 'on_cooldown';
       res.convergenceCount += 1;
       res.lastOutcome = 'converged';
@@ -11698,6 +18552,46 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
     enemy.hp = Math.max(0, enemy.hp - finalDamage);
     enemy.hitFlashTimer = triggeredConvergence ? 0.24 : 0.14;
     world.stats.damageDealt += finalDamage;
+    awardWeaponMasteryXp(world, p.equippedWeaponId, 1);
+
+    // v3.3.0 Phantom Afterimage Strike (Harmonic Sentinel or 3/3 MK.II Sovereign Rig)
+    const qualifyingAfterimage =
+      (isHeavy && p.isEmpoweredHeavy) ||
+      triggeredConvergence ||
+      (world.weaponResonance?.timer ?? 0) > 0;
+    if (
+      enemy.hp > 0 &&
+      shouldTriggerPhantomAfterimage(
+        world.chronoAegis?.mode ?? 'off',
+        meleeRigSynergy,
+        qualifyingAfterimage
+      )
+    ) {
+      const afterimageDmg = Math.max(4, Math.round(finalDamage * 0.32));
+      enemy.hp = Math.max(0, enemy.hp - afterimageDmg);
+      world.stats.damageDealt += afterimageDmg;
+      effectiveStagger += 10;
+      if (world.chronoAegis) {
+        world.chronoAegis.totalAfterimages += 1;
+      }
+      pushDamagePopup(
+        ensureParadoxState(world),
+        afterimageDmg,
+        enemy.x + 0.25,
+        bossState ? 2.55 : 1.95,
+        enemy.z - 0.18,
+        'convergence'
+      );
+      world.events.push({
+        type: 'phantom_afterimage_strike',
+        x: enemy.x,
+        z: enemy.z,
+        originX: p.x,
+        originZ: p.z,
+        amount: afterimageDmg,
+        enemyId: enemy.id,
+      });
+    }
 
     if (isVulnerable) {
       world.stats.vulnerableHits += 1;
@@ -11711,8 +18605,14 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
           : 1.0;
       const harmonicBonus =
         edgeUpgrade === 'edge_harmonic_conductor' && !isGuarded
-          ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.fluxGainBonus
+          ? GAME_CONFIG.weapons.upgrades.edge_harmonic_conductor.fluxGainBonus +
+            (isEdgeOverclocked ? 2 : 0)
           : 0;
+      const masteryFluxMult =
+        meleeMasteryInfo.fluxGainMultiplier *
+        meleeStanceMods.fluxGainMult *
+        meleeRigSynergy.fluxGainMultiplier;
+      const mythicFluxFlat = meleeMythicBonus.fluxBonusOnHit;
       if (!isHeavy) {
         const baseLightFlux = isBreaker
           ? isGuarded
@@ -11721,7 +18621,10 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
           : isGuarded
             ? GAME_CONFIG.player.fluxGainOnGuardedHit
             : GAME_CONFIG.player.fluxGainOnLightHit;
-        const fluxGain = (baseLightFlux + harmonicBonus) * fluxDampenMult;
+        const fluxGain =
+          (baseLightFlux + harmonicBonus + mythicFluxFlat) *
+          fluxDampenMult *
+          masteryFluxMult;
         p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
       } else if (!p.isEmpoweredHeavy) {
         const baseHeavyFlux = isBreaker
@@ -11729,7 +18632,10 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
           : GAME_CONFIG.player.fluxGainOnHeavyHit;
         p.flux = Math.min(
           p.maxFlux,
-          p.flux + (baseHeavyFlux + harmonicBonus) * fluxDampenMult
+          p.flux +
+            (baseHeavyFlux + harmonicBonus + mythicFluxFlat) *
+              fluxDampenMult *
+              masteryFluxMult
         );
       }
     }
@@ -11741,11 +18647,15 @@ function performPlayerMeleeHitCheck(world: WorldState, isHeavy: boolean): void {
       enemy.hp > 0
     ) {
       const microPin =
-        GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.microPinDuration;
+        GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.microPinDuration +
+        (isBreakerOverclocked ? 0.6 : 0);
       enemy.pinnedTimer = Math.max(enemy.pinnedTimer ?? 0, microPin);
       if (bossState) {
         bossState.pinnedTimer = enemy.pinnedTimer;
       }
+    }
+    if (isHeavy && p.isEmpoweredHeavy) {
+      triggerCuratorGravityVortex(world, enemy.x, enemy.z);
     }
 
     // Apply directional knockback impulse (scaled down for massive boss chassis)
@@ -12107,39 +19017,53 @@ function applyPlayerProjectileHitToEnemy(
   const isPhaseRailProj =
     proj.attackMode === 'rail_light' || proj.attackMode === 'rail_heavy';
   const railUpgrade = getEquippedWeaponUpgrade(world, 'phase_rail');
+  const railOverclock = isUpgradeOverclocked(
+    railUpgrade,
+    world.progression?.overclockedUpgrades
+  );
   const railExposedMult = isPhaseRailProj
     ? railUpgrade === 'rail_null_aperture'
-      ? GAME_CONFIG.weapons.upgrades.rail_null_aperture.exposedCoreDamageMultiplier
+      ? GAME_CONFIG.weapons.upgrades.rail_null_aperture.exposedCoreDamageMultiplier +
+        (railOverclock ? 0.22 : 0)
       : GAME_CONFIG.weapons.phase_rail.exposedCoreDamageMultiplier
     : 1.0;
 
+  const projProtocolMods = getPlayerProtocolModifiers(world);
+  const projHitMasteryInfo = getActiveWeaponMasteryInfo(world, proj.weaponId);
+  const projHitRecMods = getActiveRecursionModifiers(world);
+
   const vulnMult = isVulnerable
-    ? isPhaseRailProj
-      ? railExposedMult
-      : isBossArchetype(enemy.archetype)
-        ? enemy.aiState === 'staggered'
-          ? GAME_CONFIG.boss.staggeredDamageMult
-          : GAME_CONFIG.boss.exposedCoreDamageMult
-        : GAME_CONFIG.player.vulnerableDamageMultiplier
+    ? (isPhaseRailProj
+        ? railExposedMult
+        : isBossArchetype(enemy.archetype)
+          ? enemy.aiState === 'staggered'
+            ? GAME_CONFIG.boss.staggeredDamageMult
+            : GAME_CONFIG.boss.exposedCoreDamageMult
+          : GAME_CONFIG.player.vulnerableDamageMultiplier) +
+      projHitMasteryInfo.vulnerableBonus
     : triggeredConvergence && isPhaseRailProj
-      ? railExposedMult
+      ? railExposedMult + projHitMasteryInfo.vulnerableBonus
       : 1.0;
   const vulnStaggerMult =
     isVulnerable && bossState !== null
       ? GAME_CONFIG.boss.exposedCoreStaggerMult
       : 1.0;
   const guardDmgMult = isGuarded
-    ? enemy.archetype === 'helix'
-      ? GAME_CONFIG.boss.frontalArmorDamageMult
-      : enemy.archetype === 'warden_prime'
-        ? GAME_CONFIG.wardenPrime.frontalArmorDamageMult
-        : enemy.archetype === 'choir'
-          ? GAME_CONFIG.choir.unharmonizedDamageMult
-          : enemy.archetype === 'aegis_sentinel'
-            ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightDamageMult
-            : isPhaseRailProj
-              ? GAME_CONFIG.weapons.phase_rail.guardedDamageMultiplier
-              : GAME_CONFIG.weapons.pulsecaster.guardedDamageMultiplier
+    ? Math.max(
+        0.04,
+        (enemy.archetype === 'helix'
+          ? GAME_CONFIG.boss.frontalArmorDamageMult
+          : enemy.archetype === 'warden_prime'
+            ? GAME_CONFIG.wardenPrime.frontalArmorDamageMult
+            : enemy.archetype === 'choir'
+              ? GAME_CONFIG.choir.unharmonizedDamageMult
+              : enemy.archetype === 'aegis_sentinel'
+                ? GAME_CONFIG.enemies.aegis_sentinel.frontGuardLightDamageMult
+                : isPhaseRailProj
+                  ? GAME_CONFIG.weapons.phase_rail.guardedDamageMultiplier
+                  : GAME_CONFIG.weapons.pulsecaster.guardedDamageMultiplier) +
+          projProtocolMods.guardPenetrationDelta
+      )
     : 1.0;
   const guardStaggerMult = isGuarded
     ? enemy.archetype === 'helix' ||
@@ -12159,25 +19083,74 @@ function applyPlayerProjectileHitToEnemy(
   const projFlowDamageMult = proj.flowDamageMult ?? 1;
   const projFlowStaggerMult = proj.flowStaggerMult ?? 1;
   const projAdrMods = getAdrenalineModifiers(p.adrenalineScore);
+  const projOdScales = getOverdriveTimeScales(world.overdrive);
   const projRigMods = getPlayerRigModifiers(world);
   const projConvBonusDmg = triggeredConvergence
     ? projRigMods.convergenceBonusDamage
     : 0;
+  const projBossCoreMods = computeBossCoreModifiers(
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  const projCuratorBreakMult =
+    isVulnerable || (world.momentum?.weakpointTimer ?? 0) > 0
+      ? projBossCoreMods.weakpointDamageMultiplier
+      : 1.0;
+  const blessingStaggerMult =
+    world.activeStoryBlessing === 'posture_edge' ? 1.18 : 1.0;
+  const projDocSpec = getEchoDoctrineSpec(world.progression?.echoDoctrine);
+  const projEchoDmgScale = triggeredConvergence
+    ? projHitRecMods.echoDamageMultiplier *
+      projBossCoreMods.echoConvergenceMultiplier *
+      projDocSpec.echoDamageMultiplier
+    : 1;
+  const projEchoStagScale = triggeredConvergence
+    ? projHitRecMods.echoStaggerMultiplier * projDocSpec.echoStaggerMultiplier
+    : 1;
+  const projTetherDrMult = isEnemyProtectedByConductor(world, enemy.id)
+    ? 1 - GAME_CONFIG.enemies.resonance_warden.tetherDamageReduction
+    : 1;
   const finalDamage = Math.max(
     1,
     Math.round(
-      baseDamage * vulnMult * guardDmgMult * projFlowDamageMult * projAdrMods.damageMult
+      baseDamage *
+        vulnMult *
+        projCuratorBreakMult *
+        guardDmgMult *
+        projTetherDrMult *
+        projFlowDamageMult *
+        projAdrMods.damageMult *
+        projOdScales.damageMult *
+        projEchoDmgScale *
+        getParadoxOutgoingDamageMult(world)
     ) + projConvBonusDmg
   );
-  const effectiveStagger =
-    Math.round(
-      staggerAmount * vulnStaggerMult * guardStaggerMult * projFlowStaggerMult * projAdrMods.staggerMult
-    ) + convergencePostureBonus;
+  if (isHeavy && proj.isEmpowered) {
+    triggerCuratorGravityVortex(world, enemy.x, enemy.z);
+  }
+  const effectiveStagger = Math.round(
+    (staggerAmount *
+      vulnStaggerMult *
+      guardStaggerMult *
+      projFlowStaggerMult *
+      projAdrMods.staggerMult *
+      projOdScales.staggerMult *
+      blessingStaggerMult +
+      convergencePostureBonus) *
+      projEchoStagScale
+  );
 
   if (triggeredConvergence) {
-    p.flux = Math.max(0, p.flux - effectiveConvFluxCost);
+    p.flux = Math.max(
+      0,
+      Math.min(
+        p.maxFlux,
+        p.flux - effectiveConvFluxCost + projRigMods.convergenceFluxRefund
+      )
+    );
     res.activeMark = null;
-    res.cooldownTimer = res.maxCooldown;
+    res.cooldownTimer =
+      res.maxCooldown + projProtocolMods.convergenceCooldownDelta;
     res.status = 'on_cooldown';
     res.convergenceCount += 1;
     res.lastOutcome = 'converged';
@@ -12191,6 +19164,7 @@ function applyPlayerProjectileHitToEnemy(
   enemy.hp = Math.max(0, enemy.hp - finalDamage);
   enemy.hitFlashTimer = triggeredConvergence ? 0.24 : 0.12;
   world.stats.damageDealt += finalDamage;
+  awardWeaponMasteryXp(world, proj.weaponId, 1);
 
   if (isVulnerable) {
     world.stats.vulnerableHits += 1;
@@ -12201,6 +19175,7 @@ function applyPlayerProjectileHitToEnemy(
       (p.fluxDampenedTimer ?? 0) > 0
         ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
         : 1.0;
+    const projMasteryFluxMult = projHitMasteryInfo.fluxGainMultiplier;
     if (!isHeavy) {
       const fluxGain =
         (isGuarded
@@ -12210,7 +19185,8 @@ function applyPlayerProjectileHitToEnemy(
           : isPhaseRailProj
             ? GAME_CONFIG.weapons.phase_rail.lightShot.fluxGainOnHit
             : GAME_CONFIG.weapons.pulsecaster.lightShot.fluxGainOnHit) *
-        fluxDampenMult;
+        fluxDampenMult *
+        projMasteryFluxMult;
       p.flux = Math.min(p.maxFlux, p.flux + fluxGain);
     } else if (!proj.isEmpowered) {
       p.flux = Math.min(
@@ -12219,7 +19195,8 @@ function applyPlayerProjectileHitToEnemy(
           (isPhaseRailProj
             ? GAME_CONFIG.weapons.phase_rail.heavyShot.fluxGainOnHit
             : GAME_CONFIG.weapons.pulsecaster.heavyShot.fluxGainOnHit) *
-            fluxDampenMult
+            fluxDampenMult *
+            projMasteryFluxMult
       );
     }
   }
@@ -12552,6 +19529,21 @@ function advanceProjectiles(world: WorldState, dt: number): void {
         applyPlayerProjectileHitToEnemy(world, proj, hitEnemy);
       } else {
         hitEnemy.hitFlashTimer = Math.max(hitEnemy.hitFlashTimer, 0.09);
+        if (proj.damage > 0 && hitEnemy.hp > 0) {
+          hitEnemy.hp = Math.max(0, hitEnemy.hp - proj.damage);
+          hitEnemy.stagger = Math.min(hitEnemy.maxStagger, hitEnemy.stagger + proj.staggerDamage);
+          world.stats.damageDealt += proj.damage;
+          const echoHitBoss =
+            world.boss && world.boss.id === hitEnemy.id ? world.boss : null;
+          if (echoHitBoss) {
+            echoHitBoss.hp = hitEnemy.hp;
+            echoHitBoss.stagger = hitEnemy.stagger;
+            checkAndTriggerBossPhase2(world, echoHitBoss, hitEnemy);
+          }
+          if (hitEnemy.hp <= 0) {
+            handleEnemyZeroHpDefeat(world, hitEnemy, proj.damage, false, proj.isHeavy, false);
+          }
+        }
       }
       if (!proj.active) {
         continue;
@@ -12602,15 +19594,20 @@ function advanceProjectiles(world: WorldState, dt: number): void {
 function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): void {
   const p = world.player;
   if (p.actionState === 'dead') return;
+  const playerRecMods = getActiveRecursionModifiers(world);
+  const cooldownDt =
+    playerRecMods.cooldownMultiplier !== 1
+      ? dt / Math.max(0.35, playerRecMods.cooldownMultiplier)
+      : dt;
 
-  p.dodgeCooldownTimer = Math.max(0, p.dodgeCooldownTimer - dt);
-  p.parryCooldownTimer = Math.max(0, p.parryCooldownTimer - dt);
+  p.dodgeCooldownTimer = Math.max(0, p.dodgeCooldownTimer - cooldownDt);
+  p.parryCooldownTimer = Math.max(0, p.parryCooldownTimer - cooldownDt);
   p.invulnTimer = Math.max(0, p.invulnTimer - dt);
   p.hurtFlashTimer = Math.max(0, p.hurtFlashTimer - dt);
   p.comboWindowTimer = Math.max(0, p.comboWindowTimer - dt);
-  p.comboCooldownTimer = Math.max(0, p.comboCooldownTimer - dt);
-  p.weaponShotCooldownTimer = Math.max(0, p.weaponShotCooldownTimer - dt);
-  p.weaponSwitchCooldownTimer = Math.max(0, p.weaponSwitchCooldownTimer - dt);
+  p.comboCooldownTimer = Math.max(0, p.comboCooldownTimer - cooldownDt);
+  p.weaponShotCooldownTimer = Math.max(0, p.weaponShotCooldownTimer - cooldownDt);
+  p.weaponSwitchCooldownTimer = Math.max(0, p.weaponSwitchCooldownTimer - cooldownDt);
   p.bufferTimer = Math.max(0, p.bufferTimer - dt);
   tickPlayerCombatFlowTimers(p, dt);
   if (p.bufferTimer <= 0) {
@@ -12669,7 +19666,13 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
           ? GAME_CONFIG.weapons.upgrades.rail_phase_capacitor.coolRateMultiplier
           : 1.0
         : getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_thermal_sink'
-          ? GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.coolRateMultiplier
+          ? GAME_CONFIG.weapons.upgrades.pulse_thermal_sink.coolRateMultiplier +
+            (isUpgradeOverclocked(
+              'pulse_thermal_sink',
+              world.progression?.overclockedUpgrades
+            )
+              ? 0.25
+              : 0)
           : 1.0) *
       adrMods.coolRateMult *
       playerRigMods.heatCoolMultiplier;
@@ -12680,12 +19683,16 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   }
 
   p.fluxDampenedTimer = Math.max(0, (p.fluxDampenedTimer ?? 0) - dt);
+  const hasFluxReservoirRegen =
+    (world.progression?.purchasedNeuralProtocols ?? []).includes('proto_flux_reservoir') &&
+    p.flux > 100;
   const fluxRegenMult =
     ((p.fluxDampenedTimer ?? 0) > 0
       ? GAME_CONFIG.enemies.null_weaver.fluxDampenRegenMult
       : 1.0) *
     adrMods.fluxRegenMult *
-    playerRigMods.passiveFluxRegenMultiplier;
+    playerRigMods.passiveFluxRegenMultiplier *
+    (hasFluxReservoirRegen ? 0.92 : 1.0);
   p.flux = Math.min(
     p.maxFlux,
     p.flux + GAME_CONFIG.player.fluxRegenPerSec * fluxRegenMult * dt
@@ -12841,13 +19848,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
   const canFlowCancelHeavy = canCancelActionTailForCombatFlow(p, isRangedWeapon, 'heavy');
   const canFlowCancelLight = canCancelActionTailForCombatFlow(p, isRangedWeapon, 'light');
 
-  const heavyChargeThreshold = isPhaseRail
-    ? railCfg.heavyShot.chargeThreshold
-    : isPulsecaster
-      ? pulseCfg.heavyShot.chargeThreshold
-      : isBreaker
-        ? breakerCfg.heavySlam.chargeThreshold
-        : GAME_CONFIG.player.heavyAttack.chargeThreshold;
+  const heavyChargeThreshold = getEffectivePlayerHeavyChargeThreshold(world, p);
   const heavyMaxChargeTime = isPhaseRail
     ? railCfg.heavyShot.maxChargeTime
     : isPulsecaster
@@ -12996,6 +19997,7 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
           getCombatFlowMovementSpeedMultiplier(p) *
           surgeMult *
           playerRigMods.moveSpeedMultiplier *
+          playerRecMods.moveSpeedMultiplier *
           moveVec.length;
         p.vx = moveVec.dirX * speed;
         p.vz = moveVec.dirZ * speed;
@@ -13088,7 +20090,11 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
             ? (breakerCfg.lightSlam.active[p.comboIndex] ?? 0.16)
             : (GAME_CONFIG.player.lightAttack.active[p.comboIndex] ?? 0.12);
           world.events.push({
-            type: isBreaker ? 'breaker_shockwave_slam' : 'player_light_swing',
+            type: isBreaker
+              ? 'breaker_shockwave_slam'
+              : p.equippedWeaponId === 'chrono_scythe'
+                ? 'player_scythe_swing'
+                : 'player_light_swing',
             x: p.x,
             z: p.z,
             weaponId: p.equippedWeaponId,
@@ -13214,9 +20220,15 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
         p.vz = -Math.cos(p.rotationY) * (isPhaseRail ? 1.85 : 1.35);
         if (p.stateTimer <= 0) {
           p.actionState = 'heavy_recovery';
-          p.stateTimer = isPhaseRail
+            p.stateTimer = isPhaseRail
             ? getEquippedWeaponUpgrade(world, 'phase_rail') === 'rail_null_aperture'
-              ? GAME_CONFIG.weapons.upgrades.rail_null_aperture.heavyRecovery
+              ? GAME_CONFIG.weapons.upgrades.rail_null_aperture.heavyRecovery -
+                (isUpgradeOverclocked(
+                  'rail_null_aperture',
+                  world.progression?.overclockedUpgrades
+                )
+                  ? 0.08
+                  : 0)
               : railCfg.heavyShot.recovery
             : getEquippedWeaponUpgrade(world, 'pulsecaster') === 'pulse_overcharge_condenser'
               ? GAME_CONFIG.weapons.upgrades.pulse_overcharge_condenser.heavyRecovery
@@ -13231,15 +20243,24 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
           clearActiveStrikeFlow(p);
           p.actionState = 'heavy_recovery';
           const breakerUp = getEquippedWeaponUpgrade(world, 'grav_breaker');
+          const isBreakerRecOverclocked = isUpgradeOverclocked(
+            breakerUp,
+            world.progression?.overclockedUpgrades
+          );
+          const edgeUp = getEquippedWeaponUpgrade(world, 'chrono_edge');
+          const isEdgeRecOverclocked = isUpgradeOverclocked(
+            edgeUp,
+            world.progression?.overclockedUpgrades
+          );
           p.stateTimer = isBreaker
             ? breakerCfg.heavySlam.recovery +
               (breakerUp === 'breaker_singularity_coil'
                 ? GAME_CONFIG.weapons.upgrades.breaker_singularity_coil.heavyRecoveryDelta
-                : breakerUp === 'breaker_seismic_core'
+                : breakerUp === 'breaker_seismic_core' && !isBreakerRecOverclocked
                   ? GAME_CONFIG.weapons.upgrades.breaker_seismic_core.recoveryDelta
                   : 0)
             : GAME_CONFIG.player.heavyAttack.recovery +
-              (getEquippedWeaponUpgrade(world, 'chrono_edge') === 'edge_breaker_cleave'
+              (edgeUp === 'edge_breaker_cleave' && !isEdgeRecOverclocked
                 ? GAME_CONFIG.weapons.upgrades.edge_breaker_cleave.heavyRecoveryDelta
                 : 0);
           p.isEmpoweredHeavy = false;
@@ -13275,7 +20296,9 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
 
     case 'dodging': {
       p.stateTimer -= dt;
-      const speed = GAME_CONFIG.player.dodge.speed;
+      const dodgeProtoMods = getPlayerProtocolModifiers(world);
+      const speed =
+        GAME_CONFIG.player.dodge.speed * dodgeProtoMods.dodgeImpulseMultiplier;
       p.vx = Math.sin(p.rotationY) * speed;
       p.vz = Math.cos(p.rotationY) * speed;
       if (p.stateTimer <= 0) {
@@ -13290,7 +20313,10 @@ function updatePlayer(world: WorldState, input: PlayerInputFrame, dt: number): v
       p.vz = 0;
       if (p.stateTimer <= 0) {
         p.actionState = 'parry_recovery';
-        p.stateTimer = GAME_CONFIG.player.parry.recovery;
+        p.stateTimer = Math.max(
+          0.08,
+          GAME_CONFIG.player.parry.recovery + playerRigMods.parryRecoveryDelta
+        );
       }
       break;
     }
@@ -13335,6 +20361,29 @@ export function applyDamageToPlayer(
       p.maxFlux,
       p.flux + GAME_CONFIG.player.fluxGainOnParry + rigMods.parrySlipBonusFlux
     );
+    if (rigMods.parryIntegrityHeal > 0) {
+      p.integrity = Math.min(
+        p.maxIntegrity,
+        p.integrity + rigMods.parryIntegrityHeal
+      );
+      p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+    }
+    if (rigMods.parryShockwaveStagger > 0) {
+      for (let i = 0; i < world.enemies.length; i++) {
+        const nearby = world.enemies[i];
+        if (nearby.hp <= 0 || nearby.aiState === 'ko') continue;
+        if (Math.hypot(nearby.x - p.x, nearby.z - p.z) <= 4.2 + nearby.radius) {
+          nearby.stagger = Math.min(
+            nearby.maxStagger,
+            nearby.stagger + rigMods.parryShockwaveStagger
+          );
+          nearby.hitFlashTimer = Math.max(nearby.hitFlashTimer, 0.16);
+          if (world.boss && world.boss.id === nearby.id) {
+            world.boss.stagger = nearby.stagger;
+          }
+        }
+      }
+    }
     p.invulnTimer = Math.max(p.invulnTimer, 0.35);
     p.actionState = 'idle';
     p.stateTimer = 0;
@@ -13421,6 +20470,13 @@ export function applyDamageToPlayer(
       }
     }
 
+    const parryStanceMods = computeStanceDoctrineModifiers(
+      world.exploration?.resolvedStoryChoices
+    );
+    if (parryStanceMods.parryHealBonus > 0 && p.integrity > 0) {
+      p.integrity = Math.min(p.maxIntegrity, p.integrity + parryStanceMods.parryHealBonus);
+      p.ghostIntegrity = Math.max(p.ghostIntegrity, p.integrity);
+    }
     world.events.push({
       type: 'player_parry_success',
       x: p.x,
@@ -13465,6 +20521,20 @@ export function applyDamageToPlayer(
         enemyId: attacker?.id,
         amount: fluxGain,
       });
+      const slipMasterySeal = computeMasterySealModifiers(world.progression?.combatMastery);
+      const temporalSlip = tryTriggerTemporalSlip(p, slipMasterySeal.bonusSlipDurationSec);
+      if (temporalSlip.triggered) {
+        world.events.push({
+          type: 'temporal_slip_triggered',
+          x: p.x,
+          z: p.z,
+          enemyId: attacker?.id,
+          amount: Math.round(temporalSlip.durationSec * 100),
+        });
+        if (slipMasterySeal.tier >= 1) {
+          applySovereignAstralPulse(world, slipMasterySeal.tier);
+        }
+      }
       const slipAdr = applyAdrenalineDelta(p, ADRENALINE_GAINS.chronoSlip);
       if (slipAdr.tierDelta !== 0) {
         world.events.push({
@@ -13478,6 +20548,90 @@ export function applyDamageToPlayer(
     }
     return false;
   }
+
+  const pxDmg = ensureParadoxState(world);
+  const dmgMutMods = computeMutatorModifiers(pxDmg.mutators);
+  const diffDmgMult = world.progression?.difficultyTier
+    ? getDifficultySpec(world.progression.difficultyTier).enemyDamageMult
+    : 1.0;
+  const koDefMods = getActiveWeaponOverchargeModifiers(
+    world.kineticOvercharge,
+    p.equippedWeaponId
+  );
+  const defDocSpec = getEchoDoctrineSpec(world.progression?.echoDoctrine);
+  const bastionTetherMult =
+    defDocSpec.tetherRadius > 0 &&
+    world.echo.state === 'playback' &&
+    world.echo.activeActor &&
+    Math.hypot(world.echo.activeActor.x - p.x, world.echo.activeActor.z - p.z) <=
+      defDocSpec.tetherRadius
+      ? defDocSpec.tetherIncomingDamageMult
+      : 1.0;
+  let effectiveIncoming = Math.max(
+    1,
+    Math.round(
+      damage *
+        dmgMutMods.incomingDamageMult *
+        diffDmgMult *
+        koDefMods.damageTakenMult *
+        bastionTetherMult
+    )
+  );
+  const aegisRes = absorbIncomingDamageWithAegis(pxDmg.loadout, effectiveIncoming);
+  if (aegisRes.absorbed > 0) {
+    world.events.push({
+      type: 'aegis_shield_absorbed',
+      x: p.x,
+      z: p.z,
+      amount: Math.round(aegisRes.absorbed),
+    });
+  }
+  effectiveIncoming = aegisRes.remainingDamage;
+  if (effectiveIncoming > 0 && world.chronoAegis) {
+    const wardRes = absorbDamageWithChronoWard(world.chronoAegis, effectiveIncoming);
+    if (wardRes.absorbed > 0) {
+      world.events.push({
+        type: 'chrono_ward_absorbed',
+        x: p.x,
+        z: p.z,
+        amount: Math.round(wardRes.absorbed),
+      });
+    }
+    if (wardRes.shatteredShockwave) {
+      world.events.push({
+        type: 'chrono_ward_shatter',
+        x: p.x,
+        z: p.z,
+        amount: 20,
+      });
+      for (let wi = 0; wi < world.enemies.length; wi++) {
+        const we = world.enemies[wi];
+        if (we.hp <= 0 || we.aiState === 'ko') continue;
+        if (Math.hypot(we.x - p.x, we.z - p.z) <= 4.2 + we.radius) {
+          we.stagger = Math.min(we.maxStagger, we.stagger + 20);
+          we.hitFlashTimer = Math.max(we.hitFlashTimer, 0.16);
+          if (
+            world.boss &&
+            world.boss.id === we.id &&
+            world.boss.staggerCooldownTimer <= 0 &&
+            world.boss.aiState !== 'phase_transition'
+          ) {
+            world.boss.stagger = we.stagger;
+          }
+        }
+      }
+    }
+    effectiveIncoming = wardRes.remainingDamage;
+  }
+  if (effectiveIncoming <= 0) {
+    p.invulnTimer = Math.max(p.invulnTimer, 0.26);
+    p.hurtFlashTimer = 0.11;
+    return true;
+  }
+  if (world.boss && world.boss.hp > 0) {
+    pxDmg.bossTookDamageThisFight = true;
+  }
+  damage = effectiveIncoming;
 
   p.integrity = Math.max(0, p.integrity - damage);
   p.invulnTimer = GAME_CONFIG.player.hurtInvulnDuration;
@@ -13602,11 +20756,31 @@ const WARDEN_PRIME_ATTACK_PATTERN: readonly BossAttackType[] = [
   'directive_lance',
 ];
 
+const ECHO_ZERO_ATTACK_PATTERN: readonly BossAttackType[] = [
+  'paradox_blink_slash',
+  'paradox_rail_lance',
+  'paradox_twin_pincer',
+  'paradox_blink_slash',
+];
+
 export function selectNextBossAttack(
   boss: BossState,
   distToPlayer: number,
   hasActiveEcho = false
 ): BossAttackType {
+  if (boss.id === 'echo-zero') {
+    let chosen =
+      ECHO_ZERO_ATTACK_PATTERN[boss.attackSequenceIndex % ECHO_ZERO_ATTACK_PATTERN.length];
+    if (distToPlayer > 6.8) {
+      chosen = 'paradox_rail_lance';
+    } else if (distToPlayer <= 3.6 && boss.lastAttack !== 'paradox_twin_pincer') {
+      chosen = 'paradox_twin_pincer';
+    }
+    boss.attackSequenceIndex += 1;
+    boss.lastAttack = chosen;
+    return chosen;
+  }
+
   if (boss.id === 'the-choir') {
     const chosen = CHOIR_ATTACK_PATTERN[boss.attackSequenceIndex % CHOIR_ATTACK_PATTERN.length];
     boss.attackSequenceIndex += 1;
@@ -13765,22 +20939,29 @@ export function beginBossTelegraph(
   if (
     attack === 'vector_ram' ||
     attack === 'surgical_incision' ||
-    attack === 'directive_lance'
+    attack === 'directive_lance' ||
+    attack === 'paradox_rail_lance'
   ) {
     telegraphDuration =
-      attack === 'directive_lance'
+      attack === 'paradox_rail_lance'
         ? boss.phase === 2
-          ? GAME_CONFIG.wardenPrime.attacks.directive_lance.telegraphP2
-          : GAME_CONFIG.wardenPrime.attacks.directive_lance.telegraphP1
-        : boss.phase === 2
-          ? cfg.vector_ram.telegraphP2
-          : cfg.vector_ram.telegraphP1;
-    statusLabel =
-      attack === 'surgical_incision'
-        ? 'TELEGRAPH · SURGICAL INCISION LUNGE'
+          ? 0.56
+          : 0.72
         : attack === 'directive_lance'
-          ? 'TELEGRAPH · SOVEREIGN DIRECTIVE LANCE'
-          : 'TELEGRAPH · VECTOR RAM LANE LOCKING';
+          ? boss.phase === 2
+            ? GAME_CONFIG.wardenPrime.attacks.directive_lance.telegraphP2
+            : GAME_CONFIG.wardenPrime.attacks.directive_lance.telegraphP1
+          : boss.phase === 2
+            ? cfg.vector_ram.telegraphP2
+            : cfg.vector_ram.telegraphP1;
+    statusLabel =
+      attack === 'paradox_rail_lance'
+        ? 'TELEGRAPH · ECHO-ZERO PARADOX RAIL LANCE'
+        : attack === 'surgical_incision'
+          ? 'TELEGRAPH · SURGICAL INCISION LUNGE'
+          : attack === 'directive_lance'
+            ? 'TELEGRAPH · SOVEREIGN DIRECTIVE LANCE'
+            : 'TELEGRAPH · VECTOR RAM LANE LOCKING';
     if (
       attack === 'directive_lance' &&
       boss.id === 'warden-prime' &&
@@ -13797,20 +20978,27 @@ export function beginBossTelegraph(
     }
   } else if (
     attack === 'helical_sweep' ||
-    attack === 'temporal_convergence_grid'
+    attack === 'temporal_convergence_grid' ||
+    attack === 'paradox_blink_slash'
   ) {
     telegraphDuration =
-      attack === 'temporal_convergence_grid'
+      attack === 'paradox_blink_slash'
         ? boss.phase === 2
-          ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.telegraphP2
-          : GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.telegraphP1
-        : boss.phase === 2
-          ? cfg.helical_sweep.telegraphP2
-          : cfg.helical_sweep.telegraphP1;
+          ? 0.52
+          : 0.68
+        : attack === 'temporal_convergence_grid'
+          ? boss.phase === 2
+            ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.telegraphP2
+            : GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.telegraphP1
+          : boss.phase === 2
+            ? cfg.helical_sweep.telegraphP2
+            : cfg.helical_sweep.telegraphP1;
     statusLabel =
-      attack === 'temporal_convergence_grid'
-        ? 'TELEGRAPH · TEMPORAL CONVERGENCE LATTICE'
-        : 'TELEGRAPH · HELICAL SWEEP ARC WINDUP';
+      attack === 'paradox_blink_slash'
+        ? 'TELEGRAPH · ECHO-ZERO PARADOX BLINK SLASH'
+        : attack === 'temporal_convergence_grid'
+          ? 'TELEGRAPH · TEMPORAL CONVERGENCE LATTICE'
+          : 'TELEGRAPH · HELICAL SWEEP ARC WINDUP';
     if (
       attack === 'temporal_convergence_grid' &&
       boss.id === 'warden-prime' &&
@@ -13961,30 +21149,40 @@ function beginBossAttackActive(
   if (
     attack === 'vector_ram' ||
     attack === 'surgical_incision' ||
-    attack === 'directive_lance'
+    attack === 'directive_lance' ||
+    attack === 'paradox_rail_lance'
   ) {
     activeDuration =
-      attack === 'directive_lance'
-        ? GAME_CONFIG.wardenPrime.attacks.directive_lance.activeDuration
-        : cfg.vector_ram.activeDuration;
-    statusLabel =
-      attack === 'surgical_incision'
-        ? 'COMMITTED · SURGICAL INCISION THRUST'
+      attack === 'paradox_rail_lance'
+        ? 0.42
         : attack === 'directive_lance'
-          ? 'COMMITTED · SOVEREIGN DIRECTIVE LANCE'
-          : 'COMMITTED · VECTOR RAM OVERDRIVE';
+          ? GAME_CONFIG.wardenPrime.attacks.directive_lance.activeDuration
+          : cfg.vector_ram.activeDuration;
+    statusLabel =
+      attack === 'paradox_rail_lance'
+        ? 'COMMITTED · PARADOX RAIL LANCE SURGE'
+        : attack === 'surgical_incision'
+          ? 'COMMITTED · SURGICAL INCISION THRUST'
+          : attack === 'directive_lance'
+            ? 'COMMITTED · SOVEREIGN DIRECTIVE LANCE'
+            : 'COMMITTED · VECTOR RAM OVERDRIVE';
   } else if (
     attack === 'helical_sweep' ||
-    attack === 'temporal_convergence_grid'
+    attack === 'temporal_convergence_grid' ||
+    attack === 'paradox_blink_slash'
   ) {
     activeDuration =
-      attack === 'temporal_convergence_grid'
-        ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.activeDuration
-        : cfg.helical_sweep.activeDuration;
+      attack === 'paradox_blink_slash'
+        ? 0.38
+        : attack === 'temporal_convergence_grid'
+          ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid.activeDuration
+          : cfg.helical_sweep.activeDuration;
     statusLabel =
-      attack === 'temporal_convergence_grid'
-        ? 'COMMITTED · TEMPORAL CONVERGENCE CLEAVE'
-        : 'COMMITTED · HELICAL CONTAINMENT CLEAVE';
+      attack === 'paradox_blink_slash'
+        ? 'COMMITTED · PARADOX BLINK CLEAVE'
+        : attack === 'temporal_convergence_grid'
+          ? 'COMMITTED · TEMPORAL CONVERGENCE CLEAVE'
+          : 'COMMITTED · HELICAL CONTAINMENT CLEAVE';
   } else if (
     attack === 'archive_lance' ||
     attack === 'reconstructed_sweep' ||
@@ -14027,7 +21225,8 @@ function beginBossAttackActive(
     attack === 'cadenza_slam' ||
     attack === 'quarantine_wave' ||
     attack === 'chrono_sever' ||
-    attack === 'sovereign_purge_wave'
+    attack === 'sovereign_purge_wave' ||
+    attack === 'paradox_twin_pincer'
   ) {
     boss.shockwaveActive = true;
     boss.shockwaveRadius =
@@ -14341,10 +21540,11 @@ function updateBoss(world: WorldState, dt: number): void {
       if (
         attack === 'vector_ram' ||
         attack === 'surgical_incision' ||
-        attack === 'directive_lance'
+        attack === 'directive_lance' ||
+        attack === 'paradox_rail_lance'
       ) {
         const ramCfg =
-          attack === 'directive_lance'
+          attack === 'directive_lance' || attack === 'paradox_rail_lance'
             ? GAME_CONFIG.wardenPrime.attacks.directive_lance
             : cfg.attacks.vector_ram;
         const dashSpeed =
@@ -14362,14 +21562,15 @@ function updateBoss(world: WorldState, dt: number): void {
         }
       } else if (
         attack === 'helical_sweep' ||
-        attack === 'temporal_convergence_grid'
+        attack === 'temporal_convergence_grid' ||
+        attack === 'paradox_blink_slash'
       ) {
         const sweepCfg =
-          attack === 'temporal_convergence_grid'
+          attack === 'temporal_convergence_grid' || attack === 'paradox_blink_slash'
             ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid
             : cfg.attacks.helical_sweep;
-        boss.vx = boss.attackDirX * sweepCfg.lungeSpeed;
-        boss.vz = boss.attackDirZ * sweepCfg.lungeSpeed;
+        boss.vx = boss.attackDirX * sweepCfg.lungeSpeed * (attack === 'paradox_blink_slash' ? 1.35 : 1);
+        boss.vz = boss.attackDirZ * sweepCfg.lungeSpeed * (attack === 'paradox_blink_slash' ? 1.35 : 1);
       } else if (
         attack === 'archive_lance' ||
         attack === 'reconstructed_sweep' ||
@@ -14470,10 +21671,11 @@ function updateBoss(world: WorldState, dt: number): void {
         if (
           attack === 'vector_ram' ||
           attack === 'surgical_incision' ||
-          attack === 'directive_lance'
+          attack === 'directive_lance' ||
+          attack === 'paradox_rail_lance'
         ) {
           const ramCfg =
-            attack === 'directive_lance'
+            attack === 'directive_lance' || attack === 'paradox_rail_lance'
               ? GAME_CONFIG.wardenPrime.attacks.directive_lance
               : cfg.attacks.vector_ram;
           const relX = p.x - boss.attackOriginX;
@@ -14497,10 +21699,11 @@ function updateBoss(world: WorldState, dt: number): void {
           }
         } else if (
           attack === 'helical_sweep' ||
-          attack === 'temporal_convergence_grid'
+          attack === 'temporal_convergence_grid' ||
+          attack === 'paradox_blink_slash'
         ) {
           const sweepCfg =
-            attack === 'temporal_convergence_grid'
+            attack === 'temporal_convergence_grid' || attack === 'paradox_blink_slash'
               ? GAME_CONFIG.wardenPrime.attacks.temporal_convergence_grid
               : cfg.attacks.helical_sweep;
           const diff = Math.abs(angleDiff(curAngleToPlayer, boss.rotationY));
@@ -14694,10 +21897,21 @@ function updateEnemies(world: WorldState, dt: number): void {
       continue;
     }
     const cfg = GAME_CONFIG.enemies[enemy.archetype];
+    const isOverclocked = enemy.modifier === 'overclocked';
+    const moveSpeed = cfg.moveSpeed * (isOverclocked ? 1.18 : 1.0);
+    const telegraphScale = isOverclocked ? 0.82 : 1.0;
+    const cooldownScale = isOverclocked ? 0.82 : 1.0;
+
     enemy.hitFlashTimer = Math.max(0, enemy.hitFlashTimer - dt);
     enemy.cooldownTimer = Math.max(0, enemy.cooldownTimer - dt);
     enemy.evadeTimer = Math.max(0, enemy.evadeTimer - dt);
     enemy.evadeCooldownTimer = Math.max(0, enemy.evadeCooldownTimer - dt);
+    if ((enemy.blinkCooldownTimer ?? 0) > 0) {
+      enemy.blinkCooldownTimer = Math.max(0, (enemy.blinkCooldownTimer ?? 0) - dt);
+    }
+    if ((enemy.phaseShiftTimer ?? 0) > 0) {
+      enemy.phaseShiftTimer = Math.max(0, (enemy.phaseShiftTimer ?? 0) - dt);
+    }
 
     if (enemy.ghostHp > enemy.hp) {
       enemy.ghostHp = Math.max(enemy.hp, enemy.ghostHp - 35 * dt);
@@ -14723,7 +21937,8 @@ function updateEnemies(world: WorldState, dt: number): void {
 
     // Gradually decay stagger when in pursue/idle
     if (enemy.aiState === 'pursue' || enemy.aiState === 'idle') {
-      enemy.stagger = Math.max(0, enemy.stagger - 7 * dt);
+      const staggerDecayRate = enemy.modifier === 'phase_shielded' ? 11 : 7;
+      enemy.stagger = Math.max(0, enemy.stagger - staggerDecayRate * dt);
     }
 
     const dxToPlayer = p.x - enemy.x;
@@ -14784,11 +21999,113 @@ function updateEnemies(world: WorldState, dt: number): void {
         // Distinct movement & spacing policies per archetype
         if (enemy.archetype === 'bastion' || enemy.archetype === 'aegis_sentinel') {
           if (distTarget > cfg.preferredRange) {
-            enemy.vx = (dxTarget / distTarget) * cfg.moveSpeed;
-            enemy.vz = (dzTarget / distTarget) * cfg.moveSpeed;
+            enemy.vx = (dxTarget / distTarget) * moveSpeed;
+            enemy.vz = (dzTarget / distTarget) * moveSpeed;
           } else {
             enemy.vx = 0;
             enemy.vz = 0;
+          }
+        } else if (enemy.archetype === 'phase_stalker') {
+          const stalkerCfg = GAME_CONFIG.enemies.phase_stalker;
+          if (
+            p.actionState !== 'dead' &&
+            !holdPerimeterForCalibration &&
+            distToPlayer >= stalkerCfg.blinkTriggerMinDist &&
+            distToPlayer <= stalkerCfg.blinkTriggerMaxDist &&
+            (enemy.blinkCooldownTimer ?? 0) <= 0
+          ) {
+            const originX = enemy.x;
+            const originZ = enemy.z;
+            // Blink to Sera's flank/rear blindspot
+            const flankAngle = p.rotationY + Math.PI + enemy.strafeDir * 0.72;
+            enemy.x = p.x + Math.sin(flankAngle) * stalkerCfg.blinkFlankDistance;
+            enemy.z = p.z + Math.cos(flankAngle) * stalkerCfg.blinkFlankDistance;
+            resolveCircleObstacleCollisions(
+              enemy,
+              world.obstacles,
+              GAME_CONFIG.arena.radius - 0.8,
+              getArenaSolidPropColliders(world.run?.chapter ?? 'prologue')
+            );
+            enemy.blinkCooldownTimer = stalkerCfg.blinkCooldown * cooldownScale;
+            enemy.phaseShiftTimer = 0.38;
+            enemy.rotationY = Math.atan2(p.x - enemy.x, p.z - enemy.z);
+            enemy.targetX = p.x;
+            enemy.targetZ = p.z;
+            enemy.vx = 0;
+            enemy.vz = 0;
+            enemy.aiState = 'telegraph';
+            enemy.stateDuration = cfg.telegraphDuration * telegraphScale;
+            enemy.stateTimer = enemy.stateDuration;
+            enemy.hasDealtDamageThisAttack = false;
+            enemy.telegraphLocked = false;
+            activeAttackers += 1;
+            world.events.push({
+              type: 'phase_stalker_blink',
+              x: enemy.x,
+              z: enemy.z,
+              originX,
+              originZ,
+              enemyId: enemy.id,
+            });
+            world.events.push({
+              type: 'enemy_telegraph_start',
+              x: enemy.x,
+              z: enemy.z,
+              enemyId: enemy.id,
+            });
+            break;
+          }
+          const flankAngle =
+            angleTarget + enemy.strafeDir * (distTarget > 3.8 ? 0.52 : 0.16);
+          if (distTarget > cfg.preferredRange) {
+            enemy.vx = Math.sin(flankAngle) * moveSpeed;
+            enemy.vz = Math.cos(flankAngle) * moveSpeed;
+          } else {
+            enemy.vx = 0;
+            enemy.vz = 0;
+          }
+        } else if (enemy.archetype === 'chrono_mortar') {
+          // Siege Mortar Tripod holds long standoff range (7.5 - 11.5m)
+          if (distToPlayer < 6.8) {
+            enemy.vx = -(dxToPlayer / distToPlayer) * moveSpeed;
+            enemy.vz = -(dzToPlayer / distToPlayer) * moveSpeed;
+          } else if (distToPlayer > 11.5) {
+            enemy.vx = (dxToPlayer / distToPlayer) * moveSpeed;
+            enemy.vz = (dzToPlayer / distToPlayer) * moveSpeed;
+          } else {
+            const tangentX = -dzToPlayer / distToPlayer;
+            const tangentZ = dxToPlayer / distToPlayer;
+            enemy.vx = tangentX * moveSpeed * 0.35 * enemy.strafeDir;
+            enemy.vz = tangentZ * moveSpeed * 0.35 * enemy.strafeDir;
+          }
+        } else if (enemy.archetype === 'resonance_warden') {
+          // Harmonic Conductor stays near tethered ally while keeping standoff distance from Sera
+          const tetheredAlly = enemy.tetherTargetId
+            ? world.enemies.find(
+                (a) => a.id === enemy.tetherTargetId && a.hp > 0 && a.aiState !== 'ko'
+              )
+            : null;
+          if (distToPlayer < 5.0) {
+            enemy.vx = -(dxToPlayer / distToPlayer) * moveSpeed * 0.95;
+            enemy.vz = -(dzToPlayer / distToPlayer) * moveSpeed * 0.95;
+          } else if (tetheredAlly) {
+            const dxAlly = tetheredAlly.x - enemy.x;
+            const dzAlly = tetheredAlly.z - enemy.z;
+            const distAlly = Math.hypot(dxAlly, dzAlly) || 0.001;
+            if (distAlly > 5.4) {
+              enemy.vx = (dxAlly / distAlly) * moveSpeed * 0.9;
+              enemy.vz = (dzAlly / distAlly) * moveSpeed * 0.9;
+            } else {
+              const tangentX = -dzToPlayer / distToPlayer;
+              const tangentZ = dxToPlayer / distToPlayer;
+              enemy.vx = tangentX * moveSpeed * 0.55 * enemy.strafeDir;
+              enemy.vz = tangentZ * moveSpeed * 0.55 * enemy.strafeDir;
+            }
+          } else {
+            const tangentX = -dzToPlayer / distToPlayer;
+            const tangentZ = dxToPlayer / distToPlayer;
+            enemy.vx = tangentX * moveSpeed * 0.6 * enemy.strafeDir;
+            enemy.vz = tangentZ * moveSpeed * 0.6 * enemy.strafeDir;
           }
         } else if (
           enemy.archetype === 'scrapper' ||
@@ -14799,8 +22116,8 @@ function updateEnemies(world: WorldState, dt: number): void {
           const flankAngle =
             angleTarget + enemy.strafeDir * (distTarget > 4 ? 0.38 : 0.12);
           if (distTarget > cfg.preferredRange) {
-            enemy.vx = Math.sin(flankAngle) * cfg.moveSpeed;
-            enemy.vz = Math.cos(flankAngle) * cfg.moveSpeed;
+            enemy.vx = Math.sin(flankAngle) * moveSpeed;
+            enemy.vz = Math.cos(flankAngle) * moveSpeed;
           } else {
             enemy.vx = 0;
             enemy.vz = 0;
@@ -14823,30 +22140,33 @@ function updateEnemies(world: WorldState, dt: number): void {
 
           if (enemy.evadeTimer > 0) {
             const awaySpeed = -scoutCfg.evadeSpeed;
-            const lateralSpeed = scoutCfg.moveSpeed * 0.65 * enemy.strafeDir;
+            const lateralSpeed = moveSpeed * 0.65 * enemy.strafeDir;
             enemy.vx = (dxToPlayer / distToPlayer) * awaySpeed + tangentX * lateralSpeed;
             enemy.vz = (dzToPlayer / distToPlayer) * awaySpeed + tangentZ * lateralSpeed;
           } else {
             let radialSpeed = 0;
             if (distToPlayer < cfg.preferredRange - 1.4) {
-              radialSpeed = -cfg.moveSpeed * 0.9;
+              radialSpeed = -moveSpeed * 0.9;
             } else if (distToPlayer > cfg.preferredRange + 1.2) {
-              radialSpeed = cfg.moveSpeed * 0.85;
+              radialSpeed = moveSpeed * 0.85;
             }
-            const orbitSpeed = cfg.moveSpeed * 0.65 * enemy.strafeDir;
+            const orbitSpeed = moveSpeed * 0.65 * enemy.strafeDir;
             enemy.vx = (dxToPlayer / distToPlayer) * radialSpeed + tangentX * orbitSpeed;
             enemy.vz = (dzToPlayer / distToPlayer) * radialSpeed + tangentZ * orbitSpeed;
           }
         }
 
         // Check attack initiation with token pool limit & authoritative obstacle line-of-sight
-        const hasLosToPlayer = hasMeleeLineOfSight(
-          enemy.x,
-          enemy.z,
-          p.x,
-          p.z,
-          world.obstacles
-        );
+        const hasLosToPlayer =
+          enemy.archetype === 'chrono_mortar'
+            ? true
+            : hasMeleeLineOfSight(
+                enemy.x,
+                enemy.z,
+                p.x,
+                p.z,
+                world.obstacles
+              );
         let canStartAttack = distToPlayer <= cfg.attackRange && hasLosToPlayer;
         if (
           enemy.archetype === 'eraser' &&
@@ -14883,8 +22203,8 @@ function updateEnemies(world: WorldState, dt: number): void {
           activeAttackers < maxAttackers
         ) {
           enemy.aiState = 'telegraph';
-          enemy.stateDuration = cfg.telegraphDuration;
-          enemy.stateTimer = cfg.telegraphDuration;
+          enemy.stateDuration = cfg.telegraphDuration * telegraphScale;
+          enemy.stateTimer = enemy.stateDuration;
           enemy.hasDealtDamageThisAttack = false;
           enemy.telegraphLocked = false;
           enemy.rotationY = angleToPlayer;
@@ -14935,8 +22255,11 @@ function updateEnemies(world: WorldState, dt: number): void {
       case 'attack': {
         enemy.stateTimer -= dt;
 
-        if (enemy.archetype === 'scrapper') {
-          const lunge = GAME_CONFIG.enemies.scrapper.lungeSpeed;
+        if (enemy.archetype === 'scrapper' || enemy.archetype === 'phase_stalker') {
+          const lunge =
+            enemy.archetype === 'phase_stalker'
+              ? GAME_CONFIG.enemies.phase_stalker.lungeSpeed
+              : GAME_CONFIG.enemies.scrapper.lungeSpeed;
           enemy.vx = Math.sin(enemy.rotationY) * lunge;
           enemy.vz = Math.cos(enemy.rotationY) * lunge;
         } else if (
@@ -15008,9 +22331,65 @@ function updateEnemies(world: WorldState, dt: number): void {
             }
           }
 
+          if (enemy.archetype === 'chrono_mortar') {
+            // Launch 3-zone arcing artillery barrage around locked target coordinates
+            enemy.hasDealtDamageThisAttack = true;
+            const mortarCfg = GAME_CONFIG.enemies.chrono_mortar;
+            if (!world.artilleryZones) {
+              world.artilleryZones = [];
+            }
+            const maxR = GAME_CONFIG.arena.radius - 1.6;
+            const perpAngle = enemy.rotationY + Math.PI * 0.5;
+            const offsets = [
+              { dx: 0, dz: 0, delay: 0 },
+              {
+                dx: Math.sin(perpAngle) * 2.45,
+                dz: Math.cos(perpAngle) * 2.45,
+                delay: 0.14,
+              },
+              {
+                dx: -Math.sin(perpAngle) * 2.45,
+                dz: -Math.cos(perpAngle) * 2.45,
+                delay: 0.28,
+              },
+            ];
+            for (let k = 0; k < offsets.length; k++) {
+              let zx = enemy.targetX + offsets[k].dx;
+              let zz = enemy.targetZ + offsets[k].dz;
+              const d = Math.hypot(zx, zz);
+              if (d > maxR) {
+                zx = (zx / d) * maxR;
+                zz = (zz / d) * maxR;
+              }
+              const dur = mortarCfg.fuseDuration + offsets[k].delay;
+              world.artilleryZones.push({
+                id: `mortar-${enemy.id}-${Math.round(world.elapsedTime * 100)}-${k}`,
+                x: zx,
+                z: zz,
+                radius: mortarCfg.blastRadius,
+                remainingTimer: dur,
+                maxDuration: dur,
+                damage: mortarCfg.damage,
+                sourceEnemyId: enemy.id,
+                kind: 'chrono_mortar',
+              });
+            }
+            world.events.push({
+              type: 'chrono_mortar_barrage_fired',
+              x: enemy.targetX,
+              z: enemy.targetZ,
+              originX: enemy.x,
+              originZ: enemy.z,
+              enemyId: enemy.id,
+            });
+          } else {
           let hitPlayer = false;
 
-          if (enemy.archetype === 'scout' || enemy.archetype === 'null_weaver') {
+          if (
+            enemy.archetype === 'scout' ||
+            enemy.archetype === 'null_weaver' ||
+            enemy.archetype === 'resonance_warden'
+          ) {
             const dirX = Math.sin(enemy.rotationY);
             const dirZ = Math.cos(enemy.rotationY);
             const proj = dxToPlayer * dirX + dzToPlayer * dirZ;
@@ -15102,6 +22481,7 @@ function updateEnemies(world: WorldState, dt: number): void {
               }
             }
           }
+          }
         }
 
         if (enemy.stateTimer <= 0 && enemy.aiState === 'attack') {
@@ -15122,7 +22502,7 @@ function updateEnemies(world: WorldState, dt: number): void {
         enemy.vz = 0;
         if (enemy.stateTimer <= 0) {
           enemy.aiState = 'pursue';
-          enemy.cooldownTimer = cfg.attackCooldown;
+          enemy.cooldownTimer = cfg.attackCooldown * cooldownScale;
           enemy.telegraphLocked = false;
           enemy.strafeDir *= -1;
         }
@@ -15354,6 +22734,9 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
   if (world.run.checkpointNoticeTimer > 0) {
     world.run.checkpointNoticeTimer = Math.max(0, world.run.checkpointNoticeTimer - dt);
   }
+  if (world.recursion?.awaitingRelicDraft) {
+    return;
+  }
   if (world.run.stage === 'intro') {
     world.run.introTimer = Math.max(0, world.run.introTimer - dt);
     const hasPlayerAction =
@@ -15439,20 +22822,116 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     return;
   }
 
+  const pxSlice = ensureParadoxState(world);
+  const realDt = dt;
+  if (pxSlice.activeToast) {
+    pxSlice.activeToast.remaining = Math.max(
+      0,
+      pxSlice.activeToast.remaining - realDt
+    );
+    if (pxSlice.activeToast.remaining <= 0) {
+      pxSlice.activeToast = null;
+    }
+  }
+  if (pxSlice.loadout.naniteCooldown > 0) {
+    pxSlice.loadout.naniteCooldown = Math.max(
+      0,
+      pxSlice.loadout.naniteCooldown - realDt
+    );
+  }
+  tickDamagePopups(pxSlice, realDt);
+
+  if (pxSlice.killCamTimer > 0) {
+    pxSlice.killCamTimer = Math.max(0, pxSlice.killCamTimer - realDt);
+    dt = realDt * 0.24;
+  } else {
+    const sliceMutMods = computeMutatorModifiers(pxSlice.mutators);
+    dt = realDt * sliceMutMods.speedMult;
+  }
+  pxSlice.speedrun.runElapsedSec += realDt;
+
   world.elapsedTime += dt;
+
+  // Tick Chrono Stasis Overdrive [5], Med-Nanite Injector [6] & Boss Gauntlet timer
+  if (!world.overdrive) {
+    world.overdrive = createInitialChronoOverdriveState(25);
+  }
+  const eventIndexBeforeSlice = world.events.length;
+  if (input.overdriveJustPressed) {
+    attemptActivateChronoOverdrive(world);
+  }
+  if (input.useNaniteJustPressed) {
+    useMedNaniteInjector(world);
+  }
+  if (input.confluenceBurstJustPressed) {
+    triggerConfluenceBurst(world);
+  }
+  const sliceConfluence = computeSentinelCoreConfluence(
+    normalizeSentinelMode(world.progression?.sentinelMode),
+    world.progression?.equippedBossCore,
+    world.progression?.transcendedBossCores
+  );
+  if (pxSlice.mutators.zeroEchoCooldown) {
+    world.resonance.cooldownTimer = 0;
+    world.relay.cooldownTimer = 0;
+    world.relay.fluxCost = Math.max(5, Math.round(GAME_CONFIG.relay.fluxCost * 0.5));
+  } else {
+    const relayRigMods = getPlayerRigModifiers(world);
+    const relayRigSyn = getPlayerRigSetSynergy(world);
+    world.relay.fluxCost = Math.max(
+      0,
+      Math.round(
+        (GAME_CONFIG.relay.fluxCost + relayRigMods.relayFluxCostDelta) *
+          relayRigSyn.skillFluxCostMultiplier *
+          sliceConfluence.skillFluxCostMultiplier
+      )
+    );
+  }
+  const odTick = tickChronoOverdrive(world.overdrive, dt);
+  world.overdrive = odTick.state;
+  if (odTick.justEnded) {
+    world.events.push({
+      type: 'chrono_overdrive_ended',
+      x: world.player.x,
+      z: world.player.z,
+    });
+  }
+  if (world.gauntlet?.active && !world.gauntlet.completed) {
+    world.gauntlet.totalElapsedTime = world.elapsedTime;
+    if (world.gauntlet.refitBannerTimer > 0) {
+      world.gauntlet.refitBannerTimer = Math.max(0, world.gauntlet.refitBannerTimer - dt);
+    }
+  }
+
+  tickTemporalSlipTimers(world.player, dt);
+  const odScales = getOverdriveTimeScales(world.overdrive);
+  const playerDt = dt * odScales.playerSpeedMult;
+  const enemyDt =
+    dt * computeEffectiveHostileTimeScale(odScales.enemyTimeScale, world.player.temporalSlipTimer);
 
   // Tick Relay cooldown & visual flash timers
   const stepRigMods = getPlayerRigModifiers(world);
+  const stepRecMods = getActiveRecursionModifiers(world);
+  const stepCooldownScale =
+    stepRigMods.surgeCooldownTickMultiplier *
+    (stepRecMods.cooldownMultiplier !== 1
+      ? 1 / Math.max(0.35, stepRecMods.cooldownMultiplier)
+      : 1);
   world.relay.cooldownTimer = Math.max(
     0,
-    world.relay.cooldownTimer - dt * stepRigMods.surgeCooldownTickMultiplier
+    world.relay.cooldownTimer - dt * stepCooldownScale
   );
   world.relay.successFlashTimer = Math.max(0, world.relay.successFlashTimer - dt);
 
   // Tick Temporal Resonance window & Convergence cooldown timers
   advanceResonanceSystem(world, dt);
 
-  updatePlayer(world, input, dt);
+  updatePlayer(world, input, playerDt);
+  if (odScales.heatLockZero) {
+    world.player.weaponHeat = 0;
+    world.player.weaponOverheated = false;
+    world.player.weaponOverheatTimer = 0;
+  }
 
   // Process one-shot Echo-Anchor Relay [V] before advancing Echo playback so landing matches the evaluated preview
   if (input.echoRelayJustPressed) {
@@ -15470,25 +22949,54 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     attemptEnvironmentalInteraction(world);
   }
 
-  advanceEchoSystem(world, dt);
-  advanceProjectiles(world, dt);
+  advanceEchoSystem(world, playerDt);
+  advanceProjectiles(world, playerDt);
 
-  // Tick Chapter II, III, IV mechanics
-  advanceChoirSystem(world, dt);
-  advanceCuratorSystem(world, dt);
-  advanceMatronSystem(world, dt);
+  const inExpeditionExplore = Boolean(
+    world.expedition?.enabled &&
+      (world.expedition.phase === 'explore' || world.expedition.phase === 'safe_room')
+  );
 
-  updatePressurePlate(world, dt);
-  updateBoss(world, dt);
-  updateEnemies(world, dt);
+  // Tick Chapter II, III, IV mechanics & hostiles (suspended during Expedition Explore & Safe-Room)
+  if (!inExpeditionExplore) {
+    advanceChoirSystem(world, dt);
+    advanceCuratorSystem(world, enemyDt);
+    advanceMatronSystem(world, enemyDt);
+
+    updatePressurePlate(world, dt);
+    updateBoss(world, enemyDt);
+    updateEnemies(world, enemyDt);
+  } else {
+    updatePressurePlate(world, dt);
+    for (let i = 0; i < world.enemies.length; i++) {
+      const e = world.enemies[i];
+      if (e.aiState !== 'ko') {
+        e.vx = 0;
+        e.vz = 0;
+        e.cooldownTimer = Math.max(e.cooldownTimer, 0.45);
+      }
+    }
+    if (world.boss && world.boss.aiState !== 'ko' && world.boss.aiState !== 'defeated') {
+      world.boss.vx = 0;
+      world.boss.vz = 0;
+      world.boss.cooldownTimer = Math.max(world.boss.cooldownTimer, 0.55);
+    }
+  }
 
   // Zero-allocation collision resolution
   resolveActorSeparation(world.player, world.enemies);
 
+  const solidProps = getArenaSolidPropColliders(world.run?.chapter ?? 'prologue');
+
   _scratchCollider.x = world.player.x;
   _scratchCollider.z = world.player.z;
   _scratchCollider.radius = GAME_CONFIG.player.radius;
-  resolveCircleObstacleCollisions(_scratchCollider, world.obstacles, GAME_CONFIG.arena.radius);
+  resolveCircleObstacleCollisions(
+    _scratchCollider,
+    world.obstacles,
+    GAME_CONFIG.arena.radius,
+    solidProps
+  );
   world.player.x = _scratchCollider.x;
   world.player.z = _scratchCollider.z;
 
@@ -15498,7 +23006,12 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     _scratchCollider.x = enemy.x;
     _scratchCollider.z = enemy.z;
     _scratchCollider.radius = enemy.radius;
-    resolveCircleObstacleCollisions(_scratchCollider, world.obstacles, GAME_CONFIG.arena.radius);
+    resolveCircleObstacleCollisions(
+      _scratchCollider,
+      world.obstacles,
+      GAME_CONFIG.arena.radius,
+      solidProps
+    );
     enemy.x = _scratchCollider.x;
     enemy.z = _scratchCollider.z;
     if (world.boss && world.boss.id === enemy.id) {
@@ -15526,13 +23039,332 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     world.relay.statusMessage = world.relay.preview.message;
   }
 
-  // Update timed energy hazards, arena kinetic boost pads, charged flux pools, contextual tutorial state machine, exploration objectives & live narrative comms
+  // Update timed energy hazards, arena kinetic boost pads, charged flux pools, tactical beacons, exploration objectives & live narrative comms
   advanceArenaBoostPads(world, dt);
   advanceArenaFluxPools(world, dt);
-  advanceTimedEnergyHazards(world, dt);
+  if (world.sectorBeacons && world.sectorBeacons.length > 0) {
+    for (let i = 0; i < world.sectorBeacons.length; i++) {
+      const b = world.sectorBeacons[i];
+      if (b.cooldown > 0) {
+        b.cooldown = Math.max(
+          0,
+          b.cooldown - dt * stepRigMods.surgeCooldownTickMultiplier
+        );
+      }
+    }
+  }
+  const inSafeRoomCalm = Boolean(
+    world.expedition?.enabled && world.expedition.phase === 'safe_room'
+  );
+  if (!inExpeditionExplore && !inSafeRoomCalm) {
+    advanceTimedEnergyHazards(world, enemyDt);
+    advanceTemporalRiftSystem(world, dt);
+    advanceConductorTethers(world, enemyDt);
+    advanceArtilleryZones(world, enemyDt);
+  }
   advanceMissionAndExplorationSystem(world);
+  syncExpeditionState(world, dt);
   updateTutorialSystem(world, input, dt);
   advanceNarrativeCommsSystem(world, dt);
+
+  // Autonomous 3D Combat Drone Wingman (Mk.I / Mk.II)
+  if (pxSlice.loadout.combatDroneTier > 0 && world.player.actionState !== 'dead') {
+    const droneTargets = !inExpeditionExplore
+      ? world.enemies
+          .filter((e) => e.hp > 0 && e.aiState !== 'ko' && !e.isDecoy)
+          .map((e) => ({ id: e.id, x: e.x, z: e.z, hp: e.hp }))
+      : [];
+    const droneRes = tickCombatDrone({
+      loadout: pxSlice.loadout,
+      playerX: world.player.x,
+      playerZ: world.player.z,
+      playerIntegrity: world.player.integrity,
+      playerMaxIntegrity: world.player.maxIntegrity,
+      canAttack: !inExpeditionExplore,
+      targets: droneTargets,
+      dt: realDt,
+    });
+    if (droneRes.triggeredEmergencyShield) {
+      world.events.push({
+        type: 'combat_drone_shield_triggered',
+        x: world.player.x,
+        z: world.player.z,
+        amount: 25,
+      });
+    }
+    if (droneRes.fired && droneRes.targetId) {
+      const targetEnemy = world.enemies.find(
+        (e) => e.id === droneRes.targetId && e.hp > 0 && e.aiState !== 'ko'
+      );
+      if (targetEnemy) {
+        const droneDmg = Math.max(
+          1,
+          Math.round(droneRes.damage * getParadoxOutgoingDamageMult(world))
+        );
+        targetEnemy.hp = Math.max(0, targetEnemy.hp - droneDmg);
+        targetEnemy.hitFlashTimer = Math.max(targetEnemy.hitFlashTimer, 0.12);
+        world.stats.damageDealt += droneDmg;
+        world.player.flux = Math.min(
+          world.player.maxFlux,
+          world.player.flux + droneRes.fluxGain
+        );
+        const bossMatch =
+          world.boss && world.boss.id === targetEnemy.id ? world.boss : null;
+        if (bossMatch) {
+          bossMatch.hp = targetEnemy.hp;
+          bossMatch.hitFlashTimer = targetEnemy.hitFlashTimer;
+          checkAndTriggerBossPhase2(world, bossMatch, targetEnemy);
+        }
+        pushDamagePopup(
+          pxSlice,
+          droneDmg,
+          targetEnemy.x,
+          bossMatch ? 2.6 : 1.9,
+          targetEnemy.z,
+          'drone'
+        );
+        world.events.push({
+          type: 'combat_drone_fired',
+          x: targetEnemy.x,
+          z: targetEnemy.z,
+          originX: pxSlice.loadout.droneX,
+          originZ: pxSlice.loadout.droneZ,
+          amount: droneDmg,
+          enemyId: targetEnemy.id,
+        });
+        if (targetEnemy.hp <= 0) {
+          handleEnemyZeroHpDefeat(world, targetEnemy, droneDmg, false, false, false);
+        }
+      }
+    }
+  }
+
+  if (
+    world.exploration &&
+    typeof world.exploration.activeHoloMemoryTimer === 'number' &&
+    world.exploration.activeHoloMemoryTimer > 0
+  ) {
+    world.exploration.activeHoloMemoryTimer = Math.max(
+      0,
+      world.exploration.activeHoloMemoryTimer - realDt
+    );
+    if (world.exploration.activeHoloMemoryTimer <= 0) {
+      world.exploration.activeHoloMemoryId = null;
+    }
+  }
+
+  // v3.3.0/v3.5.0 LYS-04 Chrono Sentinel, Regenerative Chrono Ward & Harmonic Confluence System
+  if (world.player.actionState !== 'dead') {
+    const aegisState = ensureChronoAegisState(world);
+    const confluenceState = ensureChronoConfluenceState(world);
+    if (confluenceState.cooldownTimer > 0) {
+      confluenceState.cooldownTimer = Math.max(0, confluenceState.cooldownTimer - realDt);
+      confluenceState.ready =
+        confluenceState.doctrineId !== 'none' &&
+        confluenceState.cooldownTimer <= 0 &&
+        confluenceState.charge >= 100;
+    }
+    const stepRigSynergy = getPlayerRigSetSynergy(world);
+    const stepBossCoreMods = computeBossCoreModifiers(
+      world.progression?.equippedBossCore,
+      world.progression?.transcendedBossCores
+    );
+    const stepConfluence = computeSentinelCoreConfluence(
+      normalizeSentinelMode(world.progression?.sentinelMode),
+      world.progression?.equippedBossCore,
+      world.progression?.transcendedBossCores
+    );
+    const stepHoloResonance = computeHoloMemoryResonanceBonus(
+      world.exploration?.discoveredHoloMemoryIds
+    );
+    const stepMasterySeal = computeMasterySealModifiers(world.progression?.combatMastery);
+    syncChronoAegisMaxWard(
+      aegisState,
+      normalizeSentinelMode(world.progression?.sentinelMode),
+      stepRigSynergy,
+      false,
+      stepBossCoreMods.bonusWard +
+        stepConfluence.bonusWard +
+        stepHoloResonance.bonusMaxWard +
+        stepMasterySeal.bonusMaxWard
+    );
+    if (
+      stepConfluence.wardRegenMultiplier > 1 &&
+      aegisState.rechargeDelayTimer <= 0 &&
+      aegisState.ward < aegisState.maxWard
+    ) {
+      aegisState.ward = Math.min(
+        aegisState.maxWard,
+        aegisState.ward + 8 * (stepConfluence.wardRegenMultiplier - 1) * realDt
+      );
+    }
+    if (stepConfluence.sentinelFireRateMultiplier > 1 && aegisState.fireCooldown > 0) {
+      aegisState.fireCooldown = Math.max(
+        0,
+        aegisState.fireCooldown - (stepConfluence.sentinelFireRateMultiplier - 1) * realDt
+      );
+    }
+    const sentinelTargets = !inExpeditionExplore
+      ? world.enemies
+          .filter((e) => e.hp > 0 && e.aiState !== 'ko' && !e.isDecoy)
+          .map((e) => ({ id: e.id, x: e.x, z: e.z, hp: e.hp }))
+      : [];
+    const sentinelTick = tickChronoAegisSystem({
+      aegis: aegisState,
+      rigSynergy: stepRigSynergy,
+      playerX: world.player.x,
+      playerZ: world.player.z,
+      elapsedTime: world.elapsedTime,
+      overdriveActive: Boolean(world.overdrive?.active),
+      echoActiveOrRecording:
+        world.echo.state === 'recording' || world.echo.state === 'playback',
+      canAttack: !inExpeditionExplore,
+      targets: sentinelTargets,
+      dt: realDt,
+    });
+    if (sentinelTick.harmonicFluxPulse > 0) {
+      world.player.flux = Math.min(
+        world.player.maxFlux,
+        world.player.flux +
+          Math.round(sentinelTick.harmonicFluxPulse * stepConfluence.fluxGainMultiplier)
+      );
+    }
+    if (sentinelTick.fired && sentinelTick.targetId) {
+      const targetEnemy = world.enemies.find(
+        (e) => e.id === sentinelTick.targetId && e.hp > 0 && e.aiState !== 'ko'
+      );
+      if (targetEnemy) {
+        const sentDmg = Math.max(
+          1,
+          Math.round(
+            sentinelTick.baseDamage *
+              stepRigSynergy.damageMultiplier *
+              getParadoxOutgoingDamageMult(world)
+          )
+        );
+        targetEnemy.hp = Math.max(0, targetEnemy.hp - sentDmg);
+        targetEnemy.hitFlashTimer = Math.max(targetEnemy.hitFlashTimer, 0.12);
+        world.stats.damageDealt += sentDmg;
+        world.player.flux = Math.min(
+          world.player.maxFlux,
+          world.player.flux +
+            Math.round(sentinelTick.fluxGain * stepRigSynergy.fluxGainMultiplier)
+        );
+        if (targetEnemy.hp > 0 && targetEnemy.aiState !== 'staggered') {
+          targetEnemy.stagger = Math.min(
+            targetEnemy.maxStagger,
+            targetEnemy.stagger + sentinelTick.baseStagger
+          );
+        }
+        const bossMatch =
+          world.boss && world.boss.id === targetEnemy.id ? world.boss : null;
+        if (bossMatch) {
+          bossMatch.hp = targetEnemy.hp;
+          bossMatch.hitFlashTimer = targetEnemy.hitFlashTimer;
+          if (bossMatch.staggerCooldownTimer <= 0 && bossMatch.aiState !== 'phase_transition') {
+            bossMatch.stagger = targetEnemy.stagger;
+          }
+          checkAndTriggerBossPhase2(world, bossMatch, targetEnemy);
+        }
+        pushDamagePopup(
+          pxSlice,
+          sentDmg,
+          targetEnemy.x,
+          bossMatch ? 2.6 : 1.9,
+          targetEnemy.z,
+          'drone'
+        );
+        world.events.push({
+          type: 'combat_drone_fired',
+          x: targetEnemy.x,
+          z: targetEnemy.z,
+          originX: aegisState.droneX,
+          originZ: aegisState.droneZ,
+          amount: sentDmg,
+          enemyId: targetEnemy.id,
+        });
+        if (targetEnemy.hp <= 0) {
+          handleEnemyZeroHpDefeat(world, targetEnemy, sentDmg, false, false, false);
+        }
+      }
+    }
+  }
+
+  // Scan combat events emitted in this slice for Floating Damage Numbers, Achievements, & Chrono Overdrive charge
+  let chargeDelta = 0;
+  for (let ei = eventIndexBeforeSlice; ei < world.events.length; ei++) {
+    const ev = world.events[ei];
+    if (ev.type === 'player_hit_enemy') {
+      chargeDelta += ev.isHeavy
+        ? OVERDRIVE_CHARGE_GAINS.heavyHit
+        : OVERDRIVE_CHARGE_GAINS.lightHit;
+      if (typeof ev.amount === 'number' && ev.amount > 0) {
+        pushDamagePopup(
+          pxSlice,
+          ev.amount,
+          ev.x,
+          2.1,
+          ev.z,
+          ev.isCriticalOrVulnerable || ev.isHeavy ? 'crit' : 'normal'
+        );
+      }
+    } else if (ev.type === 'player_parry_success') {
+      chargeDelta += OVERDRIVE_CHARGE_GAINS.parry;
+      if (world.progression) {
+        world.progression.lifetimeParries = (world.progression.lifetimeParries ?? 0) + 1;
+        if (world.progression.lifetimeParries >= 5) {
+          unlockChronoAchievement(world, 'parry_specialist');
+        }
+      }
+      pushDamagePopup(pxSlice, 25, ev.x, 2.2, ev.z, 'parry');
+    } else if (ev.type === 'player_perfect_dodge') {
+      chargeDelta += OVERDRIVE_CHARGE_GAINS.perfectDodge;
+    } else if (ev.type === 'resonance_convergence') {
+      chargeDelta += OVERDRIVE_CHARGE_GAINS.convergence;
+      if (world.progression) {
+        world.progression.lifetimeConvergences =
+          (world.progression.lifetimeConvergences ?? 0) + 1;
+        if (world.progression.lifetimeConvergences >= 5) {
+          unlockChronoAchievement(world, 'convergence_chain');
+        }
+      }
+      if (typeof ev.amount === 'number' && ev.amount > 0) {
+        pushDamagePopup(pxSlice, ev.amount, ev.x, 2.5, ev.z, 'convergence');
+      }
+    } else if (ev.type === 'enemy_killed') {
+      chargeDelta += OVERDRIVE_CHARGE_GAINS.enemyDefeat;
+    } else if (ev.type === 'temporal_rift_sealed') {
+      chargeDelta += OVERDRIVE_CHARGE_GAINS.riftSeal;
+    }
+    if (ev.type === 'player_hit_enemy') {
+      grantConfluenceCharge(
+        world,
+        ev.isHeavy ? CONFLUENCE_CHARGE_GAINS.heavyHit : CONFLUENCE_CHARGE_GAINS.lightHit
+      );
+    } else if (ev.type === 'player_parry_success') {
+      grantConfluenceCharge(world, CONFLUENCE_CHARGE_GAINS.parry);
+    } else if (ev.type === 'resonance_convergence') {
+      grantConfluenceCharge(world, CONFLUENCE_CHARGE_GAINS.convergence);
+    } else if (
+      ev.type === 'enemy_staggered' ||
+      ev.type === 'boss_staggered' ||
+      ev.type === 'chrono_execution_finisher'
+    ) {
+      grantConfluenceCharge(world, CONFLUENCE_CHARGE_GAINS.weakpointOrExecute);
+    }
+  }
+  if (world.overdrive && !world.overdrive.active && chargeDelta > 0) {
+    const odChargeMult =
+      computeBossCoreModifiers(
+        world.progression?.equippedBossCore,
+        world.progression?.transcendedBossCores
+      ).overdriveChargeMultiplier *
+      computeMasterySealModifiers(world.progression?.combatMastery).overdriveChargeMult;
+    world.overdrive = addOverdriveCharge(world.overdrive, chargeDelta * odChargeMult);
+  }
+
+  // v2.4.0 Chrono Ascension: Style Rank, Weapon Mod Socket Chips, Finisher Rift & Daily Trial
+  stepAscensionSystems(world, dt, eventIndexBeforeSlice);
 
   // Track boss_intro -> boss_fight transition once boss finishes its awakening beat
   if (
@@ -15598,6 +23430,7 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
       world.run.stage = 'completed';
       world.run.pendingNextChapter = null;
       world.outcomeDelayTimer = 0.5;
+      recordWorldCombatMasteryOnVictory(world, ['sector_prologue']);
       world.frozenSummary = buildRunSummary(world);
       clearEchoState(world, 'outcome');
       world.events.push({
@@ -15607,13 +23440,60 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
       });
       return;
     }
+    if (world.expedition?.enabled && !world.run.isChapterReplay) {
+      if (world.expedition.phase !== 'airlock_open' && world.expedition.phase !== 'safe_room') {
+        if (world.puzzle?.completed) {
+          grantProgressionReward(world, 'prologue_calibration_combine');
+        }
+        if (world.enemies.length > 0 && !anyAlive) {
+          grantProgressionReward(world, 'prologue_bay_proxies_cleared');
+        }
+        world.run.completedChapters = addUniqueChapter(
+          world.run.completedChapters,
+          'prologue'
+        );
+        recordWorldCombatMasteryOnVictory(world, ['sector_prologue']);
+        world.run.unlockedChapters = addUniqueChapter(
+          world.run.unlockedChapters,
+          'chapter_1_helix'
+        );
+        world.run.recoveredLogs = addUniqueString(
+          world.run.recoveredLogs ?? [],
+          'LOG-00'
+        );
+        unlockPlayerWeapon(world, 'phase_rail');
+        const checkpoint = captureBossCheckpointFromWorld(
+          world,
+          'chapter_1_helix',
+          'helix-04'
+        );
+        world.run.bossCheckpoint = checkpoint;
+        world.player.integrity = checkpoint.integrity;
+        world.player.ghostIntegrity = checkpoint.integrity;
+        world.player.flux = checkpoint.flux;
+        unlockExpeditionTransitAirlock(world, 'chapter_1_helix');
+      }
+      return;
+    }
     beginCampaignBossTransition(world);
+    return;
+  }
+
+  if (
+    world.run.mode === 'recursion' &&
+    world.encounterMode === 'standard' &&
+    world.enemies.length > 0 &&
+    !anyAlive &&
+    world.outcome === 'none'
+  ) {
+    completeRecursionLoopAndOpenDraft(world);
     return;
   }
 
   const canTriggerEncounterVictory =
     world.encounterMode === 'standard' &&
     world.run.mode !== 'campaign' &&
+    world.run.mode !== 'recursion' &&
     world.run.chapter !== 'chapter_5_loom';
   if (
     world.enemies.length > 0 &&
@@ -15630,6 +23510,9 @@ function stepWorldSingleSlice(world: WorldState, input: PlayerInputFrame, dt: nu
     world.run.stage = 'completed';
     world.outcomeDelayTimer = 0.5;
     clearEchoState(world, 'outcome');
+    if (world.run.chapter === 'prologue') {
+      recordWorldCombatMasteryOnVictory(world, ['sector_prologue']);
+    }
     world.frozenSummary = buildRunSummary(world);
     world.events.push({
       type: 'encounter_victory',
@@ -15680,6 +23563,8 @@ export function stepWorld(world: WorldState, input: PlayerInputFrame, rawDt: num
   _scratchSubstepInput.interactJustPressed = false;
   _scratchSubstepInput.lockOnToggleJustPressed = false;
   _scratchSubstepInput.lockOnCycleJustPressed = false;
+  _scratchSubstepInput.overdriveJustPressed = false;
+  _scratchSubstepInput.confluenceBurstJustPressed = false;
   _scratchSubstepInput.switchWeaponJustPressed = false;
   _scratchSubstepInput.selectWeaponId = null;
 
@@ -15726,6 +23611,15 @@ export function getEnemyTacticalProfile(
   } else if (enemy.archetype === 'eraser') {
     roleId = 'disruptor';
     roleLabel = 'ECHO NULLIFIER';
+  } else if (enemy.archetype === 'phase_stalker') {
+    roleId = 'skirmisher';
+    roleLabel = 'PHASE BLINK ASSASSIN';
+  } else if (enemy.archetype === 'chrono_mortar') {
+    roleId = 'suppressor';
+    roleLabel = 'SIEGE MORTAR TRIPOD';
+  } else if (enemy.archetype === 'resonance_warden') {
+    roleId = 'disruptor';
+    roleLabel = 'HARMONIC CONDUCTOR';
   } else if (isBossArchetype(enemy.archetype)) {
     roleId = 'boss';
     roleLabel = 'BOSS ENCOUNTER';
@@ -15778,6 +23672,12 @@ export function getEnemyTacticalProfile(
       statusLabel = telegraphLocked
         ? 'LUNGE COMMITTED · DODGE LATERAL'
         : 'COILING LUNGE · PARRY/DODGE';
+    } else if (enemy.archetype === 'phase_stalker') {
+      statusLabel = 'PHASE BLINK SLASH · PARRY [Q] OR SIDESTEP';
+    } else if (enemy.archetype === 'chrono_mortar') {
+      statusLabel = 'MORTAR BARRAGE LOCKING · EVADE BLAST RINGS';
+    } else if (enemy.archetype === 'resonance_warden') {
+      statusLabel = 'HARMONIC PULSE · STAGGER TO SEVER TETHER';
     } else if (enemy.archetype === 'siphon') {
       statusLabel = 'SIPHON STRIKE · DRAINS 22 FLUX';
     } else if (enemy.archetype === 'eraser') {
@@ -15799,6 +23699,14 @@ export function getEnemyTacticalProfile(
     statusLabel = 'STANDOFF ORBIT · USE COVER OR RANGED';
   } else if (enemy.archetype === 'null_weaver') {
     statusLabel = 'PHASE SUPPRESSOR · DAMPENS FLUX ON HIT';
+  } else if (enemy.archetype === 'phase_stalker') {
+    statusLabel = 'BLINK ASSASSIN · TELEPORTS TO FLANK';
+  } else if (enemy.archetype === 'chrono_mortar') {
+    statusLabel = 'SIEGE ARTILLERY · RUSH OR RANGED INTERRUPT';
+  } else if (enemy.archetype === 'resonance_warden') {
+    statusLabel = enemy.tetherTargetId
+      ? 'TETHER ACTIVE · +25% ALLY DR & REGEN (STAGGER TO BREAK)'
+      : 'HARMONIC CONDUCTOR · SEEKING ALLY LINK';
   } else if (enemy.archetype === 'scrapper') {
     statusLabel = 'FLANKING APPROACH · LOW POSTURE';
   } else if (enemy.archetype === 'siphon') {
@@ -15820,16 +23728,16 @@ export function getEnemyTacticalProfile(
 export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnapshot {
   const p = world.player;
   const totalEnemies = world.enemies.length;
-  const aliveList = world.enemies.filter((e) => e.hp > 0 && e.aiState !== 'ko');
-  const enemiesAlive = aliveList.length;
-
+  let enemiesAlive = 0;
   let focusedEnemy: HudSnapshot['focusedEnemy'] = null;
   let bestScore = Infinity;
 
   const activeMark = world.resonance.activeMark;
 
-  for (let i = 0; i < aliveList.length; i++) {
-    const e = aliveList[i];
+  for (let i = 0; i < totalEnemies; i++) {
+    const e = world.enemies[i];
+    if (e.hp <= 0 || e.aiState === 'ko') continue;
+    enemiesAlive += 1;
     const dist = Math.hypot(e.x - p.x, e.z - p.z);
     const isMarked = activeMark?.enemyId === e.id;
     const statePriority =
@@ -15862,6 +23770,8 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
         statusLabel: tacticalProfile.statusLabel,
         isFrontShieldActive: tacticalProfile.isFrontShieldActive,
         telegraphLocked: tacticalProfile.telegraphLocked,
+        modifier: e.modifier ?? null,
+        isTetherProtected: isEnemyProtectedByConductor(world, e.id),
       };
     }
   }
@@ -15929,7 +23839,29 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
   const playerDistToReceiver = Math.hypot(p.x - receiver.x, p.z - receiver.z);
   const playerDistToCombinePlate = Math.hypot(p.x - combinePlate.x, p.z - combinePlate.z);
 
-  if (world.run.chapter === 'chapter_5_loom') {
+  if (world.expedition?.enabled && world.expedition.phase === 'safe_room') {
+    const nextSpec = world.expedition.safeRoom?.nextChapter
+      ? getExpeditionSectorSpec(world.expedition.safeRoom.nextChapter)
+      : null;
+    objectiveText = nextSpec
+      ? `TRANSIT SAFE-ROOM · PREPARE FOR SECTOR ${nextSpec.code} (${nextSpec.shortName})`
+      : 'PRESSURIZED TRANSIT HUB · RESUPPLY & REFIT';
+    objectiveSubtext =
+      'Use Med-Supply Bay [I], Lysa Venn Hologram [I], or Field Workbench [U] — walk North to depart';
+  } else if (world.expedition?.enabled && world.expedition.phase === 'explore') {
+    objectiveText = `SECTOR ${world.expedition.sectorCode} · ${world.expedition.sectorTitle.toUpperCase()} — RECON & LOOT`;
+    objectiveSubtext = world.expedition.playerInsideBreachSeal
+      ? `INSIDE BREACH SEAL · Press [I] to awaken ${world.expedition.wardenLabel}`
+      : `Explore caches, Echo Vault switch, & archives — or breach Central Seal [I] to engage ${world.expedition.wardenLabel}`;
+  } else if (world.expedition?.enabled && world.expedition.phase === 'airlock_open') {
+    const nextSpec = world.expedition.nextChapter
+      ? getExpeditionSectorSpec(world.expedition.nextChapter)
+      : null;
+    objectiveText = `SECTOR ${world.expedition.sectorCode} CLEARED · NORTH AIRLOCK UNLOCKED`;
+    objectiveSubtext = nextSpec
+      ? `Follow the emerald floor guide north into the Transit Hub before Sector ${nextSpec.code}: ${nextSpec.title}`
+      : 'Walk through the North Airlock to advance';
+  } else if (world.run.chapter === 'chapter_5_loom') {
     objectiveText = 'CHAPTER V · THE LAST LOOP — CHRONICLE LOOM';
     objectiveSubtext = world.loom.selectedEnding
       ? `DIRECTIVE EXECUTED: ${world.loom.selectedEnding.toUpperCase()}`
@@ -16012,7 +23944,12 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
     }
   }
 
-  if (enemiesAlive === 0 && world.run.chapter !== 'chapter_5_loom') {
+  if (
+    enemiesAlive === 0 &&
+    world.run.chapter !== 'chapter_5_loom' &&
+    world.expedition?.phase !== 'safe_room' &&
+    world.expedition?.phase !== 'airlock_open'
+  ) {
     if (world.encounterMode === 'boss') {
       objectiveText = `${world.boss?.name ?? 'HELIX-04'} DEFEATED`;
       objectiveSubtext =
@@ -16046,6 +23983,90 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
       world.puzzle?.finalBarrier?.open || world.puzzle?.completed
     ),
   });
+
+  // Evaluate nearest Fragment Cache or Sector Tactical Beacon for live [I] HUD prompt
+  let nearbyExpansionPrompt: NearbyExpansionPrompt | null = null;
+  if (p.actionState !== 'dead') {
+    let bestDist = Infinity;
+    const caches = world.fragmentCaches ?? [];
+    for (let i = 0; i < caches.length; i++) {
+      const cache = caches[i];
+      if (cache.claimed) continue;
+      const dist = Math.hypot(p.x - cache.x, p.z - cache.z);
+      if (dist <= cache.radius + 1.25 && dist < bestDist) {
+        bestDist = dist;
+        nearbyExpansionPrompt = {
+          kind: 'fragment_cache',
+          id: cache.id,
+          label: cache.label,
+          promptText: `[I] RECOVER ${cache.label} (+1 FRAG)`,
+          detailText: `${cache.crewAuthor} — “${cache.memoryExcerpt}”`,
+          ready: true,
+          cooldown: 0,
+        };
+      }
+    }
+    if (!nearbyExpansionPrompt && world.temporalRift) {
+      const rift = world.temporalRift;
+      const dist = Math.hypot(p.x - rift.x, p.z - rift.z);
+      if (dist <= rift.radius + 1.25 && dist < bestDist) {
+        bestDist = dist;
+        nearbyExpansionPrompt = {
+          kind: 'temporal_rift',
+          id: rift.id,
+          label: rift.label,
+          promptText: '[I] SEAL TEMPORAL RIFT (+28 FLUX)',
+          detailText: 'SEAL RIFT EARLY FOR FLUX, INTEGRITY & STAGGER SHOCKWAVE',
+          ready: true,
+          cooldown: 0,
+        };
+      }
+    }
+    if (!nearbyExpansionPrompt) {
+      const beacons = world.sectorBeacons ?? [];
+      for (let i = 0; i < beacons.length; i++) {
+        const beacon = beacons[i];
+        const dist = Math.hypot(p.x - beacon.x, p.z - beacon.z);
+        if (dist <= beacon.radius + 1.25 && dist < bestDist) {
+          bestDist = dist;
+          const ready = beacon.cooldown <= 0;
+          nearbyExpansionPrompt = {
+            kind: 'sector_beacon',
+            id: beacon.id,
+            label: beacon.label,
+            promptText: ready
+              ? `[I] ACTIVATE ${beacon.label}`
+              : `${beacon.label} RECHARGING (${beacon.cooldown.toFixed(1)}s)`,
+            detailText: beacon.effectLabel,
+            ready,
+            cooldown: Number(beacon.cooldown.toFixed(1)),
+          };
+        }
+      }
+    }
+    if (!nearbyExpansionPrompt && world.run.mode !== 'boss_gauntlet') {
+      const holoDef = getHoloMemoryForChapter(world.run.chapter);
+      const dist = Math.hypot(p.x - holoDef.x, p.z - holoDef.z);
+      if (dist <= holoDef.interactRadius && dist < bestDist) {
+        bestDist = dist;
+        const alreadySynced = Boolean(
+          explorationSnapshot.discoveredHoloMemoryIds?.includes(holoDef.id)
+        );
+        nearbyExpansionPrompt = {
+          kind: 'holo_memory',
+          id: holoDef.id,
+          label: holoDef.titleEn,
+          promptText: alreadySynced
+            ? `[I] REPLAY ${holoDef.titleEn}`
+            : `[I] PROJECT ${holoDef.titleEn} (+22 FLUX)`,
+          detailText: `${holoDef.loopCode} · ${holoDef.summaryEn}`,
+          ready: true,
+          cooldown: 0,
+        };
+      }
+    }
+  }
+  explorationSnapshot.nearbyExpansionPrompt = nearbyExpansionPrompt;
 
   return {
     appState: world.appState,
@@ -16105,21 +24126,20 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
     playerActionState: p.actionState,
     chargeRatio: Math.min(
       1,
-      p.chargeTime /
-        (p.equippedWeaponId === 'phase_rail'
-          ? GAME_CONFIG.weapons.phase_rail.heavyShot.chargeThreshold
-          : p.equippedWeaponId === 'pulsecaster'
-            ? GAME_CONFIG.weapons.pulsecaster.heavyShot.chargeThreshold
-            : p.equippedWeaponId === 'grav_breaker'
-              ? GAME_CONFIG.weapons.grav_breaker.heavySlam.chargeThreshold
-              : GAME_CONFIG.player.heavyAttack.chargeThreshold)
+      p.chargeTime / getEffectivePlayerHeavyChargeThreshold(world, p)
     ),
     comboStep:
-      (p.equippedWeaponId === 'chrono_edge' || p.equippedWeaponId === 'grav_breaker') &&
+      (p.equippedWeaponId === 'chrono_edge' ||
+        p.equippedWeaponId === 'grav_breaker' ||
+        p.equippedWeaponId === 'chrono_scythe') &&
       (p.actionState.startsWith('light_') || p.comboWindowTimer > 0)
         ? p.comboIndex + 1
         : 0,
-    combatFlow: getCombatFlowHudSummary(p),
+    combatFlow: {
+      ...getCombatFlowHudSummary(p),
+      temporalSlipRemaining: Number((p.temporalSlipTimer ?? 0).toFixed(2)),
+      temporalSlipMax: Number((p.temporalSlipMaxDuration ?? 0).toFixed(2)),
+    },
     weapon: {
       equippedId: p.equippedWeaponId,
       equippedWeaponId: p.equippedWeaponId,
@@ -16144,7 +24164,9 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
       shotCooldownTimer: Number(p.weaponShotCooldownTimer.toFixed(2)),
       switchCooldownTimer: Number(p.weaponSwitchCooldownTimer.toFixed(2)),
       canFire:
-        p.equippedWeaponId === 'chrono_edge' || p.equippedWeaponId === 'grav_breaker'
+        p.equippedWeaponId === 'chrono_edge' ||
+        p.equippedWeaponId === 'grav_breaker' ||
+        p.equippedWeaponId === 'chrono_scythe'
           ? p.comboCooldownTimer <= 0
           : !p.weaponOverheated && p.weaponShotCooldownTimer <= 0,
       canSwitch:
@@ -16167,11 +24189,17 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
                   ? p.comboIndex + 1
                   : 0
               }/3`
-            : `COMBO ${
-                p.actionState.startsWith('light_') || p.comboWindowTimer > 0
-                  ? p.comboIndex + 1
-                  : 0
-              }/3`,
+            : p.equippedWeaponId === 'chrono_scythe'
+              ? `REAP ${
+                  p.actionState.startsWith('light_') || p.comboWindowTimer > 0
+                    ? p.comboIndex + 1
+                    : 0
+                }/3`
+              : `COMBO ${
+                  p.actionState.startsWith('light_') || p.comboWindowTimer > 0
+                    ? p.comboIndex + 1
+                    : 0
+                }/3`,
       activeVent: {
         progress: (() => {
           const lockDur = Math.max(
@@ -16213,7 +24241,10 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
         pulsecaster: getEquippedWeaponUpgrade(world, 'pulsecaster'),
         phase_rail: getEquippedWeaponUpgrade(world, 'phase_rail'),
         grav_breaker: getEquippedWeaponUpgrade(world, 'grav_breaker'),
+        chrono_scythe: getEquippedWeaponUpgrade(world, 'chrono_scythe'),
       },
+      overclockedUpgrades: [...(world.progression?.overclockedUpgrades ?? [])],
+      awakenedUpgrades: [...(world.progression?.awakenedUpgrades ?? [])],
       purchasedRigModules: [...(world.progression?.purchasedRigModules ?? [])],
       equippedRigModules: {
         temporal_core: world.progression?.equippedRigModules?.temporal_core ?? null,
@@ -16222,6 +24253,42 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
         tactical_harness:
           world.progression?.equippedRigModules?.tactical_harness ?? null,
       },
+      overclockedRigModules: [...(world.progression?.overclockedRigModules ?? [])],
+      sentinelMode: normalizeSentinelMode(world.progression?.sentinelMode),
+      echoDoctrine: normalizeEchoDoctrineId(world.progression?.echoDoctrine),
+      ...normalizeBossCoreProgression(
+        world.progression?.unlockedBossCores,
+        world.progression?.equippedBossCore,
+        world.run?.completedChapters,
+        world.run?.completedEndings,
+        world.progression?.transcendedBossCores
+      ),
+      purchasedNeuralProtocols: [
+        ...(world.progression?.purchasedNeuralProtocols ?? []),
+      ],
+      weaponMasteryXp: normalizeWeaponMasteryXpMap(world.progression?.weaponMasteryXp),
+      bestRecursionLoop: world.progression?.bestRecursionLoop ?? 0,
+      totalRecursionClears: world.progression?.totalRecursionClears ?? 0,
+      bestGauntletTimeSec: world.progression?.bestGauntletTimeSec ?? null,
+      totalGauntletClears: world.progression?.totalGauntletClears ?? 0,
+      overdriveDifficulty: Boolean(world.progression?.overdriveDifficulty),
+      difficultyTier: world.progression?.difficultyTier ?? (world.progression?.overdriveDifficulty ? 'singularity' : 'standard'),
+      ngPlusCycle: world.progression?.ngPlusCycle ?? 0,
+      unlockedVaultChapters: [...(world.progression?.unlockedVaultChapters ?? [])],
+      equippedSkinId: world.progression?.equippedSkinId ?? 'nadir_standard',
+      unlockedAchievementIds: [...(world.progression?.unlockedAchievementIds ?? [])],
+      paradoxEndingUnlocked: Boolean(world.progression?.paradoxEndingUnlocked),
+      echoZeroDefeatedCount: world.progression?.echoZeroDefeatedCount ?? 0,
+      lifetimeParries: world.progression?.lifetimeParries ?? 0,
+      lifetimeConvergences: world.progression?.lifetimeConvergences ?? 0,
+      mutators: { ...(world.progression?.mutators ?? createDefaultMutators()) },
+      bestSpeedrunSplits: { ...(world.progression?.bestSpeedrunSplits ?? {}) },
+      bestSpeedrunFullSec: world.progression?.bestSpeedrunFullSec ?? null,
+      speedrunHudEnabled: Boolean(world.progression?.speedrunHudEnabled),
+      equippedModChipId: world.progression?.equippedModChipId ?? null,
+      unlockedModChipIds: [...(world.progression?.unlockedModChipIds ?? ['mod_volt_arc'])],
+      loadoutPresets: cloneLoadoutPresets(world.progression?.loadoutPresets),
+      combatMastery: cloneCombatMasteryLedger(world.progression?.combatMastery),
       canModifyLoadout: canModifyWeaponUpgrades(world),
       lastActionMessage:
         world.progression?.lastActionMessage ??
@@ -16229,6 +24296,147 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
     },
     encounter: cloneEncounterRuntimeState(world.encounter),
     exploration: explorationSnapshot,
+    temporalRift: world.temporalRift
+      ? {
+          ...world.temporalRift,
+          remainingTimer: Number(world.temporalRift.remainingTimer.toFixed(2)),
+        }
+      : null,
+    recursion: world.recursion
+      ? {
+          ...world.recursion,
+          draftOptions: world.recursion.draftOptions.map((d) => ({ ...d })),
+          relicStacks: { ...world.recursion.relicStacks },
+        }
+      : undefined,
+    overdrive: world.overdrive
+      ? {
+          ...world.overdrive,
+          charge: Number(world.overdrive.charge.toFixed(1)),
+          remainingTimer: Number(world.overdrive.remainingTimer.toFixed(2)),
+        }
+      : createInitialChronoOverdriveState(25),
+    gauntlet: world.gauntlet
+      ? {
+          ...world.gauntlet,
+          defeatedBossIds: [...world.gauntlet.defeatedBossIds],
+          stageElapsedTimes: [...world.gauntlet.stageElapsedTimes],
+          totalElapsedTime: Number(world.gauntlet.totalElapsedTime.toFixed(2)),
+          refitBannerTimer: Number(world.gauntlet.refitBannerTimer.toFixed(2)),
+        }
+      : null,
+    expedition: world.expedition
+      ? {
+          ...world.expedition,
+          breachSealPos: { ...world.expedition.breachSealPos },
+          transitGatePos: { ...world.expedition.transitGatePos },
+          guideTarget: world.expedition.guideTarget
+            ? { ...world.expedition.guideTarget }
+            : null,
+          safeRoom: world.expedition.safeRoom
+            ? {
+                ...world.expedition.safeRoom,
+                medBayPos: { ...world.expedition.safeRoom.medBayPos },
+                lysaPos: { ...world.expedition.safeRoom.lysaPos },
+                workbenchPos: { ...world.expedition.safeRoom.workbenchPos },
+              }
+            : null,
+          secretVault: world.expedition.secretVault
+            ? {
+                ...world.expedition.secretVault,
+                switchPos: { ...world.expedition.secretVault.switchPos },
+                vaultPos: { ...world.expedition.secretVault.vaultPos },
+                overrideTimer: Number(world.expedition.secretVault.overrideTimer.toFixed(2)),
+              }
+            : null,
+          transitBannerTimer: Number(world.expedition.transitBannerTimer.toFixed(2)),
+        }
+      : null,
+    ascension: world.ascension
+      ? {
+          ...world.ascension,
+          style: {
+            ...world.ascension.style,
+            points: Math.round(world.ascension.style.points),
+            peakPoints: Math.round(world.ascension.style.peakPoints),
+            finisherCooldown: Number(world.ascension.style.finisherCooldown.toFixed(2)),
+            finisherActiveTimer: Number(world.ascension.style.finisherActiveTimer.toFixed(2)),
+            recentActions: [...world.ascension.style.recentActions],
+          },
+          dailyTrialElapsedSec: Number(world.ascension.dailyTrialElapsedSec.toFixed(2)),
+          finisherRiftTimer: Number(world.ascension.finisherRiftTimer.toFixed(2)),
+        }
+      : createInitialAscensionState(),
+    singularity: world.singularity
+      ? {
+          ...world.singularity,
+          hitComboTimer: Number(world.singularity.hitComboTimer.toFixed(2)),
+          flashSwapWindowTimer: Number(world.singularity.flashSwapWindowTimer.toFixed(2)),
+          flashSwapCooldown: Number(world.singularity.flashSwapCooldown.toFixed(2)),
+          flashSwapAmpTimer: Number(world.singularity.flashSwapAmpTimer.toFixed(2)),
+          phantomRiposteTimer: Number(world.singularity.phantomRiposteTimer.toFixed(2)),
+          bannerTimer: Number(world.singularity.bannerTimer.toFixed(2)),
+        }
+      : createInitialSingularityCombatState(),
+    kineticOvercharge: world.kineticOvercharge
+      ? {
+          charges: {
+            chrono_edge: Math.round(world.kineticOvercharge.charges.chrono_edge),
+            pulsecaster: Math.round(world.kineticOvercharge.charges.pulsecaster),
+            phase_rail: Math.round(world.kineticOvercharge.charges.phase_rail),
+            grav_breaker: Math.round(world.kineticOvercharge.charges.grav_breaker),
+            chrono_scythe: Math.round(world.kineticOvercharge.charges.chrono_scythe),
+          },
+          activeWeaponId: world.kineticOvercharge.activeWeaponId,
+          activeTimer: Number(world.kineticOvercharge.activeTimer.toFixed(2)),
+          maxDuration: world.kineticOvercharge.maxDuration,
+          totalOvercharges: world.kineticOvercharge.totalOvercharges,
+        }
+      : createInitialKineticOverchargeState(),
+    twinSync: world.twinSync
+      ? {
+          ...world.twinSync,
+          charge: Math.round(world.twinSync.charge),
+        }
+      : createInitialTwinSyncState(),
+    momentum: world.momentum
+      ? {
+          ...world.momentum,
+          streakTimer: Number(world.momentum.streakTimer.toFixed(2)),
+          weakpointTimer: Number(world.momentum.weakpointTimer.toFixed(2)),
+        }
+      : createInitialChronoMomentumState(),
+    nexus: world.nexus
+      ? {
+          ...world.nexus,
+          activeLinks: [...world.nexus.activeLinks],
+          pulseCooldown: Number(world.nexus.pulseCooldown.toFixed(2)),
+        }
+      : createInitialChronoNexusState(),
+    weaponResonance: world.weaponResonance
+      ? {
+          ...world.weaponResonance,
+          timer: Number(world.weaponResonance.timer.toFixed(2)),
+          cooldown: Number(world.weaponResonance.cooldown.toFixed(2)),
+        }
+      : createInitialWeaponResonanceState(),
+    chronoAegis: world.chronoAegis
+      ? {
+          ...world.chronoAegis,
+          ward: Number(world.chronoAegis.ward.toFixed(1)),
+          rechargeDelayTimer: Number(world.chronoAegis.rechargeDelayTimer.toFixed(2)),
+          fireCooldown: Number(world.chronoAegis.fireCooldown.toFixed(2)),
+          harmonicFluxTimer: Number(world.chronoAegis.harmonicFluxTimer.toFixed(2)),
+        }
+      : createInitialChronoAegisState('off'),
+    chronoConfluence: (() => {
+      const conf = ensureChronoConfluenceState(world);
+      return {
+        ...conf,
+        charge: Math.round(conf.charge),
+        cooldownTimer: Number(conf.cooldownTimer.toFixed(2)),
+      };
+    })(),
     enemiesAlive,
     totalEnemies,
     objectiveText,
@@ -16421,7 +24629,13 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
       world.obstacles,
       world.boostPads ?? [],
       world.fluxPools ?? [],
-      explorationSnapshot.tacticalWaypoint ?? null
+      explorationSnapshot.tacticalWaypoint ?? null,
+      world.fragmentCaches ?? [],
+      world.sectorBeacons ?? [],
+      world.temporalRift ?? null,
+      world.run.mode !== 'boss_gauntlet'
+        ? (explorationSnapshot.localMap?.holoProjector ?? null)
+        : null
     ),
     lockOn: (() => {
       const activeLockTarget = resolveActiveLockOnTarget(world, p.lockOnTargetId);
@@ -16436,7 +24650,78 @@ export function extractHudSnapshot(world: WorldState, aimYaw?: number): HudSnaps
         executeTargetName: execCand?.name ?? null,
       };
     })(),
+    paradox: (() => {
+      const px = ensureParadoxState(world);
+      return {
+        loadout: { ...px.loadout },
+        damagePopups: px.damagePopups.map((d) => ({ ...d })),
+        nextPopupId: px.nextPopupId,
+        killCamTimer: Number(px.killCamTimer.toFixed(2)),
+        mutators: { ...px.mutators },
+        speedrun: {
+          ...px.speedrun,
+          currentSplits: { ...px.speedrun.currentSplits },
+          bestSplits: { ...px.speedrun.bestSplits },
+        },
+        activeToast: px.activeToast ? { ...px.activeToast } : null,
+        paradoxRiftUnlocked:
+          px.paradoxRiftUnlocked ||
+          isParadoxRiftEligible(
+            world.progression?.unlockedVaultChapters ?? [],
+            world.progression?.ngPlusCycle ?? 0,
+            world.progression?.echoZeroDefeatedCount ?? 0
+          ),
+        bossTookDamageThisFight: px.bossTookDamageThisFight,
+      };
+    })(),
+    liveRankForecast: computeLiveTacticalRankForecast({
+      elapsedTime: Math.max(
+        0,
+        world.elapsedTime -
+          (world.encounterMode === 'boss'
+            ? (world.run.bossCheckpoint?.elapsedTimeAtCheckpoint ?? 0)
+            : 0)
+      ),
+      damageTaken: Math.max(
+        0,
+        world.stats.damageTaken -
+          (world.encounterMode === 'boss'
+            ? (world.run.bossCheckpoint?.statsAtCheckpoint.damageTaken ?? 0)
+            : 0)
+      ),
+      parriesLanded: Math.max(
+        0,
+        world.stats.parriesLanded -
+          (world.encounterMode === 'boss'
+            ? (world.run.bossCheckpoint?.statsAtCheckpoint.parriesLanded ?? 0)
+            : 0)
+      ),
+      perfectDodges: world.stats.perfectDodges ?? 0,
+      vulnerableHits: Math.max(
+        0,
+        world.stats.vulnerableHits -
+          (world.encounterMode === 'boss'
+            ? (world.run.bossCheckpoint?.statsAtCheckpoint.vulnerableHits ?? 0)
+            : 0)
+      ),
+      convergencesTriggered: Math.max(
+        0,
+        world.resonance.convergenceCount -
+          (world.encounterMode === 'boss'
+            ? (world.run.bossCheckpoint?.statsAtCheckpoint.convergencesTriggered ?? 0)
+            : 0)
+      ),
+      relaysUsed: Math.max(
+        0,
+        world.relay.activationCount -
+          (world.encounterMode === 'boss'
+            ? (world.run.bossCheckpoint?.statsAtCheckpoint.relaysUsed ?? 0)
+            : 0)
+      ),
+    }),
     elapsedTime: world.elapsedTime,
     summary: world.frozenSummary,
   };
 }
+
+

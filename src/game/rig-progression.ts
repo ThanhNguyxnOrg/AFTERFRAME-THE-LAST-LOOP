@@ -14,10 +14,13 @@ export const VALID_RIG_MODULE_SLOTS: readonly RigModuleSlot[] = [
 export const VALID_RIG_MODULE_IDS: readonly RigModuleId[] = [
   'rig_chrono_spool',
   'rig_resonance_prism',
+  'rig_echo_synchronizer',
   'rig_reactive_plating',
   'rig_kinetic_dynamo',
+  'rig_aegis_bastion_frame',
   'rig_flux_salvager',
   'rig_adrenaline_overclock',
+  'rig_executioner_bus',
 ];
 
 export const RIG_SLOT_LABELS: Record<RigModuleSlot, string> = {
@@ -53,6 +56,19 @@ export const RIG_MODULES: Record<RigModuleId, RigModuleDefinition> = {
     benefitText: '+14 Resonance Convergence HP damage & +0.45s stagger window',
     tradeoffText: '+3 Convergence Flux cost (18F base)',
   },
+  rig_echo_synchronizer: {
+    id: 'rig_echo_synchronizer',
+    slot: 'temporal_core',
+    slotLabel: RIG_SLOT_LABELS.temporal_core,
+    name: 'DUAL-THREAD SYNCHRONIZER',
+    shortLabel: 'DUAL SYNCHRONIZER',
+    roleLabel: 'WIDE SYNC WINDOW & FLUX REFUND',
+    cost: 3,
+    summary:
+      'Compresses Echo track latency to widen Resonance timing and recycle phase energy back into your suit bus.',
+    benefitText: '+0.8s Resonance Sync Window & +8 Flux refund when Convergence lands',
+    tradeoffText: '-1.0s Max Echo recording duration (7.0s vs 8.0s base)',
+  },
   rig_reactive_plating: {
     id: 'rig_reactive_plating',
     slot: 'defensive_chassis',
@@ -79,6 +95,19 @@ export const RIG_MODULES: Record<RigModuleId, RigModuleDefinition> = {
     benefitText: '+40% passive Flux regen, +8 Integrity on Boost Pads & +3.5 HP/s in Flux Pools',
     tradeoffText: '-15% passive ranged heat dissipation outside Active Vent',
   },
+  rig_aegis_bastion_frame: {
+    id: 'rig_aegis_bastion_frame',
+    slot: 'defensive_chassis',
+    slotLabel: RIG_SLOT_LABELS.defensive_chassis,
+    name: 'AEGIS RIPOSTE FRAME',
+    shortLabel: 'RIPOSTE FRAME',
+    roleLabel: 'COUNTER-SHOCKWAVE & PARRY REPAIR',
+    cost: 3,
+    summary:
+      'Channels incoming enemy momentum caught by Parry [Q] into a shockwave counter-pulse and suit stabilization.',
+    benefitText: '+22 bonus Parry posture shockwave & +10 Integrity heal on Perfect Parry',
+    tradeoffText: '+0.10s longer Parry recovery if mistimed',
+  },
   rig_flux_salvager: {
     id: 'rig_flux_salvager',
     slot: 'tactical_harness',
@@ -104,6 +133,19 @@ export const RIG_MODULES: Record<RigModuleId, RigModuleDefinition> = {
       'Routes Boost Pad, Capacitor, and Temporal Thread Surge directly into weapon actuation and rig cooldown motors.',
     benefitText: '+15% damage & +25% faster Relay/Pin/Collapse cooldown recovery while Surging',
     tradeoffText: '+4 extra weapon heat per ranged shot while Surging',
+  },
+  rig_executioner_bus: {
+    id: 'rig_executioner_bus',
+    slot: 'tactical_harness',
+    slotLabel: RIG_SLOT_LABELS.tactical_harness,
+    name: 'EXECUTIONER CONDUIT BUS',
+    shortLabel: 'EXECUTIONER BUS',
+    roleLabel: 'STAGGER FINISHER & CORE HARVEST',
+    cost: 3,
+    summary:
+      'High-voltage actuation rails tuned to harvest core telemetry whenever Sera executes a staggered foe.',
+    benefitText: '+25% Execution damage, +14 Integrity & +16 Flux refunded on Execution finisher',
+    tradeoffText: '+0.05s Heavy attack charge threshold',
   },
 };
 
@@ -174,40 +216,72 @@ export function normalizeRigProgressionFields(
   return { purchasedRigModules, equippedRigModules };
 }
 
+export function isRigModuleOverclocked(
+  moduleId: RigModuleId | null | undefined,
+  overclockedList?: readonly RigModuleId[] | null
+): boolean {
+  if (!moduleId || !Array.isArray(overclockedList)) return false;
+  return overclockedList.includes(moduleId);
+}
+
 export function computeEffectiveRigModifiers(
   equipped?: Partial<Record<RigModuleSlot, RigModuleId | null>> | null,
-  isSurging = false
+  isSurging = false,
+  overclockedRigModules?: readonly RigModuleId[] | null
 ): RigEffectiveModifiers {
   const core = equipped?.temporal_core ?? null;
   const chassis = equipped?.defensive_chassis ?? null;
   const harness = equipped?.tactical_harness ?? null;
 
+  const coreMk2 = isRigModuleOverclocked(core, overclockedRigModules);
+  const chassisMk2 = isRigModuleOverclocked(chassis, overclockedRigModules);
+  const harnessMk2 = isRigModuleOverclocked(harness, overclockedRigModules);
+
   return {
-    echoMaxDurationBonus: core === 'rig_chrono_spool' ? 2.0 : 0,
-    relayFluxCostDelta: core === 'rig_chrono_spool' ? -5 : 0,
-    relayCooldownDelta: core === 'rig_chrono_spool' ? 0.25 : 0,
-    convergenceBonusDamage: core === 'rig_resonance_prism' ? 14 : 0,
-    convergenceFluxCostDelta: core === 'rig_resonance_prism' ? 3 : 0,
-    staggerDurationBonus: core === 'rig_resonance_prism' ? 0.45 : 0,
+    echoMaxDurationBonus:
+      core === 'rig_chrono_spool'
+        ? coreMk2
+          ? 2.8
+          : 2.0
+        : core === 'rig_echo_synchronizer'
+          ? coreMk2
+            ? -0.5
+            : -1.0
+          : 0,
+    relayFluxCostDelta: core === 'rig_chrono_spool' ? (coreMk2 ? -7 : -5) : 0,
+    relayCooldownDelta: core === 'rig_chrono_spool' ? (coreMk2 ? 0.12 : 0.25) : 0,
+    convergenceBonusDamage: core === 'rig_resonance_prism' ? (coreMk2 ? 19 : 14) : 0,
+    convergenceFluxCostDelta: core === 'rig_resonance_prism' ? (coreMk2 ? 1 : 3) : 0,
+    staggerDurationBonus: core === 'rig_resonance_prism' ? (coreMk2 ? 0.6 : 0.45) : 0,
+    echoSyncWindowBonus: core === 'rig_echo_synchronizer' ? (coreMk2 ? 1.1 : 0.8) : 0,
+    convergenceFluxRefund: core === 'rig_echo_synchronizer' ? (coreMk2 ? 11 : 8) : 0,
 
-    maxIntegrityBonus: chassis === 'rig_reactive_plating' ? 25 : 0,
-    parrySlipBonusFlux: chassis === 'rig_reactive_plating' ? 10 : 0,
+    maxIntegrityBonus: chassis === 'rig_reactive_plating' ? (chassisMk2 ? 34 : 25) : 0,
+    parrySlipBonusFlux: chassis === 'rig_reactive_plating' ? (chassisMk2 ? 14 : 10) : 0,
     moveSpeedMultiplier:
-      chassis === 'rig_reactive_plating' && !isSurging ? 0.94 : 1.0,
-    passiveFluxRegenMultiplier: chassis === 'rig_kinetic_dynamo' ? 1.4 : 1.0,
-    boostPadIntegrityBonus: chassis === 'rig_kinetic_dynamo' ? 8 : 0,
-    fluxPoolIntegrityPerSec: chassis === 'rig_kinetic_dynamo' ? 3.5 : 0,
-    heatCoolMultiplier: chassis === 'rig_kinetic_dynamo' ? 0.85 : 1.0,
+      chassis === 'rig_reactive_plating' && !isSurging ? (chassisMk2 ? 0.97 : 0.94) : 1.0,
+    passiveFluxRegenMultiplier:
+      chassis === 'rig_kinetic_dynamo' ? (chassisMk2 ? 1.55 : 1.4) : 1.0,
+    boostPadIntegrityBonus: chassis === 'rig_kinetic_dynamo' ? (chassisMk2 ? 11 : 8) : 0,
+    fluxPoolIntegrityPerSec: chassis === 'rig_kinetic_dynamo' ? (chassisMk2 ? 4.8 : 3.5) : 0,
+    heatCoolMultiplier: chassis === 'rig_kinetic_dynamo' ? (chassisMk2 ? 0.93 : 0.85) : 1.0,
+    parryShockwaveStagger: chassis === 'rig_aegis_bastion_frame' ? (chassisMk2 ? 30 : 22) : 0,
+    parryIntegrityHeal: chassis === 'rig_aegis_bastion_frame' ? (chassisMk2 ? 14 : 10) : 0,
+    parryRecoveryDelta: chassis === 'rig_aegis_bastion_frame' ? (chassisMk2 ? 0.05 : 0.1) : 0,
 
-    crateFluxReward: harness === 'rig_flux_salvager' ? 18 : 12,
-    crateSurgeDuration: harness === 'rig_flux_salvager' ? 1.4 : 0,
-    threadIntegrityBonus: harness === 'rig_flux_salvager' ? 8 : 0,
-    dodgeCooldownDelta: harness === 'rig_flux_salvager' ? 0.08 : 0,
+    crateFluxReward: harness === 'rig_flux_salvager' ? (harnessMk2 ? 24 : 18) : 12,
+    crateSurgeDuration: harness === 'rig_flux_salvager' ? (harnessMk2 ? 1.9 : 1.4) : 0,
+    threadIntegrityBonus: harness === 'rig_flux_salvager' ? (harnessMk2 ? 11 : 8) : 0,
+    dodgeCooldownDelta: harness === 'rig_flux_salvager' ? (harnessMk2 ? 0.04 : 0.08) : 0,
     surgeDamageMultiplier:
-      harness === 'rig_adrenaline_overclock' && isSurging ? 1.15 : 1.0,
+      harness === 'rig_adrenaline_overclock' && isSurging ? (harnessMk2 ? 1.21 : 1.15) : 1.0,
     surgeCooldownTickMultiplier:
-      harness === 'rig_adrenaline_overclock' && isSurging ? 1.25 : 1.0,
+      harness === 'rig_adrenaline_overclock' && isSurging ? (harnessMk2 ? 1.35 : 1.25) : 1.0,
     surgeRangedHeatPenalty:
-      harness === 'rig_adrenaline_overclock' && isSurging ? 4 : 0,
+      harness === 'rig_adrenaline_overclock' && isSurging ? (harnessMk2 ? 2 : 4) : 0,
+    executionDamageMult: harness === 'rig_executioner_bus' ? (harnessMk2 ? 1.35 : 1.25) : 1.0,
+    executionIntegrityHeal: harness === 'rig_executioner_bus' ? (harnessMk2 ? 19 : 14) : 0,
+    executionFluxRefund: harness === 'rig_executioner_bus' ? (harnessMk2 ? 22 : 16) : 0,
+    heavyChargeDelayDelta: harness === 'rig_executioner_bus' ? (harnessMk2 ? 0.02 : 0.05) : 0,
   };
 }

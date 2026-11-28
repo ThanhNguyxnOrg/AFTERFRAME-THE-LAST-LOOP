@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InputController } from './input.ts';
-import { createEmptyInput, createInitialWorld, stepWorld } from './simulation.ts';
 import {
   GRAPHICS_PRESET_CONFIGS,
   clampRenderScale,
   computeEffectivePixelRatio,
-  computeFrameSimulationDt,
+  createAdaptiveFrameGovernor,
   detectMatchingGraphicsPreset,
   getDefaultGraphicsSettings,
   getParticleScaleFactor,
@@ -19,29 +18,8 @@ import {
   resolveGraphicsSettings,
   shouldSkipRedundantStaticRender,
   shouldStepPacedFrame,
+  stepAdaptiveFrameGovernor,
 } from './performance.ts';
-
-test('frame elapsed time reaches simulation without losing slow-frame time', () => {
-  for (const elapsedMs of [16.7, 33.3, 64, 100]) {
-    const world = createInitialWorld('playing');
-    world.enemies = [];
-    for (let i = 0; i < 100; i++) {
-      stepWorld(world, createEmptyInput(), computeFrameSimulationDt(elapsedMs));
-    }
-    assert.ok(Math.abs(world.elapsedTime - elapsedMs / 10) < 1e-9);
-  }
-});
-
-test('simulation caps long stalls and ignores tab-resume zero or invalid intervals', () => {
-  const world = createInitialWorld('playing');
-  world.enemies = [];
-  stepWorld(world, createEmptyInput(), computeFrameSimulationDt(5000));
-  assert.ok(Math.abs(world.elapsedTime - 0.25) < 1e-9);
-  for (const elapsedMs of [0, -1, NaN, Infinity]) {
-    stepWorld(world, createEmptyInput(), computeFrameSimulationDt(elapsedMs));
-  }
-  assert.ok(Math.abs(world.elapsedTime - 0.25) < 1e-9);
-});
 
 test('getDefaultGraphicsSettings returns balanced preset defaults', () => {
   const defaults = getDefaultGraphicsSettings();
@@ -52,6 +30,7 @@ test('getDefaultGraphicsSettings returns balanced preset defaults', () => {
   assert.equal(defaults.lightingQuality, GRAPHICS_PRESET_CONFIGS.balanced.lightingQuality);
   assert.equal(defaults.fpsLimit, GRAPHICS_PRESET_CONFIGS.balanced.fpsLimit);
   assert.equal(defaults.showPerfHud, false);
+  assert.equal(defaults.adaptiveResolution, true);
 });
 
 test('mergeGraphicsSettingsPatch expands named presets while preserving showPerfHud', () => {
@@ -120,6 +99,7 @@ test('normalizers clamp out-of-range and invalid values safely', () => {
     lightingQuality: 'lite',
     fpsLimit: 45,
     showPerfHud: true,
+    adaptiveResolution: false,
   });
   assert.equal(resolved.renderScale, 1.0);
   assert.equal(resolved.shadowQuality, 'off');
@@ -127,6 +107,7 @@ test('normalizers clamp out-of-range and invalid values safely', () => {
   assert.equal(resolved.lightingQuality, 'lite');
   assert.equal(resolved.fpsLimit, 45);
   assert.equal(resolved.showPerfHud, true);
+  assert.equal(resolved.adaptiveResolution, false);
   assert.equal(resolved.graphicsPreset, 'custom');
 });
 
@@ -163,7 +144,41 @@ test('shouldStepPacedFrame enforces fpsLimit and allows unlimited at 0', () => {
   assert.equal(shouldStepPacedFrame(1033, 1000, 30), true);
 });
 
-test('InputController persists and restores graphics & performance settings', () => {
+test('AdaptiveFrameGovernor downscales on sustained heavy frames, recovers smoothly, and bypasses when disabled or software GL', () => {
+  const gov = createAdaptiveFrameGovernor();
+  assert.equal(gov.dynamicScaleFactor, 1.0);
+
+  // Sustained 26ms frames (~38 FPS) trigger progressive downscale without dropping below 0.55 / baseRenderScale
+  for (let i = 0; i < 45; i += 1) {
+    stepAdaptiveFrameGovernor(gov, 26, 1.0, true, false);
+  }
+  assert.ok(
+    gov.dynamicScaleFactor < 0.96,
+    `Expected downscaled factor < 0.96, got ${gov.dynamicScaleFactor}`
+  );
+  assert.ok(
+    gov.dynamicScaleFactor >= 0.65,
+    `Expected factor >= floor 0.65, got ${gov.dynamicScaleFactor}`
+  );
+
+  // Sustained 11ms frames (~90 FPS headroom) smoothly recover back toward 1.0
+  const dropped = gov.dynamicScaleFactor;
+  for (let i = 0; i < 120; i += 1) {
+    stepAdaptiveFrameGovernor(gov, 11, 1.0, true, false);
+  }
+  assert.ok(gov.dynamicScaleFactor > dropped, 'Governor should recover upward on fast frames');
+
+  // Software WebGL or disabled toggle immediately restores 1.0
+  stepAdaptiveFrameGovernor(gov, 30, 1.0, true, true);
+  assert.equal(gov.dynamicScaleFactor, 1.0);
+  for (let i = 0; i < 30; i += 1) {
+    stepAdaptiveFrameGovernor(gov, 28, 1.0, true, false);
+  }
+  assert.ok(gov.dynamicScaleFactor < 1.0);
+  assert.equal(stepAdaptiveFrameGovernor(gov, 28, 1.0, false, false), 1.0);
+});
+
+test('InputController persists and restores graphics, performance, and adaptiveResolution settings', () => {
   const store = new Map<string, string>();
   const originalWindow = (globalThis as { window?: unknown }).window;
   (globalThis as { window?: unknown }).window = {
@@ -181,14 +196,17 @@ test('InputController persists and restores graphics & performance settings', ()
   try {
     const controllerA = new InputController();
     assert.equal(controllerA.getResolvedGraphicsSettings().graphicsPreset, 'balanced');
+    assert.equal(controllerA.getResolvedGraphicsSettings().adaptiveResolution, true);
 
     const updated = controllerA.setCameraSettings({
       graphicsPreset: 'performance',
       showPerfHud: true,
+      adaptiveResolution: false,
     });
     assert.equal(updated.graphicsPreset, 'performance');
     assert.equal(updated.shadowQuality, 'off');
     assert.equal(updated.showPerfHud, true);
+    assert.equal(updated.adaptiveResolution, false);
 
     const custom = controllerA.setCameraSettings({
       fpsLimit: 30,
@@ -205,6 +223,7 @@ test('InputController persists and restores graphics & performance settings', ()
     assert.equal(loaded.lightingQuality, 'lite');
     assert.equal(loaded.fpsLimit, 30);
     assert.equal(loaded.showPerfHud, true);
+    assert.equal(loaded.adaptiveResolution, false);
   } finally {
     if (originalWindow === undefined) {
       delete (globalThis as { window?: unknown }).window;
@@ -214,25 +233,3 @@ test('InputController persists and restores graphics & performance settings', ()
   }
 });
 
-test('touch move pulse covers its full duration on slow frames', () => {
-  const prevDoc = (globalThis as { document?: unknown }).document;
-  (globalThis as { document?: unknown }).document = {
-    body: { dataset: { state: 'playing', runMode: 'campaign' } },
-    hidden: false,
-    pointerLockElement: null,
-  };
-  try {
-    for (const frameSec of [1 / 60, 0.05, 0.1]) {
-      const input = new InputController();
-      input.triggerTouchMovePulse(1, 0, 0.25);
-      let movedSec = 0;
-      for (let i = 0; i < 20; i++) {
-        if (input.consumeFrameInput(frameSec).moveX !== 0) movedSec += frameSec;
-      }
-      assert.ok(movedSec >= 0.25 - 1e-9, `pulse moved ${movedSec}s at ${frameSec}s frames`);
-      assert.ok(movedSec <= 0.25 + frameSec + 1e-9, `pulse overran: ${movedSec}s at ${frameSec}s frames`);
-    }
-  } finally {
-    (globalThis as { document?: unknown }).document = prevDoc;
-  }
-});

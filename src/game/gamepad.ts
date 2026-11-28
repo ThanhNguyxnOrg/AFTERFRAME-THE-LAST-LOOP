@@ -42,6 +42,8 @@ export interface GamepadPollResult {
     switchWeapon: boolean;
     gravityPin: boolean;
     echoCollapse: boolean;
+    confluenceBurst: boolean;
+    overdrive: boolean;
     pause: boolean;
     map: boolean;
   };
@@ -73,6 +75,7 @@ function isGamepadButtonDown(
  * Standard mapping:
  *  0: A (Dodge), 1: B (Interact), 2: X (Light), 3: Y (Heavy)
  *  4: LB (Parry), 5: RB (Light), 6: LT (Echo Relay), 7: RT (Heavy)
+ *  Chords: LB + RB (4 + 5) -> Confluence Burst [9]; LT + RT (6 + 7) -> Stasis Overdrive [`]
  *  8: Back/View (Map), 9: Start/Menu (Pause)
  * 10: L3 (Echo Collapse), 11: R3 (Gravity Pin)
  * 12: D-Up (Echo Record), 13: D-Down (Echo Clear), 14: D-Left (Switch Weapon), 15: D-Right (Echo Replay)
@@ -105,6 +108,8 @@ export function pollGamepadInput(
         switchWeapon: false,
         gravityPin: false,
         echoCollapse: false,
+        confluenceBurst: false,
+        overdrive: false,
         pause: false,
         map: false,
       },
@@ -142,6 +147,16 @@ export function pollGamepadInput(
   const edge = (idx: number): boolean =>
     (nextButtonsMask & (1 << idx)) !== 0 && (prevButtonsMask & (1 << idx)) === 0;
   const held = (idx: number): boolean => (nextButtonsMask & (1 << idx)) !== 0;
+  const prevHeld = (idx: number): boolean => (prevButtonsMask & (1 << idx)) !== 0;
+
+  // Shoulder & Trigger Chords (suppress constituent single-button edges on chord activation frame)
+  const lbRbNow = held(4) && held(5);
+  const lbRbPrev = prevHeld(4) && prevHeld(5);
+  const confluenceBurstEdge = lbRbNow && !lbRbPrev;
+
+  const ltRtNow = held(6) && held(7);
+  const ltRtPrev = prevHeld(6) && prevHeld(7);
+  const overdriveEdge = ltRtNow && !ltRtPrev;
 
   return {
     connected: true,
@@ -149,18 +164,20 @@ export function pollGamepadInput(
     moveZ,
     lookYawDelta,
     lookPitchDelta,
-    lightHeld: held(2) || held(5),
+    lightHeld: !lbRbNow && (held(2) || held(5)),
     justPressed: {
       dodge: edge(0),
       interact: edge(1),
-      light: edge(2) || edge(5),
-      heavy: edge(3) || edge(7),
-      parry: edge(4),
-      echoRelay: edge(6),
+      light: edge(2) || (!confluenceBurstEdge && edge(5)),
+      heavy: edge(3) || (!overdriveEdge && edge(7)),
+      parry: !confluenceBurstEdge && edge(4),
+      echoRelay: !overdriveEdge && edge(6),
       map: edge(8),
       pause: edge(9),
       echoCollapse: edge(10),
       gravityPin: edge(11),
+      confluenceBurst: confluenceBurstEdge,
+      overdrive: overdriveEdge,
       echoRecord: edge(12),
       echoClear: edge(13),
       switchWeapon: edge(14),
@@ -188,21 +205,27 @@ export function computeHapticImpulseForEvents(
     switch (ev.type) {
       case 'chrono_execution_finisher':
       case 'boss_defeated':
+      case 'confluence_burst_triggered':
+      case 'boss_core_omega_awakened':
         consider({ strongMagnitude: 0.96, weakMagnitude: 0.76, durationMs: 200, priority: 6 });
         break;
       case 'boss_phase_transition':
       case 'boss_staggered':
       case 'resonance_convergence':
+      case 'chrono_overdrive_activated':
         consider({ strongMagnitude: 0.78, weakMagnitude: 0.56, durationMs: 160, priority: 5 });
         break;
       case 'player_parry_success':
       case 'player_riposte_strike':
+      case 'boss_core_pulse':
+      case 'chrono_ward_shatter':
         consider({ strongMagnitude: 0.7, weakMagnitude: 0.44, durationMs: 135, priority: 4 });
         break;
       case 'breaker_shockwave_slam':
       case 'player_breaker_heavy_slam':
       case 'active_vent_success':
       case 'echo_collapse_detonated':
+      case 'echo_doctrine_nova_pulse':
         consider({ strongMagnitude: 0.58, weakMagnitude: 0.36, durationMs: 120, priority: 3 });
         break;
       case 'player_perfect_dodge':

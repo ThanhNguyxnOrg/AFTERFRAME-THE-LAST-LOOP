@@ -2,7 +2,12 @@ export type GameAppState = 'title' | 'playing' | 'paused' | 'gameover';
 
 export type GameOutcome = 'none' | 'victory' | 'defeat';
 
-export type WeaponId = 'chrono_edge' | 'pulsecaster' | 'phase_rail' | 'grav_breaker';
+export type WeaponId =
+  | 'chrono_edge'
+  | 'pulsecaster'
+  | 'phase_rail'
+  | 'grav_breaker'
+  | 'chrono_scythe';
 
 export type WeaponAttackMode =
   | 'melee'
@@ -12,7 +17,9 @@ export type WeaponAttackMode =
   | 'rail_light'
   | 'rail_heavy'
   | 'breaker_light'
-  | 'breaker_heavy';
+  | 'breaker_heavy'
+  | 'scythe_light'
+  | 'scythe_heavy';
 
 export type WeaponShotOutcome =
   | 'none'
@@ -36,7 +43,9 @@ export type WeaponUpgradeId =
   | 'rail_null_aperture'
   | 'rail_phase_capacitor'
   | 'breaker_seismic_core'
-  | 'breaker_singularity_coil';
+  | 'breaker_singularity_coil'
+  | 'scythe_rift_reaper'
+  | 'scythe_astral_siphon';
 
 export type RigModuleSlot =
   | 'temporal_core'
@@ -46,10 +55,30 @@ export type RigModuleSlot =
 export type RigModuleId =
   | 'rig_chrono_spool'
   | 'rig_resonance_prism'
+  | 'rig_echo_synchronizer'
   | 'rig_reactive_plating'
   | 'rig_kinetic_dynamo'
+  | 'rig_aegis_bastion_frame'
   | 'rig_flux_salvager'
-  | 'rig_adrenaline_overclock';
+  | 'rig_adrenaline_overclock'
+  | 'rig_executioner_bus';
+
+export type NeuralProtocolId =
+  | 'proto_flux_reservoir'
+  | 'proto_echo_harmonics'
+  | 'proto_vanguard_reflex'
+  | 'proto_salvage_telemetry';
+
+export interface NeuralProtocolDefinition {
+  id: NeuralProtocolId;
+  name: string;
+  shortLabel: string;
+  roleLabel: string;
+  cost: number;
+  summary: string;
+  benefitText: string;
+  tradeoffText: string;
+}
 
 export interface RigModuleDefinition {
   id: RigModuleId;
@@ -71,6 +100,8 @@ export interface RigEffectiveModifiers {
   convergenceBonusDamage: number;
   convergenceFluxCostDelta: number;
   staggerDurationBonus: number;
+  echoSyncWindowBonus: number;
+  convergenceFluxRefund: number;
   maxIntegrityBonus: number;
   parrySlipBonusFlux: number;
   moveSpeedMultiplier: number;
@@ -78,6 +109,9 @@ export interface RigEffectiveModifiers {
   boostPadIntegrityBonus: number;
   fluxPoolIntegrityPerSec: number;
   heatCoolMultiplier: number;
+  parryShockwaveStagger: number;
+  parryIntegrityHeal: number;
+  parryRecoveryDelta: number;
   crateFluxReward: number;
   crateSurgeDuration: number;
   threadIntegrityBonus: number;
@@ -85,6 +119,10 @@ export interface RigEffectiveModifiers {
   surgeDamageMultiplier: number;
   surgeCooldownTickMultiplier: number;
   surgeRangedHeatPenalty: number;
+  executionDamageMult: number;
+  executionIntegrityHeal: number;
+  executionFluxRefund: number;
+  heavyChargeDelayDelta: number;
 }
 
 export type WeaponProgressionRewardId =
@@ -97,7 +135,21 @@ export type WeaponProgressionRewardId =
   | 'chapter_3_curator_defeated'
   | 'chapter_4_matron_defeated'
   | 'conduit_ch4_quarantine_override_frag'
-  | 'conduit_ch5_temporal_anchor_frag';
+  | 'conduit_ch5_temporal_anchor_frag'
+  | 'cache_prologue_east'
+  | 'cache_ch1_marshal_west'
+  | 'cache_ch2_garden_north'
+  | 'cache_ch3_vault_east'
+  | 'cache_ch3_vault_west'
+  | 'cache_ch4_quarantine_north'
+  | 'cache_ch5_loom_east'
+  | 'cache_ch5_loom_west'
+  | 'story_arc_prologue'
+  | 'story_arc_ch1'
+  | 'story_arc_ch2'
+  | 'story_arc_ch3'
+  | 'story_arc_ch4'
+  | 'story_arc_ch5';
 
 export type UpgradePurchaseOutcome =
   | 'purchased'
@@ -134,20 +186,635 @@ export interface WeaponProgressionRewardDefinition {
   description: string;
 }
 
+export type ChronoRelicId =
+  | 'relic_kinetic_overdrive'
+  | 'relic_temporal_siphon'
+  | 'relic_echo_amplification'
+  | 'relic_aegis_capacitor'
+  | 'relic_thermal_purge'
+  | 'relic_singularity_coil';
+
+export interface ChronoRelicDefinition {
+  id: ChronoRelicId;
+  name: string;
+  shortLabel: string;
+  accent: 'cyan' | 'emerald' | 'purple' | 'amber' | 'rose';
+  benefitText: string;
+}
+
+export type WeaponMasteryXpMap = Record<WeaponId, number>;
+
+export interface WeaponMasteryRankInfo {
+  rank: 1 | 2 | 3 | 4 | 5;
+  rankLabel: string;
+  xp: number;
+  nextRankXp: number | null;
+  progressRatio: number;
+  damageMultiplier: number;
+  staggerMultiplier: number;
+  fluxGainMultiplier: number;
+  vulnerableBonus: number;
+}
+
+export interface ArenaTemporalRift {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  remainingTimer: number;
+  maxDuration: number;
+  label: string;
+}
+
+export interface RecursionRunState {
+  active: boolean;
+  loopIndex: number;
+  bestLoopReached: number;
+  totalClears: number;
+  awaitingRelicDraft: boolean;
+  draftOptions: ChronoRelicDefinition[];
+  relicStacks: Partial<Record<ChronoRelicId, number>>;
+  enemiesPerLoopTotal: number;
+  isWardenSurge: boolean;
+}
+
+export interface ChronoOverdriveState {
+  charge: number;
+  maxCharge: number;
+  active: boolean;
+  remainingTimer: number;
+  maxDuration: number;
+  activationCount: number;
+  statusMessage: string;
+}
+
+export interface GauntletStageSpec {
+  index: number;
+  bossId: BossId;
+  chapter: CampaignChapterId;
+  shortCode: string;
+  bossName: string;
+  label: string;
+  sectorLabel: string;
+}
+
+export interface BossGauntletState {
+  active: boolean;
+  stageIndex: number;
+  totalStages: number;
+  currentBossId: BossId;
+  currentChapter: CampaignChapterId;
+  currentStageLabel: string;
+  defeatedBossIds: BossId[];
+  stageElapsedTimes: number[];
+  totalElapsedTime: number;
+  stageStartTime: number;
+  refitBannerTimer: number;
+  refitBannerText: string;
+  completed: boolean;
+  bestClearTimeSec: number | null;
+  totalGauntletClears: number;
+}
+
+export type ExpeditionPhase =
+  | 'explore'
+  | 'combat'
+  | 'airlock_open'
+  | 'safe_room'
+  | 'loom_finale';
+
+export interface ExpeditionSectorSpec {
+  index: number;
+  chapter: CampaignChapterId;
+  code: string;
+  shortName: string;
+  title: string;
+  wardenLabel: string;
+  nextChapter: CampaignChapterId | null;
+}
+
+export interface ExpeditionGuideTarget {
+  x: number;
+  z: number;
+  label: string;
+  kind:
+    | 'cache'
+    | 'terminal'
+    | 'beacon'
+    | 'secret_vault'
+    | 'breach_seal'
+    | 'combat'
+    | 'transit_gate'
+    | 'safe_room_med'
+    | 'safe_room_lysa';
+  distance: number;
+}
+
+export type SafeRoomStationId = 'none' | 'med_bay' | 'lysa_holo' | 'workbench';
+
+export interface ExpeditionSafeRoomState {
+  active: boolean;
+  fromChapter: CampaignChapterId;
+  nextChapter: CampaignChapterId;
+  medBayUsed: boolean;
+  lysaBriefingClaimed: boolean;
+  lysaIntelHeadline: string;
+  lysaIntelDetail: string;
+  medBayPos: { x: number; z: number };
+  lysaPos: { x: number; z: number };
+  workbenchPos: { x: number; z: number };
+  nearbyStation: SafeRoomStationId;
+}
+
+export interface SecretEchoVaultState {
+  id: string;
+  chapter: CampaignChapterId;
+  label: string;
+  switchPos: { x: number; z: number; radius: number };
+  vaultPos: { x: number; z: number; radius: number };
+  switchPressed: boolean;
+  heldByEcho: boolean;
+  overrideTimer: number;
+  maxOverrideDuration: number;
+  gateOpen: boolean;
+  looted: boolean;
+  rewardFragments: number;
+}
+
+export interface StationMapSectorNode {
+  index: number;
+  chapter: CampaignChapterId;
+  code: string;
+  shortName: string;
+  title: string;
+  wardenLabel: string;
+  status: 'cleared' | 'active' | 'unlocked' | 'locked';
+  discoveryPercent: number;
+  vaultLooted: boolean;
+  cachesFound: number;
+  cachesTotal: number;
+  loreFound: number;
+  loreTotal: number;
+}
+
+export interface ExpeditionState {
+  enabled: boolean;
+  phase: ExpeditionPhase;
+  sectorIndex: number;
+  totalSectors: number;
+  sectorCode: string;
+  sectorTitle: string;
+  wardenLabel: string;
+  nextChapter: CampaignChapterId | null;
+  breachSealPos: { x: number; z: number };
+  transitGatePos: { x: number; z: number };
+  airlockUnlocked: boolean;
+  cachesFound: number;
+  cachesTotal: number;
+  terminalsScanned: number;
+  terminalsTotal: number;
+  beaconsActive: number;
+  beaconsTotal: number;
+  guideTarget: ExpeditionGuideTarget | null;
+  playerInsideBreachSeal: boolean;
+  playerInsideTransitGate: boolean;
+  transitBannerTimer: number;
+  transitBannerText: string;
+  safeRoom?: ExpeditionSafeRoomState | null;
+  secretVault?: SecretEchoVaultState | null;
+  ngPlusCycle?: number;
+}
+
+export type SeraRigSkinId =
+  | 'nadir_standard'
+  | 'sovereign_gold'
+  | 'warden_crimson'
+  | 'phantom_emerald'
+  | 'paradox_prism';
+
+export type ChronoAchievementId =
+  | 'first_breach'
+  | 'vault_raider'
+  | 'all_vaults'
+  | 'safe_room_engineer'
+  | 'convergence_chain'
+  | 'parry_specialist'
+  | 'untouchable_warden'
+  | 'drone_commander'
+  | 'gauntlet_champion'
+  | 'ng_plus_initiate'
+  | 'paradox_breaker'
+  | 'mutator_daredevil';
+
+export type FabricatorItemId =
+  | 'nanite_pack'
+  | 'aegis_shield'
+  | 'overclock_core'
+  | 'drone_mk1'
+  | 'drone_mk2';
+
+export interface ChronoMutatorState {
+  glassCannon: boolean;
+  zeroEchoCooldown: boolean;
+  hyperSpeed: boolean;
+  ironmanNoHeal: boolean;
+}
+
+export interface TacticalLoadoutState {
+  naniteInjectors: number;
+  maxNaniteInjectors: number;
+  naniteCooldown: number;
+  aegisShieldHp: number;
+  maxAegisShieldHp: number;
+  overclockCoreActive: boolean;
+  combatDroneTier: 0 | 1 | 2;
+  droneX: number;
+  droneZ: number;
+  droneAngle: number;
+  droneFireCooldown: number;
+  droneShieldCooldown: number;
+  droneTargetId: string | null;
+}
+
+export type DamageNumberKind = 'normal' | 'crit' | 'convergence' | 'parry' | 'drone';
+
+export interface DamagePopupEntry {
+  id: number;
+  amount: number;
+  x: number;
+  y: number;
+  z: number;
+  kind: DamageNumberKind;
+  age: number;
+  lifetime: number;
+}
+
+export interface SpeedrunSplitState {
+  enabled: boolean;
+  runElapsedSec: number;
+  currentSplits: Partial<Record<CampaignChapterId, number>>;
+  bestSplits: Partial<Record<CampaignChapterId, number>>;
+  bestFullRunSec: number | null;
+  lastSplitChapter: CampaignChapterId | null;
+  lastDeltaSec: number | null;
+}
+
+export interface AchievementToastState {
+  id: ChronoAchievementId;
+  title: string;
+  description: string;
+  remaining: number;
+}
+
+export interface ParadoxRuntimeState {
+  loadout: TacticalLoadoutState;
+  damagePopups: DamagePopupEntry[];
+  nextPopupId: number;
+  killCamTimer: number;
+  mutators: ChronoMutatorState;
+  speedrun: SpeedrunSplitState;
+  activeToast: AchievementToastState | null;
+  paradoxRiftUnlocked: boolean;
+  bossTookDamageThisFight: boolean;
+}
+
+export type AppLocale = 'en' | 'vi';
+
+export type StyleRankTier = 'D' | 'C' | 'B' | 'A' | 'S' | 'SSS';
+
+export type StyleActionKind =
+  | 'light_hit'
+  | 'heavy_hit'
+  | 'parry'
+  | 'perfect_dodge'
+  | 'echo_deploy'
+  | 'convergence'
+  | 'scythe_vortex'
+  | 'drone_hit'
+  | 'flash_swap'
+  | 'finisher'
+  | 'kill';
+
+export type WeaponModChipId =
+  | 'mod_volt_arc'
+  | 'mod_siphon_leech'
+  | 'mod_chrono_nova';
+
+export type PhotoFilterId =
+  | 'standard'
+  | 'noir'
+  | 'cyber_cyan'
+  | 'paradox_violet'
+  | 'golden_hour';
+
+export interface WeaponModChipDefinition {
+  id: WeaponModChipId;
+  name: string;
+  nameVi: string;
+  shortLabel: string;
+  cost: number;
+  accentHex: number;
+  accentCss: string;
+  summaryEn: string;
+  summaryVi: string;
+}
+
+export interface StyleRankState {
+  points: number;
+  peakPoints: number;
+  tier: StyleRankTier;
+  peakTier: StyleRankTier;
+  decayGraceTimer: number;
+  recentActions: StyleActionKind[];
+  hitFreeStreak: number;
+  finisherCooldown: number;
+  finisherActiveTimer: number;
+  finisherReady: boolean;
+  lastActionLabel: string;
+  totalFinishersUsed: number;
+}
+
+export interface DailyTrialConfig {
+  dateKey: string;
+  seedCode: string;
+  titleEn: string;
+  titleVi: string;
+  chapter: CampaignChapterId;
+  bossId: BossId;
+  bossLabel: string;
+  mutatorKeys: Array<keyof ChronoMutatorState>;
+  mutatorLabelsEn: string[];
+  mutatorLabelsVi: string[];
+  startingRelicId: ChronoRelicId;
+  startingRelicLabel: string;
+  parTimeSec: number;
+  targetScore: number;
+}
+
+export interface DailyTrialRecord {
+  dateKey: string;
+  seedCode: string;
+  bestScore: number;
+  bestTimeSec: number;
+  peakRank: StyleRankTier;
+  completedCount: number;
+  updatedAtIso: string;
+}
+
+export interface AscensionRuntimeState {
+  style: StyleRankState;
+  dailyTrialActive: boolean;
+  dailyTrialConfig: DailyTrialConfig | null;
+  dailyTrialElapsedSec: number;
+  dailyTrialScore: number;
+  dailyTrialCompleted: boolean;
+  lastDailyRecord: DailyTrialRecord | null;
+  finisherRiftTimer: number;
+  finisherRiftX: number;
+  finisherRiftZ: number;
+}
+
+export interface SingularityCombatState {
+  hitComboCount: number;
+  bestHitCombo: number;
+  hitComboTimer: number;
+  flashSwapWindowTimer: number;
+  flashSwapCooldown: number;
+  flashSwapAmpTimer: number;
+  flashSwapCount: number;
+  phantomRiposteTimer: number;
+  lastMilestoneReached: number;
+  bannerLabel: string;
+  bannerTimer: number;
+}
+
+export interface KineticOverchargeState {
+  charges: Record<WeaponId, number>;
+  activeWeaponId: WeaponId | null;
+  activeTimer: number;
+  maxDuration: number;
+  totalOvercharges: number;
+}
+
+export type TwinSyncTier = 0 | 1 | 2 | 3;
+
+export interface TwinSyncState {
+  charge: number;
+  tier: TwinSyncTier;
+  linkActive: boolean;
+  pincerActive: boolean;
+  lastPlayerHitTime: number;
+  lastEchoHitTime: number;
+  totalPincers: number;
+  peakTier: TwinSyncTier;
+}
+
+export type ChronoMomentumTier = 0 | 1 | 2 | 3;
+
+export interface ChronoMomentumState {
+  streak: number;
+  tier: ChronoMomentumTier;
+  multiplier: number;
+  streakTimer: number;
+  weakpointTimer: number;
+  peakStreak: number;
+  totalBreaks: number;
+  bonusFragmentsAwarded: number;
+}
+
+export type ChronoNexusTier = 0 | 2 | 3 | 4;
+export type ChronoNexusLinkTag = 'overcharge' | 'twin_sync' | 'momentum' | 'flash_swap';
+
+export interface ChronoNexusState {
+  linkCount: number;
+  tier: ChronoNexusTier;
+  activeLinks: ChronoNexusLinkTag[];
+  pulseCooldown: number;
+  peakLinks: number;
+  totalApexLinks: number;
+}
+
+export type WeaponResonanceId =
+  | 'blade_reaper'
+  | 'plasma_overload'
+  | 'seismic_vortex'
+  | 'temporal_flux_shift';
+
+export interface WeaponResonanceState {
+  activeId: WeaponResonanceId | null;
+  timer: number;
+  cooldown: number;
+  fromWeaponId: WeaponId | null;
+  toWeaponId: WeaponId | null;
+  totalTriggers: number;
+}
+
+export type SentinelProtocolMode = 'off' | 'aegis' | 'interceptor' | 'harmonic';
+
+export type BossEchoCoreId =
+  | 'core_helix_bastion'
+  | 'core_choir_chime'
+  | 'core_curator_singularity'
+  | 'core_matron_siphon'
+  | 'core_warden_sovereign';
+
+export interface ChronoAegisRuntimeState {
+  mode: SentinelProtocolMode;
+  ward: number;
+  maxWard: number;
+  rechargeDelayTimer: number;
+  fireCooldown: number;
+  harmonicFluxTimer: number;
+  bossCoreSiphonCooldown?: number;
+  droneX: number;
+  droneZ: number;
+  lastTargetId: string | null;
+  totalWardAbsorbed: number;
+  totalSentinelShots: number;
+  totalAfterimages: number;
+}
+
+export interface PhotoModeState {
+  active: boolean;
+  hideUi: boolean;
+  yawOffset: number;
+  pitchOffset: number;
+  distance: number;
+  fov: number;
+  filter: PhotoFilterId;
+  showDrone: boolean;
+}
+
+export type EchoDoctrineId = 'standard' | 'vanguard' | 'bastion' | 'nova';
+
+export type RelicConstellationId =
+  | 'constellation_chrono_vampirism'
+  | 'constellation_paradox_singularity'
+  | 'constellation_cryo_fortress';
+
+export type TacticalLoadoutPresetSlot = 0 | 1 | 2;
+
+export interface TacticalLoadoutPreset {
+  slotIndex: TacticalLoadoutPresetSlot;
+  name: string;
+  weaponId: WeaponId;
+  equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
+  equippedModChipId: WeaponModChipId | null;
+  equippedRigModules: Record<RigModuleSlot, RigModuleId | null>;
+  sentinelMode: SentinelProtocolMode;
+  equippedBossCore: BossEchoCoreId | null;
+  echoDoctrine?: EchoDoctrineId;
+}
+
 export interface PersistedWeaponProgressionState {
   memoryFragments: number;
   claimedRewardIds: WeaponProgressionRewardId[];
   purchasedUpgrades: WeaponUpgradeId[];
   equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
+  overclockedUpgrades?: WeaponUpgradeId[];
+  awakenedUpgrades?: WeaponUpgradeId[];
   unlockedWeaponIds?: WeaponId[];
   purchasedRigModules?: RigModuleId[];
   equippedRigModules?: Partial<Record<RigModuleSlot, RigModuleId | null>>;
+  overclockedRigModules?: RigModuleId[];
+  sentinelMode?: SentinelProtocolMode;
+  echoDoctrine?: EchoDoctrineId;
+  unlockedBossCores?: BossEchoCoreId[];
+  equippedBossCore?: BossEchoCoreId | null;
+  transcendedBossCores?: BossEchoCoreId[];
+  purchasedNeuralProtocols?: NeuralProtocolId[];
+  weaponMasteryXp?: Partial<WeaponMasteryXpMap>;
+  bestRecursionLoop?: number;
+  totalRecursionClears?: number;
+  bestGauntletTimeSec?: number | null;
+  totalGauntletClears?: number;
+  ngPlusCycle?: number;
+  unlockedVaultChapters?: CampaignChapterId[];
+  overdriveDifficulty?: boolean;
+  equippedSkinId?: SeraRigSkinId;
+  unlockedAchievementIds?: ChronoAchievementId[];
+  paradoxEndingUnlocked?: boolean;
+  echoZeroDefeatedCount?: number;
+  lifetimeParries?: number;
+  lifetimeConvergences?: number;
+  mutators?: ChronoMutatorState;
+  bestSpeedrunSplits?: Partial<Record<CampaignChapterId, number>>;
+  bestSpeedrunFullSec?: number | null;
+  speedrunHudEnabled?: boolean;
+  equippedModChipId?: WeaponModChipId | null;
+  unlockedModChipIds?: WeaponModChipId[];
+  difficultyTier?: DifficultyTierId;
+  loadoutPresets?: Array<TacticalLoadoutPreset | null>;
+  combatMastery?: CombatMasteryLedgerMap;
 }
+
+export type CombatMasteryGrade = 'S+' | 'S' | 'A' | 'B' | 'C';
+
+export type MasteryTargetId =
+  | 'sector_prologue'
+  | 'sector_ch1_helix'
+  | 'sector_ch2_choir'
+  | 'sector_ch3_curator'
+  | 'sector_ch4_matron'
+  | 'sector_ch5_loom'
+  | 'boss_helix_04'
+  | 'boss_the_choir'
+  | 'boss_the_curator'
+  | 'boss_matron_v'
+  | 'boss_warden_prime'
+  | 'boss_echo_zero';
+
+export type MasteryBountyKind = 's_rank' | 'hitless';
+
+export interface CombatMasteryRecord {
+  bestGrade: CombatMasteryGrade;
+  bestScore: number;
+  bestTimeSec: number;
+  hitless: boolean;
+  clears: number;
+  sRankRewardClaimed: boolean;
+  hitlessRewardClaimed: boolean;
+}
+
+export type CombatMasteryLedgerMap = Partial<Record<MasteryTargetId, CombatMasteryRecord>>;
+
+export type DifficultyTierId = 'standard' | 'veteran' | 'singularity';
 
 export interface WeaponProgressionState extends PersistedWeaponProgressionState {
   unlockedWeaponIds: WeaponId[];
+  overclockedUpgrades: WeaponUpgradeId[];
+  awakenedUpgrades: WeaponUpgradeId[];
   purchasedRigModules: RigModuleId[];
   equippedRigModules: Record<RigModuleSlot, RigModuleId | null>;
+  overclockedRigModules: RigModuleId[];
+  sentinelMode: SentinelProtocolMode;
+  echoDoctrine: EchoDoctrineId;
+  unlockedBossCores: BossEchoCoreId[];
+  equippedBossCore: BossEchoCoreId | null;
+  transcendedBossCores: BossEchoCoreId[];
+  purchasedNeuralProtocols: NeuralProtocolId[];
+  weaponMasteryXp: WeaponMasteryXpMap;
+  bestRecursionLoop: number;
+  totalRecursionClears: number;
+  bestGauntletTimeSec: number | null;
+  totalGauntletClears: number;
+  ngPlusCycle: number;
+  unlockedVaultChapters: CampaignChapterId[];
+  overdriveDifficulty: boolean;
+  equippedSkinId: SeraRigSkinId;
+  unlockedAchievementIds: ChronoAchievementId[];
+  paradoxEndingUnlocked: boolean;
+  echoZeroDefeatedCount: number;
+  lifetimeParries: number;
+  lifetimeConvergences: number;
+  mutators: ChronoMutatorState;
+  bestSpeedrunSplits: Partial<Record<CampaignChapterId, number>>;
+  bestSpeedrunFullSec: number | null;
+  speedrunHudEnabled: boolean;
+  equippedModChipId: WeaponModChipId | null;
+  unlockedModChipIds: WeaponModChipId[];
+  loadoutPresets: Array<TacticalLoadoutPreset | null>;
+  combatMastery: CombatMasteryLedgerMap;
   lastPurchaseOutcome: UpgradePurchaseOutcome | null;
   lastEquipOutcome: UpgradeEquipOutcome | null;
   lastActionMessage: string;
@@ -158,9 +825,41 @@ export interface HudWeaponProgressionSnapshot {
   claimedRewardIds: WeaponProgressionRewardId[];
   purchasedUpgrades: WeaponUpgradeId[];
   equippedUpgrades: Record<WeaponId, WeaponUpgradeId | null>;
+  overclockedUpgrades: WeaponUpgradeId[];
+  awakenedUpgrades: WeaponUpgradeId[];
   unlockedWeaponIds: WeaponId[];
   purchasedRigModules: RigModuleId[];
   equippedRigModules: Record<RigModuleSlot, RigModuleId | null>;
+  overclockedRigModules: RigModuleId[];
+  sentinelMode: SentinelProtocolMode;
+  echoDoctrine: EchoDoctrineId;
+  unlockedBossCores: BossEchoCoreId[];
+  equippedBossCore: BossEchoCoreId | null;
+  transcendedBossCores: BossEchoCoreId[];
+  purchasedNeuralProtocols: NeuralProtocolId[];
+  weaponMasteryXp: WeaponMasteryXpMap;
+  bestRecursionLoop: number;
+  totalRecursionClears: number;
+  bestGauntletTimeSec: number | null;
+  totalGauntletClears: number;
+  ngPlusCycle: number;
+  unlockedVaultChapters: CampaignChapterId[];
+  overdriveDifficulty: boolean;
+  difficultyTier?: DifficultyTierId;
+  equippedSkinId: SeraRigSkinId;
+  unlockedAchievementIds: ChronoAchievementId[];
+  paradoxEndingUnlocked: boolean;
+  echoZeroDefeatedCount: number;
+  lifetimeParries: number;
+  lifetimeConvergences: number;
+  mutators: ChronoMutatorState;
+  bestSpeedrunSplits: Partial<Record<CampaignChapterId, number>>;
+  bestSpeedrunFullSec: number | null;
+  speedrunHudEnabled: boolean;
+  equippedModChipId: WeaponModChipId | null;
+  unlockedModChipIds: WeaponModChipId[];
+  loadoutPresets?: Array<TacticalLoadoutPreset | null>;
+  combatMastery?: CombatMasteryLedgerMap;
   canModifyLoadout: boolean;
   lastActionMessage: string;
 }
@@ -235,6 +934,9 @@ export type EnemyArchetype =
   | 'scout'
   | 'aegis_sentinel'
   | 'null_weaver'
+  | 'phase_stalker'
+  | 'chrono_mortar'
+  | 'resonance_warden'
   | 'helix'
   | 'choir'
   | 'curator'
@@ -244,7 +946,27 @@ export type EnemyArchetype =
   | 'siphon'
   | 'eraser';
 
-export type BossId = 'helix-04' | 'the-choir' | 'the-curator' | 'matron-v' | 'warden-prime';
+export type EnemyModifierId = 'overclocked' | 'phase_shielded' | 'volatile';
+
+export interface ArenaArtilleryZone {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  remainingTimer: number;
+  maxDuration: number;
+  damage: number;
+  sourceEnemyId: string;
+  kind: 'chrono_mortar' | 'volatile_core';
+}
+
+export type BossId =
+  | 'helix-04'
+  | 'the-choir'
+  | 'the-curator'
+  | 'matron-v'
+  | 'warden-prime'
+  | 'echo-zero';
 export type BossEncounterId = BossId;
 
 export type CampaignChapterId =
@@ -259,7 +981,7 @@ export type ChronicleLoomEndingId = 'silence' | 'witness' | 'continuity';
 
 export type EncounterMode = 'standard' | 'boss';
 
-export type RunMode = 'campaign' | 'practice_standard' | 'practice_boss';
+export type RunMode = 'campaign' | 'practice_standard' | 'practice_boss' | 'recursion' | 'boss_gauntlet';
 
 export type VerticalSliceStage =
   | 'intro'
@@ -431,7 +1153,10 @@ export type BossAttackType =
   | 'chrono_sever'
   | 'directive_lance'
   | 'temporal_convergence_grid'
-  | 'sovereign_purge_wave';
+  | 'sovereign_purge_wave'
+  | 'paradox_blink_slash'
+  | 'paradox_rail_lance'
+  | 'paradox_twin_pincer';
 
 export type BossAiState =
   | 'dormant'
@@ -536,6 +1261,7 @@ export interface EchoSystemState {
   recordingEvents: EchoRecordedActionEvent[];
   activeActor: EchoActorState | null;
   statusMessage: string;
+  novaPulseCooldownTimer?: number;
 }
 
 export type ResonanceStatus = 'idle' | 'primed' | 'on_cooldown';
@@ -894,10 +1620,115 @@ export interface ArenaFluxPool {
 
 export interface TacticalWaypointState {
   id: string;
-  kind: 'region' | 'route' | 'hazard' | 'boost_pad' | 'obstacle' | 'interactable' | 'secret';
+  kind:
+    | 'region'
+    | 'route'
+    | 'hazard'
+    | 'boost_pad'
+    | 'obstacle'
+    | 'interactable'
+    | 'secret'
+    | 'fragment_cache'
+    | 'sector_beacon'
+    | 'landmark';
   label: string;
   x: number;
   z: number;
+}
+
+export type FragmentCacheId =
+  | 'cache_prologue_east'
+  | 'cache_ch1_marshal_west'
+  | 'cache_ch2_garden_north'
+  | 'cache_ch3_vault_east'
+  | 'cache_ch3_vault_west'
+  | 'cache_ch4_quarantine_north'
+  | 'cache_ch5_loom_east'
+  | 'cache_ch5_loom_west';
+
+export interface ArenaFragmentCacheState {
+  id: FragmentCacheId;
+  chapter: CampaignChapterId;
+  label: string;
+  crewAuthor: string;
+  memoryExcerpt: string;
+  x: number;
+  z: number;
+  radius: number;
+  claimed: boolean;
+  rewardId: WeaponProgressionRewardId;
+}
+
+export type SectorBeaconId =
+  | 'beacon_prologue_cryo_vent'
+  | 'beacon_ch1_emp_pylon'
+  | 'beacon_ch2_harmonic_bell'
+  | 'beacon_ch3_purge_scanner'
+  | 'beacon_ch4_med_cradle'
+  | 'beacon_ch5_loom_capacitor';
+
+export interface SectorTacticalBeaconState {
+  id: SectorBeaconId;
+  chapter: CampaignChapterId;
+  label: string;
+  effectLabel: string;
+  description: string;
+  x: number;
+  z: number;
+  radius: number;
+  cooldown: number;
+  maxCooldown: number;
+  activationCount: number;
+}
+
+export type ChronicleStance = 'defiance' | 'empathy' | 'pragmatism';
+
+export type StoryArcId =
+  | 'story_prologue_wake'
+  | 'story_ch1_containment'
+  | 'story_ch2_chorus'
+  | 'story_ch3_archive'
+  | 'story_ch4_quarantine'
+  | 'story_ch5_reckoning';
+
+export interface StoryDialogueLine {
+  speaker: string;
+  role: string;
+  accent: NarrativeTransmissionAccent;
+  line: string;
+}
+
+export interface StoryChoiceOption {
+  id: string;
+  stance: ChronicleStance;
+  label: string;
+  responseLine: string;
+  blessingLabel: string;
+  blessingEffect: 'flux_surge' | 'integrity_shield' | 'posture_edge';
+}
+
+export interface StoryArcDefinition {
+  id: StoryArcId;
+  chapter: CampaignChapterId;
+  rewardId: WeaponProgressionRewardId;
+  title: string;
+  subtitle: string;
+  crewCharacter: string;
+  lines: readonly StoryDialogueLine[];
+  choices: readonly StoryChoiceOption[];
+}
+
+export interface StoryArcState extends StoryArcDefinition {
+  resolved: boolean;
+  chosenOptionId: string | null;
+  chosenStance: ChronicleStance | null;
+}
+
+export interface ChronicleStanceSummary {
+  defiance: number;
+  empathy: number;
+  pragmatism: number;
+  dominantStance: ChronicleStance | 'balanced';
 }
 
 export type GraphicsPreset = 'performance' | 'balanced' | 'quality' | 'custom';
@@ -905,6 +1736,15 @@ export type ShadowQuality = 'off' | 'medium' | 'high';
 export type ParticleQuality = 'low' | 'medium' | 'high';
 export type LightingQuality = 'lite' | 'standard';
 export type FpsLimitOption = 0 | 30 | 45 | 60;
+export type CelestialAtmosphereGrade = 'natural' | 'aurora' | 'eclipse';
+
+export type HoloMemoryId =
+  | 'holo_prologue_lysa'
+  | 'holo_ch1_manifest'
+  | 'holo_ch2_garden'
+  | 'holo_ch3_confession'
+  | 'holo_ch4_cradle'
+  | 'holo_ch5_origin';
 
 export interface CameraSettings {
   sensitivity: number; // 0.3 to 2.5, default 1.0
@@ -923,6 +1763,8 @@ export interface CameraSettings {
   lightingQuality?: LightingQuality; // 'lite' | 'standard', default 'standard'
   fpsLimit?: FpsLimitOption; // 0 (unlimited) | 30 | 45 | 60, default 60
   showPerfHud?: boolean; // default false
+  adaptiveResolution?: boolean; // default true
+  celestialGrade?: CelestialAtmosphereGrade; // 'natural' | 'aurora' | 'eclipse', default 'natural'
 }
 
 export interface PlayerInputFrame {
@@ -950,6 +1792,26 @@ export interface PlayerInputFrame {
   interactJustPressed?: boolean; // [I] Contextual environmental interaction
   lockOnToggleJustPressed?: boolean; // [O / Middle Click] Tactical target lock-on toggle
   lockOnCycleJustPressed?: boolean; // [Wheel / ]] Cycle active lock-on target
+  overdriveJustPressed?: boolean; // [5 / `] Trigger Chrono Stasis Overdrive (time dilation ultimate)
+  useNaniteJustPressed?: boolean; // [H / 6] Inject Med-Nanite restorative canister
+  confluenceBurstJustPressed?: boolean; // [9] Trigger Sentinel × Boss Core Sovereign Confluence Burst
+}
+
+export type ConfluenceDoctrineId =
+  | 'none'
+  | 'core_overpulse'
+  | 'aegis_bastion'
+  | 'interceptor_lance'
+  | 'harmonic_paradox';
+
+export interface ChronoConfluenceState {
+  doctrineId: ConfluenceDoctrineId;
+  charge: number; // 0..100
+  cooldownTimer: number;
+  maxCooldown: number;
+  ready: boolean;
+  isOmega: boolean;
+  totalBursts: number;
 }
 
 export interface PlayerState {
@@ -1007,6 +1869,9 @@ export interface PlayerState {
   activeVentEmpoweredShots?: number;
   lockOnTargetId?: string | null;
   surgeTimer?: number;
+  temporalSlipTimer?: number;
+  temporalSlipMaxDuration?: number;
+  temporalSlipCooldown?: number;
 }
 
 export interface EnemyState {
@@ -1041,6 +1906,10 @@ export interface EnemyState {
   pinnedTimer?: number;
   strikeSeq?: number;
   telegraphLocked?: boolean;
+  modifier?: EnemyModifierId | null;
+  blinkCooldownTimer?: number;
+  phaseShiftTimer?: number;
+  tetherTargetId?: string | null;
 }
 
 export interface BossState {
@@ -1194,13 +2063,92 @@ export interface CombatEvent {
     | 'rig_module_purchased'
     | 'rig_module_equipped'
     | 'flux_pool_spawned'
-    | 'temporal_thread_triggered';
+    | 'temporal_thread_triggered'
+    | 'fragment_cache_claimed'
+    | 'sector_beacon_activated'
+    | 'weapon_upgrade_overclocked'
+    | 'weapon_mythic_awakened'
+    | 'rig_module_overclocked'
+    | 'sentinel_mode_switched'
+    | 'chrono_ward_absorbed'
+    | 'chrono_ward_shatter'
+    | 'phantom_afterimage_strike'
+    | 'boss_core_unlocked'
+    | 'boss_core_equipped'
+    | 'boss_core_pulse'
+    | 'boss_core_omega_awakened'
+    | 'confluence_burst_triggered'
+    | 'echo_doctrine_switched'
+    | 'echo_doctrine_nova_pulse'
+    | 'holo_memory_projected'
+    | 'temporal_slip_triggered'
+    | 'sovereign_astral_pulse'
+    | 'mastery_bounty_claimed'
+    | 'neural_protocol_purchased'
+    | 'story_choice_resolved'
+    | 'temporal_rift_spawned'
+    | 'temporal_rift_sealed'
+    | 'temporal_rift_ruptured'
+    | 'recursion_loop_cleared'
+    | 'recursion_relic_picked'
+    | 'phase_stalker_blink'
+    | 'chrono_mortar_barrage_fired'
+    | 'chrono_mortar_detonated'
+    | 'conductor_tether_severed'
+    | 'volatile_core_detonated'
+    | 'chrono_overdrive_activated'
+    | 'chrono_overdrive_ended'
+    | 'gauntlet_stage_cleared'
+    | 'gauntlet_victory'
+    | 'expedition_breach_triggered'
+    | 'expedition_airlock_unlocked'
+    | 'expedition_sector_transit'
+    | 'safe_room_entered'
+    | 'safe_room_med_used'
+    | 'safe_room_lysa_briefing'
+    | 'secret_vault_unlocked'
+    | 'secret_vault_looted'
+    | 'ng_plus_started'
+    | 'nanite_injector_used'
+    | 'aegis_shield_absorbed'
+    | 'fabricator_purchased'
+    | 'combat_drone_fired'
+    | 'combat_drone_shield_triggered'
+    | 'boss_killcam_triggered'
+    | 'achievement_unlocked'
+    | 'paradox_rift_entered'
+    | 'echo_zero_defeated'
+    | 'rig_skin_changed'
+    | 'skin_equipped'
+    | 'player_scythe_swing'
+    | 'scythe_vortex_pull'
+    | 'mod_volt_arc_chain'
+    | 'mod_siphon_leech_heal'
+    | 'mod_chrono_nova_burst'
+    | 'style_rank_up'
+    | 'chrono_finisher_triggered'
+    | 'flash_swap_triggered'
+    | 'chrono_chain_milestone'
+    | 'weapon_overcharge_ready'
+    | 'weapon_overcharge_ended'
+    | 'twin_sync_tier_up'
+    | 'twin_sync_pincer'
+    | 'weakpoint_break_triggered'
+    | 'chrono_momentum_tier_up'
+    | 'chrono_nexus_linked'
+    | 'chrono_nexus_pulse'
+    | 'weapon_swap_resonance'
+    | 'daily_trial_started'
+    | 'daily_trial_completed';
   x: number;
   z: number;
   originX?: number;
   originZ?: number;
   amount?: number;
   postureBonus?: number;
+  achievementId?: ChronoAchievementId;
+  fabricatorItemId?: FabricatorItemId;
+  skinId?: SeraRigSkinId;
   isCriticalOrVulnerable?: boolean;
   isHeavy?: boolean;
   isGuarded?: boolean;
@@ -1252,7 +2200,8 @@ export type EncounterCompositionId =
   | 'tactical_guard_and_flank'
   | 'tactical_crossfire_suppression'
   | 'tactical_temporal_disruption'
-  | 'tactical_mastery_gauntlet';
+  | 'tactical_mastery_gauntlet'
+  | 'tactical_apex_bestiary';
 
 export interface EncounterWaveUnitSpec {
   id: string;
@@ -1260,6 +2209,7 @@ export interface EncounterWaveUnitSpec {
   name: string;
   x: number;
   z: number;
+  modifier?: EnemyModifierId;
 }
 
 export interface EncounterWaveSpec {
@@ -1765,6 +2715,16 @@ export interface LocalMapSnapshot {
     radius: number;
     remainingRatio: number;
   }>;
+  fragmentCaches?: ArenaFragmentCacheState[];
+  sectorBeacons?: SectorTacticalBeaconState[];
+  temporalRift?: ArenaTemporalRift | null;
+  holoProjector?: {
+    id: HoloMemoryId;
+    label: string;
+    x: number;
+    z: number;
+    discovered: boolean;
+  } | null;
 }
 
 // ============================================================================
@@ -1892,6 +2852,18 @@ export interface PersistedExplorationState {
   discoveredRegionIds?: SectorRegionId[];
   discoveredSecretIds?: SecretAreaId[];
   completedNarrativeEventIds?: NarrativeEventId[];
+  resolvedStoryChoices?: Partial<Record<StoryArcId, string>>;
+  discoveredHoloMemoryIds?: HoloMemoryId[];
+}
+
+export interface NearbyExpansionPrompt {
+  kind: 'fragment_cache' | 'sector_beacon' | 'temporal_rift' | 'holo_memory';
+  id: string;
+  label: string;
+  promptText: string;
+  detailText: string;
+  ready: boolean;
+  cooldown: number;
 }
 
 export interface WorldExplorationState {
@@ -1918,6 +2890,14 @@ export interface WorldExplorationState {
   newlyDiscoveredCodexId: CodexEntryId | null;
   statusBannerText: string;
   tacticalWaypoint?: TacticalWaypointState | null;
+  resolvedStoryChoices?: Partial<Record<StoryArcId, string>>;
+  storyArcs?: StoryArcState[];
+  activeChapterStory?: StoryArcState | null;
+  stanceSummary?: ChronicleStanceSummary;
+  nearbyExpansionPrompt?: NearbyExpansionPrompt | null;
+  discoveredHoloMemoryIds?: HoloMemoryId[];
+  activeHoloMemoryId?: HoloMemoryId | null;
+  activeHoloMemoryTimer?: number;
 }
 
 export interface WorldState {
@@ -1938,6 +2918,27 @@ export interface WorldState {
   obstacles: ObstacleCollider[];
   boostPads?: ArenaBoostPad[];
   fluxPools?: ArenaFluxPool[];
+  fragmentCaches?: ArenaFragmentCacheState[];
+  sectorBeacons?: SectorTacticalBeaconState[];
+  activeStoryBlessing?: 'flux_surge' | 'integrity_shield' | 'posture_edge' | null;
+  temporalRift?: ArenaTemporalRift | null;
+  riftCooldownTimer?: number;
+  riftSpawnSeq?: number;
+  artilleryZones?: ArenaArtilleryZone[];
+  recursion?: RecursionRunState | null;
+  overdrive: ChronoOverdriveState;
+  gauntlet?: BossGauntletState | null;
+  expedition?: ExpeditionState | null;
+  paradox: ParadoxRuntimeState;
+  ascension: AscensionRuntimeState;
+  singularity?: SingularityCombatState;
+  kineticOvercharge?: KineticOverchargeState;
+  twinSync?: TwinSyncState;
+  momentum?: ChronoMomentumState;
+  nexus?: ChronoNexusState;
+  weaponResonance?: WeaponResonanceState;
+  chronoAegis?: ChronoAegisRuntimeState;
+  chronoConfluence?: ChronoConfluenceState;
   echo: EchoSystemState;
   relay: RelaySystemState;
   resonance: ResonanceSystemState;
@@ -2008,6 +3009,15 @@ export interface HudSnapshot {
     chronoSlipRemaining?: number;
     relayMomentumRemaining: number;
     quickDrawRemaining: number;
+    temporalSlipRemaining?: number;
+    temporalSlipMax?: number;
+  };
+  liveRankForecast?: {
+    grade: CombatMasteryGrade;
+    score: number;
+    hitless: boolean;
+    nextGrade: CombatMasteryGrade | null;
+    pointsToNext: number;
   };
   weapon: {
     equippedId: WeaponId;
@@ -2053,6 +3063,21 @@ export interface HudSnapshot {
   progression: HudWeaponProgressionSnapshot;
   encounter: EncounterRuntimeState;
   exploration: WorldExplorationState;
+  temporalRift?: ArenaTemporalRift | null;
+  recursion?: RecursionRunState | null;
+  overdrive: ChronoOverdriveState;
+  gauntlet?: BossGauntletState | null;
+  expedition?: ExpeditionState | null;
+  paradox?: ParadoxRuntimeState;
+  ascension?: AscensionRuntimeState;
+  singularity?: SingularityCombatState;
+  kineticOvercharge?: KineticOverchargeState;
+  twinSync?: TwinSyncState;
+  momentum?: ChronoMomentumState;
+  nexus?: ChronoNexusState;
+  weaponResonance?: WeaponResonanceState;
+  chronoAegis?: ChronoAegisRuntimeState;
+  chronoConfluence?: ChronoConfluenceState;
   enemiesAlive: number;
   totalEnemies: number;
   objectiveText: string;
@@ -2076,6 +3101,8 @@ export interface HudSnapshot {
     statusLabel: string;
     isFrontShieldActive: boolean;
     telegraphLocked: boolean;
+    modifier?: EnemyModifierId | null;
+    isTetherProtected?: boolean;
   } | null;
   boss: HudBossSnapshot | null;
   echo: {
@@ -2220,5 +3247,27 @@ export interface HudRadarSnapshot {
     radius: number;
     remainingRatio: number;
   }>;
+  fragmentCaches?: Array<{
+    id: string;
+    label: string;
+    x: number;
+    z: number;
+    claimed: boolean;
+  }>;
+  sectorBeacons?: Array<{
+    id: string;
+    label: string;
+    x: number;
+    z: number;
+    ready: boolean;
+  }>;
+  temporalRift?: ArenaTemporalRift | null;
   waypoint?: TacticalWaypointState | null;
+  holoProjector?: {
+    id: HoloMemoryId;
+    label: string;
+    x: number;
+    z: number;
+    discovered: boolean;
+  } | null;
 }

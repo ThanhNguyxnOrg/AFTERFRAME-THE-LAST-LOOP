@@ -1,5 +1,6 @@
 import type {
   CameraSettings,
+  CelestialAtmosphereGrade,
   FpsLimitOption,
   GameAppState,
   GraphicsPreset,
@@ -7,10 +8,6 @@ import type {
   ParticleQuality,
   ShadowQuality,
 } from './types.ts';
-
-export function computeFrameSimulationDt(elapsedMs: number): number {
-  return Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs / 1000) : 0;
-}
 
 export interface GraphicsProfileConfig {
   renderScale: number;
@@ -23,6 +20,8 @@ export interface GraphicsProfileConfig {
 export interface ResolvedGraphicsSettings extends GraphicsProfileConfig {
   graphicsPreset: GraphicsPreset;
   showPerfHud: boolean;
+  adaptiveResolution: boolean;
+  celestialGrade: CelestialAtmosphereGrade;
 }
 
 export const GRAPHICS_PRESET_CONFIGS: Record<
@@ -60,7 +59,19 @@ export function getDefaultGraphicsSettings(): ResolvedGraphicsSettings {
     graphicsPreset: 'balanced',
     ...GRAPHICS_PRESET_CONFIGS.balanced,
     showPerfHud: false,
+    adaptiveResolution: true,
+    celestialGrade: 'natural',
   };
+}
+
+export function normalizeCelestialGrade(
+  value: unknown,
+  fallback: CelestialAtmosphereGrade = 'natural'
+): CelestialAtmosphereGrade {
+  if (value === 'natural' || value === 'aurora' || value === 'eclipse') {
+    return value;
+  }
+  return fallback;
 }
 
 export function clampRenderScale(value: unknown, fallback = 0.85): number {
@@ -165,6 +176,14 @@ export function resolveGraphicsSettings(
   const fpsLimit = normalizeFpsLimit(settings.fpsLimit, presetBase.fpsLimit);
   const showPerfHud =
     typeof settings.showPerfHud === 'boolean' ? settings.showPerfHud : defaults.showPerfHud;
+  const adaptiveResolution =
+    typeof settings.adaptiveResolution === 'boolean'
+      ? settings.adaptiveResolution
+      : defaults.adaptiveResolution;
+  const celestialGrade = normalizeCelestialGrade(
+    settings.celestialGrade,
+    defaults.celestialGrade
+  );
 
   const matchedPreset = detectMatchingGraphicsPreset({
     renderScale,
@@ -182,6 +201,8 @@ export function resolveGraphicsSettings(
     lightingQuality,
     fpsLimit,
     showPerfHud,
+    adaptiveResolution,
+    celestialGrade,
   };
 }
 
@@ -204,6 +225,14 @@ export function mergeGraphicsSettingsPatch(
         typeof patch.showPerfHud === 'boolean'
           ? patch.showPerfHud
           : currentResolved.showPerfHud,
+      adaptiveResolution:
+        typeof patch.adaptiveResolution === 'boolean'
+          ? patch.adaptiveResolution
+          : currentResolved.adaptiveResolution,
+      celestialGrade: normalizeCelestialGrade(
+        patch.celestialGrade,
+        currentResolved.celestialGrade
+      ),
     };
   }
 
@@ -259,3 +288,82 @@ export function shouldStepPacedFrame(
   const minIntervalMs = 1000 / fpsLimit - 1.5;
   return nowMs - lastFrameMs >= minIntervalMs;
 }
+
+export interface AdaptiveFrameGovernorState {
+  emaFrameMs: number;
+  dynamicScaleFactor: number;
+  overBudgetStreak: number;
+  underBudgetStreak: number;
+  cooldownFrames: number;
+}
+
+export function createAdaptiveFrameGovernor(): AdaptiveFrameGovernorState {
+  return {
+    emaFrameMs: 16.67,
+    dynamicScaleFactor: 1.0,
+    overBudgetStreak: 0,
+    underBudgetStreak: 0,
+    cooldownFrames: 0,
+  };
+}
+
+export function stepAdaptiveFrameGovernor(
+  state: AdaptiveFrameGovernorState,
+  frameDeltaMs: number,
+  configuredRenderScale: number,
+  adaptiveEnabled: boolean,
+  bypassGovernor: boolean
+): number {
+  if (!adaptiveEnabled || bypassGovernor) {
+    state.dynamicScaleFactor = 1.0;
+    state.overBudgetStreak = 0;
+    state.underBudgetStreak = 0;
+    state.cooldownFrames = 0;
+    return 1.0;
+  }
+  if (!Number.isFinite(frameDeltaMs) || frameDeltaMs <= 0 || frameDeltaMs > 250) {
+    return state.dynamicScaleFactor;
+  }
+
+  state.emaFrameMs = state.emaFrameMs * 0.85 + frameDeltaMs * 0.15;
+  if (state.cooldownFrames > 0) {
+    state.cooldownFrames -= 1;
+    return state.dynamicScaleFactor;
+  }
+
+  const safeConfiguredScale = clampRenderScale(configuredRenderScale, 0.85);
+  const minFactor = Math.min(1.0, Number((0.6 / safeConfiguredScale).toFixed(3)));
+
+  if (state.emaFrameMs > 21.5) {
+    state.overBudgetStreak += 1;
+    state.underBudgetStreak = 0;
+    if (state.overBudgetStreak >= 18) {
+      const nextFactor = Math.max(
+        minFactor,
+        Number((state.dynamicScaleFactor * 0.88).toFixed(3))
+      );
+      state.overBudgetStreak = 0;
+      if (nextFactor < state.dynamicScaleFactor - 0.005) {
+        state.dynamicScaleFactor = nextFactor;
+        state.cooldownFrames = 24;
+      }
+    }
+  } else if (state.emaFrameMs < 14.2) {
+    state.underBudgetStreak += 1;
+    state.overBudgetStreak = 0;
+    if (state.underBudgetStreak >= 45 && state.dynamicScaleFactor < 1.0) {
+      state.dynamicScaleFactor = Math.min(
+        1.0,
+        Number((state.dynamicScaleFactor + 0.06).toFixed(3))
+      );
+      state.underBudgetStreak = 0;
+      state.cooldownFrames = 30;
+    }
+  } else {
+    state.overBudgetStreak = Math.max(0, state.overBudgetStreak - 1);
+    state.underBudgetStreak = Math.max(0, state.underBudgetStreak - 1);
+  }
+
+  return state.dynamicScaleFactor;
+}
+

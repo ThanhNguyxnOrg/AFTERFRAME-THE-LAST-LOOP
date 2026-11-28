@@ -124,3 +124,54 @@ test('computeArenaMoodModulation intensifies rim, beams, and loom during Boss Ph
   assert.ok(exposed.loomIntensity > calm.loomIntensity);
 });
 
+test('v3.8.0 celestial visual palette defines auroraTint, planetRimTint, starTwinkle and modulates natural/aurora/eclipse grades', async () => {
+  const { mergeGraphicsSettingsPatch, resolveGraphicsSettings } = await import('./performance.ts');
+
+  for (const ch of ALL_CHAPTERS) {
+    const look = resolveChapterVisualLook(ch, null);
+    assert.equal(typeof look.auroraTint, 'number');
+    assert.equal(typeof look.planetRimTint, 'number');
+    assert.ok(look.starTwinkle > 0 && look.starTwinkle <= 2.0);
+  }
+
+  const baseLook = resolveChapterVisualLook('chapter_2_choir', null);
+  const natural = computeArenaMoodModulation(baseLook, {
+    bossPhase: 1,
+    bossCoreExposed: false,
+    adrenalineTier: 0,
+    resonanceFlash: 0,
+    reducedMotion: false,
+    celestialGrade: 'natural',
+    holoActive: false,
+  });
+  const aurora = computeArenaMoodModulation(baseLook, {
+    bossPhase: 1,
+    bossCoreExposed: false,
+    adrenalineTier: 0,
+    resonanceFlash: 0,
+    reducedMotion: false,
+    celestialGrade: 'aurora',
+    holoActive: true,
+  });
+  const eclipse = computeArenaMoodModulation(baseLook, {
+    bossPhase: 1,
+    bossCoreExposed: false,
+    adrenalineTier: 0,
+    resonanceFlash: 0,
+    reducedMotion: true,
+    celestialGrade: 'eclipse',
+    holoActive: false,
+  });
+
+  assert.ok(aurora.auroraIntensity > natural.auroraIntensity);
+  assert.ok(aurora.nebulaBoost > natural.nebulaBoost);
+  assert.ok(eclipse.eclipseRim > natural.eclipseRim);
+  assert.ok(eclipse.starTwinkle < natural.starTwinkle, 'reducedMotion damps star scintillation');
+
+  const defaultGfx = resolveGraphicsSettings({});
+  assert.equal(defaultGfx.celestialGrade, 'natural');
+  const patchedGfx = mergeGraphicsSettingsPatch(defaultGfx, { celestialGrade: 'aurora' });
+  assert.equal(patchedGfx.celestialGrade, 'aurora');
+});
+
+

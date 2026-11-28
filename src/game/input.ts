@@ -113,7 +113,8 @@ export class InputController {
       obj.particleQuality !== undefined ||
       obj.lightingQuality !== undefined ||
       obj.fpsLimit !== undefined ||
-      obj.showPerfHud !== undefined
+      obj.showPerfHud !== undefined ||
+      obj.adaptiveResolution !== undefined
     );
   }
 
@@ -558,6 +559,19 @@ export class InputController {
         return 'Digit3';
       case '4':
         return 'Digit4';
+      case '5':
+        return 'Digit5';
+      case '6':
+        return 'Digit6';
+      case '8':
+        return 'Digit8';
+      case '9':
+        return 'Digit9';
+      case '0':
+        return 'Digit0';
+      case '`':
+      case '~':
+        return 'Backquote';
       case ' ':
         return 'Space';
       case 'tab':
@@ -706,6 +720,11 @@ export class InputController {
         this.onSelectWeaponCallback?.('grav_breaker');
         return;
       }
+      if (code === 'Digit5') {
+        e.preventDefault();
+        this.onSelectWeaponCallback?.('chrono_scythe');
+        return;
+      }
       if (code === 'Tab' || code === 'KeyZ') {
         e.preventDefault();
         this.onSelectWeaponCallback?.();
@@ -721,16 +740,16 @@ export class InputController {
       return;
     }
 
-    // Chronicle Loom Chapter V [1] / [2] / [3] ending directive shortcuts
-    if (code === 'Digit1' && this.onSelectLoomEndingCallback?.('silence')) {
+    // Chronicle Loom Chapter V & Recursion Relic Draft [1] / [2] / [3] shortcuts
+    if ((code === 'Digit1' || code === 'Numpad1') && this.onSelectLoomEndingCallback?.('silence')) {
       e.preventDefault();
       return;
     }
-    if (code === 'Digit2' && this.onSelectLoomEndingCallback?.('witness')) {
+    if ((code === 'Digit2' || code === 'Numpad2') && this.onSelectLoomEndingCallback?.('witness')) {
       e.preventDefault();
       return;
     }
-    if (code === 'Digit3' && this.onSelectLoomEndingCallback?.('continuity')) {
+    if ((code === 'Digit3' || code === 'Numpad3') && this.onSelectLoomEndingCallback?.('continuity')) {
       e.preventDefault();
       return;
     }
@@ -777,6 +796,20 @@ export class InputController {
       typeof target.closest === 'function' &&
       target.closest('button, input, a, [role="dialog"], .pointer-events-auto')
     ) {
+      return;
+    }
+
+    // Never capture or hold Pointer Lock while a full-screen post-match selection overlay is visible
+    if (
+      typeof document !== 'undefined' &&
+      typeof document.querySelector === 'function' &&
+      document.querySelector(
+        '[data-testid="recursion-relic-draft-modal"], [data-testid="chronicle-loom-panel"]'
+      )
+    ) {
+      if (document.pointerLockElement) {
+        this.exitPointerLock();
+      }
       return;
     }
 
@@ -1003,10 +1036,7 @@ export class InputController {
       moveX = 1;
     }
 
-    const pulseActive = this.touchPulseTimer > 0;
-    const pulseX = this.touchPulseX;
-    const pulseZ = this.touchPulseZ;
-    if (pulseActive) {
+    if (this.touchPulseTimer > 0) {
       this.touchPulseTimer = Math.max(0, this.touchPulseTimer - dt);
       if (this.touchPulseTimer <= 0) {
         this.touchPulseX = 0;
@@ -1017,9 +1047,9 @@ export class InputController {
     if (this.touchHoldX !== 0 || this.touchHoldZ !== 0) {
       moveX += this.touchHoldX;
       moveZ += this.touchHoldZ;
-    } else if (pulseActive) {
-      moveX += pulseX;
-      moveZ += pulseZ;
+    } else if (this.touchPulseTimer > 0) {
+      moveX += this.touchPulseX;
+      moveZ += this.touchPulseZ;
     }
 
     if (gpPlaying) {
@@ -1077,7 +1107,9 @@ export class InputController {
             ? 'phase_rail'
             : this.justPressedKeys.has('Digit4')
               ? 'grav_breaker'
-              : null);
+              : this.justPressedKeys.has('Digit5')
+                ? 'chrono_scythe'
+                : null);
     const echoRecordJustPressed =
       this.justPressedKeys.has('KeyT') || (gpPlaying && gp.justPressed.echoRecord);
     const echoPlayJustPressed =
@@ -1096,6 +1128,12 @@ export class InputController {
       this.justPressedKeys.has('KeyO') || this.middleMouseTapJustPressed;
     const lockOnCycleJustPressed =
       this.justPressedKeys.has('BracketRight') || this.wheelCycleQueued;
+    const overdriveJustPressed =
+      this.justPressedKeys.has('Backquote') || (gpPlaying && gp.justPressed.overdrive);
+    const useNaniteJustPressed =
+      this.justPressedKeys.has('Digit6') || this.justPressedKeys.has('KeyB');
+    const confluenceBurstJustPressed =
+      this.justPressedKeys.has('Digit9') || (gpPlaying && gp.justPressed.confluenceBurst);
     const cameraDragJustStarted = this.cameraDragJustStarted;
 
     // Clear one-shot edge triggers
@@ -1131,7 +1169,22 @@ export class InputController {
       interactJustPressed,
       lockOnToggleJustPressed,
       lockOnCycleJustPressed,
+      overdriveJustPressed,
+      useNaniteJustPressed,
+      confluenceBurstJustPressed,
     };
+  }
+
+  public triggerConfluenceBurst(): void {
+    this.justPressedKeys.add('Digit9');
+  }
+
+  public triggerChronoOverdrive(): void {
+    this.justPressedKeys.add('Backquote');
+  }
+
+  public triggerNaniteInjector(): void {
+    this.justPressedKeys.add('Digit6');
   }
 
   public triggerInteract(): void {
